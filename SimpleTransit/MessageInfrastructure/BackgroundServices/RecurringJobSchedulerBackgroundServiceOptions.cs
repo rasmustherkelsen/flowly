@@ -1,0 +1,3 @@
+﻿namespace SimpleTransit.MessageInfrastructure.BackgroundServices;
+
+internal record RecurringJobSchedulerBackgroundServiceOptions(TimeSpan DelayBetweenChecks);
