@@ -9,9 +9,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-	  <PackageReference Include="Aspire.Azure.Messaging.ServiceBus" Version="9.1.0" />
-	  <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.3" />
-    <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.21.2" />
+	  <PackageReference Include="Aspire.Azure.Messaging.ServiceBus" Version="9.4.0" />
+	  <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.7" />
+    <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.22.1" />
   </ItemGroup>
 
   <ItemGroup>
