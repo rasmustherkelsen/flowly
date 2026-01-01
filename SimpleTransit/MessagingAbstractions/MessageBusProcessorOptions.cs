@@ -1,3 +1,0 @@
-namespace SimpleTransit.MessagingAbstractions;
-
-public record MessageBusProcessorOptions(int MaxConcurrentCalls, MessageBusReceiveMode ReceiveMode);

@@ -12,9 +12,9 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Api", "Api\Api.csproj", "{C
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MessageContracts", "MessageContracts\MessageContracts.csproj", "{E7BDCB39-376F-4C67-9A02-529123AD110D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SimpleTransit", "SimpleTransit\SimpleTransit.csproj", "{6BAFE6B4-7824-45C5-AB4E-226CAC0EA1AC}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Flowly", "Flowly\Flowly.csproj", "{6BAFE6B4-7824-45C5-AB4E-226CAC0EA1AC}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SimpleTransit.AzureServiceBus", "SimpleTransit.AzureServiceBus\SimpleTransit.AzureServiceBus.csproj", "{42F6C797-0B37-4C69-A670-35268B572DFD}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Flowly.AzureServiceBus", "Flowly.AzureServiceBus\Flowly.AzureServiceBus.csproj", "{42F6C797-0B37-4C69-A670-35268B572DFD}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

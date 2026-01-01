@@ -1,6 +1,6 @@
-﻿using MessageContracts;
-using SimpleTransit.MessageInfrastructure.Model;
-using SimpleTransit.MessageInfrastructure.Receivers;
+﻿using Flowly.MessageInfrastructure.Model;
+using Flowly.MessageInfrastructure.Receivers;
+using MessageContracts;
 
 namespace BackendProcessor.JobHandlers;
 

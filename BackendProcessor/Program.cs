@@ -1,7 +1,7 @@
 using BackendProcessor.JobHandlers;
+using Flowly.MessageInfrastructure.Registration;
 using MessageContracts;
-using SimpleTransit.MessageInfrastructure.Registration;
-using SimpleTransit.AzureServiceBus;
+using Flowly.AzureServiceBus;
 
 var builder = WebApplication.CreateBuilder(args);
 

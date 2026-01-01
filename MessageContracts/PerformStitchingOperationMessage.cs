@@ -1,4 +1,4 @@
-﻿using SimpleTransit.MessageInfrastructure.Model;
+﻿using Flowly.MessageInfrastructure.Model;
 
 namespace MessageContracts;
 

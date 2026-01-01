@@ -1,4 +1,4 @@
-﻿using SimpleTransit.MessageInfrastructure.RecurringJobs;
+﻿using Flowly.MessageInfrastructure.RecurringJobs;
 
 namespace BackendProcessor.JobHandlers;
 

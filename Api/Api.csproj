@@ -17,7 +17,7 @@
   <ItemGroup>
     <ProjectReference Include="..\MessageContracts\MessageContracts.csproj" />
     <ProjectReference Include="..\PlainServiceJobs.ServiceDefaults\PlainServiceJobs.ServiceDefaults.csproj" />
-    <ProjectReference Include="..\SimpleTransit.AzureServiceBus\SimpleTransit.AzureServiceBus.csproj" />
+    <ProjectReference Include="..\Flowly.AzureServiceBus\Flowly.AzureServiceBus.csproj" />
   </ItemGroup>
 
 </Project>

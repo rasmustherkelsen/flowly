@@ -1,8 +1,8 @@
+using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessageInfrastructure.Senders;
 using MessageContracts;
 using Microsoft.AspNetCore.Mvc;
-using SimpleTransit.MessageInfrastructure.Registration;
-using SimpleTransit.MessageInfrastructure.Senders;
-using SimpleTransit.AzureServiceBus;
+using Flowly.AzureServiceBus;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
