@@ -2,14 +2,13 @@
 using Microsoft.Extensions.Hosting;
 using SimpleTransit.MessageInfrastructure.Model;
 using SimpleTransit.MessageInfrastructure.Receivers;
-using System.Text.Json;
-using SimpleTransit.AzureServiceBusWrappers;
 using Microsoft.Extensions.Logging;
+using SimpleTransit.MessagingAbstractions;
 
 namespace SimpleTransit.MessageInfrastructure.BackgroundServices;
 
 internal class ServiceBusMessageBatchHandlerBackgroundService<TMessage>(
-    IServiceBusClient serviceBusClient,
+    IMessageBusClient messageBusClient,
     ServiceBusMessageBatchHandlerBackgroundService<TMessage>.BatchQueueSettings batchQueueSettings,
     IServiceScopeFactory serviceScopeFactory,
     ILogger<ServiceBusMessageBatchHandlerBackgroundService<TMessage>> logger) : BackgroundService where TMessage : class
@@ -21,16 +20,16 @@ internal class ServiceBusMessageBatchHandlerBackgroundService<TMessage>(
         {
             await using var scope = serviceScopeFactory.CreateAsyncScope();
             var messageHandlerForLog = scope.ServiceProvider.GetRequiredService<IBatchMessageHandler<TMessage>>();
-            logger.LogInformation($"{messageHandlerForLog.GetType().Name} batch waiting for messages on queue '{batchQueueSettings.QueueName}'");
+            logger.LogInformation("{MessageHandlerName} batch waiting for messages on queue '{QueueName}'", messageHandlerForLog.GetType().Name, batchQueueSettings.QueueName);
         }
 
-        var receiver = serviceBusClient.CreateReceiver(batchQueueSettings.QueueName);
+        await using var receiver = messageBusClient.CreateReceiver(batchQueueSettings.QueueName);
 
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                var receivedMessages = await receiver.ReceiveMessagesAsync(batchQueueSettings.MaxMessagesBeforeProcessing, batchQueueSettings.MaxWaitTime, stoppingToken);
+                var receivedMessages = await receiver.ReceiveMessages<TMessage>(batchQueueSettings.MaxMessagesBeforeProcessing, batchQueueSettings.MaxWaitTime, stoppingToken);
 
                 if (receivedMessages.Count == 0)
                 {
@@ -40,15 +39,13 @@ internal class ServiceBusMessageBatchHandlerBackgroundService<TMessage>(
                 await using var scope = serviceScopeFactory.CreateAsyncScope();
                 var messageHandler = scope.ServiceProvider.GetRequiredService<IBatchMessageHandler<TMessage>>();
 
-                logger.LogInformation($"{messageHandler.GetType().Name} received {receivedMessages.Count} messages");
+                logger.LogInformation("{MessageHandlerName} received {ReceivedMessagesCount} messages", messageHandler.GetType().Name, receivedMessages.Count);
 
+                await messageHandler.Handle(new BatchMessageContext<TMessage>(receivedMessages.Select(rm => rm.Body).ToList(), stoppingToken));
 
-                await messageHandler.Handle(new BatchMessageContext<TMessage>(receivedMessages.Select(rm => JsonSerializer.Deserialize<TMessage>(rm.Body.ToString())!).ToList(), stoppingToken));
-
-                foreach (var message in receivedMessages)
-                {
-                    await receiver.CompleteMessageAsync(message, stoppingToken);
-                }
+                await receiver.CompleteMessages(receivedMessages, stoppingToken);
+                
+                logger.LogInformation("{MessageHandlerName} completed {ReceivedMessagesCount} messages", messageHandler.GetType().Name, receivedMessages.Count);
             }
             catch (Exception e)
             {

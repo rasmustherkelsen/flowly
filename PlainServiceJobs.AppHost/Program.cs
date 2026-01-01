@@ -1,15 +1,22 @@
 var builder = DistributedApplication.CreateBuilder(args);
 
+var sqlServer = builder
+    .AddSqlServer("SqlServer", builder.AddParameter("sql-password", secret: true, value: "6v9p}-3Y(eWz7Cqwy6-93Y"), port: 6508)
+    .WithLifetime(ContainerLifetime.Persistent);
+
 var azureServiceBus = builder
     .AddAzureServiceBus("EmulatorNamespace")
-    .RunAsEmulator(c => c.WithLifetime(ContainerLifetime.Persistent));
+    .RunAsEmulator(c =>
+    {
+        c.WithLifetime(ContainerLifetime.Persistent);
+        c.WithEnvironment("MSSQL_CONNECTION_STRING", $"Server=localhost,6508;Database=AzureServiceBus;User Id=sa;Password=6v9p}}-3Y(eWz7Cqwy6-93Y;TrustServerCertificate=True");
+    });
 
 var rebuildIndexQueue = azureServiceBus.AddServiceBusQueue("rebuild-index");
 rebuildIndexQueue.WithProperties(q =>
 {
     q.LockDuration = TimeSpan.FromMinutes(5);
-}); 
-
+});
 
 var performStitchingQueue = azureServiceBus.AddServiceBusQueue("perform-stitching");
 
@@ -26,11 +33,7 @@ recurringJobsQueue.WithProperties(q => q.RequiresSession = true);
 
 // *******************
 
-var sqlServer = builder
-    .AddSqlServer("SqlServer", builder.AddParameter("sql-password", secret: true, value: "6v9p}-3Y(eWz7Cqwy6-93Y"), port: 6508)
-    .WithLifetime(ContainerLifetime.Persistent);
-
-builder.AddProject<Projects.BackendProcessor>("BackendProcessor")
+IResourceBuilder<ProjectResource> project = builder.AddProject<Projects.BackendProcessor>("BackendProcessor")
     .WithReference(azureServiceBus)
     .WithReference(sqlServer)
     .WaitFor(rebuildIndexQueue)
@@ -50,3 +53,4 @@ builder.AddProject<Projects.Api>("api")
     .WaitFor(performStitchingQueue);
 
 builder.Build().Run();
+

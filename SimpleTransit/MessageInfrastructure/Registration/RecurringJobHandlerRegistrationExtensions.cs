@@ -11,7 +11,14 @@ public static class RecurringJobHandlerRegistrationExtensions
         this IServiceCollection services, 
         string jobDescription, 
         TimeSpan interval) where TRecurringJob : class, IRecurringJobHandler
-    {
+    { 
+        var recurringQueueExists = services.Any(sd => sd.ImplementationInstance is DeferredQueueRegistration { QueueName: QueuesNames.RecurringJobs });
+
+        if (!recurringQueueExists)
+        {
+            services.AddSingleton(new DeferredQueueRegistration(QueuesNames.RecurringJobs));
+        }
+        
         services.AddSingleton(new RecurringJobHandlerBackgroundService<TRecurringJob>.RecurringJobSettings(
             jobDescription, 
             typeof(TRecurringJob).Name, 

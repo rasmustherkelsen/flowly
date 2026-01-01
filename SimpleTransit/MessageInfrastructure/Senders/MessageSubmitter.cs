@@ -1,10 +1,8 @@
-﻿using System.Text.Json;
-using Azure.Messaging.ServiceBus;
-using SimpleTransit.AzureServiceBusWrappers;
+﻿using SimpleTransit.MessagingAbstractions;
 
 namespace SimpleTransit.MessageInfrastructure.Senders;
 
-internal class MessageSubmitter<TMessage>(IServiceBusClient serviceBusClient, MessageSubmitter<TMessage>.QueueSettings queueSettings) : IMessageSubmitter<TMessage>
+internal class MessageSubmitter<TMessage>(IMessageBusClient messageBusClient, MessageSubmitter<TMessage>.QueueSettings queueSettings) : IMessageSubmitter<TMessage>
 {
     internal class QueueSettings(string queueName)
     {
@@ -13,10 +11,7 @@ internal class MessageSubmitter<TMessage>(IServiceBusClient serviceBusClient, Me
 
     public async Task Submit(TMessage message, CancellationToken cancellationToken)
     {
-        var sender = serviceBusClient.GetServiceBusSender(queueSettings.QueueName);
-
-        var serviceBusMessage = new ServiceBusMessage(JsonSerializer.Serialize(message));
-
-        await sender.SendMessageAsync(serviceBusMessage, cancellationToken);
+        var sender = messageBusClient.CreateMessageBusSender(queueSettings.QueueName);
+        await sender.SendMessage(message, MessageProperties.Empty, cancellationToken);
     }
 }

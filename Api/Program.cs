@@ -2,17 +2,19 @@ using MessageContracts;
 using Microsoft.AspNetCore.Mvc;
 using SimpleTransit.MessageInfrastructure.Registration;
 using SimpleTransit.MessageInfrastructure.Senders;
-using SimpleTransit.Services;
+using SimpleTransit.AzureServiceBus;
 
-var builder = WebApplication.CreateBuilder(args);
-
-builder.Services.AddOpenApi();
+WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 builder.AddAzureServiceBusClient(connectionName: "EmulatorNamespace");
 
+builder.Services.AddOpenApi();
+
 builder.Services
-    .AddRepositories(builder.Configuration.GetConnectionString("SqlServer")!)
-    .AddJobHandlerStateDatabaseMigrations()
+    .AddSimpleTransit(args)
+    .UseAzureServiceBus("EmulatorNamespace");
+    
+builder.Services
     .AddJobSubmitter<PerformStitchingOperationMessage>(QueuesNames.PerformStitching)
     .AddMessageSubmitter<RebuildIndexMessage>(QueuesNames.RebuildIndex);
 
@@ -40,7 +42,7 @@ app.MapGet("/perform-stitching", async ([FromQuery] Guid importDefinitionId, [Fr
 {
     for (int i = 0; i < (messageCount ?? 1); i++)
     {
-        await messageSender.SendJob(new PerformStitchingOperationMessage(importDefinitionId, $"My Stitching Operation {DateTime.UtcNow}"));
+        await messageSender.QueueJob(new PerformStitchingOperationMessage(importDefinitionId, $"My Stitching Operation {DateTime.UtcNow}"));
     }
 
     return Results.Ok("Ok");

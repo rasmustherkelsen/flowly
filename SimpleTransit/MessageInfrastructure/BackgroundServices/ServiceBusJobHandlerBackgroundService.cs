@@ -1,54 +1,53 @@
-﻿using Azure.Messaging.ServiceBus;
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using SimpleTransit.AzureServiceBusWrappers;
 using SimpleTransit.MessageInfrastructure.Messages;
 using SimpleTransit.MessageInfrastructure.Model;
 using SimpleTransit.MessageInfrastructure.Receivers;
 using SimpleTransit.MessageInfrastructure.Senders;
+using SimpleTransit.MessagingAbstractions;
 
 namespace SimpleTransit.MessageInfrastructure.BackgroundServices;
 
 internal class ServiceBusJobHandlerBackgroundService<TMessage> : ServiceBusMessageHandlerBackgroundServiceBase<TMessage> where TMessage : class, IJobMessage
 {
     public ServiceBusJobHandlerBackgroundService(
-        IServiceBusClient client,
+        IMessageBusClient messageBusClient,
         IServiceScopeFactory serviceScopeFactory,
         HandlerSettings<TMessage> handlerSettings,
-        ILogger<ServiceBusJobHandlerBackgroundService<TMessage>> logger) : base(client, serviceScopeFactory, handlerSettings, logger)
+        ILogger<ServiceBusJobHandlerBackgroundService<TMessage>> logger) : base(messageBusClient, serviceScopeFactory, handlerSettings, logger)
     {
     }
-
-    protected internal override async Task OnHandleMessage(TMessage message, ProcessMessageEventArgs processMessageEventArgs, IServiceProvider serviceProvider)
+    
+    protected override async Task OnHandleMessage(IReceivedMessage<TMessage> receivedMessage, IServiceProvider serviceProvider, CancellationToken cancellationToken)
     {
-        var jobId = Guid.Parse(processMessageEventArgs.Message.MessageId);
+        var jobId = Guid.Parse(receivedMessage.Properties.MessageId);
 
         var jobHandler = serviceProvider.GetRequiredService<IJobMessageHandler<TMessage>>();
         var messageSender = serviceProvider.GetRequiredService<IMessageSender>();
 
-        await messageSender.Send(new UpdateJobState(jobId, JobState.Started, DateTime.UtcNow));
+        await messageSender.Send(new UpdateJobState(jobId, JobState.Started, DateTime.UtcNow), cancellationToken);
 
         try
         {
             await jobHandler.Handle(new JobMessageContext<TMessage>(
                 jobId,
-                message,
+                receivedMessage.Body,
                 serviceProvider.GetRequiredService<IMessageSender>(),
-                processMessageEventArgs.CancellationToken));
+                cancellationToken));
         }
         catch (Exception ex)
         {
             throw new JobException(jobId, ex);
         }
 
-        await messageSender.Send(new UpdateJobState(jobId, JobState.Completed, DateTime.UtcNow));
+        await messageSender.Send(new UpdateJobState(jobId, JobState.Completed, DateTime.UtcNow), cancellationToken);
     }
 
-    protected override async Task OnMessageHandlingError(ILogger logger, IServiceProvider serviceProvider, ProcessErrorEventArgs processMessageEventArgs)
+    protected override async Task OnMessageHandlingError(ILogger logger, IServiceProvider serviceProvider, ErrorDetails errorDetails)
     {
-        if (processMessageEventArgs.Exception is JobException jobException)
+        if (errorDetails.Exception is JobException jobException)
         {
-            logger.LogError(processMessageEventArgs.Exception.Message);
+            logger.LogError(errorDetails.Exception.Message);
 
             var messageSender = serviceProvider.GetRequiredService<IMessageSender>();
             await messageSender.Send(new JobFailed(jobException.JobId, jobException.InnerException?.Message ?? jobException.Message, DateTime.UtcNow));

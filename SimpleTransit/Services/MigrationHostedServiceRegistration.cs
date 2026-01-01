@@ -5,7 +5,7 @@ using SimpleTransit.DatabaseModel.JobStateDatabase;
 namespace SimpleTransit.Services;
 
 [ExcludeFromCodeCoverage]
-public static class MigrationHostedServiceRegistration
+internal static class MigrationHostedServiceRegistration
 {
     public static IServiceCollection AddJobHandlerStateDatabaseMigrations(this IServiceCollection services)
     {

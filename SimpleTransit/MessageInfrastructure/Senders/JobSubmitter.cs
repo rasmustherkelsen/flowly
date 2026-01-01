@@ -1,12 +1,13 @@
-﻿using Azure.Messaging.ServiceBus;
-using SimpleTransit.AzureServiceBusWrappers;
-using SimpleTransit.MessageInfrastructure.Messages;
+﻿using SimpleTransit.MessageInfrastructure.Messages;
 using SimpleTransit.MessageInfrastructure.Model;
-using System.Text.Json;
+using SimpleTransit.MessagingAbstractions;
 
 namespace SimpleTransit.MessageInfrastructure.Senders;
 
-internal class JobSubmitter<TMessage>(IServiceBusClient serviceBusClient, JobSubmitter<TMessage>.QueueSettings queueSettings, IMessageSender messageSender) : IJobSubmitter<TMessage> where TMessage : IJobMessage
+internal class JobSubmitter<TMessage>(
+    IMessageBusClient messageBusClient,
+    JobSubmitter<TMessage>.QueueSettings queueSettings,
+    IMessageSender messageSender) : IJobSubmitter<TMessage> where TMessage : IJobMessage
 {
     internal record QueueSettings(string QueueName);
 
@@ -17,9 +18,9 @@ internal class JobSubmitter<TMessage>(IServiceBusClient serviceBusClient, JobSub
 
         await messageSender.Send(createJobState, cancellationToken);
 
-        var serviceBusSender = serviceBusClient.GetServiceBusSender(queueSettings.QueueName);
+        var messageBusSender = messageBusClient.CreateMessageBusSender(queueSettings.QueueName);
 
-        await serviceBusSender.SendMessageAsync(new ServiceBusMessage(JsonSerializer.Serialize(message)) { MessageId = jobId.ToString() }, cancellationToken);
+        await messageBusSender.SendMessage(message, new MessageProperties(jobId.InnerId.ToString(), string.Empty), cancellationToken);
 
         return jobId;
     }

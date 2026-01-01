@@ -1,0 +1,3 @@
+namespace SimpleTransit.MessageInfrastructure.Registration;
+
+internal record DeferredQueueRegistration(string QueueName);

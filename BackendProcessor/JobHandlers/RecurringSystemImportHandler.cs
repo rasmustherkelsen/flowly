@@ -2,11 +2,11 @@
 
 namespace BackendProcessor.JobHandlers;
 
-public class RecurringSystemImportHandler : IRecurringJobHandler
+public class RecurringSystemImportHandler(ILogger<RecurringSystemImportHandler> logger) : IRecurringJobHandler
 {
     public async Task Handle(CancellationToken cancellationToken)
     {
-        Console.WriteLine("Handling System Import Job");
+        logger.LogInformation("Handling System Import Job");
         await Task.Delay(TimeSpan.FromSeconds(10), cancellationToken);
     }
 }

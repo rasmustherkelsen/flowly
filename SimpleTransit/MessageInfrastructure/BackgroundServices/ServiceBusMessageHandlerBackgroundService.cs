@@ -1,31 +1,30 @@
-﻿using Azure.Messaging.ServiceBus;
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
 using SimpleTransit.MessageInfrastructure.Model;
 using SimpleTransit.MessageInfrastructure.Receivers;
-using SimpleTransit.AzureServiceBusWrappers;
 using Microsoft.Extensions.Logging;
+using SimpleTransit.MessagingAbstractions;
 
 namespace SimpleTransit.MessageInfrastructure.BackgroundServices;
 
 internal class ServiceBusMessageHandlerBackgroundService<TMessage> : ServiceBusMessageHandlerBackgroundServiceBase<TMessage> where TMessage : class
 {
     public ServiceBusMessageHandlerBackgroundService(
-        IServiceBusClient client, 
+        IMessageBusClient messageBusClient, 
         IServiceScopeFactory serviceScopeFactory, 
         HandlerSettings<TMessage> handlerSettings, 
-        ILogger<ServiceBusMessageHandlerBackgroundService<TMessage>> logger) : base(client, serviceScopeFactory, handlerSettings, logger)
+        ILogger<ServiceBusMessageHandlerBackgroundService<TMessage>> logger) : base(messageBusClient, serviceScopeFactory, handlerSettings, logger)
     {
     }
 
-    protected internal override async Task OnHandleMessage(TMessage message, ProcessMessageEventArgs processMessageEventArgs, IServiceProvider serviceProvider)
+    protected override async Task OnHandleMessage(IReceivedMessage<TMessage> receivedMessage, IServiceProvider serviceProvider, CancellationToken cancellationToken)
     {
         var handler = serviceProvider.GetRequiredService<IMessageHandler<TMessage>>();
-        await handler.Handle(new MessageContext<TMessage>(message, processMessageEventArgs.CancellationToken));
+        await handler.Handle(new MessageContext<TMessage>(receivedMessage.Body, cancellationToken));
     }
-    
-    protected override Task OnMessageHandlingError(ILogger logger, IServiceProvider serviceProvider, ProcessErrorEventArgs processMessageEventArgs)
+
+    protected override Task OnMessageHandlingError(ILogger logger, IServiceProvider serviceProvider, ErrorDetails errorDetails)
     {
-        logger.LogError(processMessageEventArgs.Exception.Message);
+        logger.LogError(errorDetails.Exception.Message);
         return Task.CompletedTask;
     }
 }

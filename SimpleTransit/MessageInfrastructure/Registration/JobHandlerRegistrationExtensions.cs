@@ -1,6 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using SimpleTransit.AzureServiceBusWrappers;
 using SimpleTransit.DatabaseModel.JobStateDatabase;
 using SimpleTransit.MessageInfrastructure.BackgroundServices;
 using SimpleTransit.MessageInfrastructure.Maintenance;
@@ -10,22 +9,39 @@ using SimpleTransit.MessageInfrastructure.Model;
 using SimpleTransit.MessageInfrastructure.Receivers;
 using SimpleTransit.MessageInfrastructure.Senders;
 using SimpleTransit.Repositories;
+using SimpleTransit.Services;
 
 namespace SimpleTransit.MessageInfrastructure.Registration;
 
 public static class JobHandlerRegistrationExtensions
 {
-    public static IServiceCollection RegisterJobStateQueueProcessor(this IServiceCollection services)
+    public static ISimpleTransitBuilder AddJobStateTracking(
+        this ISimpleTransitBuilder simpleTransitBuilder,
+        string jobStateDatabaseConnectionString,
+        bool enableMigrations = true)
+    {
+        simpleTransitBuilder.AddRepositories(jobStateDatabaseConnectionString);
+
+        if (enableMigrations)
+        {
+            simpleTransitBuilder.Services.AddJobHandlerStateDatabaseMigrations();
+        }
+
+        simpleTransitBuilder.Services.AddJobMaintenanceBackgroundJobs();
+        simpleTransitBuilder.Services.RegisterJobStateQueueProcessor();
+
+        return simpleTransitBuilder;
+    }
+
+
+    private static IServiceCollection RegisterJobStateQueueProcessor(this IServiceCollection services)
     {
         if (services.All(x => x.ImplementationType != typeof(RecurringJobSchedulerBackgroundService)))
         {
             services
-                .RegisterAzureServiceBusWrappers()
-
                 .AddSingleton(new RecurringJobSchedulerBackgroundServiceOptions(TimeSpan.FromSeconds(5)))
                 .AddHostedService<RecurringJobSchedulerBackgroundService>()
                 .AddScoped<IRecurringJobInvoker, RecurringJobInvoker>()
-
                 .AddMessageHandler<CreateJobState, CreateJobStateHandler>(QueuesNames.CreateJobState)
                 .AddMessageHandler<UpdateJobState, UpdateJobStateHandler>(QueuesNames.UpdateJobState)
                 .AddMessageHandler<UpdateCustomJobState, UpdateCustomJobStateHandler>(QueuesNames.UpdateJobCustomState)
@@ -37,27 +53,28 @@ public static class JobHandlerRegistrationExtensions
         return services;
     }
 
-    public static IServiceCollection AddRepositories(this IServiceCollection services, string connectionString)
+    private static ISimpleTransitBuilder AddRepositories(this ISimpleTransitBuilder simpleTransitBuilder, string connectionString)
     {
-        services.AddDbContextFactory<JobStateDataContext>(options =>
+        simpleTransitBuilder.Services.AddDbContextFactory<JobStateDataContext>(options =>
         {
             options.UseSqlServer(
                 connectionString,
                 sqlServerOptions => sqlServerOptions.EnableRetryOnFailure(5, TimeSpan.FromSeconds(30), null));
         });
 
-        services.AddScoped<IJobStateRepository, JobStateRepository>();
-        services.AddScoped<IJobStateQueryRepository, JobStateQueryRepository>();
+        simpleTransitBuilder.Services.AddScoped<IJobStateRepository, JobStateRepository>();
+        simpleTransitBuilder.Services.AddScoped<IJobStateQueryRepository, JobStateQueryRepository>();
 
-        return services;
+        return simpleTransitBuilder;
     }
 
     public static IServiceCollection AddJobHandler<TMessage, THandler>(this IServiceCollection services, string queueName)
-         where THandler : class, IJobMessageHandler<TMessage>
-         where TMessage : class, IJobMessage
+        where THandler : class, IJobMessageHandler<TMessage>
+        where TMessage : class, IJobMessage
     {
+        services.AddSingleton(new DeferredQueueRegistration(queueName));
+
         services
-            .RegisterAzureServiceBusWrappers()
             .AddScoped<IJobMessageHandler<TMessage>, THandler>()
             .AddSingleton(new HandlerSettings<TMessage>(queueName, typeof(THandler).Name, true))
             .AddHostedService<ServiceBusJobHandlerBackgroundService<TMessage>>()
@@ -70,8 +87,9 @@ public static class JobHandlerRegistrationExtensions
         where THandler : class, IMessageHandler<TMessage>
         where TMessage : class
     {
+        services.AddSingleton(new DeferredQueueRegistration(queueName));
+
         services
-            .RegisterAzureServiceBusWrappers()
             .AddScoped<IMessageHandler<TMessage>, THandler>()
             .AddSingleton(new HandlerSettings<TMessage>(queueName, typeof(THandler).Name, false, maxConcurrentCalls))
             .AddHostedService<ServiceBusMessageHandlerBackgroundService<TMessage>>();
@@ -83,29 +101,19 @@ public static class JobHandlerRegistrationExtensions
         where THandler : class, IBatchMessageHandler<TMessage>
         where TMessage : class
     {
+        services.AddSingleton(new DeferredQueueRegistration(queueName));
+
         services
-            .RegisterAzureServiceBusWrappers()
             .AddScoped<IBatchMessageHandler<TMessage>, THandler>()
             .AddSingleton(new ServiceBusMessageBatchHandlerBackgroundService<TMessage>.BatchQueueSettings(queueName, maxMessagesBeforeProcessing, maxWaitTime))
             .AddHostedService<ServiceBusMessageBatchHandlerBackgroundService<TMessage>>();
         return services;
     }
 
-    public static IServiceCollection AddJobMaintenanceBackgroundJobs(this IServiceCollection services)
+    private static IServiceCollection AddJobMaintenanceBackgroundJobs(this IServiceCollection services)
     {
         return services
-            .RegisterAzureServiceBusWrappers()
             .AddRecurringJob<RemoveOldJobsRecurringJob>("Remove Old Jobs", TimeSpan.FromHours(1))
             .AddRecurringJob<FailHungJobsRecurringJob>("Fail hung jobs", TimeSpan.FromMinutes(30));
-    }
-
-    internal static IServiceCollection RegisterAzureServiceBusWrappers(this IServiceCollection services)
-    {
-        if (services.All(s => s.ServiceType != typeof(IServiceBusClient)))
-        {
-            services.AddSingleton<IServiceBusClient, ServiceBusClientWrapper>();
-        }
-
-        return services;
     }
 }

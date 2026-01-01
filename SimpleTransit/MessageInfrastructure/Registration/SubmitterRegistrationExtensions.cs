@@ -10,7 +10,6 @@ public static class SubmitterRegistrationExtensions
     public static IServiceCollection AddJobStateSubmitters(this IServiceCollection services)
     {
         services
-            .RegisterAzureServiceBusWrappers()
             .AddMessageSubmitter<CreateJobState>(QueuesNames.CreateJobState)
             .AddMessageSubmitter<UpdateJobState>(QueuesNames.UpdateJobState)
             .AddMessageSubmitter<JobFailed>(QueuesNames.JobFailed)
@@ -45,8 +44,7 @@ public static class SubmitterRegistrationExtensions
         services
             .AddSingleton(new JobSubmitter<TMessage>.QueueSettings(queueName))
             .AddSingleton<IJobSubmitter<TMessage>, JobSubmitter<TMessage>>()
-            .AddJobStateSubmitters()
-            .RegisterAzureServiceBusWrappers();
+            .AddJobStateSubmitters();
 
         return services;
     }

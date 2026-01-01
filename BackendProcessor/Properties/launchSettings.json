@@ -10,6 +10,7 @@
     },
     "https": {
       "commandName": "Project",
+      "commandLineArgs": "--listQueues",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       },
