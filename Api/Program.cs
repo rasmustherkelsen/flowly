@@ -6,14 +6,12 @@ using Flowly.AzureServiceBus;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
-builder.AddAzureServiceBusClient(connectionName: "EmulatorNamespace");
-
 builder.Services.AddOpenApi();
 
 builder.Services
-    .AddSimpleTransit(args)
+    .AddFlowly(args, options => options.CreateTopology = false)
     .UseAzureServiceBus("EmulatorNamespace");
-    
+
 builder.Services
     .AddJobSubmitter<PerformStitchingOperationMessage>(QueuesNames.PerformStitching)
     .AddMessageSubmitter<RebuildIndexMessage>(QueuesNames.RebuildIndex);
@@ -35,7 +33,6 @@ app.MapGet("/rebuild-index", async ([FromQuery] int? messageCount, IMessageSende
     }
 
     return Results.Ok("Ok");
-
 }).WithName("RebuildIndex");
 
 app.MapGet("/perform-stitching", async ([FromQuery] Guid importDefinitionId, [FromQuery] int? messageCount, [FromServices] IMessageSender messageSender) =>
@@ -46,12 +43,8 @@ app.MapGet("/perform-stitching", async ([FromQuery] Guid importDefinitionId, [Fr
     }
 
     return Results.Ok("Ok");
-
 }).WithName("PerformStitching");
 
-app.MapGet("/run-recurring-job", async ([FromQuery] Guid jobId, [FromServices] IMessageSender messageSender) =>
-{
-    await messageSender.StartRecurringJob(jobId);
-}).WithName("Run Recurring Job");
+app.MapGet("/run-recurring-job", async ([FromQuery] Guid jobId, [FromServices] IMessageSender messageSender) => { await messageSender.StartRecurringJob(jobId); }).WithName("Run Recurring Job");
 
 app.Run();

@@ -15,22 +15,22 @@ namespace Flowly.MessageInfrastructure.Registration;
 
 public static class JobHandlerRegistrationExtensions
 {
-    public static ISimpleTransitBuilder AddJobStateTracking(
-        this ISimpleTransitBuilder simpleTransitBuilder,
+    public static IFlowlyBuilder AddJobStateTracking(
+        this IFlowlyBuilder flowlyBuilder,
         string jobStateDatabaseConnectionString,
         bool enableMigrations = true)
     {
-        simpleTransitBuilder.AddRepositories(jobStateDatabaseConnectionString);
+        flowlyBuilder.AddRepositories(jobStateDatabaseConnectionString);
 
         if (enableMigrations)
         {
-            simpleTransitBuilder.Services.AddJobHandlerStateDatabaseMigrations();
+            flowlyBuilder.Services.AddJobHandlerStateDatabaseMigrations();
         }
 
-        simpleTransitBuilder.Services.AddJobMaintenanceBackgroundJobs();
-        simpleTransitBuilder.Services.RegisterJobStateQueueProcessor();
+        flowlyBuilder.Services.AddJobMaintenanceBackgroundJobs();
+        flowlyBuilder.Services.RegisterJobStateQueueProcessor();
 
-        return simpleTransitBuilder;
+        return flowlyBuilder;
     }
 
 
@@ -53,19 +53,19 @@ public static class JobHandlerRegistrationExtensions
         return services;
     }
 
-    private static ISimpleTransitBuilder AddRepositories(this ISimpleTransitBuilder simpleTransitBuilder, string connectionString)
+    private static IFlowlyBuilder AddRepositories(this IFlowlyBuilder flowlyBuilder, string connectionString)
     {
-        simpleTransitBuilder.Services.AddDbContextFactory<JobStateDataContext>(options =>
+        flowlyBuilder.Services.AddDbContextFactory<JobStateDataContext>(options =>
         {
             options.UseSqlServer(
                 connectionString,
                 sqlServerOptions => sqlServerOptions.EnableRetryOnFailure(5, TimeSpan.FromSeconds(30), null));
         });
 
-        simpleTransitBuilder.Services.AddScoped<IJobStateRepository, JobStateRepository>();
-        simpleTransitBuilder.Services.AddScoped<IJobStateQueryRepository, JobStateQueryRepository>();
+        flowlyBuilder.Services.AddScoped<IJobStateRepository, JobStateRepository>();
+        flowlyBuilder.Services.AddScoped<IJobStateQueryRepository, JobStateQueryRepository>();
 
-        return simpleTransitBuilder;
+        return flowlyBuilder;
     }
 
     public static IServiceCollection AddJobHandler<TMessage, THandler>(this IServiceCollection services, string queueName)

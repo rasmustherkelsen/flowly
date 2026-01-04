@@ -1,3 +1,3 @@
 ﻿namespace Flowly.MessageInfrastructure.Messages;
 
-public record StartRecurringJobMessage(Guid JobId);
+internal record StartRecurringJobMessage(Guid JobId);

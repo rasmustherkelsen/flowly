@@ -1,3 +1,11 @@
-# SimpleTransit
+# Flowly
 
-Simple message bus replacement for MassTransit now that it is commercial
+Messaging abstraction for queue based communication. Please see /docs folder for details.
+
+## Build
+
+dotnet build
+
+## Test
+
+dotnet test

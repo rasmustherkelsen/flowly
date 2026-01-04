@@ -1,0 +1,6 @@
+@Api_HostAddress = http://localhost:5056
+
+GET {{Api_HostAddress}}/rebuild-index?messageCount=2
+Accept: application/json
+
+###

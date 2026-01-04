@@ -2,7 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Flowly.MessageInfrastructure.Registration;
 
-public interface ISimpleTransitBuilder
+public interface IFlowlyBuilder
 {
     IServiceCollection Services { get; }
 }

@@ -7,10 +7,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 
-builder.AddAzureServiceBusClient(connectionName: "EmulatorNamespace");
-
 builder.Services
-    .AddSimpleTransit(args)
+    .AddFlowly(args, options => options.CreateTopology = false)
     .UseAzureServiceBus("EmulatorNamespace")
     .AddJobStateTracking(builder.Configuration.GetConnectionString("SqlServer")!);
     

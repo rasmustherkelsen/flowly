@@ -1,21 +1,21 @@
-﻿using System.Diagnostics.CodeAnalysis;
-using Microsoft.EntityFrameworkCore;
+using Flowly.MessagingAbstractions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace Flowly.Services;
 
-[ExcludeFromCodeCoverage]
-internal class MigrationHostedService<TDbContext>(IServiceScopeFactory scopeFactory, ILogger<MigrationHostedService<TDbContext>> logger) : IHostedLifecycleService where TDbContext : DbContext
+internal class CreateMessagingTopologyHostedService(IServiceScopeFactory scopeFactory, ILogger<CreateMessagingTopologyHostedService> logger) : IHostedLifecycleService
 {
     public async Task StartingAsync(CancellationToken cancellationToken)
     {
-        logger.LogInformation("Applying migrations for {DbContext}", typeof(TDbContext).Name);
-
+        logger.LogDebug("Creating messaging topology");
+        
         await using var scope = scopeFactory.CreateAsyncScope();
-        var context = scope.ServiceProvider.GetRequiredService<TDbContext>();
-        await context.Database.MigrateAsync(cancellationToken);
+        var messagingTopologyCreator = scope.ServiceProvider.GetRequiredService<IMessagingTopologyCreator>();
+        await messagingTopologyCreator.CreateTopology(cancellationToken);
+        
+        logger.LogInformation("Messaging topology created");
     }
 
     public Task StartAsync(CancellationToken _) => Task.CompletedTask;
