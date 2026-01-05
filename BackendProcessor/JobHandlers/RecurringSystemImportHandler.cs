@@ -6,7 +6,7 @@ public class RecurringSystemImportHandler(ILogger<RecurringSystemImportHandler> 
 {
     public async Task Handle(CancellationToken cancellationToken)
     {
-        logger.LogInformation("Handling System Import Job");
+        logger.LogInformation("Handling System Import Job at {Time}", DateTimeOffset.Now);
         await Task.Delay(TimeSpan.FromSeconds(10), cancellationToken);
     }
 }

@@ -1,4 +1,5 @@
-﻿using Flowly.MessageInfrastructure.Messages;
+﻿using Cronos;
+using Flowly.MessageInfrastructure.Messages;
 using Flowly.MessageInfrastructure.Model;
 using Flowly.MessageInfrastructure.RecurringJobs;
 using Flowly.MessageInfrastructure.Senders;
@@ -18,22 +19,27 @@ internal class RecurringJobHandlerBackgroundService<TRecurringJobHandler> : Back
 
     public class RecurringJobSettings
     {
-        public RecurringJobSettings(string jobDescription, string sessionName, TimeSpan interval)
+        public RecurringJobSettings(string jobDescription, string sessionName, string cronExpression)
         {
             JobDescription = jobDescription;
             SessionName = sessionName;
-            Interval = interval;
+            CronExpression = cronExpression;
+
+            if (!Cronos.CronExpression.TryParse(CronExpression, cronExpression.Split(' ').Length == 6 ? CronFormat.IncludeSeconds : CronFormat.Standard, out _))
+            {
+                throw new ArgumentException("Invalid Cron expression", nameof(cronExpression));
+            }
         }
 
         public string JobDescription { get; }
         public string SessionName { get; }
-        public TimeSpan Interval { get; }
+        public string CronExpression { get; }
     }
 
     public RecurringJobHandlerBackgroundService(
         IMessageBusClient messageBusClient,
-        IServiceScopeFactory serviceScopeFactory, 
-        RecurringJobSettings settings, 
+        IServiceScopeFactory serviceScopeFactory,
+        RecurringJobSettings settings,
         ILogger<RecurringJobHandlerBackgroundService<TRecurringJobHandler>> logger)
     {
         _serviceScopeFactory = serviceScopeFactory;
@@ -41,8 +47,8 @@ internal class RecurringJobHandlerBackgroundService<TRecurringJobHandler> : Back
         _logger = logger;
 
         _executionLaneProcessor = messageBusClient.CreateExecutionLaneProcessor(
-            QueuesNames.RecurringJobs, 
-            settings.SessionName, 
+            QueuesNames.RecurringJobs,
+            settings.SessionName,
             new MessageBusProcessorOptions(1, MessageBusReceiveMode.ReceiveAndDelete));
     }
 
@@ -50,12 +56,12 @@ internal class RecurringJobHandlerBackgroundService<TRecurringJobHandler> : Back
     {
         await using var scope = _serviceScopeFactory.CreateAsyncScope();
         var messageSender = scope.ServiceProvider.GetRequiredService<IMessageSender>();
-        await messageSender.Send(new CreateRecurringJobState(_settings.SessionName, _settings.JobDescription, DateTime.UtcNow, _settings.Interval), stoppingToken);
+        await messageSender.Send(new CreateRecurringJobState(_settings.SessionName, _settings.JobDescription, DateTime.UtcNow, _settings.CronExpression), stoppingToken);
 
         _executionLaneProcessor.ProcessMessage += OnProcessMessage;
         _executionLaneProcessor.ProcessError += OnHandleError;
 
-        _logger.LogInformation($"Recurring job {typeof(TRecurringJobHandler).Name} started. Executing every {_settings.Interval.ToString()}");
+        _logger.LogInformation($"Recurring job {typeof(TRecurringJobHandler).Name} started. Cron expression: {_settings.CronExpression}");
 
         await _executionLaneProcessor.StartProcessing(stoppingToken);
     }
@@ -83,7 +89,7 @@ internal class RecurringJobHandlerBackgroundService<TRecurringJobHandler> : Back
 
         await messageSender.Send(new UpdateJobState(jobId, JobState.Completed, DateTime.UtcNow), cancellationToken);
     }
-    
+
     private async Task OnHandleError(ErrorDetails errorDetails)
     {
         if (errorDetails.Exception is JobException jobException)

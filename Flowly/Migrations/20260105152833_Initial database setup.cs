@@ -1,14 +1,12 @@
 ﻿using System;
-using System.Diagnostics.CodeAnalysis;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace Flowly.Migrations
 {
-    [ExcludeFromCodeCoverage]
     /// <inheritdoc />
-    public partial class InitialJobStateDatabase : Migration
+    public partial class Initialdatabasesetup : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -36,12 +34,12 @@ namespace Flowly.Migrations
                     JobTypeId = table.Column<long>(type: "bigint", nullable: false),
                     CurrentState = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
                     Description = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
-                    Created = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    Started = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    Completed = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    Created = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    Started = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    Completed = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
                     FaultReason = table.Column<string>(type: "nvarchar(1024)", maxLength: 1024, nullable: true),
                     IsRecurringJob = table.Column<bool>(type: "bit", nullable: false),
-                    Interval = table.Column<TimeSpan>(type: "time", nullable: true)
+                    CronExpression = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true)
                 },
                 constraints: table =>
                 {

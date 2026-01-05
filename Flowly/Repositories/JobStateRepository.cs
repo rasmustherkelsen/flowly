@@ -46,7 +46,7 @@ internal class JobStateRepository(IDbContextFactory<JobStateDataContext> jobStat
             await context.Jobs
                 .Where(x => x.JobType!.Name == createRecurringJobState.JobTypeName)
                 .ExecuteUpdateAsync(x => x
-                    .SetProperty(p => p.Interval, createRecurringJobState.Interval)
+                    .SetProperty(p => p.CronExpression, createRecurringJobState.CronExpression)
                     .SetProperty(p => p.Completed, default(DateTime?))
                     .SetProperty(p => p.Started, default(DateTime?))
                     .SetProperty(p => p.CurrentState, JobState.Created));
@@ -63,7 +63,7 @@ internal class JobStateRepository(IDbContextFactory<JobStateDataContext> jobStat
             JobTypeId = await GetOrCreateJobTypeId(context, createRecurringJobState.JobTypeName),
             Description = createRecurringJobState.Description,
             IsRecurringJob = true,
-            Interval = createRecurringJobState.Interval,
+            CronExpression = createRecurringJobState.CronExpression,
             CustomJobState = new CustomJobState
             {
                 JobIdentifier = jobId,
@@ -143,7 +143,7 @@ internal class JobStateRepository(IDbContextFactory<JobStateDataContext> jobStat
 
         return await context.Jobs
             .Where(x => x.IsRecurringJob == true)
-            .Select(j => new RecurringJob(j.JobId, j.JobType!.Name, j.Interval!.Value, j.Created, j.Started, j.Completed))
+            .Select(j => new RecurringJob(j.JobId, j.JobType!.Name, j.CronExpression!, j.Created, j.Started, j.Completed))
             .ToListAsync();
     }
 

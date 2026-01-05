@@ -12,15 +12,15 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Flowly.Migrations
 {
     [DbContext(typeof(JobStateDataContext))]
-    [Migration("20250428091534_Initial Job State Database")]
-    partial class InitialJobStateDatabase
+    [Migration("20260105152833_Initial database setup")]
+    partial class Initialdatabasesetup
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "9.0.3")
+                .HasAnnotation("ProductVersion", "10.0.1")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
@@ -58,11 +58,15 @@ namespace Flowly.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
 
-                    b.Property<DateTime?>("Completed")
-                        .HasColumnType("datetime2");
+                    b.Property<DateTimeOffset?>("Completed")
+                        .HasColumnType("datetimeoffset");
 
-                    b.Property<DateTime>("Created")
-                        .HasColumnType("datetime2");
+                    b.Property<DateTimeOffset>("Created")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CronExpression")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("CurrentState")
                         .IsRequired()
@@ -78,9 +82,6 @@ namespace Flowly.Migrations
                         .HasMaxLength(1024)
                         .HasColumnType("nvarchar(1024)");
 
-                    b.Property<TimeSpan?>("Interval")
-                        .HasColumnType("time");
-
                     b.Property<bool>("IsRecurringJob")
                         .HasColumnType("bit");
 
@@ -90,8 +91,8 @@ namespace Flowly.Migrations
                     b.Property<long>("JobTypeId")
                         .HasColumnType("bigint");
 
-                    b.Property<DateTime?>("Started")
-                        .HasColumnType("datetime2");
+                    b.Property<DateTimeOffset?>("Started")
+                        .HasColumnType("datetimeoffset");
 
                     b.HasKey("Id");
 

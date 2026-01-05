@@ -40,7 +40,7 @@ internal class JobStateQueryRepository(IDbContextFactory<JobStateDataContext> db
             s.Completed,
             s.FaultReason,
             s.IsRecurringJob,
-            s.Interval,
+            s.CronExpression,
             s.CustomJobState != null ? s.CustomJobState.CustomState : null)).ToListAsync();
     }
 }

@@ -1,41 +1,45 @@
-﻿namespace Flowly.MessageInfrastructure.Model;
+﻿using Cronos;
+
+namespace Flowly.MessageInfrastructure.Model;
 
 internal class RecurringJob
 {
     public RecurringJob(
         Guid jobId,
         string jobTypeName,
-        TimeSpan interval,
-        DateTime created, 
-        DateTime? started, 
-        DateTime? completed)
+        string cronExpression,
+        DateTimeOffset created, 
+        DateTimeOffset? started, 
+        DateTimeOffset? completed)
     {
         JobId = jobId;
         Created = created;
         Started = started;
         Completed = completed;
         JobTypeName = jobTypeName;
-        Interval = interval;
+        CronExpression = cronExpression;
     }
 
     public Guid JobId { get; }
 
     public string JobTypeName { get; }
     
-    public TimeSpan Interval { get; }
+    public string CronExpression { get; }
 
-    public DateTime Created { get; }
+    public DateTimeOffset Created { get; }
 
-    public DateTime? Started { get; }
+    public DateTimeOffset? Started { get; }
 
-    public DateTime? Completed { get; }
+    public DateTimeOffset? Completed { get; }
 
     public bool IsDue()
     {
         if (Started != null && Completed == null)
             return false;
-
-        var timeSinceLastExecution = DateTime.UtcNow - (Completed ?? Created);
-        return timeSinceLastExecution > Interval;
+        
+        var cronExpression = Cronos.CronExpression.Parse(CronExpression, CronExpression.Split(' ').Length == 6 ? CronFormat.IncludeSeconds : CronFormat.Standard);
+        var nextOccurrence = cronExpression.GetNextOccurrence((Completed ?? Created).UtcDateTime, TimeZoneInfo.Utc);
+        
+        return nextOccurrence <= DateTime.UtcNow;
     }
 }

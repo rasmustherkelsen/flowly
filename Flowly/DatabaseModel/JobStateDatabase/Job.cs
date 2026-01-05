@@ -20,11 +20,11 @@ internal class Job
     [MaxLength(200)]
     public required string Description { get; set; }
 
-    public required DateTime Created { get; set; }
+    public required DateTimeOffset Created { get; set; }
 
-    public DateTime? Started { get; set; }
+    public DateTimeOffset? Started { get; set; }
 
-    public DateTime? Completed { get; set; }
+    public DateTimeOffset? Completed { get; set; }
 
     [MaxLength(1024)]
     public string? FaultReason { get; set; }
@@ -33,5 +33,6 @@ internal class Job
     
     public bool IsRecurringJob { get; set; }
 
-    public TimeSpan? Interval { get; set; }
+    [MaxLength(100)]
+    public string? CronExpression { get; set; }
 }

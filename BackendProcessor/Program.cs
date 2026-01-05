@@ -14,9 +14,9 @@ builder.Services
     
 builder.Services
     .AddJobHandler<PerformStitchingOperationMessage, PerformStitchingOperationJobHandler>(QueuesNames.PerformStitching)
-    .AddBatchMessageHandler<RebuildIndexMessage, RebuildIndexBatchHandler>(QueuesNames.RebuildIndex, 10, TimeSpan.FromSeconds(30))
-    .AddRecurringJob<RecurringSystemImportHandler>("Import System Data", TimeSpan.FromSeconds(30))
-    .AddRecurringJob<RecurringMoreFrequentImportHandler>("Import Frequent Data", TimeSpan.FromSeconds(10));
+    .AddBatchMessageHandler<RebuildIndexMessage, RebuildIndexBatchHandler>(QueuesNames.RebuildIndex, 100, TimeSpan.FromSeconds(30))
+    .AddRecurringJob<RecurringSystemImportHandler>("Import System Data", "*/30 * * * * *") // every 30 seconds
+    .AddRecurringJob<RecurringMoreFrequentImportHandler>("Import Frequent Data", "*/10 * * * * *"); // every 10 seconds
 
 var app = builder.Build();
 

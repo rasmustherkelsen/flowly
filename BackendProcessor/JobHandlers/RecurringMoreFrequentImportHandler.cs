@@ -6,7 +6,7 @@ public class RecurringMoreFrequentImportHandler(ILogger<RecurringMoreFrequentImp
 {
     public async Task Handle(CancellationToken cancellationToken)
     {
-        logger.LogInformation("Handling More Frequent Import Job");
+        logger.LogInformation("Handling More Frequent Import Job at {Time}", DateTimeOffset.Now);
         await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
     }
 }
