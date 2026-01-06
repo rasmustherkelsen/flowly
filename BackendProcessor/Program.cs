@@ -2,6 +2,7 @@ using BackendProcessor.JobHandlers;
 using Flowly.MessageInfrastructure.Registration;
 using MessageContracts;
 using Flowly.AzureServiceBus;
+using Flowly.Jobs.Registration;
 
 var builder = WebApplication.CreateBuilder(args);
 

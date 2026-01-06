@@ -2,9 +2,9 @@
 
 namespace Flowly.MessageInfrastructure.Senders;
 
-internal class MessageSubmitter<TMessage>(IMessageBusClient messageBusClient, MessageSubmitter<TMessage>.QueueSettings queueSettings) : IMessageSubmitter<TMessage>
+public class MessageSubmitter<TMessage>(IMessageBusClient messageBusClient, MessageSubmitter<TMessage>.QueueSettings queueSettings) : IMessageSubmitter<TMessage>
 {
-    internal class QueueSettings(string queueName)
+    public class QueueSettings(string queueName)
     {
         public string QueueName { get; } = queueName;
     }

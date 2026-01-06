@@ -1,5 +1,5 @@
-﻿using Flowly.MessageInfrastructure.Model;
-using Flowly.MessageInfrastructure.Receivers;
+﻿using Flowly.Jobs.Model;
+using Flowly.Jobs.Receivers;
 using MessageContracts;
 
 namespace BackendProcessor.JobHandlers;

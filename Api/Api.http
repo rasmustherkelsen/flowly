@@ -4,3 +4,6 @@ GET {{Api_HostAddress}}/rebuild-index?messageCount=200
 Accept: application/json
 
 ###
+
+GET {{Api_HostAddress}}/perform-stitching?importDefinitionId=4bdbb380-78f4-44bc-b970-7a4da1a8d00e&messageCount=10
+Accept: application/json

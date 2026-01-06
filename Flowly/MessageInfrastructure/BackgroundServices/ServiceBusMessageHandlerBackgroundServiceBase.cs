@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Flowly.MessageInfrastructure.BackgroundServices;
 
-internal abstract class ServiceBusMessageHandlerBackgroundServiceBase<TMessage> : BackgroundService where TMessage : class
+public abstract class ServiceBusMessageHandlerBackgroundServiceBase<TMessage> : BackgroundService where TMessage : class
 {
     private readonly IMessageBusProcessor<TMessage> _messageBusProcessor;
     private readonly IServiceScopeFactory _serviceScopeFactory;

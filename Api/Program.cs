@@ -3,6 +3,8 @@ using Flowly.MessageInfrastructure.Senders;
 using MessageContracts;
 using Microsoft.AspNetCore.Mvc;
 using Flowly.AzureServiceBus;
+using Flowly.Jobs.Registration;
+using Flowly.Jobs.Senders;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
@@ -35,7 +37,7 @@ app.MapGet("/rebuild-index", async ([FromQuery] int? messageCount, IMessageSende
     return Results.Ok("Ok");
 }).WithName("RebuildIndex");
 
-app.MapGet("/perform-stitching", async ([FromQuery] Guid importDefinitionId, [FromQuery] int? messageCount, [FromServices] IMessageSender messageSender) =>
+app.MapGet("/perform-stitching", async ([FromQuery] Guid importDefinitionId, [FromQuery] int? messageCount, [FromServices] IJobMessageSender messageSender) =>
 {
     for (int i = 0; i < (messageCount ?? 1); i++)
     {
@@ -45,6 +47,6 @@ app.MapGet("/perform-stitching", async ([FromQuery] Guid importDefinitionId, [Fr
     return Results.Ok("Ok");
 }).WithName("PerformStitching");
 
-app.MapGet("/run-recurring-job", async ([FromQuery] Guid jobId, [FromServices] IMessageSender messageSender) => { await messageSender.StartRecurringJob(jobId); }).WithName("Run Recurring Job");
+app.MapGet("/run-recurring-job", async ([FromQuery] Guid jobId, [FromServices] IJobMessageSender messageSender) => { await messageSender.StartRecurringJob(jobId); }).WithName("Run Recurring Job");
 
 app.Run();

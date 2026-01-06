@@ -7,6 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Flowly.Jobs\Flowly.Jobs.csproj" />
     <ProjectReference Include="..\Flowly\Flowly.csproj" />
   </ItemGroup>
 

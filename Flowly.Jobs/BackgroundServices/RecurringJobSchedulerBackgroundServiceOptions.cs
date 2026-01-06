@@ -1,0 +1,3 @@
+﻿namespace Flowly.Jobs.BackgroundServices;
+
+internal record RecurringJobSchedulerBackgroundServiceOptions(TimeSpan DelayBetweenChecks);
