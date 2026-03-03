@@ -8,29 +8,34 @@ namespace Flowly.Jobs.Registration;
 
 public static class SubmitterRegistrationExtensions
 {
-    internal static IServiceCollection AddJobStateSubmitters(this IServiceCollection services)
+    extension(IFlowlyBuilder flowlyBuilder)
     {
-        services
-            .AddMessageSubmitter<CreateJobState>(QueuesNames.CreateJobState)
-            .AddMessageSubmitter<UpdateJobState>(QueuesNames.UpdateJobState)
-            .AddMessageSubmitter<JobFailed>(QueuesNames.JobFailed)
-            .AddMessageSubmitter<UpdateCustomJobState>(QueuesNames.UpdateJobCustomState)
-            .AddMessageSubmitter<StartRecurringJobMessage>(QueuesNames.StartRecurringJob);
+        public IFlowlyBuilder AddJobStateSubmitters()
+        {
+            flowlyBuilder
+                .AddMessageSubmitter<CreateJobState>(JobQueuesNames.CreateJobState)
+                .AddMessageSubmitter<UpdateJobState>(JobQueuesNames.UpdateJobState)
+                .AddMessageSubmitter<JobFailed>(JobQueuesNames.JobFailed)
+                .AddMessageSubmitter<UpdateCustomJobState>(JobQueuesNames.UpdateJobCustomState)
+                .AddMessageSubmitter<StartRecurringJobMessage>(JobQueuesNames.StartRecurringJob)
+                .AddMessageSubmitter<JobIsAlive>(JobQueuesNames.JobIsAlive);
 
-        return services;
-    }
+            return flowlyBuilder;
+        }
 
-    public static IServiceCollection AddJobSubmitter<TMessage>(this IServiceCollection services, string queueName) where TMessage : class, IJobMessage
-    {
-        if (services.Any(s => s.ImplementationType == typeof(JobSubmitter<TMessage>)))
-            return services;
+        public IFlowlyBuilder AddJobSubmitter<TMessage>(string queueName) where TMessage : class, IJobMessage
+        {
+            if (flowlyBuilder.Services.Any(s => s.ImplementationType == typeof(JobSubmitter<TMessage>)))
+                return flowlyBuilder;
 
-        services
-            .AddSingleton(new JobSubmitter<TMessage>.QueueSettings(queueName))
-            .AddSingleton<IJobSubmitter<TMessage>, JobSubmitter<TMessage>>()
-            .AddSingleton<IJobMessageSender, JobMessageSender>()
-            .AddJobStateSubmitters();
+            flowlyBuilder.Services
+                .AddSingleton(new JobSubmitter<TMessage>.QueueSettings(queueName))
+                .AddSingleton<IJobSubmitter<TMessage>, JobSubmitter<TMessage>>()
+                .AddSingleton<IJobMessageSender, JobMessageSender>();
+            
+            flowlyBuilder.AddJobStateSubmitters();
 
-        return services;
+            return flowlyBuilder;
+        }
     }
 }

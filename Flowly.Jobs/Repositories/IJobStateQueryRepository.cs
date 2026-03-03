@@ -1,8 +1,6 @@
-﻿namespace Flowly.Jobs.Repositories;
-
-public interface IJobStateQueryRepository
-{
-    Task<bool> Exists(Guid jobId, bool? recurring = null);
-
-    Task<IReadOnlyCollection<JobInformation>> Query(JobQuery? jobQuery = null);
-}
+﻿// namespace Flowly.Jobs.Repositories;
+//
+// public interface IJobStateQueryRepository
+// {
+//     Task<IReadOnlyCollection<JobInformation>> Query(JobQuery? jobQuery = null);
+// }

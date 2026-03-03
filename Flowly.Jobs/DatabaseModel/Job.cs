@@ -1,20 +1,20 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using Flowly.Jobs.Model;
-using Flowly.MessageInfrastructure.Model;
 using Microsoft.EntityFrameworkCore;
 
 namespace Flowly.Jobs.DatabaseModel;
 
-[Index(nameof(JobId), IsUnique = true)]
+[PrimaryKey(nameof(JobIdentifier))]
 internal class Job
 {
-    public long Id { get; set; }
-
-    public required Guid JobId { get; init; }
+    public required Guid JobIdentifier { get; init; }
 
     public long JobTypeId { get; set; }
 
     public JobType? JobType { get; set; }
+    
+    [MaxLength(200)]
+    public required string JobTypeName { get; init; }
 
     public JobState CurrentState { get; set; } = JobState.Created;
 
@@ -29,8 +29,6 @@ internal class Job
 
     [MaxLength(1024)]
     public string? FaultReason { get; set; }
-
-    public CustomJobState? CustomJobState { get; set; }
     
     public bool IsRecurringJob { get; set; }
 

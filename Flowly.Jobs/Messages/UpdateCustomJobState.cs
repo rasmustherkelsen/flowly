@@ -1,3 +1,5 @@
-﻿namespace Flowly.Jobs.Messages;
+﻿using Flowly.Jobs.Model;
 
-internal record UpdateCustomJobState(Guid JobId, object CustomState);
+namespace Flowly.Jobs.Messages;
+
+internal record UpdateCustomJobState(JobId JobId, object CustomState);

@@ -7,30 +7,51 @@ namespace Flowly.MessageInfrastructure.Registration;
 
 public static class MessageHandlerRegistrationExtensions
 {
-    public static IServiceCollection AddMessageHandler<TMessage, THandler>(this IServiceCollection services, string queueName, int maxConcurrentCalls = 1)
-        where THandler : class, IMessageHandler<TMessage>
+    public static IFlowlyBuilder AddMessageHandler<TMessage, THandler>(this IFlowlyBuilder flowlyBuilder, int maxConcurrentCalls = 1)
+        where THandler : MessageHandlerBase<TMessage>
         where TMessage : class
     {
-        services.AddSingleton(new DeferredQueueRegistration(queueName));
+        var resolvedQueueOptions = HandlerQueueOptionsResolver.Resolve<THandler>();
+        var resolvedQueueName = resolvedQueueOptions.QueueName;
+
+        flowlyBuilder.AddQueueRegistration(new DeferredQueueRegistration(
+            resolvedQueueName,
+            false,
+            resolvedQueueOptions.DefaultMessageTimeToLive,
+            resolvedQueueOptions.DeadLetterOnMessageExpiration,
+            resolvedQueueOptions.LockDuration));
+
+        var services = flowlyBuilder.Services
+            .AddScoped<THandler>()
+            .AddScoped<MessageHandlerBase<TMessage>, THandler>();
 
         services
-            .AddScoped<IMessageHandler<TMessage>, THandler>()
-            .AddSingleton(new HandlerSettings<TMessage>(queueName, typeof(THandler).Name, false, maxConcurrentCalls))
+            .AddSingleton(new HandlerSettings<TMessage>(resolvedQueueName, typeof(THandler).Name, false, maxConcurrentCalls))
             .AddHostedService<ServiceBusMessageHandlerBackgroundService<TMessage>>();
 
-        return services;
+        return flowlyBuilder;
     }
 
-    public static IServiceCollection AddBatchMessageHandler<TMessage, THandler>(this IServiceCollection services, string queueName, int maxMessagesBeforeProcessing, TimeSpan maxWaitTime)
-        where THandler : class, IBatchMessageHandler<TMessage>
+    public static IFlowlyBuilder AddBatchMessageHandler<TMessage, THandler>(this IFlowlyBuilder flowlyBuilder, int maxMessagesBeforeProcessing, TimeSpan maxWaitTime)
+        where THandler : BatchMessageHandlerBase<TMessage>
         where TMessage : class
     {
-        services.AddSingleton(new DeferredQueueRegistration(queueName));
+        var resolvedQueueOptions = HandlerQueueOptionsResolver.Resolve<THandler>();
+        var resolvedQueueName = resolvedQueueOptions.QueueName;
 
-        services
-            .AddScoped<IBatchMessageHandler<TMessage>, THandler>()
-            .AddSingleton(new ServiceBusMessageBatchHandlerBackgroundService<TMessage>.BatchQueueSettings(queueName, maxMessagesBeforeProcessing, maxWaitTime))
+        flowlyBuilder.AddQueueRegistration(new DeferredQueueRegistration(
+            resolvedQueueName,
+            false,
+            resolvedQueueOptions.DefaultMessageTimeToLive,
+            resolvedQueueOptions.DeadLetterOnMessageExpiration,
+            resolvedQueueOptions.LockDuration));
+
+        flowlyBuilder.Services
+            .AddScoped<THandler>()
+            .AddScoped<BatchMessageHandlerBase<TMessage>, THandler>()
+            .AddSingleton(new ServiceBusMessageBatchHandlerBackgroundService<TMessage>.BatchQueueSettings(resolvedQueueName, maxMessagesBeforeProcessing, maxWaitTime))
             .AddHostedService<ServiceBusMessageBatchHandlerBackgroundService<TMessage>>();
-        return services;
+        
+        return flowlyBuilder;
     }
 }

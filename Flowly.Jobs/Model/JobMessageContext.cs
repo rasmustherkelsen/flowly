@@ -4,7 +4,7 @@ using Flowly.MessageInfrastructure.Senders;
 
 namespace Flowly.Jobs.Model;
 
-internal class JobMessageContext<T>(Guid jobId, T message, IMessageSender messageSender, CancellationToken cancellationToken) : IMessageContext<T>, IJobMessageContext<T>
+internal class JobMessageContext<T>(JobId jobId, T message, IMessageSender messageSender, CancellationToken cancellationToken) : IMessageContext<T>, IJobMessageContext<T>
 {
     public async Task SaveState<TState>(TState state) where TState : class
         => await messageSender.Send(new UpdateCustomJobState(jobId, state));

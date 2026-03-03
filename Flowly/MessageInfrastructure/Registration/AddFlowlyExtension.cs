@@ -1,4 +1,5 @@
 using Flowly.Services;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
@@ -7,10 +8,10 @@ namespace Flowly.MessageInfrastructure.Registration;
 
 public static class AddFlowlyExtension
 {
-    public static IFlowlyBuilder AddFlowly(
+    public static IServiceCollection AddFlowly<TFlowlyConfiguration>(
         this IServiceCollection services,
-        IReadOnlyList<string> args,
-        Action<FlowlyOptions>? configureOptions = null)
+        IConfiguration configuration,
+        Action<FlowlyOptions>? configureOptions = null) where TFlowlyConfiguration : IFlowlyConfiguration, new()
     {
         services.TryAddSingleton<IQueueManager, QueueManager>();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, QueueRegistrarHostedService>());
@@ -18,12 +19,12 @@ public static class AddFlowlyExtension
         var options = new FlowlyOptions();
         configureOptions?.Invoke(options);
         services.TryAddSingleton(options);
+        
+        services.AddHostedService<CommandLineParserHostedService>();
+        
+        var module = new TFlowlyConfiguration();
+        module.Configure(new FlowlyBuilder(services, configuration));
 
-        if (options.CreateTopology)
-        {
-            services.AddHostedService<CreateMessagingTopologyHostedService>();
-        }
-
-        return new FlowlyBuilder(services, args);
+        return services;
     }
 }

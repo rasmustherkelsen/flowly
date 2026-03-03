@@ -1,3 +1,5 @@
-﻿namespace Flowly.Jobs.Messages;
+﻿using Flowly.Jobs.Model;
 
-internal record JobFailed(Guid JobId, string FaultReason, DateTime TimeStamp);
+namespace Flowly.Jobs.Messages;
+
+internal record JobFailed(JobId JobId, string FaultReason, DateTime TimeStamp);

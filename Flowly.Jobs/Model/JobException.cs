@@ -1,6 +1,6 @@
 ﻿namespace Flowly.Jobs.Model;
 
-internal class JobException(Guid jobId, Exception exception) : Exception($"Job {jobId} failed", exception)
+internal class JobException(JobId jobId, Exception exception) : Exception($"Job {jobId} failed", exception)
 {
-    public Guid JobId { get; } = jobId;
+    public JobId JobId { get; } = jobId;
 }

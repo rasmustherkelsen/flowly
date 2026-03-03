@@ -1,6 +1,5 @@
 ﻿using Flowly.Jobs.BackgroundServices;
 using Flowly.Jobs.Messages;
-using Flowly.MessageInfrastructure;
 using Flowly.MessageInfrastructure.RecurringJobs;
 using Flowly.MessageInfrastructure.Registration;
 using Microsoft.Extensions.DependencyInjection;
@@ -9,29 +8,24 @@ namespace Flowly.Jobs.Registration;
 
 public static class RecurringJobHandlerRegistrationExtensions
 {
-    public static IServiceCollection AddRecurringJob<TRecurringJob>(
-        this IServiceCollection services, 
+    public static IFlowlyBuilder AddRecurringJob<TRecurringJob>(
+        this IFlowlyBuilder flowlyBuilder, 
         string jobDescription, 
         string cronExpression) where TRecurringJob : class, IRecurringJobHandler
-    { 
-        var recurringQueueExists = services.Any(sd => sd.ImplementationInstance is DeferredQueueRegistration { QueueName: QueuesNames.RecurringJobs });
-
-        if (!recurringQueueExists)
-        {
-            services.AddSingleton(new DeferredQueueRegistration(QueuesNames.RecurringJobs));
-        }
+    {
+        flowlyBuilder.AddQueueRegistration(JobQueuesNames.RecurringJobs, requiresSession: true);
         
-        services.AddSingleton(new RecurringJobHandlerBackgroundService<TRecurringJob>.RecurringJobSettings(
+        flowlyBuilder.Services.AddSingleton(new RecurringJobHandlerBackgroundService<TRecurringJob>.RecurringJobSettings(
             jobDescription, 
             typeof(TRecurringJob).Name, 
             cronExpression));
 
-        services.AddHostedService<RecurringJobHandlerBackgroundService<TRecurringJob>>();
+        flowlyBuilder.Services.AddHostedService<RecurringJobHandlerBackgroundService<TRecurringJob>>();
 
-        services.AddScoped<TRecurringJob>();
+        flowlyBuilder.Services.AddScoped<TRecurringJob>();
 
-        services.AddMessageSubmitter<CreateRecurringJobState>(QueuesNames.CreateRecurringJobState);
+        flowlyBuilder.AddMessageSubmitter<CreateRecurringJobState>(JobQueuesNames.CreateRecurringJobState);
 
-        return services;
+        return flowlyBuilder;
     }
 }

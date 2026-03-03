@@ -8,7 +8,7 @@ internal class RecurringJobInvoker(IMessageBusClient messageBusClient) : IRecurr
 {
     public async Task Submit(RecurringJob recurringJob)
     {
-        var messageBusSender = messageBusClient.CreateMessageBusSender(QueuesNames.RecurringJobs);
+        var messageBusSender = messageBusClient.CreateMessageBusSender(JobQueuesNames.RecurringJobs);
         await messageBusSender.SendEmptyMessage(new MessageProperties(recurringJob.JobId.ToString(), string.Empty, recurringJob.JobTypeName));
     }
 }

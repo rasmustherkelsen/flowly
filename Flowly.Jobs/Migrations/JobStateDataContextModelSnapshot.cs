@@ -24,36 +24,23 @@ namespace Flowly.Jobs.Migrations
 
             modelBuilder.Entity("Flowly.Jobs.DatabaseModel.CustomJobState", b =>
                 {
-                    b.Property<long>("Id")
+                    b.Property<Guid>("JobIdentifier")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("CustomState")
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<long>("JobId")
-                        .HasColumnType("bigint");
-
-                    b.Property<Guid>("JobIdentifier")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("JobId")
-                        .IsUnique();
+                    b.HasKey("JobIdentifier");
 
                     b.ToTable("CustomJobStates");
                 });
 
             modelBuilder.Entity("Flowly.Jobs.DatabaseModel.Job", b =>
                 {
-                    b.Property<long>("Id")
+                    b.Property<Guid>("JobIdentifier")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTimeOffset?>("Completed")
                         .HasColumnType("datetimeoffset");
@@ -82,23 +69,36 @@ namespace Flowly.Jobs.Migrations
                     b.Property<bool>("IsRecurringJob")
                         .HasColumnType("bit");
 
-                    b.Property<Guid>("JobId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<long>("JobTypeId")
                         .HasColumnType("bigint");
+
+                    b.Property<string>("JobTypeName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
 
                     b.Property<DateTimeOffset?>("Started")
                         .HasColumnType("datetimeoffset");
 
-                    b.HasKey("Id");
-
-                    b.HasIndex("JobId")
-                        .IsUnique();
+                    b.HasKey("JobIdentifier");
 
                     b.HasIndex("JobTypeId");
 
                     b.ToTable("Jobs");
+                });
+
+            modelBuilder.Entity("Flowly.Jobs.DatabaseModel.JobAliveStatus", b =>
+                {
+                    b.Property<Guid>("JobIdentifier")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("LastAliveTimestamp")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("JobIdentifier");
+
+                    b.ToTable("JobAliveStatuses");
                 });
 
             modelBuilder.Entity("Flowly.Jobs.DatabaseModel.JobType", b =>
@@ -122,17 +122,6 @@ namespace Flowly.Jobs.Migrations
                     b.ToTable("JobTypes");
                 });
 
-            modelBuilder.Entity("Flowly.Jobs.DatabaseModel.CustomJobState", b =>
-                {
-                    b.HasOne("Flowly.Jobs.DatabaseModel.Job", "Job")
-                        .WithOne("CustomJobState")
-                        .HasForeignKey("Flowly.Jobs.DatabaseModel.CustomJobState", "JobId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Job");
-                });
-
             modelBuilder.Entity("Flowly.Jobs.DatabaseModel.Job", b =>
                 {
                     b.HasOne("Flowly.Jobs.DatabaseModel.JobType", "JobType")
@@ -142,11 +131,6 @@ namespace Flowly.Jobs.Migrations
                         .IsRequired();
 
                     b.Navigation("JobType");
-                });
-
-            modelBuilder.Entity("Flowly.Jobs.DatabaseModel.Job", b =>
-                {
-                    b.Navigation("CustomJobState");
                 });
 
             modelBuilder.Entity("Flowly.Jobs.DatabaseModel.JobType", b =>

@@ -19,7 +19,7 @@ public static class AzureServiceBusRegistration
 
             return new ServiceBusClient(connectionString);
         });
-
+        
         flowlyBuilder.Services.AddSingleton<IMessageBusClient, MessageBusClient>();
         flowlyBuilder.Services.AddTransient<IMessagingTopologyCreator, MessagingTopologyCreator>();
         return flowlyBuilder;

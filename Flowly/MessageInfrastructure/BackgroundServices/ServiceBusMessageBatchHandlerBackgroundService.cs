@@ -19,7 +19,7 @@ internal class ServiceBusMessageBatchHandlerBackgroundService<TMessage>(
     {
         {
             await using var scope = serviceScopeFactory.CreateAsyncScope();
-            var messageHandlerForLog = scope.ServiceProvider.GetRequiredService<IBatchMessageHandler<TMessage>>();
+            var messageHandlerForLog = scope.ServiceProvider.GetRequiredService<BatchMessageHandlerBase<TMessage>>();
             logger.LogInformation("{MessageHandlerName} batch waiting for messages on queue '{QueueName}'", messageHandlerForLog.GetType().Name, batchQueueSettings.QueueName);
         }
 
@@ -37,7 +37,7 @@ internal class ServiceBusMessageBatchHandlerBackgroundService<TMessage>(
                 }
 
                 await using var scope = serviceScopeFactory.CreateAsyncScope();
-                var messageHandler = scope.ServiceProvider.GetRequiredService<IBatchMessageHandler<TMessage>>();
+                var messageHandler = scope.ServiceProvider.GetRequiredService<BatchMessageHandlerBase<TMessage>>();
 
                 logger.LogInformation("{MessageHandlerName} received {ReceivedMessagesCount} messages", messageHandler.GetType().Name, receivedMessages.Count);
 

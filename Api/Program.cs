@@ -10,13 +10,7 @@ WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
 
-builder.Services
-    .AddFlowly(args, options => options.CreateTopology = false)
-    .UseAzureServiceBus("EmulatorNamespace");
-
-builder.Services
-    .AddJobSubmitter<PerformStitchingOperationMessage>(QueuesNames.PerformStitching)
-    .AddMessageSubmitter<RebuildIndexMessage>(QueuesNames.RebuildIndex);
+builder.Services.AddFlowly<ApiFlowlyConfiguration>(builder.Configuration, options => options.CreateTopology = false);
 
 var app = builder.Build();
 
@@ -50,3 +44,14 @@ app.MapGet("/perform-stitching", async ([FromQuery] Guid importDefinitionId, [Fr
 app.MapGet("/run-recurring-job", async ([FromQuery] Guid jobId, [FromServices] IJobMessageSender messageSender) => { await messageSender.StartRecurringJob(jobId); }).WithName("Run Recurring Job");
 
 app.Run();
+
+public class ApiFlowlyConfiguration : FlowlyDesignTimeFactory, IFlowlyConfiguration
+{
+    public void Configure(IFlowlyBuilder builder)
+    {
+        builder
+            .UseAzureServiceBus("EmulatorNamespace")
+            .AddJobSubmitter<PerformStitchingOperationMessage>(QueuesNames.PerformStitching)
+            .AddMessageSubmitter<RebuildIndexMessage>(QueuesNames.RebuildIndex);
+    }
+}

@@ -18,7 +18,7 @@ internal class ServiceBusMessageHandlerBackgroundService<TMessage> : ServiceBusM
 
     protected override async Task OnHandleMessage(IReceivedMessage<TMessage> receivedMessage, IServiceProvider serviceProvider, CancellationToken cancellationToken)
     {
-        var handler = serviceProvider.GetRequiredService<IMessageHandler<TMessage>>();
+        var handler = serviceProvider.GetRequiredService<MessageHandlerBase<TMessage>>();
         await handler.Handle(new MessageContext<TMessage>(receivedMessage.Body, cancellationToken));
     }
 

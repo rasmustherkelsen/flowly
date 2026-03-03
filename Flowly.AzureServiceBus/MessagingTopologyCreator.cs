@@ -5,7 +5,7 @@ namespace Flowly.AzureServiceBus;
 
 internal class MessagingTopologyCreator(ServiceBusClient serviceBusClient) : IMessagingTopologyCreator
 {
-    public Task CreateTopology(CancellationToken cancellationToken)
+    public Task CreateTopology(IReadOnlyCollection<IQueueDescription> queueDescriptions, CancellationToken cancellationToken)
     {
         if (IsEmulator())
         {

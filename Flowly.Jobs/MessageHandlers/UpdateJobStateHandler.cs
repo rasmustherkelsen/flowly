@@ -5,8 +5,9 @@ using Flowly.MessageInfrastructure.Receivers;
 
 namespace Flowly.Jobs.MessageHandlers;
 
-internal class UpdateJobStateHandler(IJobStateRepository jobStateRepository) : IMessageHandler<UpdateJobState>
+[QueueName(JobQueuesNames.UpdateJobState)]
+internal class UpdateJobStateHandler(IJobStateRepository jobStateRepository) : MessageHandlerBase<UpdateJobState>
 {
-    public async Task Handle(IMessageContext<UpdateJobState> messageContext)
+    public override async Task Handle(IMessageContext<UpdateJobState> messageContext)
         => await jobStateRepository.UpdateJobState(messageContext.Message);
 }

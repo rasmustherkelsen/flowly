@@ -7,13 +7,11 @@ internal interface IJobStateRepository
 {
     Task CreateJobState(CreateJobState createJobState);
 
-    Task CreateRecurringJobState(CreateRecurringJobState createRecurringJobState);
+    Task CreateRecurringJobState(CreateRecurringJobState createRecurringJobState, JobId jobId);
 
     Task UpdateJobState(UpdateJobState updateJobState);
 
     Task UpdateJobFailed(JobFailed jobFailed);
-
-    Task UpdateJobCustomState(UpdateCustomJobState updateCustomJobState);
 
     Task RemoveJobsOlderThan(TimeSpan age);
     

@@ -2,4 +2,4 @@
 
 namespace Flowly.Jobs.Messages;
 
-internal record UpdateJobState(Guid JobId, JobState JobState, DateTime TimeStamp);
+internal record UpdateJobState(JobId JobId, JobState JobState, DateTime TimeStamp);

@@ -1,5 +1,4 @@
 ﻿using System.Collections.Concurrent;
-using System.Text.Json;
 using Flowly.Jobs.DatabaseModel;
 using Flowly.Jobs.Messages;
 using Flowly.Jobs.Model;
@@ -19,23 +18,19 @@ internal class JobStateRepository(IDbContextFactory<JobStateDataContext> jobStat
 
         var job = new Job
         {
-            JobId = createJobState.JobId,
+            JobIdentifier = createJobState.JobId.InnerId,
             Created = createJobState.TimeStamp,
             JobTypeId = await GetOrCreateJobTypeId(context, createJobState.JobTypeName),
-            Description = createJobState.Description,
-            CustomJobState = new CustomJobState
-            {
-                JobIdentifier = createJobState.JobId,
-                CustomState = null
-            }
+            JobTypeName =  createJobState.JobTypeName,
+            Description = createJobState.Description
         };
 
         await context.Jobs.AddAsync(job);
-
+        
         await context.SaveChangesAsync();
     }
 
-    public async Task CreateRecurringJobState(CreateRecurringJobState createRecurringJobState)
+    public async Task CreateRecurringJobState(CreateRecurringJobState createRecurringJobState, JobId jobId)
     {
         await using var context = await jobStateDataContextFactory.CreateDbContextAsync();
 
@@ -52,21 +47,15 @@ internal class JobStateRepository(IDbContextFactory<JobStateDataContext> jobStat
             return;
         }
 
-        var jobId = Guid.NewGuid();
-
         var job = new Job
         {
-            JobId = jobId,
+            JobIdentifier = jobId.InnerId,
             Created = createRecurringJobState.TimeStamp,
             JobTypeId = await GetOrCreateJobTypeId(context, createRecurringJobState.JobTypeName),
+            JobTypeName =  createRecurringJobState.JobTypeName,
             Description = createRecurringJobState.Description,
             IsRecurringJob = true,
-            CronExpression = createRecurringJobState.CronExpression,
-            CustomJobState = new CustomJobState
-            {
-                JobIdentifier = jobId,
-                CustomState = null
-            }
+            CronExpression = createRecurringJobState.CronExpression
         };
 
         await context.Jobs.AddAsync(job);
@@ -106,22 +95,11 @@ internal class JobStateRepository(IDbContextFactory<JobStateDataContext> jobStat
         await using var context = await jobStateDataContextFactory.CreateDbContextAsync();
 
         await context.Jobs
-            .Where(x => x.JobId == jobFailed.JobId)
+            .Where(x => x.JobIdentifier == jobFailed.JobId.InnerId)
             .ExecuteUpdateAsync(x => x
                 .SetProperty(p => p.CurrentState, JobState.Failed)
                 .SetProperty(p => p.FaultReason, jobFailed.FaultReason)
                 .SetProperty(p => p.Completed, jobFailed.TimeStamp));
-    }
-
-    public async Task UpdateJobCustomState(UpdateCustomJobState updateCustomJobState)
-    {
-        await using var context = await jobStateDataContextFactory.CreateDbContextAsync();
-
-        var jsonState = JsonSerializer.Serialize(updateCustomJobState.CustomState);
-
-        await context.CustomJobStates
-            .Where(x => x.JobIdentifier == updateCustomJobState.JobId)
-            .ExecuteUpdateAsync(x => x.SetProperty(y => y.CustomState, jsonState));
     }
 
     public async Task RemoveJobsOlderThan(TimeSpan age)
@@ -141,7 +119,7 @@ internal class JobStateRepository(IDbContextFactory<JobStateDataContext> jobStat
 
         return await context.Jobs
             .Where(x => x.IsRecurringJob == true)
-            .Select(j => new RecurringJob(j.JobId, j.JobType!.Name, j.CronExpression!, j.Created, j.Started, j.Completed))
+            .Select(j => new RecurringJob(j.JobIdentifier, j.JobType!.Name, j.CronExpression!, j.Created, j.Started, j.Completed))
             .ToListAsync();
     }
 
@@ -162,12 +140,12 @@ internal class JobStateRepository(IDbContextFactory<JobStateDataContext> jobStat
                 .SetProperty(p => p.CurrentState, JobState.Failed));
     }
 
-    private async Task<Job> ResilientGetJob(JobStateDataContext context, Guid jobId)
+    private async Task<Job> ResilientGetJob(JobStateDataContext context, JobId jobId)
     {
         int retryCount = 0;
 
-    retry:
-        var job = await context.Jobs.SingleOrDefaultAsync(x => x.JobId == jobId);
+        retry:
+        var job = await context.Jobs.SingleOrDefaultAsync(x => x.JobIdentifier == jobId.InnerId);
         if (job == null)
         {
             if (retryCount == 10)
@@ -183,7 +161,7 @@ internal class JobStateRepository(IDbContextFactory<JobStateDataContext> jobStat
 
     private async Task<long> GetOrCreateJobTypeId(JobStateDataContext jobStateDataContext, string jobTypeName)
     {
-    retry:
+        retry:
 
         if (JobTypeCache.TryGetValue(jobTypeName, out long id))
             return id;

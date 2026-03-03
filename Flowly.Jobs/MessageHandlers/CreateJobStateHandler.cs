@@ -5,8 +5,15 @@ using Flowly.MessageInfrastructure.Receivers;
 
 namespace Flowly.Jobs.MessageHandlers;
 
-internal class CreateJobStateHandler(IJobStateRepository jobStateRepository) : IMessageHandler<CreateJobState>
+[QueueName(JobQueuesNames.CreateJobState)]
+internal class CreateJobStateHandler(
+    IJobStateRepository jobStateRepository, 
+    IJobAliveStatusRepository jobAliveStatusRepository,
+    ICustomJobStateRepository customJobStateRepository) : MessageHandlerBase<CreateJobState>
 {
-    public async Task Handle(IMessageContext<CreateJobState> messageContext)
-        => await jobStateRepository.CreateJobState(messageContext.Message);
+    public override async Task Handle(IMessageContext<CreateJobState> messageContext)
+        => await Task.WhenAll(
+            jobStateRepository.CreateJobState(messageContext.Message),
+            jobAliveStatusRepository.CreateJobAliveStatus(messageContext.Message.JobId, messageContext.Message.TimeStamp),
+            customJobStateRepository.CreateCustomJobState(messageContext.Message.JobId));
 }

@@ -5,20 +5,20 @@ namespace Flowly.MessageInfrastructure.Registration;
 
 public static class SubmitterRegistrationExtensions
 {
-    public static IServiceCollection AddMessageSubmitter<TMessage>(this IServiceCollection services, string queueName)
+    public static IFlowlyBuilder AddMessageSubmitter<TMessage>(this IFlowlyBuilder flowlyBuilder, string queueName)
     {
-        if (services.Any(s => s.ImplementationType == typeof(MessageSubmitter<TMessage>)))
-            return services;
+        if (flowlyBuilder.Services.Any(s => s.ImplementationType == typeof(MessageSubmitter<TMessage>)))
+            return flowlyBuilder;
 
-        services
+        flowlyBuilder.Services
             .AddSingleton(new MessageSubmitter<TMessage>.QueueSettings(queueName))
             .AddSingleton<IMessageSubmitter<TMessage>, MessageSubmitter<TMessage>>();
 
-        if (services.Any(s => s.ImplementationType == typeof(MessageSender)))
-            return services;
+        if (flowlyBuilder.Services.Any(s => s.ImplementationType == typeof(MessageSender)))
+            return flowlyBuilder;
 
-        services.AddSingleton<IMessageSender, MessageSender>();
+        flowlyBuilder.Services.AddSingleton<IMessageSender, MessageSender>();
 
-        return services;
+        return flowlyBuilder;
     }
 }

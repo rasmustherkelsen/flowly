@@ -48,7 +48,7 @@ internal class RecurringJobHandlerBackgroundService<TRecurringJobHandler> : Back
         _logger = logger;
 
         _executionLaneProcessor = messageBusClient.CreateExecutionLaneProcessor(
-            QueuesNames.RecurringJobs,
+            JobQueuesNames.RecurringJobs,
             settings.SessionName,
             new MessageBusProcessorOptions(1, MessageBusReceiveMode.ReceiveAndDelete));
     }
@@ -71,7 +71,7 @@ internal class RecurringJobHandlerBackgroundService<TRecurringJobHandler> : Back
     {
         _logger.LogInformation("Running scheduled job '{RecurringJobHandlerName}'", typeof(TRecurringJobHandler).Name);
 
-        var jobId = Guid.Parse(receivedMessage.Properties.MessageId);
+        var jobId = new JobId(Guid.Parse(receivedMessage.Properties.MessageId));
 
         await using var scope = _serviceScopeFactory.CreateAsyncScope();
         var messageSender = scope.ServiceProvider.GetRequiredService<IMessageSender>();

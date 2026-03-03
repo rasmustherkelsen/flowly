@@ -4,9 +4,10 @@ using MessageContracts;
 
 namespace BackendProcessor.JobHandlers;
 
-public class RebuildIndexBatchHandler : IBatchMessageHandler<RebuildIndexMessage>
+[QueueName(QueuesNames.RebuildIndex)]
+public class RebuildIndexBatchHandler : BatchMessageHandlerBase<RebuildIndexMessage>
 {
-    public async Task Handle(IBatchMessageContext<RebuildIndexMessage> messageContext)
+    public override async Task Handle(IBatchMessageContext<RebuildIndexMessage> messageContext)
     {        
         await Task.Delay(TimeSpan.FromSeconds(1));
     }

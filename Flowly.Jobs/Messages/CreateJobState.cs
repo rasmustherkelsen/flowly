@@ -1,3 +1,5 @@
-﻿namespace Flowly.Jobs.Messages;
+﻿using Flowly.Jobs.Model;
 
-internal record CreateJobState(Guid JobId, string JobTypeName, string Description, DateTime TimeStamp);
+namespace Flowly.Jobs.Messages;
+
+internal record CreateJobState(JobId JobId, string JobTypeName, string Description, DateTime TimeStamp);

@@ -16,6 +16,8 @@ internal class JobStateDataContext(DbContextOptions<JobStateDataContext> options
     }
 
     public DbSet<Job> Jobs => Set<Job>();
+    
+    public DbSet<JobAliveStatus> JobAliveStatuses => Set<JobAliveStatus>();
 
     public DbSet<JobType> JobTypes => Set<JobType>();
 
