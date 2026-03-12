@@ -5,13 +5,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
-  
+
   <ItemGroup>
-    <PackageReference Include="Aspire.Azure.Messaging.ServiceBus" Version="13.1.2" />
-  </ItemGroup>
-  
-  <ItemGroup>
-    <ProjectReference Include="..\Flowly\Flowly.csproj" />
+    <ProjectReference Include="..\..\..\..\Flowly.Jobs\Flowly.Jobs.csproj" />
+    <ProjectReference Include="..\..\..\..\Flowly\Flowly.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,3 +1,4 @@
+using System.Reflection;
 using Flowly.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -8,10 +9,39 @@ namespace Flowly.MessageInfrastructure.Registration;
 
 public static class AddFlowlyExtension
 {
-    public static IServiceCollection AddFlowly<TFlowlyConfiguration>(
-        this IServiceCollection services,
+    public static IHostApplicationBuilder AddFlowly<TFlowlyConfiguration>(this IHostApplicationBuilder builder, Action<FlowlyOptions>? configureOptions = null) where TFlowlyConfiguration : IFlowlyConfiguration, new()
+    {
+        Register(builder.Services, builder.Configuration, new TFlowlyConfiguration(), configureOptions);
+        return builder;
+    }
+
+    public static IHostApplicationBuilder AddFlowly(this IHostApplicationBuilder builder, Action<FlowlyOptions>? configureOptions = null)
+    {
+        var assembly = Assembly.GetEntryAssembly() ?? throw new InvalidOperationException("Could not determine the entry assembly.");
+
+        var configTypes = assembly.GetTypes()
+            .Where(t => typeof(IFlowlyConfiguration).IsAssignableFrom(t) && !t.IsAbstract && !t.IsInterface)
+            .ToList();
+
+        if (configTypes.Count > 1)
+            throw new InvalidOperationException(
+                $"Multiple {nameof(IFlowlyConfiguration)} implementations found in assembly '{assembly.GetName().Name}': " +
+                $"{string.Join(", ", configTypes.Select(t => t.Name))}. Use the generic overload to specify which one to use.");
+
+        if (configTypes.Count == 0)
+            throw new InvalidOperationException(
+                $"No {nameof(IFlowlyConfiguration)} implementation found in assembly '{assembly.GetName().Name}'.");
+
+        var module = (IFlowlyConfiguration)Activator.CreateInstance(configTypes[0])!;
+        Register(builder.Services, builder.Configuration, module, configureOptions);
+        return builder;
+    }
+
+    private static void Register(
+        IServiceCollection services,
         IConfiguration configuration,
-        Action<FlowlyOptions>? configureOptions = null) where TFlowlyConfiguration : IFlowlyConfiguration, new()
+        IFlowlyConfiguration module,
+        Action<FlowlyOptions>? configureOptions)
     {
         services.TryAddSingleton<IQueueManager, QueueManager>();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, QueueRegistrarHostedService>());
@@ -19,12 +49,9 @@ public static class AddFlowlyExtension
         var options = new FlowlyOptions();
         configureOptions?.Invoke(options);
         services.TryAddSingleton(options);
-        
-        services.AddHostedService<CommandLineParserHostedService>();
-        
-        var module = new TFlowlyConfiguration();
-        module.Configure(new FlowlyBuilder(services, configuration));
 
-        return services;
+        services.AddHostedService<CommandLineParserHostedService>();
+
+        module.Configure(new FlowlyBuilder(services, configuration));
     }
 }

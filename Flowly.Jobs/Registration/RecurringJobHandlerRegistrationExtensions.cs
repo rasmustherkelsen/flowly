@@ -9,16 +9,16 @@ namespace Flowly.Jobs.Registration;
 public static class RecurringJobHandlerRegistrationExtensions
 {
     public static IFlowlyBuilder AddRecurringJob<TRecurringJob>(
-        this IFlowlyBuilder flowlyBuilder, 
-        string jobDescription, 
-        string cronExpression) where TRecurringJob : class, IRecurringJobHandler
+        this IFlowlyBuilder flowlyBuilder) where TRecurringJob : class, IRecurringJobHandler
     {
+        var resolvedOptions = RecurringJobHandlerOptionsResolver.Resolve<TRecurringJob>();
+
         flowlyBuilder.AddQueueRegistration(JobQueuesNames.RecurringJobs, requiresSession: true);
         
         flowlyBuilder.Services.AddSingleton(new RecurringJobHandlerBackgroundService<TRecurringJob>.RecurringJobSettings(
-            jobDescription, 
+            resolvedOptions.JobDescription, 
             typeof(TRecurringJob).Name, 
-            cronExpression));
+            resolvedOptions.CronExpression));
 
         flowlyBuilder.Services.AddHostedService<RecurringJobHandlerBackgroundService<TRecurringJob>>();
 

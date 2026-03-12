@@ -3,8 +3,9 @@ using Flowly.MessageInfrastructure.RecurringJobs;
 
 namespace Flowly.Jobs.Maintenance;
 
-internal class FailHungJobsRecurringJob(IJobStateRepository jobStateRepository) : IRecurringJobHandler
+[RecurringJob("Fail hung jobs", "*/30 * * * *")]
+internal class FailHungJobsRecurringJob(IJobStateRepository jobStateRepository) : RecurringJobHandlerBase
 {
-    public async Task Handle(CancellationToken cancellationToken)
+    public override async Task Handle(CancellationToken cancellationToken)
         => await jobStateRepository.FailUncompletedJobsOlderThan(TimeSpan.FromHours(3));
 }

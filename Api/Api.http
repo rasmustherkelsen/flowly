@@ -1,9 +1,0 @@
-@Api_HostAddress = http://localhost:5056
-
-GET {{Api_HostAddress}}/rebuild-index?messageCount=200
-Accept: application/json
-
-###
-
-GET {{Api_HostAddress}}/perform-stitching?importDefinitionId=4bdbb380-78f4-44bc-b970-7a4da1a8d00e&messageCount=1
-Accept: application/json

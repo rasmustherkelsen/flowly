@@ -32,11 +32,12 @@ public static class MessageHandlerRegistrationExtensions
         return flowlyBuilder;
     }
 
-    public static IFlowlyBuilder AddBatchMessageHandler<TMessage, THandler>(this IFlowlyBuilder flowlyBuilder, int maxMessagesBeforeProcessing, TimeSpan maxWaitTime)
+    public static IFlowlyBuilder AddBatchMessageHandler<TMessage, THandler>(this IFlowlyBuilder flowlyBuilder)
         where THandler : BatchMessageHandlerBase<TMessage>
         where TMessage : class
     {
         var resolvedQueueOptions = HandlerQueueOptionsResolver.Resolve<THandler>();
+        var resolvedBatchOptions = BatchMessageHandlerOptionsResolver.Resolve<THandler>();
         var resolvedQueueName = resolvedQueueOptions.QueueName;
 
         flowlyBuilder.AddQueueRegistration(new DeferredQueueRegistration(
@@ -49,7 +50,10 @@ public static class MessageHandlerRegistrationExtensions
         flowlyBuilder.Services
             .AddScoped<THandler>()
             .AddScoped<BatchMessageHandlerBase<TMessage>, THandler>()
-            .AddSingleton(new ServiceBusMessageBatchHandlerBackgroundService<TMessage>.BatchQueueSettings(resolvedQueueName, maxMessagesBeforeProcessing, maxWaitTime))
+            .AddSingleton(new ServiceBusMessageBatchHandlerBackgroundService<TMessage>.BatchQueueSettings(
+                resolvedQueueName,
+                resolvedBatchOptions.MaxMessagesBeforeProcessing,
+                resolvedBatchOptions.MaxWaitTime))
             .AddHostedService<ServiceBusMessageBatchHandlerBackgroundService<TMessage>>();
         
         return flowlyBuilder;

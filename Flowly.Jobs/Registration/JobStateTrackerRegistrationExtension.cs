@@ -77,7 +77,7 @@ public static class JobStateTrackerRegistrationExtension
     private static IFlowlyBuilder AddJobMaintenanceBackgroundJobs(this IFlowlyBuilder flowlyBuilder)
     {
         return flowlyBuilder
-            .AddRecurringJob<RemoveOldJobsRecurringJob>("Remove Old Jobs", "0 */1 * * *") // every hour
-            .AddRecurringJob<FailHungJobsRecurringJob>("Fail hung jobs", "*/30 * * * *"); // every 30 minutes
+            .AddRecurringJob<RemoveOldJobsRecurringJob>()
+            .AddRecurringJob<FailHungJobsRecurringJob>();
     }
 }
