@@ -11,7 +11,7 @@ public static class MessageHandlerRegistrationExtensions
         where THandler : MessageHandlerBase<TMessage>
         where TMessage : class
     {
-        var resolvedQueueOptions = HandlerQueueOptionsResolver.Resolve<THandler>();
+        var resolvedQueueOptions = HandlerQueueOptionsResolver.Resolve<THandler, TMessage>();
         var resolvedQueueName = resolvedQueueOptions.QueueName;
 
         flowlyBuilder.AddQueueRegistration(new DeferredQueueRegistration(
@@ -36,7 +36,7 @@ public static class MessageHandlerRegistrationExtensions
         where THandler : BatchMessageHandlerBase<TMessage>
         where TMessage : class
     {
-        var resolvedQueueOptions = HandlerQueueOptionsResolver.Resolve<THandler>();
+        var resolvedQueueOptions = HandlerQueueOptionsResolver.Resolve<THandler, TMessage>();
         var resolvedBatchOptions = BatchMessageHandlerOptionsResolver.Resolve<THandler>();
         var resolvedQueueName = resolvedQueueOptions.QueueName;
 

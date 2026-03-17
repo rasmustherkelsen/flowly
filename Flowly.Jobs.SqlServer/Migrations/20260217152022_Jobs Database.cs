@@ -1,9 +1,9 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace Flowly.Jobs.Migrations
+namespace Flowly.Jobs.SqlServer.Migrations
 {
     /// <inheritdoc />
     public partial class JobsDatabase : Migration

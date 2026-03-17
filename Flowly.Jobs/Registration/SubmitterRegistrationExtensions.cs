@@ -1,6 +1,8 @@
 ﻿using Flowly.Jobs.Messages;
 using Flowly.Jobs.Model;
 using Flowly.Jobs.Senders;
+using Flowly.MessageInfrastructure;
+using Flowly.MessageInfrastructure.Receivers;
 using Flowly.MessageInfrastructure.Registration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -13,26 +15,28 @@ public static class SubmitterRegistrationExtensions
         public IFlowlyBuilder AddJobStateSubmitters()
         {
             flowlyBuilder
-                .AddMessageSubmitter<CreateJobState>(JobQueuesNames.CreateJobState)
-                .AddMessageSubmitter<UpdateJobState>(JobQueuesNames.UpdateJobState)
-                .AddMessageSubmitter<JobFailed>(JobQueuesNames.JobFailed)
-                .AddMessageSubmitter<UpdateCustomJobState>(JobQueuesNames.UpdateJobCustomState)
-                .AddMessageSubmitter<StartRecurringJobMessage>(JobQueuesNames.StartRecurringJob)
-                .AddMessageSubmitter<JobIsAlive>(JobQueuesNames.JobIsAlive);
+                .AddMessageSubmitter<CreateJobState>()
+                .AddMessageSubmitter<UpdateJobState>()
+                .AddMessageSubmitter<JobFailed>()
+                .AddMessageSubmitter<UpdateCustomJobState>()
+                .AddMessageSubmitter<StartRecurringJobMessage>()
+                .AddMessageSubmitter<JobIsAlive>();
 
             return flowlyBuilder;
         }
 
-        public IFlowlyBuilder AddJobSubmitter<TMessage>(string queueName) where TMessage : class, IJobMessage
+        public IFlowlyBuilder AddJobSubmitter<TMessage>() where TMessage : class, IJobMessage
         {
             if (flowlyBuilder.Services.Any(s => s.ImplementationType == typeof(JobSubmitter<TMessage>)))
                 return flowlyBuilder;
+
+            var queueName = MessageQueueNameResolver.Resolve<TMessage>();
 
             flowlyBuilder.Services
                 .AddSingleton(new JobSubmitter<TMessage>.QueueSettings(queueName))
                 .AddSingleton<IJobSubmitter<TMessage>, JobSubmitter<TMessage>>()
                 .AddSingleton<IJobMessageSender, JobMessageSender>();
-            
+
             flowlyBuilder.AddJobStateSubmitters();
 
             return flowlyBuilder;

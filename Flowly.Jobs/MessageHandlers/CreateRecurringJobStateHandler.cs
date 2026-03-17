@@ -6,7 +6,6 @@ using Flowly.MessageInfrastructure.Receivers;
 
 namespace Flowly.Jobs.MessageHandlers;
 
-[QueueName(JobQueuesNames.CreateRecurringJobState)]
 internal class CreateRecurringJobStateHandler(IJobStateRepository jobStateRepository, ICustomJobStateRepository customJobStateRepository) : MessageHandlerBase<CreateRecurringJobState>
 {
     public override async Task Handle(IMessageContext<CreateRecurringJobState> messageContext)

@@ -5,7 +5,6 @@ using Flowly.MessageInfrastructure.Receivers;
 
 namespace Flowly.Jobs.MessageHandlers;
 
-[QueueName(JobQueuesNames.CreateJobState)]
 internal class CreateJobStateHandler(
     IJobStateRepository jobStateRepository, 
     IJobAliveStatusRepository jobAliveStatusRepository,

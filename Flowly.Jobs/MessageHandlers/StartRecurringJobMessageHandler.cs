@@ -7,7 +7,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Flowly.Jobs.MessageHandlers;
 
-[QueueName(JobQueuesNames.StartRecurringJob)]
 internal class StartRecurringJobMessageHandler(
     IJobStateRepository jobStateRepository,
     IMessageBusClient messageBusClient,

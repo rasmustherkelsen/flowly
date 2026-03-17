@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Flowly.Jobs.DatabaseModel;
 
 [PrimaryKey(nameof(JobIdentifier))]
-internal class Job
+public class Job
 {
     public required Guid JobIdentifier { get; init; }
 

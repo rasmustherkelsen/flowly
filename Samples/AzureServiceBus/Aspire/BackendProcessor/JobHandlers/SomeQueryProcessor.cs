@@ -4,7 +4,6 @@ using MessageContracts;
 
 namespace BackendProcessor.JobHandlers;
 
-[QueueName(QueuesNames.SomeQuery)]
 public class SomeQueryProcessor : MessageHandlerBase<SomeQueryMessage>
 {
     public override async Task Handle(IMessageContext<SomeQueryMessage> messageContext)

@@ -16,25 +16,13 @@ public static class JobStateTrackerRegistrationExtension
 {
     /// <summary>
     /// Add job state tracking to the application instance.
+    /// Call this before registering a database provider (e.g., AddSqlServerJobStateTracking).
     /// </summary>
-    public static IFlowlyBuilder AddJobStateTracking(
-        this IFlowlyBuilder flowlyBuilder,
-        string jobStateDatabaseConnectionString,
-        bool enableMigrations = true)
+    public static IFlowlyBuilder AddJobStateTracking(this IFlowlyBuilder flowlyBuilder)
     {
-        flowlyBuilder.AddRepositories(options =>
-            {
-                options.UseSqlServer(
-                    jobStateDatabaseConnectionString,
-                    sqlServerOptions => sqlServerOptions.EnableRetryOnFailure(5, TimeSpan.FromSeconds(30), null));
-            })
+        flowlyBuilder
             .AddJobMaintenanceBackgroundJobs()
             .RegisterJobStateQueueProcessor();
-
-        if (enableMigrations)
-        {
-            flowlyBuilder.Services.AddJobHandlerStateDatabaseMigrations();
-        }
 
         return flowlyBuilder;
     }
@@ -64,7 +52,7 @@ public static class JobStateTrackerRegistrationExtension
         return flowlyBuilder;
     }
 
-    private static IFlowlyBuilder AddRepositories(this IFlowlyBuilder flowlyBuilder, Action<DbContextOptionsBuilder> dbContextOptions)
+    public static IFlowlyBuilder AddRepositories(this IFlowlyBuilder flowlyBuilder, Action<DbContextOptionsBuilder> dbContextOptions)
     {
         flowlyBuilder.Services.AddDbContextFactory<JobStateDataContext>(dbContextOptions);
         flowlyBuilder.Services.AddScoped<IJobStateRepository, JobStateRepository>();

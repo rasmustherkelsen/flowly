@@ -33,7 +33,8 @@ internal class QueueManager : IQueueManager
                     registration.QueueName,
                     registration.DefaultMessageTimeToLive ?? TimeSpan.FromDays(1),
                     registration.DeadLetterOnMessageExpiration ?? true,
-                    registration.LockDuration ?? TimeSpan.FromMinutes(5)));
+                    registration.LockDuration ?? TimeSpan.FromMinutes(5),
+                    registration.RequiresSession));
             }
         }
 

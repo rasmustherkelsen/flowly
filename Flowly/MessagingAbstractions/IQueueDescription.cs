@@ -9,4 +9,6 @@ public interface IQueueDescription
     bool DeadLetterOnMessageExpiration { get; }
 
     TimeSpan LockDuration { get; }
+
+    bool RequiresSession { get; }
 }

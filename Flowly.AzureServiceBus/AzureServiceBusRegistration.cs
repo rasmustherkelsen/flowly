@@ -1,4 +1,5 @@
 using Azure.Messaging.ServiceBus;
+using Azure.Messaging.ServiceBus.Administration;
 using Microsoft.Extensions.DependencyInjection;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.MessagingAbstractions;
@@ -19,7 +20,17 @@ public static class AzureServiceBusRegistration
 
             return new ServiceBusClient(connectionString);
         });
-        
+
+        flowlyBuilder.Services.AddSingleton(sp =>
+        {
+            var configuration = sp.GetRequiredService<IConfiguration>();
+            var connectionString = configuration.GetConnectionString(connectionStringName)
+                                   ?? throw new InvalidOperationException(
+                                       $"Connection string '{connectionStringName}' not found.");
+
+            return new ServiceBusAdministrationClient(connectionString);
+        });
+
         flowlyBuilder.Services.AddSingleton<IMessageBusClient, MessageBusClient>();
         flowlyBuilder.Services.AddTransient<IMessagingTopologyCreator, MessagingTopologyCreator>();
         return flowlyBuilder;

@@ -15,17 +15,17 @@ public static class HandlerQueueOptionsResolver
     public static readonly TimeSpan DefaultMessageTimeToLive = TimeSpan.FromDays(1);
     public const bool DefaultDeadLetterOnMessageExpiration = true;
 
-    public static ResolvedHandlerQueueOptions Resolve<THandler>() where THandler : class
+    public static ResolvedHandlerQueueOptions Resolve<THandler, TMessage>() where THandler : class
     {
         var handlerType = typeof(THandler);
         var options = new HandlerQueueOptions();
 
-        ApplyAttributes(handlerType, options);
+        options.QueueName = MessageQueueNameResolver.Resolve<TMessage>();
+
+        ApplyHandlerAttributes(handlerType, options);
         ApplyConfigure(handlerType, options);
 
-        var resolvedQueueName = string.IsNullOrWhiteSpace(options.QueueName)
-            ? DeriveQueueName(handlerType)
-            : options.QueueName!;
+        var resolvedQueueName = options.QueueName!;
 
         return new ResolvedHandlerQueueOptions(
             resolvedQueueName,
@@ -34,31 +34,19 @@ public static class HandlerQueueOptionsResolver
             options.LockDuration ?? DefaultLockDuration);
     }
 
-    private static void ApplyAttributes(Type handlerType, HandlerQueueOptions options)
+    private static void ApplyHandlerAttributes(Type handlerType, HandlerQueueOptions options)
     {
-        var queueNameAttribute = handlerType.GetCustomAttribute<QueueNameAttribute>();
-        if (queueNameAttribute != null)
-        {
-            options.QueueName = queueNameAttribute.QueueName;
-        }
-
         var ttlAttribute = handlerType.GetCustomAttribute<DefaultMessageTimeToLiveAttribute>();
         if (ttlAttribute != null)
-        {
             options.DefaultMessageTimeToLive = ttlAttribute.GetValue();
-        }
 
         var deadLetterAttribute = handlerType.GetCustomAttribute<DeadLetterOnMessageExpirationAttribute>();
         if (deadLetterAttribute != null)
-        {
             options.DeadLetterOnMessageExpiration = deadLetterAttribute.Enabled;
-        }
 
         var lockDurationAttribute = handlerType.GetCustomAttribute<LockDurationAttribute>();
         if (lockDurationAttribute != null)
-        {
             options.LockDuration = lockDurationAttribute.GetValue();
-        }
     }
 
     private static void ApplyConfigure(Type handlerType, HandlerQueueOptions options)
@@ -97,20 +85,4 @@ public static class HandlerQueueOptionsResolver
         }
     }
 
-    private static string DeriveQueueName(Type handlerType)
-    {
-        var name = handlerType.Name;
-
-        if (name.EndsWith("MessageHandler", StringComparison.OrdinalIgnoreCase))
-        {
-            return name[..^"MessageHandler".Length];
-        }
-
-        if (name.EndsWith("Handler", StringComparison.OrdinalIgnoreCase))
-        {
-            return name[..^"Handler".Length];
-        }
-
-        return name;
-    }
 }

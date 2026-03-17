@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace Flowly.Jobs.DatabaseModel;
 
-internal class JobStateDataContext(DbContextOptions<JobStateDataContext> options) : DbContext(options)
+public class JobStateDataContext(DbContextOptions<JobStateDataContext> options) : DbContext(options)
 {
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

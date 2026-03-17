@@ -11,8 +11,8 @@ public class ApiFlowlyConfiguration : FlowlyDesignTimeFactory, IFlowlyConfigurat
     {
         builder
             .UseAzureServiceBus("EmulatorNamespace")
-            .AddJobSubmitter<ProcessOrder>(QueuesNames.ProcessOrder)
-            .AddMessageSubmitter<RebuildIndexMessage>(QueuesNames.RebuildIndex)
-            .AddMessageSubmitter<SomeQueryMessage>(QueuesNames.SomeQuery);
+            .AddJobSubmitter<ProcessOrder>()
+            .AddMessageSubmitter<RebuildIndexMessage>()
+            .AddMessageSubmitter<SomeQueryMessage>();
     }
 }

@@ -6,7 +6,7 @@ This document gives an AI assistant the context needed to work effectively in th
 
 ## Project Identity
 
-- **Solution file:** `PlainServiceJobs.sln`
+- **Solution file:** `Flowly.sln`
 - **Public name:** Flowly
 - **Target framework:** .NET 10.0
 - **Language features:** Nullable reference types enabled, implicit usings enabled
@@ -50,8 +50,8 @@ public class MyFlowlyConfig : FlowlyDesignTimeFactory, IFlowlyConfiguration
             .AddMessageHandler<MyMsg, MyHandler>()
             .AddBatchMessageHandler<MyMsg, MyBatchHandler>()
             .AddRecurringJob<MyScheduledJob>()
-            .AddMessageSubmitter<MyMsg>("queue-name")
-            .AddJobSubmitter<MyJobMsg>("queue-name");
+            .AddMessageSubmitter<MyMsg>()
+            .AddJobSubmitter<MyJobMsg>();
     }
 }
 ```
@@ -66,10 +66,11 @@ services.AddFlowly<MyFlowlyConfig>(configuration);
 
 ### 2. Message Handlers
 
+The queue name is derived from the **message type**, not the handler. Place `[QueueName]` on the message contract, or rely on auto-generation (see section 6).
+
 #### Regular (one message at a time)
 
 ```csharp
-[QueueName("my-queue")]
 [DefaultMessageTimeToLive("1.00:00:00")]
 [LockDuration("00:05:00")]
 public class MyHandler : MessageHandlerBase<MyMessage>
@@ -88,7 +89,6 @@ Register: `.AddMessageHandler<MyMessage, MyHandler>(maxConcurrentCalls: 5)`
 #### Batch (multiple messages at a time)
 
 ```csharp
-[QueueName("bulk-queue")]
 [BatchProcessing(maxMessages: 100, maxWaitTimeInSeconds: 30)]
 public class MyBatchHandler : BatchMessageHandlerBase<MyMessage>
 {
@@ -104,7 +104,6 @@ Register: `.AddBatchMessageHandler<MyMessage, MyBatchHandler>()`
 #### Job message handler (with state tracking)
 
 ```csharp
-[QueueName("process-queue")]
 public class MyJobHandler : JobMessageHandlerBase<MyJobMessage>
 {
     public override async Task Handle(IJobMessageContext<MyJobMessage> ctx)
@@ -114,7 +113,7 @@ public class MyJobHandler : JobMessageHandlerBase<MyJobMessage>
 }
 ```
 
-Register: `.AddJobHandler<MyJobMessage, MyJobHandler>()`
+Register: `.AddJobHandler<MyJobMessage, MyJobHandler>(maxConcurrentCalls: 5)`
 
 ---
 
@@ -128,7 +127,7 @@ Inject `IMessageSender`:
 await messageSender.Send(new MyMessage { ... });
 ```
 
-Register the submitter so the queue is tracked: `.AddMessageSubmitter<MyMessage>("queue-name")`
+Register the submitter so the queue is tracked: `.AddMessageSubmitter<MyMessage>()`
 
 #### Job submission (returns a trackable JobId)
 
@@ -138,7 +137,7 @@ Inject `IJobMessageSender`:
 var jobId = await jobSender.QueueJob(new MyJobMessage { ... }); // returns Guid
 ```
 
-Register: `.AddJobSubmitter<MyJobMessage>("queue-name")`
+Register: `.AddJobSubmitter<MyJobMessage>()`
 
 ---
 
@@ -182,11 +181,36 @@ Enabled by `.AddJobStateTracking("ConnectionString")`.
 
 ### 6. Queue Configuration
 
-Attributes on handler classes drive queue setup:
+#### Queue name resolution
+
+The queue name is owned by the **message contract**, not the handler. `MessageQueueNameResolver` resolves it in this order:
+
+1. `[QueueName("explicit-name")]` attribute on the message type
+2. Auto-generated from the message type name: split PascalCase on capital letters, join with `-`, lowercase, strip a trailing `Message` suffix
+
+Examples of auto-generation:
+
+| Type name | Queue name |
+|---|---|
+| `ProcessOrder` | `process-order` |
+| `SomeQueryMessage` | `some-query` |
+| `RebuildSearchIndexMessage` | `rebuild-search-index` |
+
+```csharp
+// Explicit name — use when auto-generation would produce the wrong name
+[QueueName("orders-v2")]
+public record ProcessOrder(Guid Id);
+
+// No attribute needed — auto-generates "process-order"
+public record ProcessOrder(Guid Id);
+```
+
+#### Handler-level queue attributes
+
+These attributes go on the **handler** class and control infrastructure settings for the queue:
 
 | Attribute | Purpose | Default |
 |---|---|---|
-| `[QueueName("name")]` | Queue name (required) | — |
 | `[DefaultMessageTimeToLive("d.hh:mm:ss")]` | Message TTL | 1 day |
 | `[LockDuration("hh:mm:ss")]` | Peek-lock duration | 5 min |
 | `[DeadLetterOnMessageExpiration]` | Dead-letter on TTL | true |
@@ -196,6 +220,8 @@ Attributes on handler classes drive queue setup:
 Alternatively override `Configure(HandlerQueueOptions options)` in the handler class.
 
 **Queue topology creation** is batched via `DeferredQueueRegistration` singletons collected by `QueueManager`, then provisioned once by `IMessagingTopologyCreator` at startup. Conflicting settings for the same queue name throw `InvalidOperationException`.
+
+The Azure Service Bus implementation of `IMessagingTopologyCreator` creates queues via `ServiceBusAdministrationClient`. It checks `QueueExistsAsync` before calling `CreateQueueAsync`, so existing queues are left untouched. When running against the emulator (namespace starts with `localhost` or `127.0.0.1`), topology creation throws — queues must be pre-created using `dotnet flowly azure-service-bus emulator-config`.
 
 ---
 
@@ -260,12 +286,37 @@ Multiple `--project` flags aggregate queues across projects.
 
 ### 9. Local Development Setup
 
-The `Samples/AzureServiceBus/Aspire/` folder contains a reference Aspire implementation. The AppHost:
+The `Samples/AzureServiceBus/Aspire/` folder contains a reference Aspire implementation.
 
-1. Starts SQL Server and creates the FlowlyJobs database
-2. Starts the Azure Service Bus emulator with persistent lifetime
-3. Auto-creates all queues with correct settings
-4. Projects use `.WaitFor(resource)` to ensure dependencies are ready
+#### Aspire AppHost integration (`Flowly.AzureServiceBus.Aspire`)
+
+The `Flowly.AzureServiceBus.Aspire` NuGet package provides AppHost extension methods that automatically discover and register queues from service projects. Reference it from the AppHost with `IsAspireProjectResource="false"`:
+
+```xml
+<ProjectReference Include="..." IsAspireProjectResource="false" />
+```
+
+Usage in `Program.cs`:
+
+```csharp
+using Flowly.AzureServiceBus.Aspire;
+
+var azureServiceBus = builder.AddAzureServiceBus("EmulatorNamespace").RunAsEmulator(...);
+
+var backendProcessor = builder.AddProject<Projects.BackendProcessor>("BackendProcessor");
+
+azureServiceBus.AddFlowly(backendProcessor);  // discovers queues from the project
+
+backendProcessor
+    .WithReference(azureServiceBus)
+    .WaitFor(azureServiceBus);  // waits for the service bus (all queues ready at emulator startup)
+```
+
+`AddFlowly(project)` loads the service project's built assembly via an isolated `AssemblyLoadContext`, finds the `IFlowlyConfiguration` + `FlowlyDesignTimeFactory` type, and calls `Configure()` with a placeholder configuration to collect `DeferredQueueRegistration` instances — the same mechanism used by `Flowly.Tool`. Queue properties (lock duration, TTL, dead-lettering, session) are set on the emulator queue resources via `WithProperties`.
+
+Use the standard `.WaitFor(azureServiceBus)` to wait for the emulator to be ready — the emulator creates all queues synchronously at startup from the config JSON, so a single service bus health check is sufficient.
+
+The Aspire integration currently targets the emulator only. For real Azure, queue creation is handled by `IMessagingTopologyCreator` (via `ServiceBusAdministrationClient`) at service startup.
 
 For plain Docker Compose, use `Flowly.Tool` to generate `emulator-config.json` for the Azure Service Bus emulator container.
 
@@ -306,14 +357,52 @@ For plain Docker Compose, use `Flowly.Tool` to generate `emulator-config.json` f
 
 - Message types are plain `record` or `class` types — no base class required for regular messages
 - Job message types must implement `IJobMessage`
-- Queue names use kebab-case (e.g., `orders-created`)
+- Queue names use kebab-case and are derived from the message type name automatically (see section 6)
+- Only add `[QueueName]` to a message contract when the auto-generated name is wrong
 - Handler classes are named `<MessageType>Handler` by convention
 - Recurring job classes are named `<Description>RecurringJob` or `<Description>Job` by convention
 - One `IFlowlyConfiguration` per deployable project/service
 
 ---
 
-### 13. Current Status & Roadmap Notes
+### 13. Testing Conventions
+
+Tests live in `Flowly.Tests/`, which mirrors the source tree structure:
+
+```
+Flowly/MessageInfrastructure/MessageQueueNameResolver.cs
+Flowly.Tests/MessageInfrastructure/MessageQueueNameResolverTests.cs
+```
+
+Each test file contains one outer class named `{ClassName}Tests`. Each method under test gets a nested `public class` named after that method. All `[Fact]` tests for a method live inside it:
+
+```csharp
+public class MessageQueueNameResolverTests
+{
+    public class Resolve
+    {
+        [Fact]
+        public void WithQueueNameAttribute_ReturnsAttributeValue() { ... }
+
+        [Fact]
+        public void MessageSuffix_TwoWords_StripsSuffixAndKebabCases() { ... }
+    }
+
+    [QueueName("custom-queue")]
+    private record OrderPlacedMessage;
+
+    private record SomeQueryMessage;
+}
+```
+
+Rules:
+- No comments in test files — names must be self-explanatory
+- Private fixture types (records, stubs) go on the outer class, below the nested test classes
+- Test method names describe the scenario and expected outcome, without repeating the method name
+
+---
+
+### 14. Current Status & Roadmap Notes
 
 - Azure Service Bus is the primary (and currently only complete) transport
 - RabbitMQ and other providers are planned but not yet implemented
@@ -326,12 +415,13 @@ For plain Docker Compose, use `Flowly.Tool` to generate `emulator-config.json` f
 
 | Task | What to do |
 |---|---|
-| Add a new message handler | Create class inheriting `MessageHandlerBase<T>`, add `[QueueName]`, register with `.AddMessageHandler<T, THandler>()` |
+| Add a new message handler | Create class inheriting `MessageHandlerBase<T>`, register with `.AddMessageHandler<T, THandler>()` |
 | Add a batch handler | Inherit `BatchMessageHandlerBase<T>`, add attributes, register with `.AddBatchMessageHandler<>()` |
 | Add a job handler | Inherit `JobMessageHandlerBase<T>`, register with `.AddJobHandler<>()` |
 | Add a recurring job | Inherit `RecurringJobHandlerBase`, add `[RecurringJob]`, register with `.AddRecurringJob<>()` |
+| Control the queue name | Add `[QueueName("name")]` to the **message contract** — only needed when auto-generation is wrong |
 | Send a message | Inject `IMessageSender`, call `.Send(msg)` |
 | Queue a tracked job | Inject `IJobMessageSender`, call `.QueueJob(msg)` |
-| Add a new queue | Just add a handler — queue is registered automatically |
+| Add a new queue | Just add a handler — queue is registered automatically from the message type |
 | Generate emulator config | `dotnet flowly azure-service-bus emulator-config --project ./MyProject` |
 | Inspect what queues a project uses | `dotnet flowly azure-service-bus queues --project ./MyProject` |

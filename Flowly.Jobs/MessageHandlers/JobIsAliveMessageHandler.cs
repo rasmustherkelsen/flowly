@@ -5,7 +5,6 @@ using Flowly.MessageInfrastructure.Receivers;
 
 namespace Flowly.Jobs.MessageHandlers;
 
-[QueueName(JobQueuesNames.JobIsAlive)]
 internal class JobIsAliveMessageHandler(IJobAliveStatusRepository jobAliveStatusRepository) : MessageHandlerBase<JobIsAlive>
 {
     public override async Task Handle(IMessageContext<JobIsAlive> messageContext)

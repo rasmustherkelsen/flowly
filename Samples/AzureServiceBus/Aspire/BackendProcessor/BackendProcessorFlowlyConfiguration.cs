@@ -1,6 +1,7 @@
 using BackendProcessor.JobHandlers;
 using Flowly.AzureServiceBus;
 using Flowly.Jobs.Registration;
+using Flowly.Jobs.SqlServer.Registration;
 using Flowly.MessageInfrastructure.Registration;
 using MessageContracts;
 
@@ -12,11 +13,11 @@ public class BackendProcessorFlowlyConfiguration : FlowlyDesignTimeFactory, IFlo
     {
         builder
             .UseAzureServiceBus("EmulatorNamespace")
-            .AddJobStateTracking(builder.Configuration.GetConnectionString("FlowlyJobs")!)
-            .AddJobHandler<ProcessOrder, OrderProcessor>()
+            .AddSqlServerJobStateTracking(builder.Configuration.GetConnectionString("FlowlyJobs")!)
+            .AddJobHandler<ProcessOrder, OrderProcessor>(maxConcurrentCalls: 5)
             .AddBatchMessageHandler<RebuildIndexMessage, RebuildIndexBatchHandler>()
             .AddRecurringJob<RecurringSystemImportHandler>()
             .AddRecurringJob<RecurringMoreFrequentImportHandler>()
-            .AddMessageHandler<SomeQueryMessage, SomeQueryProcessor>();
+            .AddMessageHandler<SomeQueryMessage, SomeQueryProcessor>(maxConcurrentCalls: 2);
     }
 }

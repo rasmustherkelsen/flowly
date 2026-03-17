@@ -1,8 +1,9 @@
-﻿using System.Diagnostics.CodeAnalysis;
+using System.Diagnostics.CodeAnalysis;
+using Flowly.Jobs.DatabaseModel;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 
-namespace Flowly.Jobs.DatabaseModel;
+namespace Flowly.Jobs.SqlServer.DatabaseModel;
 
 [ExcludeFromCodeCoverage]
 internal class JobStateDataContextFactory : IDesignTimeDbContextFactory<JobStateDataContext>
@@ -13,7 +14,11 @@ internal class JobStateDataContextFactory : IDesignTimeDbContextFactory<JobState
     {
         var builder = new DbContextOptionsBuilder<JobStateDataContext>();
         var connectionString = "Data Source=localhost;Initial Catalog=Flowly;User=sa;Password=Strong01;TrustServerCertificate=True";
-        builder.UseSqlServer(connectionString, options => options.EnableRetryOnFailure());
+        builder.UseSqlServer(connectionString, options =>
+        {
+            options.EnableRetryOnFailure();
+            options.MigrationsAssembly(typeof(JobStateDataContextFactory).Assembly.GetName().Name);
+        });
         _dbContext = new JobStateDataContext(builder.Options);
     }
 

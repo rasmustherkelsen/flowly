@@ -1,11 +1,9 @@
 using Flowly.Jobs.Model;
 using Flowly.Jobs.Receivers;
-using Flowly.MessageInfrastructure.Receivers;
 using MessageContracts;
 
 namespace BackendProcessor.JobHandlers;
 
-[QueueName(QueuesNames.ProcessOrder)]
 public class OrderProcessor(ILogger<OrderProcessor> logger) : JobMessageHandlerBase<ProcessOrder>
 {
     public override async Task Handle(IJobMessageContext<ProcessOrder> messageContext)

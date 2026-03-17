@@ -4,7 +4,6 @@ using MessageContracts;
 
 namespace BackendProcessor.JobHandlers;
 
-[QueueName(QueuesNames.RebuildIndex)]
 [BatchProcessing(100, maxWaitTimeInSeconds: 30)]
 public class RebuildIndexBatchHandler : BatchMessageHandlerBase<RebuildIndexMessage>
 {
