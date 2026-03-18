@@ -27,6 +27,6 @@ sealed class ProcessOrderEndpoint : Endpoint<ProcessOrderRequest>
             await MessageSender.QueueJob(new ProcessOrder(req.CustomerId, $"My Stitching Operation {DateTime.UtcNow}"), ct);
         }
 
-        await SendOkAsync(cancellation: ct);
+        await Send.OkAsync(cancellation: ct);
     }
 }

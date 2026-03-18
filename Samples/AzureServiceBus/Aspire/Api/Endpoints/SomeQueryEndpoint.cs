@@ -21,6 +21,6 @@ public class SomeQueryEndpoint(IMessageSender messageSender) : Endpoint<SomeQuer
             await messageSender.Send(new SomeQueryMessage(Random.Shared.Next(1, 5)), ct);
         }
 
-        await SendOkAsync(ct);
+        await Send.OkAsync(cancellation: ct);
     }
 }

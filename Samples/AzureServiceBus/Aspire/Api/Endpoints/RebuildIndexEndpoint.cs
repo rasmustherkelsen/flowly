@@ -26,6 +26,6 @@ sealed class RebuildIndexEndpoint : Endpoint<RebuildIndexRequest>
             await MessageSender.Send(new RebuildIndexMessage(DateTime.UtcNow));
         }
 
-        await SendOkAsync(cancellation: ct);
+        await Send.OkAsync(cancellation: ct);
     }
 }

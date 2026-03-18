@@ -21,6 +21,6 @@ sealed class RunRecurringJobEndpoint : Endpoint<RunRecurringJobRequest>
     public override async Task HandleAsync(RunRecurringJobRequest req, CancellationToken ct)
     {
         await MessageSender.StartRecurringJob(req.JobId);
-        await SendOkAsync(cancellation: ct);
+        await Send.OkAsync(cancellation: ct);
     }
 }
