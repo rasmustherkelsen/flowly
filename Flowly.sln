@@ -3,9 +3,9 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.13.35919.96
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Flowly.AppHost", "Samples\AzureServiceBus\Aspire\Flowly.AppHost\Flowly.AppHost.csproj", "{3A767CC7-4B45-4EBC-819E-ACC6E64C4473}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AzureServiceBusAspire.AppHost", "Samples\AzureServiceBus\Aspire\AzureServiceBusAspire.AppHost\AzureServiceBusAspire.AppHost.csproj", "{3A767CC7-4B45-4EBC-819E-ACC6E64C4473}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Flowly.ServiceDefaults", "Samples\AzureServiceBus\Aspire\Flowly.ServiceDefaults\Flowly.ServiceDefaults.csproj", "{76DABEED-788F-C595-670C-6A28DDE89242}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AzureServiceBusAspire.ServiceDefaults", "Samples\AzureServiceBus\Aspire\AzureServiceBusAspire.ServiceDefaults\AzureServiceBusAspire.ServiceDefaults.csproj", "{76DABEED-788F-C595-670C-6A28DDE89242}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BackendProcessor", "Samples\AzureServiceBus\Aspire\BackendProcessor\BackendProcessor.csproj", "{1B77716C-BEF6-3632-425F-E94AC540B4D2}"
 EndProject

@@ -15,7 +15,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\MessageContracts\MessageContracts.csproj" />
-    <ProjectReference Include="..\Flowly.ServiceDefaults\Flowly.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\AzureServiceBusAspire.ServiceDefaults\AzureServiceBusAspire.ServiceDefaults.csproj" />
     <ProjectReference Include="..\..\..\..\Flowly.AzureServiceBus\Flowly.AzureServiceBus.csproj" />
     <ProjectReference Include="..\..\..\..\Flowly.Jobs.SqlServer\Flowly.Jobs.SqlServer.csproj" />
   </ItemGroup>
