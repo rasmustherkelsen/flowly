@@ -17,6 +17,8 @@ Flowly is a message bus abstraction for .NET that makes it fast and easy to buil
 | `Flowly` | Core abstractions: message handlers, senders, queue topology |
 | `Flowly.AzureServiceBus` | Azure Service Bus implementation |
 | `Flowly.Jobs` | Job tracking, CRON scheduling, job state persistence |
+| `Flowly.Jobs.SqlServer` | SQL Server backend for job state tracking |
+| `Flowly.Jobs.Postgres` | PostgreSQL backend for job state tracking |
 | `Flowly.Tool` | CLI tool for queue discovery, code generation, and emulator setup |
 
 ## Documentation

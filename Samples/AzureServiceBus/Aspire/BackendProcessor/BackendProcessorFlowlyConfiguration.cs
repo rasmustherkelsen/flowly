@@ -16,8 +16,8 @@ public class BackendProcessorFlowlyConfiguration : FlowlyDesignTimeFactory, IFlo
             .AddSqlServerJobStateTracking(builder.Configuration.GetConnectionString("FlowlyJobs")!)
             .AddJobHandler<ProcessOrder, OrderProcessor>(maxConcurrentCalls: 5)
             .AddBatchMessageHandler<RebuildIndexMessage, RebuildIndexBatchHandler>()
-            .AddRecurringJob<RecurringSystemImportHandler>()
-            .AddRecurringJob<RecurringMoreFrequentImportHandler>()
+            .AddRecurringJob<RecurringImportHandler>()
+            .AddRecurringJob<FrequentlyRecurringHandler>()
             .AddMessageHandler<SomeQueryMessage, SomeQueryProcessor>(maxConcurrentCalls: 2);
     }
 }

@@ -33,6 +33,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Flowly.Tests", "Flowly.Test
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Flowly.AzureServiceBus.Aspire", "Flowly.AzureServiceBus.Aspire\Flowly.AzureServiceBus.Aspire.csproj", "{5C75165D-13B6-49F7-926D-6F014D6FA0BF}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Flowly.Jobs.Postgres", "Flowly.Jobs.Postgres\Flowly.Jobs.Postgres.csproj", "{325CCA09-17ED-4204-AB5C-216FFC921C29}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -187,6 +189,18 @@ Global
 		{5C75165D-13B6-49F7-926D-6F014D6FA0BF}.Release|x64.Build.0 = Release|Any CPU
 		{5C75165D-13B6-49F7-926D-6F014D6FA0BF}.Release|x86.ActiveCfg = Release|Any CPU
 		{5C75165D-13B6-49F7-926D-6F014D6FA0BF}.Release|x86.Build.0 = Release|Any CPU
+		{325CCA09-17ED-4204-AB5C-216FFC921C29}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{325CCA09-17ED-4204-AB5C-216FFC921C29}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{325CCA09-17ED-4204-AB5C-216FFC921C29}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{325CCA09-17ED-4204-AB5C-216FFC921C29}.Debug|x64.Build.0 = Debug|Any CPU
+		{325CCA09-17ED-4204-AB5C-216FFC921C29}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{325CCA09-17ED-4204-AB5C-216FFC921C29}.Debug|x86.Build.0 = Debug|Any CPU
+		{325CCA09-17ED-4204-AB5C-216FFC921C29}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{325CCA09-17ED-4204-AB5C-216FFC921C29}.Release|Any CPU.Build.0 = Release|Any CPU
+		{325CCA09-17ED-4204-AB5C-216FFC921C29}.Release|x64.ActiveCfg = Release|Any CPU
+		{325CCA09-17ED-4204-AB5C-216FFC921C29}.Release|x64.Build.0 = Release|Any CPU
+		{325CCA09-17ED-4204-AB5C-216FFC921C29}.Release|x86.ActiveCfg = Release|Any CPU
+		{325CCA09-17ED-4204-AB5C-216FFC921C29}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

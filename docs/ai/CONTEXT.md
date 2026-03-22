@@ -20,6 +20,8 @@ This document gives an AI assistant the context needed to work effectively in th
 ├── Flowly/                      # Core abstractions and infrastructure
 ├── Flowly.AzureServiceBus/      # Azure Service Bus transport implementation
 ├── Flowly.Jobs/                 # Job tracking, CRON scheduling, job state DB
+├── Flowly.Jobs.SqlServer/       # SQL Server backend for job state tracking
+├── Flowly.Jobs.Postgres/        # PostgreSQL backend for job state tracking
 ├── Flowly.Tool/                 # dotnet CLI tool (queue discovery, code gen)
 ├── Samples/
 │   └── AzureServiceBus/
@@ -160,9 +162,19 @@ public class NightlyCleanupJob : RecurringJobHandlerBase
 
 ### 5. Job State Tracking
 
-Enabled by `.AddJobStateTracking("ConnectionString")`.
+Job state tracking requires a database backend. Register it using the provider-specific extension method:
 
-**Database entities (EF Core, SQL Server):**
+```csharp
+// SQL Server
+builder.AddSqlServerJobStateTracking("ConnectionString");
+
+// PostgreSQL
+builder.AddPostgresJobStateTracking("ConnectionString");
+```
+
+Both accept an optional `enableMigrations` parameter (default `true`) that runs EF Core migrations at startup.
+
+**Database entities (EF Core):**
 
 | Table | Purpose |
 |---|---|
