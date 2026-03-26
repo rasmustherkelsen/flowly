@@ -24,13 +24,16 @@ public static class AddFlowlyExtension
             .ToList();
 
         if (configTypes.Count > 1)
+        {
             throw new InvalidOperationException(
                 $"Multiple {nameof(IFlowlyConfiguration)} implementations found in assembly '{assembly.GetName().Name}': " +
                 $"{string.Join(", ", configTypes.Select(t => t.Name))}. Use the generic overload to specify which one to use.");
+        }
 
         if (configTypes.Count == 0)
-            throw new InvalidOperationException(
-                $"No {nameof(IFlowlyConfiguration)} implementation found in assembly '{assembly.GetName().Name}'.");
+        {
+            throw new InvalidOperationException($"No {nameof(IFlowlyConfiguration)} implementation found in assembly '{assembly.GetName().Name}'.");
+        }
 
         var module = (IFlowlyConfiguration)Activator.CreateInstance(configTypes[0])!;
         Register(builder.Services, builder.Configuration, module, configureOptions);

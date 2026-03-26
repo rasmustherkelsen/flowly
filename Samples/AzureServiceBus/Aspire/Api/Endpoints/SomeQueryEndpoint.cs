@@ -4,10 +4,10 @@ using MessageContracts;
 
 namespace Api.Endpoints;
 
-public record SomeQueryRequest(int? MessageCount);
-
-public class SomeQueryEndpoint(IMessageSender messageSender) : Endpoint<SomeQueryRequest>
+class SomeQueryEndpoint(IMessageSender messageSender) : Endpoint<SomeQueryEndpoint.SomeQueryRequest>
 {
+    internal record SomeQueryRequest(int? MessageCount);
+    
     public override void Configure()
     {
         Get("/some-query");

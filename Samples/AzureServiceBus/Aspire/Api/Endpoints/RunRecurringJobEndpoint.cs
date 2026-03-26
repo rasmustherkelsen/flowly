@@ -3,13 +3,10 @@ using Flowly.Jobs.Senders;
 
 namespace Api.Endpoints;
 
-sealed class RunRecurringJobRequest
+class RunRecurringJobEndpoint : Endpoint<RunRecurringJobEndpoint.RunRecurringJobRequest>
 {
-    public Guid JobId { get; set; }
-}
-
-sealed class RunRecurringJobEndpoint : Endpoint<RunRecurringJobRequest>
-{
+    internal sealed record RunRecurringJobRequest(Guid JobId);
+    
     public IJobMessageSender MessageSender { get; set; } = null!;
 
     public override void Configure()

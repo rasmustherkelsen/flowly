@@ -1,4 +1,4 @@
-﻿using Flowly.Jobs.Messages;
+using Flowly.Jobs.Messages;
 using Flowly.Jobs.Model;
 using Flowly.Jobs.Receivers;
 using Flowly.MessageInfrastructure.BackgroundServices;
@@ -22,16 +22,14 @@ internal class JobHandlerBackgroundService<TMessage> : ServiceBusMessageHandlerB
     {
         _serviceScopeFactory = serviceScopeFactory;
     }
-    
+
     protected override async Task OnHandleMessage(IReceivedMessage<TMessage> receivedMessage, IServiceProvider serviceProvider, CancellationToken cancellationToken)
     {
         var jobId = new JobId(Guid.Parse(receivedMessage.Properties.MessageId));
-
         var jobHandlerBase = serviceProvider.GetRequiredService<JobMessageHandlerBase<TMessage>>();
-
         var messageSender = serviceProvider.GetRequiredService<IMessageSender>();
 
-        await messageSender.Send(new UpdateJobState(jobId, JobState.Started, DateTime.UtcNow), cancellationToken);
+        await messageSender.Send(new UpdateJobState(jobId, JobState.Started, DateTime.UtcNow, receivedMessage.Properties.RetryCount), cancellationToken);
 
         using var aliveSignalLinkedCancellationToken = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var aliveSignalTask = SendAliveSignalAsync(jobId, aliveSignalLinkedCancellationToken.Token);
@@ -59,6 +57,22 @@ internal class JobHandlerBackgroundService<TMessage> : ServiceBusMessageHandlerB
         await messageSender.Send(new UpdateJobState(jobId, JobState.Completed, DateTime.UtcNow), cancellationToken);
     }
 
+    protected override async Task OnRetriesExhausted(IReceivedMessage<TMessage> receivedMessage, Exception exception, IServiceProvider serviceProvider, CancellationToken cancellationToken)
+    {
+        var jobId = exception is JobException je ? je.JobId : new JobId(Guid.Parse(receivedMessage.Properties.MessageId));
+        var reason = exception is JobException je2 ? (je2.InnerException?.Message ?? je2.Message) : exception.Message;
+
+        var messageSender = serviceProvider.GetRequiredService<IMessageSender>();
+        await messageSender.Send(new JobFailed(jobId, reason, DateTime.UtcNow), cancellationToken);
+        await receivedMessage.Complete(cancellationToken);
+    }
+
+    protected override Task OnMessageHandlingError(ILogger logger, IServiceProvider serviceProvider, ErrorDetails errorDetails)
+    {
+        logger.LogError(errorDetails.Exception, "Job handler infrastructure error on queue");
+        return Task.CompletedTask;
+    }
+
     private async Task SendAliveSignalAsync(JobId jobId, CancellationToken cancellationToken)
     {
         try
@@ -74,17 +88,6 @@ internal class JobHandlerBackgroundService<TMessage> : ServiceBusMessageHandlerB
         catch (OperationCanceledException)
         {
             // Expected when cancellation is requested
-        }
-    }
-
-    protected override async Task OnMessageHandlingError(ILogger logger, IServiceProvider serviceProvider, ErrorDetails errorDetails)
-    {
-        if (errorDetails.Exception is JobException jobException)
-        {
-            logger.LogError(errorDetails.Exception.Message);
-
-            var messageSender = serviceProvider.GetRequiredService<IMessageSender>();
-            await messageSender.Send(new JobFailed(jobException.JobId, jobException.InnerException?.Message ?? jobException.Message, DateTime.UtcNow));
         }
     }
 }

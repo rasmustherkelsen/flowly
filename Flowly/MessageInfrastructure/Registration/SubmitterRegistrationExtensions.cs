@@ -8,7 +8,9 @@ public static class SubmitterRegistrationExtensions
     public static IFlowlyBuilder AddMessageSubmitter<TMessage>(this IFlowlyBuilder flowlyBuilder)
     {
         if (flowlyBuilder.Services.Any(s => s.ImplementationType == typeof(MessageSubmitter<TMessage>)))
+        {
             return flowlyBuilder;
+        }
 
         var queueName = MessageQueueNameResolver.Resolve<TMessage>();
 
@@ -17,7 +19,9 @@ public static class SubmitterRegistrationExtensions
             .AddSingleton<IMessageSubmitter<TMessage>, MessageSubmitter<TMessage>>();
 
         if (flowlyBuilder.Services.Any(s => s.ImplementationType == typeof(MessageSender)))
+        {
             return flowlyBuilder;
+        }
 
         flowlyBuilder.Services.AddSingleton<IMessageSender, MessageSender>();
 

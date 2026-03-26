@@ -3,10 +3,26 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Flowly.Tests.MessageInfrastructure.BackgroundServices;
 
-internal class FakeReceivedMessage<TMessage>(TMessage body) : IReceivedMessage<TMessage>
+internal class FakeReceivedMessage<TMessage>(TMessage body, MessageProperties? properties = null) : IReceivedMessage<TMessage>
 {
     public TMessage Body { get; } = body;
-    public MessageProperties Properties { get; } = MessageProperties.Empty;
+    public MessageProperties Properties { get; } = properties ?? MessageProperties.Empty;
+    public bool Completed { get; private set; }
+    public bool DeadLettered { get; private set; }
+    public string? DeadLetterReason { get; private set; }
+
+    public Task Complete(CancellationToken cancellationToken = default)
+    {
+        Completed = true;
+        return Task.CompletedTask;
+    }
+
+    public Task DeadLetter(string? reason = null, CancellationToken cancellationToken = default)
+    {
+        DeadLettered = true;
+        DeadLetterReason = reason;
+        return Task.CompletedTask;
+    }
 }
 
 internal class FakeServiceScopeFactory<TService>(TService service) : IServiceScopeFactory

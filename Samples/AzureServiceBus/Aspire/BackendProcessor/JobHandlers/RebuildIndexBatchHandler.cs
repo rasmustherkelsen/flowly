@@ -4,8 +4,8 @@ using MessageContracts;
 
 namespace BackendProcessor.JobHandlers;
 
-[BatchProcessing(100, maxWaitTimeInSeconds: 30)]
-public class RebuildIndexBatchHandler : BatchMessageHandlerBase<RebuildIndexMessage>
+[BatchProcessing(maxMessagesBeforeProcessing: 100, maxWaitTimeInSeconds: 30)]
+class RebuildIndexBatchHandler : BatchMessageHandlerBase<RebuildIndexMessage>
 {
     public override async Task Handle(IBatchMessageContext<RebuildIndexMessage> messageContext)
     {        

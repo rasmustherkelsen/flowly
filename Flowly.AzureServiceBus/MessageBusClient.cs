@@ -1,12 +1,14 @@
+using System.Collections.Concurrent;
 using Azure.Messaging.ServiceBus;
+using Azure.Messaging.ServiceBus.Administration;
 using Flowly.MessagingAbstractions;
 
 namespace Flowly.AzureServiceBus;
 
-internal class MessageBusClient(ServiceBusClient serviceBusClient) : IMessageBusClient
+internal class MessageBusClient(ServiceBusClient serviceBusClient, ServiceBusAdministrationClient administrationClient) : IMessageBusClient
 {
-    private readonly Dictionary<string, IMessageBusSender> _serviceBusSenders = new();
-    
+    private readonly ConcurrentDictionary<string, IMessageBusSender> _serviceBusSenders = new();
+
     public IMessageBusReceiver CreateReceiver(string queueName)
     {
         var receiver = serviceBusClient.CreateReceiver(queueName);
@@ -19,10 +21,10 @@ internal class MessageBusClient(ServiceBusClient serviceBusClient) : IMessageBus
         {
             MaxConcurrentCalls = options.MaxConcurrentCalls,
             MaxAutoLockRenewalDuration = TimeSpan.FromHours(6),
-            AutoCompleteMessages = true,
+            AutoCompleteMessages = false,
             ReceiveMode = options.ReceiveMode == MessageBusReceiveMode.ReceiveAndDelete ? ServiceBusReceiveMode.ReceiveAndDelete : ServiceBusReceiveMode.PeekLock
         };
-        
+
         return new MessageBusProcessor<TMessage>(serviceBusClient.CreateProcessor(queueName, serviceBusProcessorOptions));
     }
 
@@ -35,18 +37,26 @@ internal class MessageBusClient(ServiceBusClient serviceBusClient) : IMessageBus
         };
 
         serviceBusSessionProcessorOptions.SessionIds.Add(laneFilter);
-        
+
         return new ExecutionLaneProcessor(serviceBusClient.CreateSessionProcessor(queueName, serviceBusSessionProcessorOptions));
     }
 
-    public IMessageBusSender CreateMessageBusSender(string queueName)
+    public IMessageBusSender CreateMessageBusSender(string queueName) 
+        => _serviceBusSenders.GetOrAdd(queueName, q => new MessageBusSender(serviceBusClient.CreateSender(q)));
+
+    public IDeadLetterReceiver CreateDeadLetterReceiver(string queueName)
     {
-        if(_serviceBusSenders.TryGetValue(queueName, out var busSender))
-            return busSender;
+        var receiver = serviceBusClient.CreateReceiver(queueName, new ServiceBusReceiverOptions
+        {
+            SubQueue = SubQueue.DeadLetter
+        });
         
-        var sender = serviceBusClient.CreateSender(queueName);
-        var messageBusSender = new MessageBusSender(sender);
-        _serviceBusSenders[queueName] = messageBusSender;
-        return messageBusSender;
+        return new ServiceBusDeadLetterReceiver(receiver);
+    }
+
+    public async Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default)
+    {
+        var properties = await administrationClient.GetQueueRuntimePropertiesAsync(queueName, cancellationToken);
+        return properties.Value.DeadLetterMessageCount;
     }
 }

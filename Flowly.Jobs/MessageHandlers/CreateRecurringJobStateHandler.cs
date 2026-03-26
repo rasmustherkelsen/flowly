@@ -8,6 +8,11 @@ namespace Flowly.Jobs.MessageHandlers;
 
 internal class CreateRecurringJobStateHandler(IJobStateRepository jobStateRepository, ICustomJobStateRepository customJobStateRepository) : MessageHandlerBase<CreateRecurringJobState>
 {
+    public override void Configure(HandlerQueueOptions options)
+    {
+        options.MaxConcurrentCalls = Environment.ProcessorCount;
+    }
+
     public override async Task Handle(IMessageContext<CreateRecurringJobState> messageContext)
     {
         var newJobId = new JobId();

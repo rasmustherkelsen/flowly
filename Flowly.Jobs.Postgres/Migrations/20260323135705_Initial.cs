@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -7,7 +7,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Flowly.Jobs.Postgres.Migrations
 {
     /// <inheritdoc />
-    public partial class JobsDatabase : Migration
+    public partial class Initial : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -63,7 +63,8 @@ namespace Flowly.Jobs.Postgres.Migrations
                     Completed = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
                     FaultReason = table.Column<string>(type: "character varying(1024)", maxLength: 1024, nullable: true),
                     IsRecurringJob = table.Column<bool>(type: "boolean", nullable: false),
-                    CronExpression = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true)
+                    CronExpression = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
+                    RetryAttempt = table.Column<int>(type: "integer", nullable: false)
                 },
                 constraints: table =>
                 {

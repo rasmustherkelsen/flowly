@@ -14,9 +14,7 @@ public static class AzureServiceBusRegistration
         flowlyBuilder.Services.AddSingleton(sp =>
         {
             var configuration = sp.GetRequiredService<IConfiguration>();
-            var connectionString = configuration.GetConnectionString(connectionStringName)
-                                   ?? throw new InvalidOperationException(
-                                       $"Connection string '{connectionStringName}' not found.");
+            var connectionString = configuration.GetConnectionString(connectionStringName) ?? throw new InvalidOperationException($"Connection string '{connectionStringName}' not found.");
 
             return new ServiceBusClient(connectionString);
         });
@@ -24,9 +22,7 @@ public static class AzureServiceBusRegistration
         flowlyBuilder.Services.AddSingleton(sp =>
         {
             var configuration = sp.GetRequiredService<IConfiguration>();
-            var connectionString = configuration.GetConnectionString(connectionStringName)
-                                   ?? throw new InvalidOperationException(
-                                       $"Connection string '{connectionStringName}' not found.");
+            var connectionString = configuration.GetConnectionString(connectionStringName) ?? throw new InvalidOperationException($"Connection string '{connectionStringName}' not found.");
 
             return new ServiceBusAdministrationClient(connectionString);
         });

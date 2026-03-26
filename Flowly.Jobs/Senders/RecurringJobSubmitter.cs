@@ -1,5 +1,4 @@
 ﻿using Flowly.Jobs.Model;
-using Flowly.MessageInfrastructure;
 using Flowly.MessagingAbstractions;
 
 namespace Flowly.Jobs.Senders;

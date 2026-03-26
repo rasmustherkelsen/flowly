@@ -6,7 +6,7 @@ namespace Flowly.AzureServiceBus;
 internal class MessageBusProcessor<TMessage>(ServiceBusProcessor processor) : IMessageBusProcessor<TMessage>
 {
     private readonly Lock _processMessageLock = new();
-    private readonly Func<ProcessMessageEventArgs, IReceivedMessage<TMessage>> _toReceivedMessage = args => new ReceivedMessage<TMessage>(args.Message);
+    private readonly Func<ProcessMessageEventArgs, IReceivedMessage<TMessage>> _toReceivedMessage = args => new ReceivedMessage<TMessage>(args);
     private readonly Dictionary<Func<IReceivedMessage<TMessage>, CancellationToken, Task>, Func<ProcessMessageEventArgs, Task>> _processMessageHandlerMap = new();
    
     private readonly Lock _processErrorLock = new();

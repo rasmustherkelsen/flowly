@@ -3,7 +3,7 @@
 namespace BackendProcessor.JobHandlers;
 
 [RecurringJob("Import Frequent Data", "*/10 * * * * *")]
-public class FrequentlyRecurringHandler(ILogger<FrequentlyRecurringHandler> logger) : RecurringJobHandlerBase
+class FrequentlyRecurringHandler(ILogger<FrequentlyRecurringHandler> logger) : RecurringJobHandlerBase
 {
     public override async Task Handle(CancellationToken cancellationToken)
     {

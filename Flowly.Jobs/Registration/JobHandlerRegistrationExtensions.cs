@@ -10,7 +10,7 @@ namespace Flowly.Jobs.Registration;
 
 public static class JobHandlerRegistrationExtensions
 {
-    public static IFlowlyBuilder AddJobHandler<TMessage, THandler>(this IFlowlyBuilder flowlyBuilder, int maxConcurrentCalls = 1)
+    public static IFlowlyBuilder AddJobHandler<TMessage, THandler>(this IFlowlyBuilder flowlyBuilder)
         where THandler : JobMessageHandlerBase<TMessage>
         where TMessage : class, IJobMessage
     {
@@ -24,12 +24,10 @@ public static class JobHandlerRegistrationExtensions
             resolvedQueueOptions.DeadLetterOnMessageExpiration,
             resolvedQueueOptions.LockDuration));
 
-        var services = flowlyBuilder.Services
+        flowlyBuilder.Services
             .AddScoped<THandler>()
-            .AddScoped<JobMessageHandlerBase<TMessage>, THandler>();
-
-        services
-            .AddSingleton(new HandlerSettings<TMessage>(resolvedQueueName, typeof(THandler).Name, true, maxConcurrentCalls))
+            .AddScoped<JobMessageHandlerBase<TMessage>, THandler>()
+            .AddSingleton(new HandlerSettings<TMessage>(resolvedQueueName, typeof(THandler).Name, true, resolvedQueueOptions.MaxConcurrentCalls, resolvedQueueOptions.MaxRetries, resolvedQueueOptions.RetryDelaySeconds))
             .AddHostedService<JobHandlerBackgroundService<TMessage>>();
             
         flowlyBuilder.AddJobStateSubmitters();

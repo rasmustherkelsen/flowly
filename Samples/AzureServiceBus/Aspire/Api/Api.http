@@ -7,10 +7,10 @@ Accept: application/json
 
 ### Process Order
 
-GET {{Api_HostAddress}}/process-order?customerId=4bdbb380-78f4-44bc-b970-7a4da1a8d00e&messageCount=10
+GET {{Api_HostAddress}}/process-order?customerId=4bdbb380-78f4-44bc-b970-7a4da1a8d00e&messageCount=100
 Accept: application/json
 
 ### Some Query
 
-GET {{Api_HostAddress}}/some-query?messageCount=10
+GET {{Api_HostAddress}}/some-query?messageCount=100
 Accept: application/json

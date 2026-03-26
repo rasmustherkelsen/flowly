@@ -1,12 +1,5 @@
 namespace Flowly.MessagingAbstractions;
 
-public interface IReceivedMessage
-{
-    public TBody GetBody<TBody>();
-    
-    public MessageProperties Properties { get; }
-}
-
 public interface IExecutionLaneProcessor : IAsyncDisposable
 {
     event Func<IReceivedMessage,CancellationToken, Task> ProcessMessage;

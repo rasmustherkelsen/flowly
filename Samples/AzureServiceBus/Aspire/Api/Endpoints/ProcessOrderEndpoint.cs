@@ -4,14 +4,10 @@ using MessageContracts;
 
 namespace Api.Endpoints;
 
-sealed class ProcessOrderRequest
+class ProcessOrderEndpoint : Endpoint<ProcessOrderEndpoint.ProcessOrderRequest>
 {
-    public Guid CustomerId { get; set; }
-    public int? MessageCount { get; set; }
-}
+    internal record ProcessOrderRequest(Guid CustomerId, int? MessageCount);
 
-sealed class ProcessOrderEndpoint : Endpoint<ProcessOrderRequest>
-{
     public IJobMessageSender MessageSender { get; set; } = null!;
 
     public override void Configure()

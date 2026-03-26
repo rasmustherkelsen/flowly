@@ -76,6 +76,7 @@ internal class JobStateRepository(IDbContextFactory<JobStateDataContext> jobStat
             case JobState.Started:
                 job.Started = updateJobState.TimeStamp;
                 job.Completed = null;
+                job.RetryAttempt = updateJobState.RetryAttempt;
                 break;
 
             case JobState.Completed:

@@ -29,8 +29,7 @@ public abstract class FlowlyDesignTimeFactory
         return builder;
     }
 
-    public static IReadOnlyList<DeferredQueueRegistration> DiscoverQueues<TConfig>()
-        where TConfig : FlowlyDesignTimeFactory, IFlowlyConfiguration, new()
+    public static IReadOnlyList<DeferredQueueRegistration> DiscoverQueues<TConfig>() where TConfig : FlowlyDesignTimeFactory, IFlowlyConfiguration, new()
         => DiscoverQueues(typeof(TConfig));
 
     public static IReadOnlyList<DeferredQueueRegistration> DiscoverQueues(Type configType)

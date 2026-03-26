@@ -7,7 +7,7 @@ namespace Flowly.MessageInfrastructure.Registration;
 
 public static class MessageHandlerRegistrationExtensions
 {
-    public static IFlowlyBuilder AddMessageHandler<TMessage, THandler>(this IFlowlyBuilder flowlyBuilder, int maxConcurrentCalls = 1)
+    public static IMessageHandlerBuilder<TMessage> AddMessageHandler<TMessage, THandler>(this IFlowlyBuilder flowlyBuilder)
         where THandler : MessageHandlerBase<TMessage>
         where TMessage : class
     {
@@ -26,10 +26,10 @@ public static class MessageHandlerRegistrationExtensions
             .AddScoped<MessageHandlerBase<TMessage>, THandler>();
 
         services
-            .AddSingleton(new HandlerSettings<TMessage>(resolvedQueueName, typeof(THandler).Name, false, maxConcurrentCalls))
+            .AddSingleton(new HandlerSettings<TMessage>(resolvedQueueName, typeof(THandler).Name, false, resolvedQueueOptions.MaxConcurrentCalls, resolvedQueueOptions.MaxRetries, resolvedQueueOptions.RetryDelaySeconds))
             .AddHostedService<ServiceBusMessageHandlerBackgroundService<TMessage>>();
 
-        return flowlyBuilder;
+        return new MessageHandlerBuilder<TMessage>(flowlyBuilder, resolvedQueueName);
     }
 
     public static IFlowlyBuilder AddBatchMessageHandler<TMessage, THandler>(this IFlowlyBuilder flowlyBuilder)

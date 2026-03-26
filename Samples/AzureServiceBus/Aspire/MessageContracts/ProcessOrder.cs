@@ -4,5 +4,5 @@ namespace MessageContracts;
 
 public record ProcessOrder(Guid ImportDefinitionId, string Description) : IJobMessage
 {
-    public string JobTypeName => "Stitching Job";
+    public string JobTypeName => "Process Order";
 }

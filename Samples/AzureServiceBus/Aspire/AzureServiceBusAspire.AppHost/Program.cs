@@ -7,6 +7,7 @@ var sqlServer = builder
     .WithLifetime(ContainerLifetime.Persistent);
 
 var flowlyJobsDatabase = sqlServer.AddDatabase("FlowlyJobs");
+var flowlyDeadLettersDatabase = sqlServer.AddDatabase("FlowlyDeadLetters");
 
 var azureServiceBus = builder
     .AddAzureServiceBus("EmulatorNamespace")
@@ -23,12 +24,13 @@ azureServiceBus.AddFlowly(backendProcessor);
 backendProcessor
     .WithReference(azureServiceBus)
     .WithReference(flowlyJobsDatabase)
+    .WithReference(flowlyDeadLettersDatabase)
     .WaitFor(azureServiceBus)
-    .WaitFor(flowlyJobsDatabase);
+    .WaitFor(flowlyJobsDatabase)
+    .WaitFor(flowlyDeadLettersDatabase);
 
 builder.AddProject<Projects.Api>("api")
     .WithReference(azureServiceBus)
-    .WithReference(sqlServer)
     .WaitFor(azureServiceBus);
 
 builder.Build().Run();

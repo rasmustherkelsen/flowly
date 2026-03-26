@@ -5,7 +5,6 @@ using Flowly.Jobs.MessageHandlers;
 using Flowly.Jobs.Messages;
 using Flowly.Jobs.Repositories;
 using Flowly.Jobs.Senders;
-using Flowly.Jobs.Services;
 using Flowly.MessageInfrastructure.Registration;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -45,7 +44,7 @@ public static class JobStateTrackerRegistrationExtension
                 .AddMessageHandler<UpdateCustomJobState, UpdateCustomJobStateHandler>()
                 .AddMessageHandler<JobFailed, JobFailedHandler>()
                 .AddMessageHandler<StartRecurringJobMessage, StartRecurringJobMessageHandler>()
-                .AddMessageHandler<CreateRecurringJobState, CreateRecurringJobStateHandler>(Environment.ProcessorCount)
+                .AddMessageHandler<CreateRecurringJobState, CreateRecurringJobStateHandler>()
                 .AddMessageHandler<JobIsAlive, JobIsAliveMessageHandler>();
         }
 

@@ -9,4 +9,8 @@ public interface IMessageBusClient
     IExecutionLaneProcessor CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options);
 
     IMessageBusSender CreateMessageBusSender(string queueName);
+
+    IDeadLetterReceiver CreateDeadLetterReceiver(string queueName);
+
+    Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default);
 }

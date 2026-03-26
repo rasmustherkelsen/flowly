@@ -15,9 +15,12 @@ public static class MessageQueueNameResolver
     private static string DeriveQueueName(Type messageType)
     {
         var name = messageType.Name;
+        
         if (name.EndsWith("Message", StringComparison.Ordinal))
             name = name[..^"Message".Length];
+        
         var kebab = Regex.Replace(name, @"(?<=[a-z])(?=[A-Z])", "-");
+        
         return kebab.ToLowerInvariant();
     }
 }

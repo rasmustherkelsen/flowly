@@ -27,7 +27,12 @@ dotnet test --filter "FullyQualifiedName~MessageQueueNameResolverTests+Resolve"
 - `Flowly/` — core abstractions, registration, background services
 - `Flowly.AzureServiceBus/` — Azure Service Bus transport
 - `Flowly.AzureServiceBus.Aspire/` — Aspire AppHost integration (emulator queue registration)
-- `Flowly.Jobs/` — job state tracking (EF Core/SQL Server) and CRON scheduling
+- `Flowly.Jobs/` — job state tracking (EF Core) and CRON scheduling
+- `Flowly.Jobs.SqlServer/` — SQL Server backend for job state tracking
+- `Flowly.Jobs.Postgres/` — PostgreSQL backend for job state tracking
+- `Flowly.DeadLetters/` — dead letter tracking core (ingestion background service, EF Core model)
+- `Flowly.DeadLetters.SqlServer/` — SQL Server backend for dead letter tracking
+- `Flowly.DeadLetters.Postgres/` — PostgreSQL backend for dead letter tracking
 - `Flowly.Tool/` — `dotnet flowly` CLI tool
 - `Samples/AzureServiceBus/Aspire/` — reference Aspire sample
 
@@ -45,8 +50,10 @@ public class MyConfig : FlowlyDesignTimeFactory, IFlowlyConfiguration
     public void Configure(IFlowlyBuilder builder) =>
         builder
             .UseAzureServiceBus("AzureServiceBus")
-            .AddJobStateTracking("JobsDb")        // optional
+            .AddSqlServerJobStateTracking("JobsDb")             // optional
+            .AddSqlServerDeadLetterTracking("DeadLettersDb")    // optional
             .AddMessageHandler<MyMsg, MyHandler>()
+            .WithDeadLetterTracking()                           // opt-in per handler
             .AddMessageSubmitter<MyMsg>();
 }
 ```
@@ -55,12 +62,12 @@ Registered in `Program.cs` via `services.AddFlowly<MyConfig>(configuration)` or 
 
 ### Handler Types
 
-| Base class | Use when | Registration |
-|---|---|---|
-| `MessageHandlerBase<T>` | One message at a time | `.AddMessageHandler<T, TH>(maxConcurrent)` |
-| `BatchMessageHandlerBase<T>` | Multiple messages together | `.AddBatchMessageHandler<T, TH>()` |
-| `JobMessageHandlerBase<T>` | Job with state tracking (`T : IJobMessage`) | `.AddJobHandler<T, TH>(maxConcurrent)` |
-| `RecurringJobHandlerBase` | CRON-scheduled background job | `.AddRecurringJob<TH>()` |
+| Base class | Use when | Supports retry | Supports DLQ tracking | Registration |
+|---|---|---|---|---|
+| `MessageHandlerBase<T>` | One message at a time | Yes | Yes | `.AddMessageHandler<T, TH>()` |
+| `BatchMessageHandlerBase<T>` | Multiple messages together | No | No | `.AddBatchMessageHandler<T, TH>()` |
+| `JobMessageHandlerBase<T>` | Job with state tracking (`T : IJobMessage`) | Yes | No | `.AddJobHandler<T, TH>()` |
+| `RecurringJobHandlerBase` | CRON-scheduled background job | No | No | `.AddRecurringJob<TH>()` |
 
 ### Queue Names
 
@@ -71,9 +78,17 @@ Owned by the **message contract**, not the handler. Auto-generated: PascalCase �
 - `IMessageSender.Send(msg)` — fire and forget (requires `.AddMessageSubmitter<T>()`)
 - `IJobMessageSender.QueueJob(msg)` — returns `Guid` job ID (requires `.AddJobSubmitter<T>()`)
 
+### Retry Policy
+
+Apply `[RetryPolicy(maxRetries, delaySeconds)]` to any `MessageHandlerBase<T>` or `JobMessageHandlerBase<T>`. On failure, Flowly re-publishes the message to the same queue with a scheduled enqueue time and increments a `flowly-retry-count` application property. After all retries are exhausted, normal handlers dead-letter the message; job handlers transition the job to `Failed`.
+
 ### Job State Tracking (`Flowly.Jobs/`)
 
-SQL Server via EF Core. Tables: `Job`, `JobAliveStatus`, `CustomJobState`, `JobType`. Job lifecycle: `Created → Started → Completed / Failed`. Requires `.AddJobStateTracking("ConnectionString")`.
+SQL Server or PostgreSQL via EF Core. Tables: `Job`, `JobAliveStatus`, `CustomJobState`, `JobType`. Job lifecycle: `Created → Started → Completed / Failed`. The `Job` table includes a `RetryAttempt` column tracking the current retry number. Requires `.AddSqlServerJobStateTracking()` or `.AddPostgresJobStateTracking()`.
+
+### Dead Letter Tracking (`Flowly.DeadLetters/`)
+
+Opt-in per handler. The framework registers a background service per opted-in queue that reads from the broker's dead letter sub-queue and persists records to a DB table (`DeadLetters`). Fields stored: raw message body, raw application properties (JSON), broker-provided reason and error description, timestamps, and status (`Pending / Requeued / Discarded`). Only `MessageHandlerBase<T>` handlers support this. Requires `.AddSqlServerDeadLetterTracking()` or `.AddPostgresDeadLetterTracking()`.
 
 ### Recurring Jobs
 
@@ -126,7 +141,7 @@ azureServiceBus.AddFlowly(backendProcessor);   // loads assembly via AssemblyLoa
 
 backendProcessor
     .WithReference(azureServiceBus)
-    .WaitFor(azureServiceBus);                       // waits for the service bus (and all its queues) to be ready
+    .WaitFor(azureServiceBus);                 // waits for the service bus (and all its queues) to be ready
 ```
 
 Reference the package with `IsAspireProjectResource="false"` in the AppHost `.csproj`. See `Samples/AzureServiceBus/Aspire/Flowly.AppHost/` for a complete example.

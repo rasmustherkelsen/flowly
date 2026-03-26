@@ -3,10 +3,6 @@ using System.Runtime.CompilerServices;
 
 namespace Flowly.MessageInfrastructure.Receivers;
 
-public sealed record ResolvedBatchMessageHandlerOptions(
-    int MaxMessagesBeforeProcessing,
-    TimeSpan MaxWaitTime);
-
 public static class BatchMessageHandlerOptionsResolver
 {
     public const int DefaultMaxMessagesBeforeProcessing = 100;

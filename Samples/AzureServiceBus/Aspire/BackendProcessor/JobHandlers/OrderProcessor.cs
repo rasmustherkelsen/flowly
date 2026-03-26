@@ -1,10 +1,12 @@
 using Flowly.Jobs.Model;
 using Flowly.Jobs.Receivers;
+using Flowly.MessageInfrastructure.Receivers;
 using MessageContracts;
 
 namespace BackendProcessor.JobHandlers;
 
-public class OrderProcessor(ILogger<OrderProcessor> logger) : JobMessageHandlerBase<ProcessOrder>
+[MaxConcurrentCalls(5)]
+class OrderProcessor(ILogger<OrderProcessor> logger) : JobMessageHandlerBase<ProcessOrder>
 {
     public override async Task Handle(IJobMessageContext<ProcessOrder> messageContext)
     {

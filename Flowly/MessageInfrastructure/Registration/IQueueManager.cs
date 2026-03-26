@@ -1,11 +1,10 @@
 using Flowly.MessagingAbstractions;
 
-namespace Flowly.MessageInfrastructure.Registration
+namespace Flowly.MessageInfrastructure.Registration;
+
+public interface IQueueManager
 {
-    public interface IQueueManager
-    {
-        void RegisterQueue(DeferredQueueRegistration registration);
+    void RegisterQueue(DeferredQueueRegistration registration);
         
-        IReadOnlyList<IQueueDescription> GetRegisteredQueues();
-    }
+    IReadOnlyList<IQueueDescription> GetRegisteredQueues();
 }

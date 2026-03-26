@@ -18,6 +18,7 @@
     <ProjectReference Include="..\AzureServiceBusAspire.ServiceDefaults\AzureServiceBusAspire.ServiceDefaults.csproj" />
     <ProjectReference Include="..\..\..\..\Flowly.AzureServiceBus\Flowly.AzureServiceBus.csproj" />
     <ProjectReference Include="..\..\..\..\Flowly.Jobs.SqlServer\Flowly.Jobs.SqlServer.csproj" />
+    <ProjectReference Include="..\..\..\..\Flowly.DeadLetters.SqlServer\Flowly.DeadLetters.SqlServer.csproj" />
   </ItemGroup>
 
 </Project>

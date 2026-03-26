@@ -1,6 +1,4 @@
-﻿using Flowly.MessageInfrastructure.Model;
-
-namespace Flowly.MessageInfrastructure.Senders;
+﻿namespace Flowly.MessageInfrastructure.Senders;
 
 public interface IMessageSender
 {

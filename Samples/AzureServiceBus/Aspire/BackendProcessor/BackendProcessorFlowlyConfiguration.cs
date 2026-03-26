@@ -1,5 +1,7 @@
 using BackendProcessor.JobHandlers;
 using Flowly.AzureServiceBus;
+using Flowly.DeadLetters.Registration;
+using Flowly.DeadLetters.SqlServer.Registration;
 using Flowly.Jobs.Registration;
 using Flowly.Jobs.SqlServer.Registration;
 using Flowly.MessageInfrastructure.Registration;
@@ -14,10 +16,12 @@ public class BackendProcessorFlowlyConfiguration : FlowlyDesignTimeFactory, IFlo
         builder
             .UseAzureServiceBus("EmulatorNamespace")
             .AddSqlServerJobStateTracking(builder.Configuration.GetConnectionString("FlowlyJobs")!)
-            .AddJobHandler<ProcessOrder, OrderProcessor>(maxConcurrentCalls: 5)
+            .AddSqlServerDeadLetterTracking(builder.Configuration.GetConnectionString("FlowlyDeadLetters")!)
+            .AddJobHandler<ProcessOrder, OrderProcessor>()
             .AddBatchMessageHandler<RebuildIndexMessage, RebuildIndexBatchHandler>()
             .AddRecurringJob<RecurringImportHandler>()
             .AddRecurringJob<FrequentlyRecurringHandler>()
-            .AddMessageHandler<SomeQueryMessage, SomeQueryProcessor>(maxConcurrentCalls: 2);
+            .AddMessageHandler<SomeQueryMessage, SomeQueryProcessor>()
+            .WithDeadLetterTracking();
     }
 }

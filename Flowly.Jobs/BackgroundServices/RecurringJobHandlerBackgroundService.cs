@@ -33,7 +33,9 @@ internal class RecurringJobHandlerBackgroundService<TRecurringJobHandler> : Back
         }
 
         public string JobDescription { get; }
+        
         public string SessionName { get; }
+        
         public string CronExpression { get; }
     }
 

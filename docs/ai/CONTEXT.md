@@ -17,19 +17,22 @@ This document gives an AI assistant the context needed to work effectively in th
 
 ```
 /
-├── Flowly/                      # Core abstractions and infrastructure
-├── Flowly.AzureServiceBus/      # Azure Service Bus transport implementation
-├── Flowly.Jobs/                 # Job tracking, CRON scheduling, job state DB
-├── Flowly.Jobs.SqlServer/       # SQL Server backend for job state tracking
-├── Flowly.Jobs.Postgres/        # PostgreSQL backend for job state tracking
-├── Flowly.Tool/                 # dotnet CLI tool (queue discovery, code gen)
+├── Flowly/                          # Core abstractions and infrastructure
+├── Flowly.AzureServiceBus/          # Azure Service Bus transport implementation
+├── Flowly.Jobs/                     # Job tracking, CRON scheduling, job state DB
+├── Flowly.Jobs.SqlServer/           # SQL Server backend for job state tracking
+├── Flowly.Jobs.Postgres/            # PostgreSQL backend for job state tracking
+├── Flowly.DeadLetters/              # Dead letter tracking core (ingestion, EF Core model)
+├── Flowly.DeadLetters.SqlServer/    # SQL Server backend for dead letter tracking
+├── Flowly.DeadLetters.Postgres/     # PostgreSQL backend for dead letter tracking
+├── Flowly.Tool/                     # dotnet CLI tool (queue discovery, code gen)
 ├── Samples/
 │   └── AzureServiceBus/
-│       └── Aspire/              # Reference implementation using .NET Aspire
+│       └── Aspire/                  # Reference implementation using .NET Aspire
 ├── docs/
-│   ├── index.md                 # GitHub Pages landing page
+│   ├── index.md                     # End-user documentation
 │   └── ai/
-│       └── CONTEXT.md           # This file
+│       └── CONTEXT.md               # This file
 └── README.md
 ```
 
@@ -47,9 +50,11 @@ public class MyFlowlyConfig : FlowlyDesignTimeFactory, IFlowlyConfiguration
     public void Configure(IFlowlyBuilder builder)
     {
         builder
-            .UseAzureServiceBus("AzureServiceBus")              // transport
-            .AddJobStateTracking("JobsDb")                      // optional job DB
+            .UseAzureServiceBus("AzureServiceBus")                       // transport
+            .AddSqlServerJobStateTracking("JobsDb")                      // optional job DB
+            .AddSqlServerDeadLetterTracking("DeadLettersDb")             // optional DLQ DB
             .AddMessageHandler<MyMsg, MyHandler>()
+            .WithDeadLetterTracking()                                    // opt-in per handler
             .AddBatchMessageHandler<MyMsg, MyBatchHandler>()
             .AddRecurringJob<MyScheduledJob>()
             .AddMessageSubmitter<MyMsg>()
@@ -73,20 +78,28 @@ The queue name is derived from the **message type**, not the handler. Place `[Qu
 #### Regular (one message at a time)
 
 ```csharp
+[MaxConcurrentCalls(5)]
 [DefaultMessageTimeToLive("1.00:00:00")]
 [LockDuration("00:05:00")]
+[RetryPolicy(maxRetries: 3, delaySeconds: 30)]
 public class MyHandler : MessageHandlerBase<MyMessage>
 {
     public override async Task Handle(IMessageContext<MyMessage> ctx)
     {
         var msg = ctx.Message;
         var ct  = ctx.CancellationToken;
-        // Throw to dead-letter. Return to complete.
+        // Throw to trigger retry / eventual dead-letter. Return to complete.
     }
 }
 ```
 
-Register: `.AddMessageHandler<MyMessage, MyHandler>(maxConcurrentCalls: 5)`
+Register: `.AddMessageHandler<MyMessage, MyHandler>()`
+
+To opt into dead letter tracking:
+```csharp
+builder.AddMessageHandler<MyMessage, MyHandler>()
+       .WithDeadLetterTracking()
+```
 
 #### Batch (multiple messages at a time)
 
@@ -106,6 +119,8 @@ Register: `.AddBatchMessageHandler<MyMessage, MyBatchHandler>()`
 #### Job message handler (with state tracking)
 
 ```csharp
+[MaxConcurrentCalls(5)]
+[RetryPolicy(maxRetries: 3, delaySeconds: 60)]
 public class MyJobHandler : JobMessageHandlerBase<MyJobMessage>
 {
     public override async Task Handle(IJobMessageContext<MyJobMessage> ctx)
@@ -115,7 +130,9 @@ public class MyJobHandler : JobMessageHandlerBase<MyJobMessage>
 }
 ```
 
-Register: `.AddJobHandler<MyJobMessage, MyJobHandler>(maxConcurrentCalls: 5)`
+Register: `.AddJobHandler<MyJobMessage, MyJobHandler>()`
+
+Job handlers support retry but NOT dead letter tracking. The job DB record is the failure artifact.
 
 ---
 
@@ -157,10 +174,26 @@ public class NightlyCleanupJob : RecurringJobHandlerBase
 - Register: `.AddRecurringJob<NightlyCleanupJob>()`
 - Scheduling: `RecurringJobSchedulerBackgroundService` polls every 5 seconds, calls `IsDue()`, and submits via message queue
 - Execution uses session-based (`ExecutionLane`) processing to prevent parallel runs
+- Recurring jobs do NOT support retry or dead letter tracking — the scheduler re-triggers on the next CRON tick
 
 ---
 
-### 5. Job State Tracking
+### 5. Retry Policy
+
+Apply `[RetryPolicy(maxRetries, delaySeconds)]` to any `MessageHandlerBase<T>` or `JobMessageHandlerBase<T>`. Alternatively, set via `Configure(HandlerQueueOptions options)`.
+
+**How it works:**
+- On exception: if `RetryCount < MaxRetries`, Flowly re-publishes the message to the same queue with `RetryCount + 1` in the `flowly-retry-count` application property and a `ScheduledEnqueueTime` of `now + delaySeconds`
+- The original message is explicitly completed (ACKed)
+- On final failure (retries exhausted): normal handlers dead-letter the message; job handlers send `JobFailed` and complete the message
+
+**Job retry state:** The `Job` DB row stays in `Started` during retries. The `RetryAttempt` column is updated on each attempt. On exhaustion, the job transitions to `Failed`.
+
+Retry logic lives in the Flowly core layer (`ServiceBusMessageHandlerBackgroundServiceBase`) and is transport-agnostic. The transport is responsible for honoring `ScheduledEnqueueTime` on send (ASB: `ServiceBusMessage.ScheduledEnqueueTime`).
+
+---
+
+### 6. Job State Tracking
 
 Job state tracking requires a database backend. Register it using the provider-specific extension method:
 
@@ -178,12 +211,14 @@ Both accept an optional `enableMigrations` parameter (default `true`) that runs 
 
 | Table | Purpose |
 |---|---|
-| `Job` | Core job record (state, timestamps, fault reason, CRON info) |
+| `Job` | Core job record (state, timestamps, fault reason, retry attempt, CRON info) |
 | `JobAliveStatus` | Heartbeat for hung-job detection |
 | `CustomJobState` | Arbitrary JSON progress data |
 | `JobType` | Lookup table for job type names |
 
 **Job lifecycle states:** `Created → Started → Completed / Failed`
+
+**`Job.RetryAttempt`:** Updated to the current retry count when `UpdateJobState(Started)` is processed.
 
 **Maintenance (auto-registered recurring jobs):**
 - `RemoveOldJobsRecurringJob` — purges old completed/failed jobs
@@ -191,7 +226,45 @@ Both accept an optional `enableMigrations` parameter (default `true`) that runs 
 
 ---
 
-### 6. Queue Configuration
+### 7. Dead Letter Tracking
+
+Dead letter tracking is opt-in per handler and requires a database backend.
+
+```csharp
+// 1. Register persistence layer once
+builder.AddSqlServerDeadLetterTracking("ConnectionString");
+// or
+builder.AddPostgresDeadLetterTracking("ConnectionString");
+
+// 2. Opt individual handlers in
+builder.AddMessageHandler<MyMsg, MyHandler>()
+       .WithDeadLetterTracking()
+```
+
+Calling `.WithDeadLetterTracking()` without first registering a persistence layer throws `InvalidOperationException` at startup.
+
+**How it works:** For each opted-in queue, a `DeadLetterIngestionBackgroundService` reads from the broker's dead letter sub-queue, persists to the DB, then explicitly completes the message. On DB failure the message is abandoned and will reappear on the next poll.
+
+**Only `MessageHandlerBase<T>` handlers support dead letter tracking.** Job handlers use the job DB as the failure record. Recurring jobs re-trigger via the scheduler.
+
+**Database entities (EF Core):**
+
+| Column | Type | Notes |
+|---|---|---|
+| `Id` | `Guid` | Primary key |
+| `QueueName` | `string(200)` | Source queue name |
+| `MessageBody` | `string` | Raw body, never deserialized at ingestion |
+| `MessageProperties` | `string` | JSON of all application properties |
+| `DeadLetteredAt` | `DateTimeOffset` | Broker-reported enqueue time |
+| `DeadLetterReason` | `string(500)` | Broker-provided reason |
+| `DeadLetterErrorDescription` | `string(2000)` | Broker-provided detail |
+| `Status` | enum | `Pending / Requeued / Discarded` |
+| `RequeuedAt` | `DateTimeOffset?` | Set when status → Requeued |
+| `RequeuedBy` | `string(200)?` | Audit field |
+
+---
+
+### 8. Queue Configuration
 
 #### Queue name resolution
 
@@ -208,15 +281,6 @@ Examples of auto-generation:
 | `SomeQueryMessage` | `some-query` |
 | `RebuildSearchIndexMessage` | `rebuild-search-index` |
 
-```csharp
-// Explicit name — use when auto-generation would produce the wrong name
-[QueueName("orders-v2")]
-public record ProcessOrder(Guid Id);
-
-// No attribute needed — auto-generates "process-order"
-public record ProcessOrder(Guid Id);
-```
-
 #### Handler-level queue attributes
 
 These attributes go on the **handler** class and control infrastructure settings for the queue:
@@ -226,6 +290,8 @@ These attributes go on the **handler** class and control infrastructure settings
 | `[DefaultMessageTimeToLive("d.hh:mm:ss")]` | Message TTL | 1 day |
 | `[LockDuration("hh:mm:ss")]` | Peek-lock duration | 5 min |
 | `[DeadLetterOnMessageExpiration]` | Dead-letter on TTL | true |
+| `[RetryPolicy(maxRetries, delaySeconds)]` | Retry on failure | 0 retries |
+| `[MaxConcurrentCalls(n)]` | Messages processed in parallel | 1 |
 | `[BatchProcessing(max, waitSec)]` | Enable batching | — |
 | `[RecurringJob("desc", "cron")]` | CRON expression | — |
 
@@ -237,7 +303,7 @@ The Azure Service Bus implementation of `IMessagingTopologyCreator` creates queu
 
 ---
 
-### 7. Core Interface Reference
+### 9. Core Interface Reference
 
 ```
 IMessageBusClient
@@ -245,9 +311,10 @@ IMessageBusClient
   CreateReceiver<T>(queue)           → IMessageBusReceiver
   CreateMessageBusSender(queue)      → IMessageBusSender
   CreateExecutionLaneProcessor(...)  → IExecutionLaneProcessor
+  CreateDeadLetterReceiver(queue)    → IDeadLetterReceiver
 
 IMessageBusSender
-  SendMessage<T>(message, properties)
+  SendMessage<T>(message, properties)     // properties carry RetryCount + ScheduledEnqueueTime
   SendEmptyMessage(properties)
 
 IMessageBusProcessor<T>
@@ -255,13 +322,23 @@ IMessageBusProcessor<T>
   event ProcessError
   StartProcessingMessages() / StopProcessing()
 
+IReceivedMessage<T>
+  Body / Properties
+  Complete(ct)         // explicit ACK
+  DeadLetter(reason, ct)
+
+IDeadLetterReceiver
+  ReceiveMessages(max, waitTime, ct)
+  CompleteMessage(msg, ct)
+  AbandonMessage(msg, ct)
+
 IMessagingTopologyCreator
   CreateTopology(queueDescriptions)
 ```
 
 ---
 
-### 8. Flowly.Tool CLI
+### 10. Flowly.Tool CLI
 
 Installed as a .NET global tool (`dotnet flowly`). Requires a `FlowlyDesignTimeFactory` + `IFlowlyConfiguration` in the target assembly.
 
@@ -296,7 +373,7 @@ Multiple `--project` flags aggregate queues across projects.
 
 ---
 
-### 9. Local Development Setup
+### 11. Local Development Setup
 
 The `Samples/AzureServiceBus/Aspire/` folder contains a reference Aspire implementation.
 
@@ -321,55 +398,37 @@ azureServiceBus.AddFlowly(backendProcessor);  // discovers queues from the proje
 
 backendProcessor
     .WithReference(azureServiceBus)
-    .WaitFor(azureServiceBus);  // waits for the service bus (all queues ready at emulator startup)
+    .WaitFor(azureServiceBus);
 ```
 
-`AddFlowly(project)` loads the service project's built assembly via an isolated `AssemblyLoadContext`, finds the `IFlowlyConfiguration` + `FlowlyDesignTimeFactory` type, and calls `Configure()` with a placeholder configuration to collect `DeferredQueueRegistration` instances — the same mechanism used by `Flowly.Tool`. Queue properties (lock duration, TTL, dead-lettering, session) are set on the emulator queue resources via `WithProperties`.
-
-Use the standard `.WaitFor(azureServiceBus)` to wait for the emulator to be ready — the emulator creates all queues synchronously at startup from the config JSON, so a single service bus health check is sufficient.
-
-The Aspire integration currently targets the emulator only. For real Azure, queue creation is handled by `IMessagingTopologyCreator` (via `ServiceBusAdministrationClient`) at service startup.
+`AddFlowly(project)` loads the service project's built assembly via an isolated `AssemblyLoadContext`, finds the `IFlowlyConfiguration` + `FlowlyDesignTimeFactory` type, and calls `Configure()` with a placeholder configuration to collect `DeferredQueueRegistration` instances. Queue properties (lock duration, TTL, dead-lettering, session) are set on the emulator queue resources via `WithProperties`.
 
 For plain Docker Compose, use `Flowly.Tool` to generate `emulator-config.json` for the Azure Service Bus emulator container.
 
 ---
 
-### 10. Transport Internals (Azure Service Bus)
+### 12. Transport Internals (Azure Service Bus)
 
 | Feature | Implementation |
 |---|---|
-| Regular handler | `ServiceBusProcessor` with PeekLock mode |
-| Batch handler | `ServiceBusProcessor` in batching mode |
+| Regular handler | `ServiceBusProcessor` with PeekLock, `AutoCompleteMessages = false` |
+| Batch handler | `ServiceBusReceiver` in manual receive/complete loop |
 | Recurring job handler | `ServiceBusSessionProcessor` (session = job type name) |
 | Serialization | `System.Text.Json` |
 | Lock renewal | Automatic for up to 6 hours |
-| Failure | Exception → dead-letter |
+| Retry republish | Re-publish to same queue with `ScheduledEnqueueTime` + `flowly-retry-count` app property |
+| Dead letter (retry exhausted) | `ProcessMessageEventArgs.DeadLetterMessageAsync` |
+| Dead letter sub-queue read | `ServiceBusReceiver` with `SubQueue.DeadLetter` |
+
+`AutoCompleteMessages = false` is set on all processors. Settlement (`Complete` / `DeadLetter`) is handled explicitly by `ServiceBusMessageHandlerBackgroundServiceBase` after the handler returns or after retry/failure decisions are made.
 
 ---
 
-### 11. Key File Locations
-
-| What | Where |
-|---|---|
-| Core interfaces | `Flowly/MessagingAbstractions/` |
-| DI registration | `Flowly/MessageInfrastructure/Registration/` |
-| Background services | `Flowly/MessageInfrastructure/BackgroundServices/` |
-| Recurring job infra | `Flowly/MessageInfrastructure/RecurringJobs/` |
-| Azure SB wiring | `Flowly.AzureServiceBus/AzureServiceBusRegistration.cs` |
-| Job DB entities | `Flowly.Jobs/DatabaseModel/` |
-| Job domain models | `Flowly.Jobs/Model/` |
-| Job DI extensions | `Flowly.Jobs/Registration/` |
-| Job schedulers | `Flowly.Jobs/BackgroundServices/` |
-| CLI tool entry | `Flowly.Tool/Program.cs` |
-| Aspire sample | `Samples/AzureServiceBus/Aspire/` |
-
----
-
-### 12. Naming & Conventions
+### 13. Naming & Conventions
 
 - Message types are plain `record` or `class` types — no base class required for regular messages
 - Job message types must implement `IJobMessage`
-- Queue names use kebab-case and are derived from the message type name automatically (see section 6)
+- Queue names use kebab-case and are derived from the message type name automatically (see section 8)
 - Only add `[QueueName]` to a message contract when the auto-generated name is wrong
 - Handler classes are named `<MessageType>Handler` by convention
 - Recurring job classes are named `<Description>RecurringJob` or `<Description>Job` by convention
@@ -377,7 +436,7 @@ For plain Docker Compose, use `Flowly.Tool` to generate `emulator-config.json` f
 
 ---
 
-### 13. Testing Conventions
+### 14. Testing Conventions
 
 Tests live in `Flowly.Tests/`, which mirrors the source tree structure:
 
@@ -414,12 +473,37 @@ Rules:
 
 ---
 
-### 14. Current Status & Roadmap Notes
+### 15. Key File Locations
+
+| What | Where |
+|---|---|
+| Core interfaces | `Flowly/MessagingAbstractions/` |
+| DI registration | `Flowly/MessageInfrastructure/Registration/` |
+| Background services | `Flowly/MessageInfrastructure/BackgroundServices/` |
+| Recurring job infra | `Flowly/MessageInfrastructure/RecurringJobs/` |
+| Handler attributes | `Flowly/MessageInfrastructure/Receivers/` (e.g. `RetryPolicyAttribute.cs`) |
+| Azure SB wiring | `Flowly.AzureServiceBus/AzureServiceBusRegistration.cs` |
+| Azure SB settlement | `Flowly.AzureServiceBus/ReceivedMessage.cs` |
+| Azure SB dead letter receiver | `Flowly.AzureServiceBus/DeadLetterReceiver.cs` |
+| Job DB entities | `Flowly.Jobs/DatabaseModel/` |
+| Job domain models | `Flowly.Jobs/Model/` |
+| Job DI extensions | `Flowly.Jobs/Registration/` |
+| Job schedulers | `Flowly.Jobs/BackgroundServices/` |
+| Dead letter entity | `Flowly.DeadLetters/DatabaseModel/DeadLetter.cs` |
+| Dead letter ingestion | `Flowly.DeadLetters/BackgroundServices/DeadLetterIngestionBackgroundService.cs` |
+| Dead letter registration | `Flowly.DeadLetters/Registration/DeadLetterTrackingRegistrationExtensions.cs` |
+| CLI tool entry | `Flowly.Tool/Program.cs` |
+| Aspire sample | `Samples/AzureServiceBus/Aspire/` |
+
+---
+
+### 16. Current Status & Roadmap Notes
 
 - Azure Service Bus is the primary (and currently only complete) transport
 - RabbitMQ and other providers are planned but not yet implemented
 - The abstraction layer (`IMessageBusClient`, etc.) is designed to be transport-agnostic
-- Job state tracking is SQL Server only (via EF Core); other stores are not yet abstracted
+- Retry delay is implemented via `ScheduledEnqueueTime` on re-publish; transport implementations must honor it
+- Dead letter management API (list, requeue, fix-and-requeue, discard via HTTP) is planned but not yet built
 
 ---
 
@@ -427,7 +511,9 @@ Rules:
 
 | Task | What to do |
 |---|---|
-| Add a new message handler | Create class inheriting `MessageHandlerBase<T>`, register with `.AddMessageHandler<T, THandler>()` |
+| Add a new message handler | Inherit `MessageHandlerBase<T>`, register with `.AddMessageHandler<T, THandler>()` |
+| Add retry to a handler | Add `[RetryPolicy(maxRetries: 3, delaySeconds: 30)]` to the handler class |
+| Enable dead letter tracking | Call `AddSqlServerDeadLetterTracking(connStr)` once, then chain `.WithDeadLetterTracking()` after `AddMessageHandler` |
 | Add a batch handler | Inherit `BatchMessageHandlerBase<T>`, add attributes, register with `.AddBatchMessageHandler<>()` |
 | Add a job handler | Inherit `JobMessageHandlerBase<T>`, register with `.AddJobHandler<>()` |
 | Add a recurring job | Inherit `RecurringJobHandlerBase`, add `[RecurringJob]`, register with `.AddRecurringJob<>()` |

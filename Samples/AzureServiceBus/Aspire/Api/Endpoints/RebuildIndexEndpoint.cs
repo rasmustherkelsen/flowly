@@ -4,13 +4,10 @@ using MessageContracts;
 
 namespace Api.Endpoints;
 
-sealed class RebuildIndexRequest
+class RebuildIndexEndpoint : Endpoint<RebuildIndexEndpoint.RebuildIndexRequest>
 {
-    public int? MessageCount { get; set; }
-}
-
-sealed class RebuildIndexEndpoint : Endpoint<RebuildIndexRequest>
-{
+    internal sealed record RebuildIndexRequest(int? MessageCount);
+    
     public IMessageSender MessageSender { get; set; } = null!;
 
     public override void Configure()

@@ -147,6 +147,8 @@ public class ServiceBusMessageBatchHandlerBackgroundServiceTests
         public IMessageBusProcessor<TMessage> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options) => throw new NotImplementedException();
         public IExecutionLaneProcessor CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options) => throw new NotImplementedException();
         public IMessageBusSender CreateMessageBusSender(string queueName) => throw new NotImplementedException();
+        public IDeadLetterReceiver CreateDeadLetterReceiver(string queueName) => throw new NotImplementedException();
+        public Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default) => throw new NotImplementedException();
     }
 
     private class FakeMessageBusReceiver(

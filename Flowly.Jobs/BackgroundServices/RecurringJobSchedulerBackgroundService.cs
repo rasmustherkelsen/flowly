@@ -1,6 +1,5 @@
 ﻿using Flowly.Jobs.Repositories;
 using Flowly.Jobs.Senders;
-using Flowly.MessageInfrastructure.Senders;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 

@@ -2,7 +2,6 @@
 using Flowly.Jobs.Model;
 using Flowly.Jobs.Senders;
 using Flowly.MessageInfrastructure;
-using Flowly.MessageInfrastructure.Receivers;
 using Flowly.MessageInfrastructure.Registration;
 using Microsoft.Extensions.DependencyInjection;
 

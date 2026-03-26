@@ -9,4 +9,10 @@ public class HandlerQueueOptions
     public bool? DeadLetterOnMessageExpiration { get; set; }
 
     public TimeSpan? LockDuration { get; set; }
+
+    public int? MaxRetries { get; set; }
+
+    public int? RetryDelaySeconds { get; set; }
+
+    public int? MaxConcurrentCalls { get; set; }
 }

@@ -1,5 +1,4 @@
 using Flowly.MessagingAbstractions;
-using Flowly.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;

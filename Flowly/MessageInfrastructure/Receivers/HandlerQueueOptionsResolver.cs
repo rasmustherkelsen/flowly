@@ -3,17 +3,11 @@ using System.Runtime.CompilerServices;
 
 namespace Flowly.MessageInfrastructure.Receivers;
 
-public sealed record ResolvedHandlerQueueOptions(
-    string QueueName,
-    TimeSpan DefaultMessageTimeToLive,
-    bool DeadLetterOnMessageExpiration,
-    TimeSpan LockDuration);
-
 public static class HandlerQueueOptionsResolver
 {
-    public static readonly TimeSpan DefaultLockDuration = TimeSpan.FromMinutes(5);
-    public static readonly TimeSpan DefaultMessageTimeToLive = TimeSpan.FromDays(1);
-    public const bool DefaultDeadLetterOnMessageExpiration = true;
+    private static readonly TimeSpan DefaultLockDuration = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan DefaultMessageTimeToLive = TimeSpan.FromDays(1);
+    private const bool DefaultDeadLetterOnMessageExpiration = true;
 
     public static ResolvedHandlerQueueOptions Resolve<THandler, TMessage>() where THandler : class
     {
@@ -31,7 +25,10 @@ public static class HandlerQueueOptionsResolver
             resolvedQueueName,
             options.DefaultMessageTimeToLive ?? DefaultMessageTimeToLive,
             options.DeadLetterOnMessageExpiration ?? DefaultDeadLetterOnMessageExpiration,
-            options.LockDuration ?? DefaultLockDuration);
+            options.LockDuration ?? DefaultLockDuration,
+            options.MaxRetries ?? 0,
+            options.RetryDelaySeconds ?? 0,
+            options.MaxConcurrentCalls ?? 1);
     }
 
     private static void ApplyHandlerAttributes(Type handlerType, HandlerQueueOptions options)
@@ -47,6 +44,17 @@ public static class HandlerQueueOptionsResolver
         var lockDurationAttribute = handlerType.GetCustomAttribute<LockDurationAttribute>();
         if (lockDurationAttribute != null)
             options.LockDuration = lockDurationAttribute.GetValue();
+
+        var retryPolicyAttribute = handlerType.GetCustomAttribute<RetryPolicyAttribute>();
+        if (retryPolicyAttribute != null)
+        {
+            options.MaxRetries = retryPolicyAttribute.MaxRetries;
+            options.RetryDelaySeconds = retryPolicyAttribute.DelaySeconds;
+        }
+
+        var maxConcurrentCallsAttribute = handlerType.GetCustomAttribute<MaxConcurrentCallsAttribute>();
+        if (maxConcurrentCallsAttribute != null)
+            options.MaxConcurrentCalls = maxConcurrentCallsAttribute.MaxConcurrentCalls;
     }
 
     private static void ApplyConfigure(Type handlerType, HandlerQueueOptions options)

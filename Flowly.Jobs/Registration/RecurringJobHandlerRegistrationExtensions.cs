@@ -14,15 +14,14 @@ public static class RecurringJobHandlerRegistrationExtensions
         var resolvedOptions = RecurringJobHandlerOptionsResolver.Resolve<TRecurringJob>();
 
         flowlyBuilder.AddQueueRegistration(JobQueuesNames.RecurringJobs, requiresSession: true);
-        
-        flowlyBuilder.Services.AddSingleton(new RecurringJobHandlerBackgroundService<TRecurringJob>.RecurringJobSettings(
-            resolvedOptions.JobDescription, 
-            typeof(TRecurringJob).Name, 
-            resolvedOptions.CronExpression));
 
-        flowlyBuilder.Services.AddHostedService<RecurringJobHandlerBackgroundService<TRecurringJob>>();
-
-        flowlyBuilder.Services.AddScoped<TRecurringJob>();
+        flowlyBuilder.Services
+            .AddSingleton(new RecurringJobHandlerBackgroundService<TRecurringJob>.RecurringJobSettings(
+                resolvedOptions.JobDescription, 
+                typeof(TRecurringJob).Name, 
+                resolvedOptions.CronExpression))
+            .AddHostedService<RecurringJobHandlerBackgroundService<TRecurringJob>>()
+            .AddScoped<TRecurringJob>();
 
         flowlyBuilder.AddMessageSubmitter<CreateRecurringJobState>();
 

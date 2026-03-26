@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Flowly.Jobs.SqlServer.Migrations
 {
     /// <inheritdoc />
-    public partial class JobsDatabase : Migration
+    public partial class Initial : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -62,7 +62,8 @@ namespace Flowly.Jobs.SqlServer.Migrations
                     Completed = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
                     FaultReason = table.Column<string>(type: "nvarchar(1024)", maxLength: 1024, nullable: true),
                     IsRecurringJob = table.Column<bool>(type: "bit", nullable: false),
-                    CronExpression = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true)
+                    CronExpression = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
+                    RetryAttempt = table.Column<int>(type: "int", nullable: false)
                 },
                 constraints: table =>
                 {

@@ -1,0 +1,3 @@
+namespace Flowly.DeadLetters.BackgroundServices;
+
+internal record DeadLetterIngestionHealthSettings(TimeSpan CheckInterval, TimeSpan StallThreshold);

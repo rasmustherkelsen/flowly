@@ -34,4 +34,6 @@ public class Job
 
     [MaxLength(100)]
     public string? CronExpression { get; set; }
+
+    public int RetryAttempt { get; set; }
 }
