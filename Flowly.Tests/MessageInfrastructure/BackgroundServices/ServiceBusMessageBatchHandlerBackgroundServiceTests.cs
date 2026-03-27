@@ -8,17 +8,17 @@ namespace Flowly.Tests.MessageInfrastructure.BackgroundServices;
 
 public class ServiceBusMessageBatchHandlerBackgroundServiceTests
 {
-    public class ExecuteAsync
+    public class Execute
     {
         [Fact]
         public async Task CreatesReceiverWithQueueNameFromSettings()
         {
-            var (sut, client, _) = Build("batch-queue");
+            var (serviceBusMessageBatchHandlerBackgroundService, client, _) = Build("batch-queue");
 
             using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
-            await sut.StartAsync(cts.Token);
+            await serviceBusMessageBatchHandlerBackgroundService.StartAsync(cts.Token);
             await Task.Delay(100);
-            await sut.StopAsync(CancellationToken.None);
+            await serviceBusMessageBatchHandlerBackgroundService.StopAsync(CancellationToken.None);
 
             Assert.Equal("batch-queue", client.CreatedReceiverQueueName);
         }
@@ -26,12 +26,12 @@ public class ServiceBusMessageBatchHandlerBackgroundServiceTests
         [Fact]
         public async Task ReceivesMessagesWithSettingsFromBatchQueueSettings()
         {
-            var (sut, _, receiver) = Build("batch-queue", maxMessages: 25, maxWaitTime: TimeSpan.FromSeconds(10));
+            var (serviceBusMessageBatchHandlerBackgroundService, _, receiver) = Build("batch-queue", maxMessages: 25, maxWaitTime: TimeSpan.FromSeconds(10));
 
             using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
-            await sut.StartAsync(cts.Token);
+            await serviceBusMessageBatchHandlerBackgroundService.StartAsync(cts.Token);
             await Task.Delay(100);
-            await sut.StopAsync(CancellationToken.None);
+            await serviceBusMessageBatchHandlerBackgroundService.StopAsync(CancellationToken.None);
 
             Assert.Equal(25, receiver.LastMaxMessages);
             Assert.Equal(TimeSpan.FromSeconds(10), receiver.LastMaxWaitTime);
@@ -41,12 +41,12 @@ public class ServiceBusMessageBatchHandlerBackgroundServiceTests
         public async Task WhenNoMessagesReceived_DoesNotInvokeHandler()
         {
             var handler = new RecordingBatchHandler();
-            var (sut, _, _) = Build(handler: handler);
+            var (serviceBusMessageBatchHandlerBackgroundService, _, _) = Build(handler: handler);
 
             using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
-            await sut.StartAsync(cts.Token);
+            await serviceBusMessageBatchHandlerBackgroundService.StartAsync(cts.Token);
             await Task.Delay(100);
-            await sut.StopAsync(CancellationToken.None);
+            await serviceBusMessageBatchHandlerBackgroundService.StopAsync(CancellationToken.None);
 
             Assert.Equal(0, handler.HandleCallCount);
         }
@@ -56,12 +56,12 @@ public class ServiceBusMessageBatchHandlerBackgroundServiceTests
         {
             var handler = new RecordingBatchHandler();
             var messages = new[] { new FakeReceivedMessage<TestMessage>(new TestMessage("a")), new FakeReceivedMessage<TestMessage>(new TestMessage("b")) };
-            var (sut, _, receiver) = Build(messages: messages, handler: handler);
+            var (serviceBusMessageBatchHandlerBackgroundService, _, receiver) = Build(messages: messages, handler: handler);
 
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-            await sut.StartAsync(cts.Token);
+            await serviceBusMessageBatchHandlerBackgroundService.StartAsync(cts.Token);
             await receiver.BatchCompleted.WaitAsync(cts.Token);
-            await sut.StopAsync(CancellationToken.None);
+            await serviceBusMessageBatchHandlerBackgroundService.StopAsync(CancellationToken.None);
 
             Assert.Equal([new TestMessage("a"), new TestMessage("b")], handler.ReceivedMessages);
         }
@@ -70,12 +70,12 @@ public class ServiceBusMessageBatchHandlerBackgroundServiceTests
         public async Task WhenMessagesReceived_CompletesMessagesAfterHandling()
         {
             var messages = new[] { new FakeReceivedMessage<TestMessage>(new TestMessage("x")) };
-            var (sut, _, receiver) = Build(messages: messages);
+            var (serviceBusMessageBatchHandlerBackgroundService, _, receiver) = Build(messages: messages);
 
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-            await sut.StartAsync(cts.Token);
+            await serviceBusMessageBatchHandlerBackgroundService.StartAsync(cts.Token);
             await receiver.BatchCompleted.WaitAsync(cts.Token);
-            await sut.StopAsync(CancellationToken.None);
+            await serviceBusMessageBatchHandlerBackgroundService.StopAsync(CancellationToken.None);
 
             Assert.True(receiver.CompleteWasCalled);
         }
@@ -84,19 +84,19 @@ public class ServiceBusMessageBatchHandlerBackgroundServiceTests
         public async Task WhenHandlerThrows_ContinuesProcessingNextBatch()
         {
             var messages = new[] { new FakeReceivedMessage<TestMessage>(new TestMessage("y")) };
-            var (sut, _, receiver) = Build(messages: messages, handler: new ThrowingBatchHandler());
+            var (serviceBusMessageBatchHandlerBackgroundService, _, receiver) = Build(messages: messages, handler: new ThrowingBatchHandler());
 
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-            await sut.StartAsync(cts.Token);
+            await serviceBusMessageBatchHandlerBackgroundService.StartAsync(cts.Token);
             await receiver.BatchServed.WaitAsync(cts.Token);
             await Task.Delay(50); // allow the catch block to execute
 
-            var stopException = await Record.ExceptionAsync(() => sut.StopAsync(CancellationToken.None));
+            var stopException = await Record.ExceptionAsync(() => serviceBusMessageBatchHandlerBackgroundService.StopAsync(CancellationToken.None));
             Assert.Null(stopException);
         }
     }
 
-    private static (ServiceBusMessageBatchHandlerBackgroundService<TestMessage> sut, FakeMessageBusClient client, FakeMessageBusReceiver receiver) Build(
+    private static (ServiceBusMessageBatchHandlerBackgroundService<TestMessage> serviceBusMessageBatchHandlerBackgroundService, FakeMessageBusClient client, FakeMessageBusReceiver receiver) Build(
         string queueName = "batch-queue",
         int maxMessages = 10,
         TimeSpan maxWaitTime = default,
@@ -108,9 +108,9 @@ public class ServiceBusMessageBatchHandlerBackgroundServiceTests
         var settings = new ServiceBusMessageBatchHandlerBackgroundService<TestMessage>.BatchQueueSettings(
             queueName, maxMessages, maxWaitTime == default ? TimeSpan.FromSeconds(1) : maxWaitTime);
         var scopeFactory = new FakeServiceScopeFactory<BatchMessageHandlerBase<TestMessage>>(handler ?? new RecordingBatchHandler());
-        var sut = new ServiceBusMessageBatchHandlerBackgroundService<TestMessage>(
+        var serviceBusMessageBatchHandlerBackgroundService = new ServiceBusMessageBatchHandlerBackgroundService<TestMessage>(
             client, settings, scopeFactory, NullLogger<ServiceBusMessageBatchHandlerBackgroundService<TestMessage>>.Instance);
-        return (sut, client, receiver);
+        return (serviceBusMessageBatchHandlerBackgroundService, client, receiver);
     }
 
     private record TestMessage(string Value);

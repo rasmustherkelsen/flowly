@@ -29,8 +29,19 @@ backendProcessor
     .WaitFor(flowlyJobsDatabase)
     .WaitFor(flowlyDeadLettersDatabase);
 
-builder.AddProject<Projects.Api>("api")
+var api = builder.AddProject<Projects.Api>("api")
     .WithReference(azureServiceBus)
-    .WaitFor(azureServiceBus);
+    .WithReference(flowlyJobsDatabase)
+    .WithReference(flowlyDeadLettersDatabase)
+    .WaitFor(azureServiceBus)
+    .WaitFor(flowlyJobsDatabase)
+    .WaitFor(flowlyDeadLettersDatabase);
+
+builder.AddJavaScriptApp("dashboard", "../Dashboard")
+    .WithNpm()
+    .WithHttpEndpoint(env: "PORT")
+    .WithReference(api)
+    .WithExternalHttpEndpoints()
+    .WaitFor(api);
 
 builder.Build().Run();

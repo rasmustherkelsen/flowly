@@ -1,6 +1,6 @@
-using Flowly.MessageInfrastructure.Registration;
 using FastEndpoints;
 using FastEndpoints.Swagger;
+using Flowly.MessageInfrastructure.Registration;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 

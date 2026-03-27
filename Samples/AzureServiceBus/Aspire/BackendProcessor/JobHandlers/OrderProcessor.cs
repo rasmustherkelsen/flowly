@@ -10,11 +10,13 @@ class OrderProcessor(ILogger<OrderProcessor> logger) : JobMessageHandlerBase<Pro
 {
     public override async Task Handle(IJobMessageContext<ProcessOrder> messageContext)
     {
+        var delay = TimeSpan.FromSeconds(Random.Shared.Next(1, 5));
+
         for (int i = 0; i < 10; i++)
         {
             logger.LogInformation("Processing order operation");
             await messageContext.SaveState(new { ProgressPercentage = (i + 1) * 10 });
-            await Task.Delay(TimeSpan.FromSeconds(5), messageContext.CancellationToken);
+            await Task.Delay(delay, messageContext.CancellationToken);
         }
     }
 }
