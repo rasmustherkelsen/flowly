@@ -1,13 +1,14 @@
 using Flowly.Jobs.BackgroundServices;
 using Flowly.Jobs.DatabaseModel;
-using Flowly.Jobs.Maintenance;
 using Flowly.Jobs.MessageHandlers;
 using Flowly.Jobs.Messages;
 using Flowly.Jobs.Repositories;
 using Flowly.Jobs.Senders;
+using Flowly.Jobs.Services;
 using Flowly.MessageInfrastructure.Registration;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace Flowly.Jobs.Registration;
 
@@ -19,6 +20,8 @@ public static class JobStateTrackerRegistrationExtension
     /// </summary>
     public static IFlowlyBuilder AddJobStateTracking(this IFlowlyBuilder flowlyBuilder)
     {
+        flowlyBuilder.Services.AddOptions<JobStateTrackingOptions>();
+
         flowlyBuilder
             .AddJobMaintenanceBackgroundJobs()
             .RegisterJobStateQueueProcessor();
@@ -51,20 +54,20 @@ public static class JobStateTrackerRegistrationExtension
         return flowlyBuilder;
     }
 
-    public static IFlowlyBuilder AddRepositories(this IFlowlyBuilder flowlyBuilder, Action<DbContextOptionsBuilder> dbContextOptions)
+    internal static IFlowlyBuilder AddRepositories(this IFlowlyBuilder flowlyBuilder, Action<DbContextOptionsBuilder> dbContextOptions)
     {
         flowlyBuilder.Services.AddDbContextFactory<JobStateDataContext>(dbContextOptions);
         flowlyBuilder.Services.AddScoped<IJobStateRepository, JobStateRepository>();
         flowlyBuilder.Services.AddScoped<IJobAliveStatusRepository, JobAliveStatusRepository>();
         flowlyBuilder.Services.AddScoped<ICustomJobStateRepository, CustomJobStateRepository>();
+        flowlyBuilder.Services.AddScoped<IJobTrackingService, JobTrackingService>();
 
         return flowlyBuilder;
     }
 
     private static IFlowlyBuilder AddJobMaintenanceBackgroundJobs(this IFlowlyBuilder flowlyBuilder)
     {
-        return flowlyBuilder
-            .AddRecurringJob<RemoveOldJobsRecurringJob>()
-            .AddRecurringJob<FailHungJobsRecurringJob>();
+        flowlyBuilder.Services.AddHostedService<JobMaintenanceBackgroundService>();
+        return flowlyBuilder;
     }
 }

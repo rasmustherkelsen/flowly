@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace Flowly.DeadLetters.DatabaseModel;
 
-public class DeadLetterDataContext(DbContextOptions<DeadLetterDataContext> options) : DbContext(options)
+internal class DeadLetterDataContext(DbContextOptions<DeadLetterDataContext> options) : DbContext(options)
 {
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

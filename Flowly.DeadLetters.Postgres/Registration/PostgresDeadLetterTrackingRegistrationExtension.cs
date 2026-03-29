@@ -1,7 +1,9 @@
+using Flowly.DeadLetters.BackgroundServices;
 using Flowly.DeadLetters.Registration;
 using Flowly.DeadLetters.Services;
 using Flowly.MessageInfrastructure.Registration;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Flowly.DeadLetters.Postgres.Registration;
 
@@ -10,11 +12,18 @@ public static class PostgresDeadLetterTrackingRegistrationExtension
     /// <summary>
     /// Add dead letter tracking backed by PostgreSQL.
     /// </summary>
-    public static IFlowlyBuilder AddPostgresDeadLetterTracking(this IFlowlyBuilder flowlyBuilder, string connectionString, bool enableMigrations = true)
+    public static IFlowlyBuilder AddPostgresDeadLetterTracking(
+        this IFlowlyBuilder flowlyBuilder,
+        string connectionString,
+        bool enableMigrations = true,
+        Action<DeadLetterTrackingOptions>? configure = null)
     {
-        flowlyBuilder.AddDeadLetterTracking(options =>
+        if (configure is not null)
+            flowlyBuilder.Services.Configure<DeadLetterTrackingOptions>(configure);
+
+        flowlyBuilder.AddDeadLetterTracking(dbOptions =>
         {
-            options.UseNpgsql(
+            dbOptions.UseNpgsql(
                 connectionString,
                 npgsqlOptions =>
                 {

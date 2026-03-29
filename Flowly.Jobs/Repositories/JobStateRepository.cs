@@ -2,6 +2,7 @@
 using Flowly.Jobs.DatabaseModel;
 using Flowly.Jobs.Messages;
 using Flowly.Jobs.Model;
+using Flowly.Jobs.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace Flowly.Jobs.Repositories;
@@ -103,15 +104,52 @@ internal class JobStateRepository(IDbContextFactory<JobStateDataContext> jobStat
                 .SetProperty(p => p.Completed, jobFailed.TimeStamp));
     }
 
-    public async Task RemoveJobsOlderThan(TimeSpan age)
+    public async Task RemoveCompletedJobsOlderThan(TimeSpan age)
     {
         await using var context = await jobStateDataContextFactory.CreateDbContextAsync();
 
-        var cutOffTime = DateTime.UtcNow - age;
+        var cutOffTime = DateTimeOffset.UtcNow - age;
 
         await context.Jobs
-            .Where(x => x.Created < cutOffTime && x.IsRecurringJob == false)
+            .Where(x => x.IsRecurringJob == false && x.CurrentState == JobState.Completed && x.Completed < cutOffTime)
             .ExecuteDeleteAsync();
+    }
+
+    public async Task RemoveFailedJobsOlderThan(TimeSpan age)
+    {
+        await using var context = await jobStateDataContextFactory.CreateDbContextAsync();
+
+        var cutOffTime = DateTimeOffset.UtcNow - age;
+
+        await context.Jobs
+            .Where(x => x.IsRecurringJob == false && x.CurrentState == JobState.Failed && x.Completed < cutOffTime)
+            .ExecuteDeleteAsync();
+    }
+
+    public async Task<IReadOnlyCollection<JobInfo>> Query(JobQuery query)
+    {
+        await using var context = await jobStateDataContextFactory.CreateDbContextAsync();
+
+        var q = context.Jobs.AsNoTracking().Where(x => x.IsRecurringJob == false);
+
+        if (query.JobId.HasValue)
+            q = q.Where(x => x.JobIdentifier == query.JobId.Value);
+
+        if (query.JobType is not null)
+            q = q.Where(x => x.JobTypeName == query.JobType);
+
+        return await q
+            .Select(j => new JobInfo(
+                j.JobIdentifier,
+                j.JobTypeName,
+                j.Description,
+                j.CurrentState,
+                j.Created,
+                j.Started,
+                j.Completed,
+                j.FaultReason,
+                j.RetryAttempt))
+            .ToListAsync();
     }
 
     public async Task<IReadOnlyCollection<RecurringJob>> GetRecurringJobs()
@@ -120,7 +158,7 @@ internal class JobStateRepository(IDbContextFactory<JobStateDataContext> jobStat
 
         return await context.Jobs
             .Where(x => x.IsRecurringJob == true)
-            .Select(j => new RecurringJob(j.JobIdentifier, j.JobType!.Name, j.CronExpression!, j.Created, j.Started, j.Completed))
+            .Select(j => new RecurringJob(j.JobIdentifier, j.JobType!.Name, j.Description, j.CronExpression!, j.Created, j.Started, j.Completed))
             .ToListAsync();
     }
 

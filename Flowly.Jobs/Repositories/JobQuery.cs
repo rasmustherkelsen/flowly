@@ -1,6 +1,6 @@
 ﻿namespace Flowly.Jobs.Repositories;
 
-public class JobQuery
+internal class JobQuery
 {
     public Guid? JobId { get; set; }
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   Alert,
   Box,
@@ -12,12 +12,8 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
-  FormControl,
   IconButton,
-  InputLabel,
-  MenuItem,
   Pagination,
-  Select,
   Snackbar,
   Table,
   TableBody,
@@ -28,21 +24,16 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
-import RefreshIcon from '@mui/icons-material/Refresh';
 import ReplayIcon from '@mui/icons-material/Replay';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
 import { DeadLetterStatusChip } from '@/components/StatusChip';
-import type { DeadLetter, PagedResult } from '@/types';
-
-const PAGE_SIZE = 20;
-const AUTO_REFRESH_MS = 10000;
+import PageHeader from '@/components/PageHeader';
+import { usePagedData } from '@/hooks/usePagedData';
+import { formatDate } from '@/lib/formatters';
+import type { DeadLetter } from '@/types';
 
 const STATUSES = ['', 'Pending', 'Requeued'];
-
-function formatDate(iso: string | null): string {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleString();
-}
 
 interface ConfirmDialog {
   action: 'requeue' | 'discard';
@@ -50,37 +41,28 @@ interface ConfirmDialog {
   queueName: string;
 }
 
+function tryPrettyPrint(value: string): string {
+  try {
+    return JSON.stringify(JSON.parse(value), null, 2);
+  } catch {
+    return value;
+  }
+}
+
+function buildUrl(page: number, filter: string): string {
+  const params = new URLSearchParams({ page: String(page), pageSize: '20' });
+  if (filter) params.set('status', filter);
+  return `/api/dead-letters?${params}`;
+}
+
 export default function DeadLettersPage() {
-  const [result, setResult] = useState<PagedResult<DeadLetter> | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
-  const [statusFilter, setStatusFilter] = useState('');
+  const { result, loading, error, page, setPage, filter, onFilterChange, refresh, totalPages } =
+    usePagedData<DeadLetter>(buildUrl, 10000);
+
   const [confirm, setConfirm] = useState<ConfirmDialog | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [toast, setToast] = useState<{ message: string; severity: 'success' | 'error' } | null>(null);
-
-  const load = useCallback(async (p: number, status: string, showSpinner = false) => {
-    if (showSpinner) setLoading(true);
-    setError(null);
-    try {
-      const params = new URLSearchParams({ page: String(p), pageSize: String(PAGE_SIZE) });
-      if (status) params.set('status', status);
-      const res = await fetch(`/api/dead-letters?${params}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setResult(await res.json());
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load dead letters');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load(page, statusFilter, true);
-    const interval = setInterval(() => load(page, statusFilter), AUTO_REFRESH_MS);
-    return () => clearInterval(interval);
-  }, [load, page, statusFilter]);
+  const [inspecting, setInspecting] = useState<DeadLetter | null>(null);
 
   async function handleConfirm() {
     if (!confirm) return;
@@ -98,7 +80,7 @@ export default function DeadLettersPage() {
       const label = confirm.action === 'requeue' ? 'requeued' : 'discarded';
       setToast({ message: `Message ${label} successfully`, severity: 'success' });
       setConfirm(null);
-      await load(page, statusFilter, false);
+      await refresh();
     } catch (e) {
       setToast({ message: e instanceof Error ? e.message : 'Action failed', severity: 'error' });
     } finally {
@@ -106,39 +88,17 @@ export default function DeadLettersPage() {
     }
   }
 
-  const totalPages = result ? Math.ceil(result.totalCount / PAGE_SIZE) : 0;
-
   return (
     <Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 3, gap: 2, flexWrap: 'wrap' }}>
-        <Typography variant="h5" fontWeight={700} sx={{ flexGrow: 1 }}>
-          Dead Letters
-        </Typography>
-        <FormControl size="small" sx={{ minWidth: 160 }}>
-          <InputLabel>Status</InputLabel>
-          <Select
-            value={statusFilter}
-            label="Status"
-            onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-          >
-            {STATUSES.map((s) => (
-              <MenuItem key={s} value={s}>{s || 'All'}</MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-        <Tooltip title="Refresh">
-          <span>
-            <IconButton onClick={() => load(page, statusFilter, true)} disabled={loading}>
-              <RefreshIcon />
-            </IconButton>
-          </span>
-        </Tooltip>
-        {!loading && result && (
-          <Typography variant="body2" color="text.secondary">
-            {result.totalCount} total
-          </Typography>
-        )}
-      </Box>
+      <PageHeader
+        title="Dead Letters"
+        filterValue={filter}
+        filterOptions={STATUSES}
+        onFilterChange={onFilterChange}
+        loading={loading}
+        onRefresh={refresh}
+        totalCount={result?.totalCount}
+      />
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
@@ -172,9 +132,7 @@ export default function DeadLettersPage() {
                 {result?.items.map((dl) => (
                   <TableRow key={dl.messageId} hover>
                     <TableCell>
-                      <Typography variant="body2" fontWeight={500}>
-                        {dl.queueName}
-                      </Typography>
+                      <Typography variant="body2" fontWeight={500}>{dl.queueName}</Typography>
                     </TableCell>
                     <TableCell>
                       <Typography variant="body2" sx={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -184,10 +142,7 @@ export default function DeadLettersPage() {
                     <TableCell>
                       {dl.deadLetterErrorDescription ? (
                         <Tooltip title={dl.deadLetterErrorDescription}>
-                          <Typography
-                            variant="body2"
-                            sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'help' }}
-                          >
+                          <Typography variant="body2" sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'help' }}>
                             {dl.deadLetterErrorDescription}
                           </Typography>
                         </Tooltip>
@@ -199,9 +154,7 @@ export default function DeadLettersPage() {
                       <DeadLetterStatusChip status={dl.status} />
                     </TableCell>
                     <TableCell>
-                      <Typography variant="body2" sx={{ whiteSpace: 'nowrap' }}>
-                        {formatDate(dl.deadLetteredAt)}
-                      </Typography>
+                      <Typography variant="body2" sx={{ whiteSpace: 'nowrap' }}>{formatDate(dl.deadLetteredAt)}</Typography>
                     </TableCell>
                     <TableCell>
                       {dl.requeuedAt ? (
@@ -215,28 +168,35 @@ export default function DeadLettersPage() {
                       )}
                     </TableCell>
                     <TableCell align="right">
-                      {dl.status === 'Pending' && (
-                        <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'flex-end' }}>
-                          <Tooltip title="Requeue">
-                            <IconButton
-                              size="small"
-                              color="primary"
-                              onClick={() => setConfirm({ action: 'requeue', messageId: dl.messageId, queueName: dl.queueName })}
-                            >
-                              <ReplayIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Discard">
-                            <IconButton
-                              size="small"
-                              color="error"
-                              onClick={() => setConfirm({ action: 'discard', messageId: dl.messageId, queueName: dl.queueName })}
-                            >
-                              <DeleteOutlineIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                        </Box>
-                      )}
+                      <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'flex-end' }}>
+                        <Tooltip title="Inspect payload">
+                          <IconButton size="small" onClick={() => setInspecting(dl)}>
+                            <VisibilityOutlinedIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        {dl.status === 'Pending' && (
+                          <>
+                            <Tooltip title="Requeue">
+                              <IconButton
+                                size="small"
+                                color="primary"
+                                onClick={() => setConfirm({ action: 'requeue', messageId: dl.messageId, queueName: dl.queueName })}
+                              >
+                                <ReplayIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Discard">
+                              <IconButton
+                                size="small"
+                                color="error"
+                                onClick={() => setConfirm({ action: 'discard', messageId: dl.messageId, queueName: dl.queueName })}
+                              >
+                                <DeleteOutlineIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </>
+                        )}
+                      </Box>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -248,12 +208,7 @@ export default function DeadLettersPage() {
 
       {totalPages > 1 && (
         <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
-          <Pagination
-            count={totalPages}
-            page={page}
-            onChange={(_, p) => setPage(p)}
-            color="primary"
-          />
+          <Pagination count={totalPages} page={page} onChange={(_, p) => setPage(p)} color="primary" />
         </Box>
       )}
 
@@ -281,6 +236,56 @@ export default function DeadLettersPage() {
           >
             {confirm?.action === 'requeue' ? 'Requeue' : 'Discard'}
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={!!inspecting} onClose={() => setInspecting(null)} maxWidth="md" fullWidth>
+        <DialogTitle>
+          Payload — {inspecting?.queueName}
+        </DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="overline" color="text.secondary" display="block" gutterBottom>
+            Message Body
+          </Typography>
+          <Box
+            component="pre"
+            sx={{
+              fontFamily: 'monospace',
+              fontSize: '0.8rem',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-all',
+              bgcolor: 'action.hover',
+              borderRadius: 1,
+              p: 1.5,
+              mb: 3,
+              maxHeight: 300,
+              overflow: 'auto',
+            }}
+          >
+            {inspecting ? tryPrettyPrint(inspecting.messageBody) : ''}
+          </Box>
+          <Typography variant="overline" color="text.secondary" display="block" gutterBottom>
+            Message Properties
+          </Typography>
+          <Box
+            component="pre"
+            sx={{
+              fontFamily: 'monospace',
+              fontSize: '0.8rem',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-all',
+              bgcolor: 'action.hover',
+              borderRadius: 1,
+              p: 1.5,
+              maxHeight: 200,
+              overflow: 'auto',
+            }}
+          >
+            {inspecting ? tryPrettyPrint(inspecting.messageProperties) : ''}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setInspecting(null)}>Close</Button>
         </DialogActions>
       </Dialog>
 

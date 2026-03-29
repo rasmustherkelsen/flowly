@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 
@@ -35,6 +36,15 @@ public static class RecurringJobHandlerOptionsResolver
         {
             options.JobDescription = recurringJobAttribute.JobDescription;
             options.CronExpression = recurringJobAttribute.CronExpression;
+        }
+
+        if (string.IsNullOrWhiteSpace(options.JobDescription))
+        {
+            var descriptionAttribute = handlerType.GetCustomAttribute<DescriptionAttribute>();
+            if (descriptionAttribute != null)
+            {
+                options.JobDescription = descriptionAttribute.Description;
+            }
         }
     }
 

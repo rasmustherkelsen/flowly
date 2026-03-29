@@ -1,6 +1,6 @@
 using FastEndpoints;
 using Flowly.DeadLetters.DatabaseModel;
-using Microsoft.EntityFrameworkCore;
+using Flowly.DeadLetters.Services;
 
 namespace Api.Endpoints;
 
@@ -20,7 +20,7 @@ class GetDeadLettersEndpoint : Endpoint<GetDeadLettersEndpoint.GetDeadLettersReq
 {
     internal record GetDeadLettersRequest(int Page = 1, int PageSize = 20, string? Status = null);
 
-    public IDbContextFactory<DeadLetterDataContext> ContextFactory { get; set; } = null!;
+    public IDeadLetterService DeadLetterService { get; set; } = null!;
 
     public override void Configure()
     {
@@ -30,21 +30,19 @@ class GetDeadLettersEndpoint : Endpoint<GetDeadLettersEndpoint.GetDeadLettersReq
 
     public override async Task HandleAsync(GetDeadLettersRequest req, CancellationToken ct)
     {
-        await using var context = await ContextFactory.CreateDbContextAsync(ct);
+        var allDeadLetters = await DeadLetterService.GetDeadLetters(ct);
 
-        var query = context.DeadLetters.AsNoTracking();
+        var query = allDeadLetters.AsEnumerable();
 
         if (req.Status is not null && Enum.TryParse<DeadLetterStatus>(req.Status, ignoreCase: true, out var parsedStatus))
-        {
             query = query.Where(d => d.Status == parsedStatus);
-        }
 
-        var totalCount = await query.CountAsync(ct);
+        var totalCount = query.Count();
 
         int page = req.Page > 0 ? req.Page : 1;
         int pageSize = req.PageSize > 0 ? req.PageSize : 20;
 
-        var items = await query
+        var items = query
             .OrderByDescending(d => d.DeadLetteredAt)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
@@ -59,7 +57,7 @@ class GetDeadLettersEndpoint : Endpoint<GetDeadLettersEndpoint.GetDeadLettersReq
                 d.Status.ToString(),
                 d.RequeuedAt,
                 d.RequeuedBy))
-            .ToArrayAsync(ct);
+            .ToArray();
 
         await Send.OkAsync(new PagedResult<DeadLetterDto>(items, totalCount, page, pageSize), ct);
     }

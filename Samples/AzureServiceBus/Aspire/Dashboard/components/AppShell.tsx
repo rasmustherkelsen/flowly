@@ -22,6 +22,7 @@ import WorkHistoryIcon from '@mui/icons-material/WorkHistory';
 import EventRepeatIcon from '@mui/icons-material/EventRepeat';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import HubIcon from '@mui/icons-material/Hub';
+import SendIcon from '@mui/icons-material/Send';
 
 const DRAWER_WIDTH = 220;
 
@@ -29,6 +30,7 @@ const navItems = [
   { label: 'Jobs', href: '/jobs', icon: <WorkHistoryIcon /> },
   { label: 'Recurring Jobs', href: '/recurring-jobs', icon: <EventRepeatIcon /> },
   { label: 'Dead Letters', href: '/dead-letters', icon: <ErrorOutlineIcon /> },
+  { label: 'Submit Messages', href: '/submit', icon: <SendIcon /> },
 ];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {

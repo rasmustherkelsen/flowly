@@ -38,6 +38,18 @@ This document gives an AI assistant the context needed to work effectively in th
 
 ---
 
+## Fundamental Rule: API Access Only
+
+**All access to Flowly must go through the public API layer.** Internal components such as `JobStateDataContext`, `DeadLetterDataContext`, and repository interfaces are internal and must never be accessed directly from consuming applications. Use the public service interfaces instead:
+
+- Read job state → inject `IJobTrackingService`
+- Manage dead letters → inject `IDeadLetterService`
+- Send messages → inject `IMessageSender` or `IJobMessageSender`
+
+Consuming applications must never take a dependency on `IDbContextFactory<JobStateDataContext>`, `IDbContextFactory<DeadLetterDataContext>`, `IJobStateRepository`, or any other internal Flowly type.
+
+---
+
 ## Core Concepts
 
 ### 1. IFlowlyConfiguration — the registration entry point
@@ -198,16 +210,45 @@ Retry logic lives in the Flowly core layer (`ServiceBusMessageHandlerBackgroundS
 Job state tracking requires a database backend. Register it using the provider-specific extension method:
 
 ```csharp
-// SQL Server
+// SQL Server (backend processor that runs jobs)
 builder.AddSqlServerJobStateTracking("ConnectionString");
 
-// PostgreSQL
+// PostgreSQL (backend processor that runs jobs)
 builder.AddPostgresJobStateTracking("ConnectionString");
 ```
 
-Both accept an optional `enableMigrations` parameter (default `true`) that runs EF Core migrations at startup.
+Both accept an optional `enableMigrations` parameter (default `true`) that runs EF Core migrations at startup, and an optional `Action<JobStateTrackingOptions>` for cleanup configuration:
 
-**Database entities (EF Core):**
+```csharp
+builder.AddSqlServerJobStateTracking("ConnectionString", configure: options =>
+{
+    options.DeleteCompletedJobsAfter = TimeSpan.FromDays(30);
+    options.DeleteFailedJobsAfter = TimeSpan.FromDays(7);
+});
+```
+
+When `DeleteCompletedJobsAfter` or `DeleteFailedJobsAfter` is set, the `RemoveOldJobsRecurringJob` maintenance job will delete jobs based on their `Completed` timestamp. If not set, jobs are kept indefinitely.
+
+**For read-only API services** that need to query job state but do not process jobs, use the lightweight client:
+
+```csharp
+builder.AddJobStateTrackingClient("ConnectionString");  // SQL Server
+builder.AddJobStateTrackingClient("ConnectionString");  // PostgreSQL (same method name, different package)
+```
+
+This registers only `IJobTrackingService` without the job processing infrastructure.
+
+**Querying job state — use `IJobTrackingService`:**
+
+```csharp
+// Inject IJobTrackingService — never use IDbContextFactory<JobStateDataContext> directly
+var jobs = await jobTrackingService.GetJobs(ct);             // all non-recurring jobs
+var recurring = await jobTrackingService.GetRecurringJobs(ct); // recurring jobs with LastCompleted
+```
+
+`GetJobs()` returns `IReadOnlyCollection<JobInfo>`. `GetRecurringJobs()` returns `IReadOnlyCollection<RecurringJobInfo>`, which includes `LastCompleted` showing the most recent successful execution timestamp.
+
+**Database entities (EF Core — internal, do not access directly):**
 
 | Table | Purpose |
 |---|---|
@@ -221,7 +262,7 @@ Both accept an optional `enableMigrations` parameter (default `true`) that runs 
 **`Job.RetryAttempt`:** Updated to the current retry count when `UpdateJobState(Started)` is processed.
 
 **Maintenance (auto-registered recurring jobs):**
-- `RemoveOldJobsRecurringJob` — purges old completed/failed jobs
+- `RemoveOldJobsRecurringJob` — purges completed/failed jobs per `JobStateTrackingOptions` (based on `Completed` timestamp)
 - `FailHungJobsRecurringJob` — marks jobs as failed if no heartbeat for >30 min
 
 ---
@@ -243,7 +284,27 @@ builder.AddMessageHandler<MyMsg, MyHandler>()
 
 Calling `.WithDeadLetterTracking()` without first registering a persistence layer throws `InvalidOperationException` at startup.
 
+Both registration methods accept an optional `Action<DeadLetterTrackingOptions>` for automatic cleanup:
+
+```csharp
+builder.AddSqlServerDeadLetterTracking("ConnectionString", configure: options =>
+{
+    options.DeleteRequeuedMessagesAfter = TimeSpan.FromDays(30);
+    options.DeleteDeadLetteredMessagesAfter = TimeSpan.FromDays(90);
+});
+```
+
+When set, a `DeadLetterCleanupBackgroundService` will automatically delete messages based on their respective timestamps. If not set, messages are kept indefinitely.
+
 **How it works:** For each opted-in queue, a `DeadLetterIngestionBackgroundService` reads from the broker's dead letter sub-queue, persists to the DB, then explicitly completes the message. On DB failure the message is abandoned and will reappear on the next poll.
+
+**Managing dead letters — use `IDeadLetterService`:**
+
+```csharp
+// Inject IDeadLetterService — never use IDbContextFactory<DeadLetterDataContext> directly
+await deadLetterService.Requeue(messageId, requeuedBy: "user@example.com");
+await deadLetterService.Discard(messageId);
+```
 
 **Only `MessageHandlerBase<T>` handlers support dead letter tracking.** Job handlers use the job DB as the failure record. Recurring jobs re-trigger via the scheduler.
 
@@ -514,12 +575,17 @@ Rules:
 | Add a new message handler | Inherit `MessageHandlerBase<T>`, register with `.AddMessageHandler<T, THandler>()` |
 | Add retry to a handler | Add `[RetryPolicy(maxRetries: 3, delaySeconds: 30)]` to the handler class |
 | Enable dead letter tracking | Call `AddSqlServerDeadLetterTracking(connStr)` once, then chain `.WithDeadLetterTracking()` after `AddMessageHandler` |
+| Configure dead letter cleanup | Pass `configure: options => { options.DeleteRequeuedMessagesAfter = ...; }` to `AddSqlServerDeadLetterTracking` |
 | Add a batch handler | Inherit `BatchMessageHandlerBase<T>`, add attributes, register with `.AddBatchMessageHandler<>()` |
 | Add a job handler | Inherit `JobMessageHandlerBase<T>`, register with `.AddJobHandler<>()` |
 | Add a recurring job | Inherit `RecurringJobHandlerBase`, add `[RecurringJob]`, register with `.AddRecurringJob<>()` |
+| Configure job cleanup | Pass `configure: options => { options.DeleteCompletedJobsAfter = ...; }` to `AddSqlServerJobStateTracking` |
 | Control the queue name | Add `[QueueName("name")]` to the **message contract** — only needed when auto-generation is wrong |
 | Send a message | Inject `IMessageSender`, call `.Send(msg)` |
 | Queue a tracked job | Inject `IJobMessageSender`, call `.QueueJob(msg)` |
+| Query job state (read-only API) | Inject `IJobTrackingService`, call `.GetJobs()` or `.GetRecurringJobs()` |
+| Register read-only job access | Call `.AddJobStateTrackingClient(connStr)` in the API's `IFlowlyConfiguration` |
+| Manage dead letters | Inject `IDeadLetterService`, call `.Requeue(id)` or `.Discard(id)` |
 | Add a new queue | Just add a handler — queue is registered automatically from the message type |
 | Generate emulator config | `dotnet flowly azure-service-bus emulator-config --project ./MyProject` |
 | Inspect what queues a project uses | `dotnet flowly azure-service-bus queues --project ./MyProject` |

@@ -7,23 +7,27 @@ internal class RecurringJob
     public RecurringJob(
         Guid jobId,
         string jobTypeName,
+        string description,
         string cronExpression,
-        DateTimeOffset created, 
-        DateTimeOffset? started, 
+        DateTimeOffset created,
+        DateTimeOffset? started,
         DateTimeOffset? completed)
     {
         JobId = jobId;
+        JobTypeName = jobTypeName;
+        Description = description;
+        CronExpression = cronExpression;
         Created = created;
         Started = started;
         Completed = completed;
-        JobTypeName = jobTypeName;
-        CronExpression = cronExpression;
     }
 
     public Guid JobId { get; }
 
     public string JobTypeName { get; }
-    
+
+    public string Description { get; }
+
     public string CronExpression { get; }
 
     public DateTimeOffset Created { get; }

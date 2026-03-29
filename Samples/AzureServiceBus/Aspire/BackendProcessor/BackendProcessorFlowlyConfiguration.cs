@@ -15,8 +15,25 @@ public class BackendProcessorFlowlyConfiguration : FlowlyDesignTimeFactory, IFlo
     {
         builder
             .UseAzureServiceBus("EmulatorNamespace")
-            .AddSqlServerJobStateTracking(builder.Configuration.GetConnectionString("FlowlyJobs")!)
-            .AddSqlServerDeadLetterTracking(builder.Configuration.GetConnectionString("FlowlyDeadLetters")!)
+            
+            .AddSqlServerJobStateTracking(
+                builder.Configuration.GetConnectionString("FlowlyJobs")!,
+                true,
+                options =>
+                {
+                    options.DeleteCompletedJobsAfter = TimeSpan.FromMinutes(3);
+                    options.DeleteFailedJobsAfter = TimeSpan.FromMinutes(10);
+                })
+            
+            .AddSqlServerDeadLetterTracking(
+                builder.Configuration.GetConnectionString("FlowlyDeadLetters")!,
+                true,
+                options =>
+                {
+                    options.DeleteDeadLetteredMessagesAfter = TimeSpan.FromMinutes(5);
+                    options.DeleteRequeuedMessagesAfter = TimeSpan.FromMinutes(1);
+                })
+            
             .AddJobHandler<ProcessOrder, OrderProcessor>()
             .AddBatchMessageHandler<RebuildIndexMessage, RebuildIndexBatchHandler>()
             .AddRecurringJob<RecurringImportHandler>()

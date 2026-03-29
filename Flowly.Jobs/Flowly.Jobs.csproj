@@ -13,5 +13,10 @@
     <ItemGroup>
       <ProjectReference Include="..\Flowly\Flowly.csproj" />
     </ItemGroup>
-    
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="Flowly.Jobs.SqlServer" />
+        <InternalsVisibleTo Include="Flowly.Jobs.Postgres" />
+    </ItemGroup>
+
 </Project>

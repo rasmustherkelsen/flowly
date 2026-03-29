@@ -35,4 +35,13 @@ internal class FakeDeadLetterRepository : IDeadLetterRepository
         DeletedMessageId = messageId;
         return Task.CompletedTask;
     }
+
+    public Task<IReadOnlyCollection<DeadLetter>> GetAll(CancellationToken cancellationToken = default)
+        => Task.FromResult<IReadOnlyCollection<DeadLetter>>(_store.Values.ToList());
+
+    public Task DeleteRequeuedOlderThan(TimeSpan age, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task DeletePendingOlderThan(TimeSpan age, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
 }

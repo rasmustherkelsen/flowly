@@ -7,6 +7,9 @@ namespace Flowly.DeadLetters.Services;
 
 internal class DeadLetterService(IDeadLetterRepository repository, IMessageBusClient messageBusClient) : IDeadLetterService
 {
+    public async Task<IReadOnlyCollection<DeadLetter>> GetDeadLetters(CancellationToken cancellationToken = default)
+        => await repository.GetAll(cancellationToken);
+
     public async Task Requeue(string messageId, string? requeuedBy = null, CancellationToken cancellationToken = default)
     {
         var deadLetter = await repository.Get(messageId, cancellationToken)

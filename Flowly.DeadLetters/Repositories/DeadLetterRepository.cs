@@ -47,6 +47,16 @@ internal class DeadLetterRepository(IDbContextFactory<DeadLetterDataContext> con
             .MaxAsync(d => (DateTimeOffset?)d.DeadLetteredAt, cancellationToken);
     }
 
+    public async Task<IReadOnlyCollection<DeadLetter>> GetAll(CancellationToken cancellationToken = default)
+    {
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+
+        return await context.DeadLetters
+            .AsNoTracking()
+            .OrderByDescending(d => d.DeadLetteredAt)
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<DeadLetter?> Get(string messageId, CancellationToken cancellationToken = default)
     {
         await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
@@ -74,6 +84,28 @@ internal class DeadLetterRepository(IDbContextFactory<DeadLetterDataContext> con
 
         await context.DeadLetters
             .Where(d => d.MessageId == messageId)
+            .ExecuteDeleteAsync(cancellationToken);
+    }
+
+    public async Task DeleteRequeuedOlderThan(TimeSpan age, CancellationToken cancellationToken = default)
+    {
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+
+        var cutOff = DateTimeOffset.UtcNow - age;
+
+        await context.DeadLetters
+            .Where(d => d.Status == DeadLetterStatus.Requeued && d.RequeuedAt < cutOff)
+            .ExecuteDeleteAsync(cancellationToken);
+    }
+
+    public async Task DeletePendingOlderThan(TimeSpan age, CancellationToken cancellationToken = default)
+    {
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+
+        var cutOff = DateTimeOffset.UtcNow - age;
+
+        await context.DeadLetters
+            .Where(d => d.Status == DeadLetterStatus.Pending && d.DeadLetteredAt < cutOff)
             .ExecuteDeleteAsync(cancellationToken);
     }
 }

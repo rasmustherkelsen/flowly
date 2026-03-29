@@ -1,7 +1,6 @@
 using FastEndpoints;
-using Flowly.Jobs.DatabaseModel;
 using Flowly.Jobs.Model;
-using Microsoft.EntityFrameworkCore;
+using Flowly.Jobs.Services;
 
 namespace Api.Endpoints;
 
@@ -22,7 +21,7 @@ class GetJobsEndpoint : Endpoint<GetJobsEndpoint.GetJobsRequest, PagedResult<Job
 {
     internal record GetJobsRequest(int Page = 1, int PageSize = 20, string? Status = null, bool? IsRecurringJob = null);
 
-    public IDbContextFactory<JobStateDataContext> ContextFactory { get; set; } = null!;
+    public IJobTrackingService JobTrackingService { get; set; } = null!;
 
     public override void Configure()
     {
@@ -32,26 +31,43 @@ class GetJobsEndpoint : Endpoint<GetJobsEndpoint.GetJobsRequest, PagedResult<Job
 
     public override async Task HandleAsync(GetJobsRequest req, CancellationToken ct)
     {
-        await using var context = await ContextFactory.CreateDbContextAsync(ct);
+        if (req.IsRecurringJob == true)
+        {
+            var recurringJobs = await JobTrackingService.GetRecurringJobs(ct);
 
-        var query = context.Jobs.AsNoTracking();
+            var items = recurringJobs
+                .OrderByDescending(j => j.LastCompleted ?? j.Created)
+                .Select(j => new JobDto(
+                    j.JobId,
+                    j.JobTypeName,
+                    j.Description,
+                    "Recurring",
+                    j.Created,
+                    j.LastStarted,
+                    j.LastCompleted,
+                    null,
+                    0,
+                    true,
+                    j.CronExpression))
+                .ToArray();
+
+            await Send.OkAsync(new PagedResult<JobDto>(items, items.Length, 1, items.Length), ct);
+            return;
+        }
+
+        var jobs = await JobTrackingService.GetJobs(ct);
+
+        var query = jobs.AsEnumerable();
 
         if (req.Status is not null && Enum.TryParse<JobState>(req.Status, ignoreCase: true, out var parsedState))
-        {
             query = query.Where(j => j.CurrentState == parsedState);
-        }
 
-        if (req.IsRecurringJob is not null)
-        {
-            query = query.Where(j => j.IsRecurringJob == req.IsRecurringJob);
-        }
-
-        var totalCount = await query.CountAsync(ct);
+        var totalCount = query.Count();
 
         int page = req.Page > 0 ? req.Page : 1;
         int pageSize = req.PageSize > 0 ? req.PageSize : 20;
 
-        var items = await query
+        var pageItems = query
             .OrderByDescending(j => j.Created)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
@@ -65,10 +81,10 @@ class GetJobsEndpoint : Endpoint<GetJobsEndpoint.GetJobsRequest, PagedResult<Job
                 j.Completed,
                 j.FaultReason,
                 j.RetryAttempt,
-                j.IsRecurringJob,
-                j.CronExpression))
-            .ToArrayAsync(ct);
+                false,
+                null))
+            .ToArray();
 
-        await Send.OkAsync(new PagedResult<JobDto>(items, totalCount, page, pageSize), ct);
+        await Send.OkAsync(new PagedResult<JobDto>(pageItems, totalCount, page, pageSize), ct);
     }
 }

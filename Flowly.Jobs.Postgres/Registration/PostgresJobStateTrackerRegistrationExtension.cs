@@ -2,6 +2,7 @@ using Flowly.Jobs.Registration;
 using Flowly.Jobs.Services;
 using Flowly.MessageInfrastructure.Registration;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Flowly.Jobs.Postgres.Registration;
 
@@ -13,13 +14,17 @@ public static class PostgresJobStateTrackerRegistrationExtension
     public static IFlowlyBuilder AddPostgresJobStateTracking(
         this IFlowlyBuilder flowlyBuilder,
         string connectionString,
-        bool enableMigrations = true)
+        bool enableMigrations = true,
+        Action<JobStateTrackingOptions>? configure = null)
     {
+        if (configure is not null)
+            flowlyBuilder.Services.Configure<JobStateTrackingOptions>(configure);
+
         flowlyBuilder
             .AddJobStateTracking()
-            .AddRepositories(options =>
+            .AddRepositories(dbOptions =>
             {
-                options.UseNpgsql(
+                dbOptions.UseNpgsql(
                     connectionString,
                     npgsqlOptions =>
                     {
@@ -32,6 +37,22 @@ public static class PostgresJobStateTrackerRegistrationExtension
         {
             flowlyBuilder.Services.AddJobHandlerStateDatabaseMigrations();
         }
+
+        return flowlyBuilder;
+    }
+
+    /// <summary>
+    /// Add read-only job tracking client backed by PostgreSQL.
+    /// Use this in applications that need to query job state but do not process jobs.
+    /// </summary>
+    public static IFlowlyBuilder AddJobStateTrackingClient(
+        this IFlowlyBuilder flowlyBuilder,
+        string connectionString)
+    {
+        flowlyBuilder.AddRepositories(dbOptions =>
+            dbOptions.UseNpgsql(
+                connectionString,
+                npgsql => npgsql.EnableRetryOnFailure(5, TimeSpan.FromSeconds(30), null)));
 
         return flowlyBuilder;
     }

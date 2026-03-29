@@ -10,7 +10,7 @@ namespace Flowly.DeadLetters.Registration;
 public static class DeadLetterTrackingRegistrationExtensions
 {
     private sealed class DeadLetterTrackingSentinel;
-    
+
     private static readonly Type SentinelType = typeof(DeadLetterTrackingSentinel);
 
     /// <summary>
@@ -23,11 +23,13 @@ public static class DeadLetterTrackingRegistrationExtensions
             return flowlyBuilder;
 
         flowlyBuilder.Services.AddSingleton<DeadLetterTrackingSentinel>();
+        flowlyBuilder.Services.AddOptions<DeadLetterTrackingOptions>();
         flowlyBuilder.Services.AddDbContextFactory<DatabaseModel.DeadLetterDataContext>(dbContextOptions);
         flowlyBuilder.Services.AddScoped<IDeadLetterRepository, DeadLetterRepository>();
         flowlyBuilder.Services.AddScoped<IDeadLetterService, DeadLetterService>();
         flowlyBuilder.Services.AddSingleton(new DeadLetterIngestionHealthSettings(CheckInterval: TimeSpan.FromMinutes(5), StallThreshold: TimeSpan.FromMinutes(5)));
         flowlyBuilder.Services.AddHostedService<DeadLetterIngestionHealthBackgroundService>();
+        flowlyBuilder.Services.AddHostedService<DeadLetterCleanupBackgroundService>();
 
         return flowlyBuilder;
     }
