@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using Flowly.MessageInfrastructure.Model;
+using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.MessagingAbstractions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -13,17 +15,20 @@ public abstract class ServiceBusMessageHandlerBackgroundServiceBase<TMessage> : 
     private readonly IServiceScopeFactory _serviceScopeFactory;
     private readonly HandlerSettings<TMessage> _handlerSettings;
     private readonly ILogger _logger;
+    private readonly HandlerInstrumentation _handlerInstrumentation;
 
     public ServiceBusMessageHandlerBackgroundServiceBase(
         IMessageBusClient messageBusClient,
         IServiceScopeFactory serviceScopeFactory,
         HandlerSettings<TMessage> handlerSettings,
-        ILogger logger)
+        ILogger logger,
+        HandlerInstrumentation handlerInstrumentation)
     {
         _messageBusClient = messageBusClient;
         _serviceScopeFactory = serviceScopeFactory;
         _handlerSettings = handlerSettings;
         _logger = logger;
+        _handlerInstrumentation = handlerInstrumentation;
 
         _messageBusProcessor = messageBusClient.CreateProcessor<TMessage>(
             handlerSettings.QueueName,
@@ -45,6 +50,10 @@ public abstract class ServiceBusMessageHandlerBackgroundServiceBase<TMessage> : 
 
     private async Task OnProcessMessage(IReceivedMessage<TMessage> receivedMessage, CancellationToken cancellationToken)
     {
+        _handlerInstrumentation.RecordReceived(_handlerSettings.HandlerName, _handlerSettings.QueueName);
+        var sw = Stopwatch.StartNew();
+        using var activity = _handlerInstrumentation.StartHandling(_handlerSettings.HandlerName, _handlerSettings.QueueName);
+
         await using var scope = _serviceScopeFactory.CreateAsyncScope();
 
         Exception? handlingException = null;
@@ -60,6 +69,7 @@ public abstract class ServiceBusMessageHandlerBackgroundServiceBase<TMessage> : 
         if (handlingException == null)
         {
             await receivedMessage.Complete(cancellationToken);
+            _handlerInstrumentation.RecordSucceeded(_handlerSettings.HandlerName, _handlerSettings.QueueName, sw.Elapsed.TotalMilliseconds);
             _logger.LogInformation("{HandlerName} handled message", _handlerSettings.HandlerName);
             return;
         }
@@ -69,11 +79,13 @@ public abstract class ServiceBusMessageHandlerBackgroundServiceBase<TMessage> : 
         {
             await RepublishForRetry(receivedMessage, currentRetry + 1, cancellationToken);
             await receivedMessage.Complete(cancellationToken);
+            _handlerInstrumentation.RecordRetried(_handlerSettings.HandlerName, _handlerSettings.QueueName);
             _logger.LogWarning("{HandlerName} message handling failed, retrying (attempt {Next}/{Max})",
                 _handlerSettings.HandlerName, currentRetry + 1, _handlerSettings.MaxRetries);
             return;
         }
 
+        _handlerInstrumentation.RecordFailed(_handlerSettings.HandlerName, _handlerSettings.QueueName);
         await OnRetriesExhausted(receivedMessage, handlingException, scope.ServiceProvider, cancellationToken);
     }
 

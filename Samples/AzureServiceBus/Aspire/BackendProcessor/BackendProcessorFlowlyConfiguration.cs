@@ -5,6 +5,7 @@ using Flowly.DeadLetters.SqlServer.Registration;
 using Flowly.Jobs.Registration;
 using Flowly.Jobs.SqlServer.Registration;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.OpenTelemetry;
 using MessageContracts;
 
 namespace BackendProcessor;
@@ -40,5 +41,9 @@ public class BackendProcessorFlowlyConfiguration : FlowlyDesignTimeFactory, IFlo
             .AddRecurringJob<FrequentlyRecurringHandler>()
             .AddMessageHandler<SomeQueryMessage, SomeQueryProcessor>()
             .WithDeadLetterTracking();
+        
+        builder.Services.AddOpenTelemetry()
+            .WithMetrics(m => m.AddFlowlyInstrumentation())
+            .WithTracing(t => t.AddFlowlyInstrumentation());
     }
 }

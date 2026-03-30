@@ -1,5 +1,7 @@
-﻿using Flowly.MessageInfrastructure.Model;
+using System.Diagnostics;
+using Flowly.MessageInfrastructure.Model;
 using Flowly.MessageInfrastructure.Receivers;
+using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.MessagingAbstractions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -11,7 +13,8 @@ internal class ServiceBusMessageBatchHandlerBackgroundService<TMessage>(
     IMessageBusClient messageBusClient,
     ServiceBusMessageBatchHandlerBackgroundService<TMessage>.BatchQueueSettings batchQueueSettings,
     IServiceScopeFactory serviceScopeFactory,
-    ILogger<ServiceBusMessageBatchHandlerBackgroundService<TMessage>> logger) : BackgroundService where TMessage : class
+    ILogger<ServiceBusMessageBatchHandlerBackgroundService<TMessage>> logger,
+    HandlerInstrumentation handlerInstrumentation) : BackgroundService where TMessage : class
 {
     public record BatchQueueSettings(string QueueName, int MaxMessagesBeforeProcessing, TimeSpan MaxWaitTime);
 
@@ -38,14 +41,26 @@ internal class ServiceBusMessageBatchHandlerBackgroundService<TMessage>(
 
                 await using var scope = serviceScopeFactory.CreateAsyncScope();
                 var messageHandler = scope.ServiceProvider.GetRequiredService<BatchMessageHandlerBase<TMessage>>();
+                var handlerName = messageHandler.GetType().Name;
 
-                logger.LogInformation("{MessageHandlerName} received {ReceivedMessagesCount} messages", messageHandler.GetType().Name, receivedMessages.Count);
+                handlerInstrumentation.RecordReceived(handlerName, batchQueueSettings.QueueName, receivedMessages.Count);
+                logger.LogInformation("{MessageHandlerName} received {ReceivedMessagesCount} messages", handlerName, receivedMessages.Count);
 
-                await messageHandler.Handle(new BatchMessageContext<TMessage>(receivedMessages.Select(rm => rm.Body).ToList(), stoppingToken));
+                var sw = Stopwatch.StartNew();
+                using var activity = handlerInstrumentation.StartHandling(handlerName, batchQueueSettings.QueueName);
 
-                await receiver.CompleteMessages(receivedMessages, stoppingToken);
-                
-                logger.LogInformation("{MessageHandlerName} completed {ReceivedMessagesCount} messages", messageHandler.GetType().Name, receivedMessages.Count);
+                try
+                {
+                    await messageHandler.Handle(new BatchMessageContext<TMessage>(receivedMessages.Select(rm => rm.Body).ToList(), stoppingToken));
+                    await receiver.CompleteMessages(receivedMessages, stoppingToken);
+                    handlerInstrumentation.RecordSucceeded(handlerName, batchQueueSettings.QueueName, sw.Elapsed.TotalMilliseconds, receivedMessages.Count);
+                    logger.LogInformation("{MessageHandlerName} completed {ReceivedMessagesCount} messages", handlerName, receivedMessages.Count);
+                }
+                catch (Exception e)
+                {
+                    handlerInstrumentation.RecordFailed(handlerName, batchQueueSettings.QueueName, receivedMessages.Count);
+                    logger.LogError(e.Message, e);
+                }
             }
             catch (Exception e)
             {

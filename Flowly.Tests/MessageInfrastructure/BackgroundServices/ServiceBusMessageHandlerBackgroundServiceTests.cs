@@ -1,6 +1,7 @@
 using Flowly.MessageInfrastructure.BackgroundServices;
 using Flowly.MessageInfrastructure.Model;
 using Flowly.MessageInfrastructure.Receivers;
+using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.MessagingAbstractions;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -138,7 +139,7 @@ public class ServiceBusMessageHandlerBackgroundServiceTests
         var settings = new HandlerSettings<TestMessage>(queueName, "TestHandler", readAndDelete, maxConcurrentCalls);
         var factory = scopeFactory ?? new FakeServiceScopeFactory<MessageHandlerBase<TestMessage>>(handler ?? new RecordingMessageHandler());
         var serviceBusMessageHandlerBackgroundService = new ServiceBusMessageHandlerBackgroundService<TestMessage>(
-            client, factory, settings, NullLogger<ServiceBusMessageHandlerBackgroundService<TestMessage>>.Instance);
+            client, factory, settings, NullLogger<ServiceBusMessageHandlerBackgroundService<TestMessage>>.Instance, new HandlerInstrumentation(false));
         return (serviceBusMessageHandlerBackgroundService, client);
     }
 

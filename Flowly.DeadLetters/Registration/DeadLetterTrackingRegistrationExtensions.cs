@@ -1,6 +1,7 @@
 using Flowly.DeadLetters.BackgroundServices;
 using Flowly.DeadLetters.Repositories;
 using Flowly.DeadLetters.Services;
+using Flowly.DeadLetters.Telemetry;
 using Flowly.MessageInfrastructure.Registration;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -30,6 +31,9 @@ public static class DeadLetterTrackingRegistrationExtensions
         flowlyBuilder.Services.AddSingleton(new DeadLetterIngestionHealthSettings(CheckInterval: TimeSpan.FromMinutes(5), StallThreshold: TimeSpan.FromMinutes(5)));
         flowlyBuilder.Services.AddHostedService<DeadLetterIngestionHealthBackgroundService>();
         flowlyBuilder.Services.AddHostedService<DeadLetterCleanupBackgroundService>();
+
+        flowlyBuilder.Services.AddSingleton<DeadLetterGaugeMetrics>();
+        flowlyBuilder.Services.AddHostedService<DeadLetterMetricsBackgroundService>();
 
         return flowlyBuilder;
     }

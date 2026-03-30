@@ -1,5 +1,6 @@
-﻿using Flowly.MessageInfrastructure.Model;
+using Flowly.MessageInfrastructure.Model;
 using Flowly.MessageInfrastructure.Receivers;
+using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.MessagingAbstractions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -9,10 +10,11 @@ namespace Flowly.MessageInfrastructure.BackgroundServices;
 internal class ServiceBusMessageHandlerBackgroundService<TMessage> : ServiceBusMessageHandlerBackgroundServiceBase<TMessage> where TMessage : class
 {
     public ServiceBusMessageHandlerBackgroundService(
-        IMessageBusClient messageBusClient, 
-        IServiceScopeFactory serviceScopeFactory, 
-        HandlerSettings<TMessage> handlerSettings, 
-        ILogger<ServiceBusMessageHandlerBackgroundService<TMessage>> logger) : base(messageBusClient, serviceScopeFactory, handlerSettings, logger)
+        IMessageBusClient messageBusClient,
+        IServiceScopeFactory serviceScopeFactory,
+        HandlerSettings<TMessage> handlerSettings,
+        ILogger<ServiceBusMessageHandlerBackgroundService<TMessage>> logger,
+        HandlerInstrumentation handlerInstrumentation) : base(messageBusClient, serviceScopeFactory, handlerSettings, logger, handlerInstrumentation)
     {
     }
 

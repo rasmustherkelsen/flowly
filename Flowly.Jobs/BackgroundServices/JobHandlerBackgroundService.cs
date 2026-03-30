@@ -4,6 +4,7 @@ using Flowly.Jobs.Receivers;
 using Flowly.MessageInfrastructure.BackgroundServices;
 using Flowly.MessageInfrastructure.Model;
 using Flowly.MessageInfrastructure.Senders;
+using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.MessagingAbstractions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -18,7 +19,8 @@ internal class JobHandlerBackgroundService<TMessage> : ServiceBusMessageHandlerB
         IMessageBusClient messageBusClient,
         IServiceScopeFactory serviceScopeFactory,
         HandlerSettings<TMessage> handlerSettings,
-        ILogger<JobHandlerBackgroundService<TMessage>> logger) : base(messageBusClient, serviceScopeFactory, handlerSettings, logger)
+        ILogger<JobHandlerBackgroundService<TMessage>> logger,
+        HandlerInstrumentation handlerInstrumentation) : base(messageBusClient, serviceScopeFactory, handlerSettings, logger, handlerInstrumentation)
     {
         _serviceScopeFactory = serviceScopeFactory;
     }

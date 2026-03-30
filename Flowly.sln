@@ -43,6 +43,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Flowly.DeadLetters.Postgres
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Flowly.DeadLetters.Tests", "Flowly.DeadLetters.Tests\Flowly.DeadLetters.Tests.csproj", "{2536D2C7-5C54-44C1-AD40-9054A9EFD500}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Flowly.OpenTelemetry", "Flowly.OpenTelemetry\Flowly.OpenTelemetry.csproj", "{79F93E4C-138C-4229-AC26-1B75D5E72768}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -257,6 +259,18 @@ Global
 		{2536D2C7-5C54-44C1-AD40-9054A9EFD500}.Release|x64.Build.0 = Release|Any CPU
 		{2536D2C7-5C54-44C1-AD40-9054A9EFD500}.Release|x86.ActiveCfg = Release|Any CPU
 		{2536D2C7-5C54-44C1-AD40-9054A9EFD500}.Release|x86.Build.0 = Release|Any CPU
+		{79F93E4C-138C-4229-AC26-1B75D5E72768}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{79F93E4C-138C-4229-AC26-1B75D5E72768}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{79F93E4C-138C-4229-AC26-1B75D5E72768}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{79F93E4C-138C-4229-AC26-1B75D5E72768}.Debug|x64.Build.0 = Debug|Any CPU
+		{79F93E4C-138C-4229-AC26-1B75D5E72768}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{79F93E4C-138C-4229-AC26-1B75D5E72768}.Debug|x86.Build.0 = Debug|Any CPU
+		{79F93E4C-138C-4229-AC26-1B75D5E72768}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{79F93E4C-138C-4229-AC26-1B75D5E72768}.Release|Any CPU.Build.0 = Release|Any CPU
+		{79F93E4C-138C-4229-AC26-1B75D5E72768}.Release|x64.ActiveCfg = Release|Any CPU
+		{79F93E4C-138C-4229-AC26-1B75D5E72768}.Release|x64.Build.0 = Release|Any CPU
+		{79F93E4C-138C-4229-AC26-1B75D5E72768}.Release|x86.ActiveCfg = Release|Any CPU
+		{79F93E4C-138C-4229-AC26-1B75D5E72768}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

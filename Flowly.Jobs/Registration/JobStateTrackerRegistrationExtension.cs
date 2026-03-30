@@ -5,10 +5,10 @@ using Flowly.Jobs.Messages;
 using Flowly.Jobs.Repositories;
 using Flowly.Jobs.Senders;
 using Flowly.Jobs.Services;
+using Flowly.Jobs.Telemetry;
 using Flowly.MessageInfrastructure.Registration;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 
 namespace Flowly.Jobs.Registration;
 
@@ -21,6 +21,9 @@ public static class JobStateTrackerRegistrationExtension
     public static IFlowlyBuilder AddJobStateTracking(this IFlowlyBuilder flowlyBuilder)
     {
         flowlyBuilder.Services.AddOptions<JobStateTrackingOptions>();
+
+        flowlyBuilder.Services.AddSingleton<JobStateGaugeMetrics>();
+        flowlyBuilder.Services.AddHostedService<JobStateMetricsBackgroundService>();
 
         flowlyBuilder
             .AddJobMaintenanceBackgroundJobs()

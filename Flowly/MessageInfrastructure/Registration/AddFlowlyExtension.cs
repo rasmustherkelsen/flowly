@@ -1,4 +1,5 @@
 using System.Reflection;
+using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -52,6 +53,9 @@ public static class AddFlowlyExtension
         var options = new FlowlyOptions();
         configureOptions?.Invoke(options);
         services.TryAddSingleton(options);
+
+        services.TryAddSingleton(new HandlerInstrumentation(options.EnableTelemetry));
+        services.TryAddSingleton(new SubmitterInstrumentation(options.EnableTelemetry));
 
         services.AddHostedService<CommandLineParserHostedService>();
 

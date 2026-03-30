@@ -1,9 +1,11 @@
-﻿using Cronos;
+using System.Diagnostics;
+using Cronos;
 using Flowly.Jobs.Messages;
 using Flowly.Jobs.Model;
 using Flowly.MessageInfrastructure;
 using Flowly.MessageInfrastructure.RecurringJobs;
 using Flowly.MessageInfrastructure.Senders;
+using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.MessagingAbstractions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -17,6 +19,8 @@ internal class RecurringJobHandlerBackgroundService<TRecurringJobHandler> : Back
     private readonly RecurringJobSettings _settings;
     private readonly ILogger<RecurringJobHandlerBackgroundService<TRecurringJobHandler>> _logger;
     private readonly IExecutionLaneProcessor _executionLaneProcessor;
+    private readonly HandlerInstrumentation _handlerInstrumentation;
+    private readonly string _handlerName = typeof(TRecurringJobHandler).Name;
 
     public class RecurringJobSettings
     {
@@ -33,9 +37,9 @@ internal class RecurringJobHandlerBackgroundService<TRecurringJobHandler> : Back
         }
 
         public string JobDescription { get; }
-        
+
         public string SessionName { get; }
-        
+
         public string CronExpression { get; }
     }
 
@@ -43,11 +47,13 @@ internal class RecurringJobHandlerBackgroundService<TRecurringJobHandler> : Back
         IMessageBusClient messageBusClient,
         IServiceScopeFactory serviceScopeFactory,
         RecurringJobSettings settings,
-        ILogger<RecurringJobHandlerBackgroundService<TRecurringJobHandler>> logger)
+        ILogger<RecurringJobHandlerBackgroundService<TRecurringJobHandler>> logger,
+        HandlerInstrumentation handlerInstrumentation)
     {
         _serviceScopeFactory = serviceScopeFactory;
         _settings = settings;
         _logger = logger;
+        _handlerInstrumentation = handlerInstrumentation;
 
         _executionLaneProcessor = messageBusClient.CreateExecutionLaneProcessor(
             JobQueuesNames.RecurringJobs,
@@ -64,14 +70,18 @@ internal class RecurringJobHandlerBackgroundService<TRecurringJobHandler> : Back
         _executionLaneProcessor.ProcessMessage += OnProcessMessage;
         _executionLaneProcessor.ProcessError += OnHandleError;
 
-        _logger.LogInformation($"Recurring job {typeof(TRecurringJobHandler).Name} started. Cron expression: {_settings.CronExpression}");
+        _logger.LogInformation($"Recurring job {_handlerName} started. Cron expression: {_settings.CronExpression}");
 
         await _executionLaneProcessor.StartProcessing(stoppingToken);
     }
 
     private async Task OnProcessMessage(IReceivedMessage receivedMessage, CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Running scheduled job '{RecurringJobHandlerName}'", typeof(TRecurringJobHandler).Name);
+        _logger.LogInformation("Running scheduled job '{RecurringJobHandlerName}'", _handlerName);
+
+        _handlerInstrumentation.RecordReceived(_handlerName, JobQueuesNames.RecurringJobs);
+        var sw = Stopwatch.StartNew();
+        using var activity = _handlerInstrumentation.StartHandling(_handlerName, JobQueuesNames.RecurringJobs);
 
         var jobId = new JobId(Guid.Parse(receivedMessage.Properties.MessageId));
 
@@ -91,12 +101,16 @@ internal class RecurringJobHandlerBackgroundService<TRecurringJobHandler> : Back
         }
 
         await messageSender.Send(new UpdateJobState(jobId, JobState.Completed, DateTime.UtcNow), cancellationToken);
+
+        _handlerInstrumentation.RecordSucceeded(_handlerName, JobQueuesNames.RecurringJobs, sw.Elapsed.TotalMilliseconds);
     }
 
     private async Task OnHandleError(ErrorDetails errorDetails)
     {
         if (errorDetails.Exception is JobException jobException)
         {
+            _handlerInstrumentation.RecordFailed(_handlerName, JobQueuesNames.RecurringJobs);
+
             await using var scope = _serviceScopeFactory.CreateAsyncScope();
             var messageSender = scope.ServiceProvider.GetRequiredService<IMessageSender>();
             await messageSender.Send(new JobFailed(jobException.JobId, jobException.InnerException?.Message ?? jobException.Message, DateTime.UtcNow));
