@@ -44,6 +44,22 @@
                 deadLetterService.Requeue("nonexistent-id"));
   ```
 
+## Parameter names
+
+  - Use type name in camelcase formatting.
+
+  Example:
+
+  ```C#
+  public override async Task HandleAsync(DeleteDeadLetterRequest req, CancellationToken ct)
+  ```
+
+  Should be
+
+  ```C#
+  public override async Task HandleAsync(DeleteDeadLetterRequest deleteDeadLetterRequest, CancellationToken cancellationToken)
+  ```
+
 ## Brackets
 
 - Always use brackets in for loops

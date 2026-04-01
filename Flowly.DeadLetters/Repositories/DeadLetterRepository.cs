@@ -18,6 +18,7 @@ internal class DeadLetterRepository(IDbContextFactory<DeadLetterDataContext> con
             .ToHashSetAsync(cancellationToken);
 
         var newDeadLetters = messages
+            .DistinctBy(m => m.MessageId)
             .Where(m => !existingIds.Contains(m.MessageId))
             .Select(message => new DeadLetter
             {

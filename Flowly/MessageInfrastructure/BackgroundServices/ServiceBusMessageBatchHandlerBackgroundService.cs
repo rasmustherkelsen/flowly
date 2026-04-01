@@ -62,6 +62,10 @@ internal class ServiceBusMessageBatchHandlerBackgroundService<TMessage>(
                     logger.LogError(e.Message, e);
                 }
             }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
             catch (Exception e)
             {
                 logger.LogError(e.Message, e);

@@ -18,16 +18,19 @@ internal class DeadLetterIngestionBackgroundService(
     {
         logger.LogInformation("Dead letter ingestion started for queue '{QueueName}'", settings.QueueName);
 
-        await using var receiver = messageBusClient.CreateDeadLetterReceiver(settings.QueueName);
-
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                var messages = await receiver.ReceiveMessages(50, PollInterval, stoppingToken);
+                await using var receiver = messageBusClient.CreateDeadLetterReceiver(settings.QueueName);
 
-                if (messages.Count > 0)
-                    await ProcessBatch(receiver, messages, stoppingToken);
+                while (!stoppingToken.IsCancellationRequested)
+                {
+                    var messages = await receiver.ReceiveMessages(50, PollInterval, stoppingToken);
+
+                    if (messages.Count > 0)
+                        await ProcessBatch(receiver, messages, stoppingToken);
+                }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -35,7 +38,9 @@ internal class DeadLetterIngestionBackgroundService(
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Dead letter ingestion error for queue '{QueueName}'", settings.QueueName);
+                logger.LogError(ex, "Dead letter ingestion error for queue '{QueueName}', restarting receiver", settings.QueueName);
+                try { await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken); }
+                catch (OperationCanceledException) { break; }
             }
         }
     }
