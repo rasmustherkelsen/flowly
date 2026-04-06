@@ -6,20 +6,17 @@ using Messages;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.AddFlowly(options => options.CreateTopology = true);
+builder.AddFlowly(
+    options => options.CreateTopology = true,
+    flowlyBuilder =>
+    {
+        flowlyBuilder.UseRabbitMq();
+        flowlyBuilder.AddMessageHandler<HelloWorldMessage, HelloWorldHandler>();
+    });
 
 var app = builder.Build();
 
 app.Run();
-
-internal class FlowlyConfiguration : FlowlyDesignTimeFactory, IFlowlyConfiguration
-{
-    public void Configure(IFlowlyBuilder builder)
-    {
-        builder.UseRabbitMq();
-        builder.AddMessageHandler<HelloWorldMessage, HelloWorldHandler>();
-    }
-}
 
 internal class HelloWorldHandler : MessageHandler<HelloWorldMessage>
 {

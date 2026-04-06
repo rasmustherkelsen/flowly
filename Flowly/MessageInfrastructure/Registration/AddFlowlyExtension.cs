@@ -16,6 +16,15 @@ public static class AddFlowlyExtension
         return builder;
     }
 
+    public static IHostApplicationBuilder AddFlowly(
+        this IHostApplicationBuilder builder,
+        Action<FlowlyOptions>? configureOptions,
+        Action<IFlowlyBuilder> configure)
+    {
+        Register(builder.Services, builder.Configuration, new InlineFlowlyConfiguration(configure), configureOptions);
+        return builder;
+    }
+
     public static IHostApplicationBuilder AddFlowly(this IHostApplicationBuilder builder, Action<FlowlyOptions>? configureOptions = null)
     {
         var assembly = Assembly.GetEntryAssembly() ?? throw new InvalidOperationException("Could not determine the entry assembly.");
@@ -39,6 +48,11 @@ public static class AddFlowlyExtension
         var module = (IFlowlyConfiguration)Activator.CreateInstance(configTypes[0])!;
         Register(builder.Services, builder.Configuration, module, configureOptions);
         return builder;
+    }
+
+    private sealed class InlineFlowlyConfiguration(Action<IFlowlyBuilder> configure) : IFlowlyConfiguration
+    {
+        public void Configure(IFlowlyBuilder builder) => configure(builder);
     }
 
     private static void Register(

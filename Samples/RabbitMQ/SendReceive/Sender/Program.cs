@@ -5,19 +5,15 @@ using Messages;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.AddFlowly(options => options.CreateTopology = true);
+builder.AddFlowly(
+    options => options.CreateTopology = true,
+    flowlyBuilder => flowlyBuilder
+        .UseRabbitMq()
+        .AddMessageSubmitter<HelloWorldMessage>());
 builder.Services.AddHostedService<SenderService>();
 
 var app = builder.Build();
 app.Run();
-
-internal class FlowlyConfiguration : FlowlyDesignTimeFactory, IFlowlyConfiguration
-{
-    public void Configure(IFlowlyBuilder builder)
-        => builder
-            .UseRabbitMq()
-            .AddMessageSubmitter<HelloWorldMessage>();
-}
 
 class SenderService(IServiceScopeFactory serviceScopeFactory) : BackgroundService
 {
