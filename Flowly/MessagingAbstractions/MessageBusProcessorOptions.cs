@@ -1,0 +1,3 @@
+namespace Flowly.MessagingAbstractions;
+
+public record MessageBusProcessorOptions(int MaxConcurrentCalls, MessageBusReceiveMode ReceiveMode);
