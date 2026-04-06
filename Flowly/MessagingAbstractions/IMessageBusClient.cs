@@ -2,15 +2,15 @@ namespace Flowly.MessagingAbstractions;
 
 public interface IMessageBusClient
 {
-    IMessageBusReceiver CreateReceiver(string queueName);
-    
-    IMessageBusProcessor<TMessage> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options);
+    Task<IMessageBusReceiver> CreateReceiver(string queueName);
 
-    IExecutionLaneProcessor CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options);
+    Task<IMessageBusProcessor<TMessage>> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options);
 
-    IMessageBusSender CreateMessageBusSender(string queueName);
+    Task<IExecutionLaneProcessor> CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options);
 
-    IDeadLetterReceiver CreateDeadLetterReceiver(string queueName);
+    Task<IMessageBusSender> CreateMessageBusSender(string queueName);
+
+    Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName);
 
     Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default);
 }

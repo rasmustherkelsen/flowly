@@ -26,7 +26,7 @@ internal class ServiceBusMessageBatchHandlerBackgroundService<TMessage>(
             logger.LogInformation("{MessageHandlerName} batch waiting for messages on queue '{QueueName}'", messageHandlerForLog.GetType().Name, batchQueueSettings.QueueName);
         }
 
-        await using var receiver = messageBusClient.CreateReceiver(batchQueueSettings.QueueName);
+        await using var receiver = await messageBusClient.CreateReceiver(batchQueueSettings.QueueName);
 
         while (!stoppingToken.IsCancellationRequested)
         {

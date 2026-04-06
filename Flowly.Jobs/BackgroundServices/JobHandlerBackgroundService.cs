@@ -11,19 +11,14 @@ using Microsoft.Extensions.Logging;
 
 namespace Flowly.Jobs.BackgroundServices;
 
-internal class JobHandlerBackgroundService<TMessage> : ServiceBusMessageHandlerBackgroundServiceBase<TMessage> where TMessage : class, IJobMessage
+internal class JobHandlerBackgroundService<TMessage>(
+    IMessageBusClient messageBusClient,
+    IServiceScopeFactory serviceScopeFactory,
+    HandlerSettings<TMessage> handlerSettings,
+    ILogger<JobHandlerBackgroundService<TMessage>> logger,
+    HandlerInstrumentation handlerInstrumentation) : ServiceBusMessageHandlerBackgroundServiceBase<TMessage>(messageBusClient, serviceScopeFactory, handlerSettings, logger, handlerInstrumentation) where TMessage : class, IJobMessage
 {
-    private readonly IServiceScopeFactory _serviceScopeFactory;
-
-    public JobHandlerBackgroundService(
-        IMessageBusClient messageBusClient,
-        IServiceScopeFactory serviceScopeFactory,
-        HandlerSettings<TMessage> handlerSettings,
-        ILogger<JobHandlerBackgroundService<TMessage>> logger,
-        HandlerInstrumentation handlerInstrumentation) : base(messageBusClient, serviceScopeFactory, handlerSettings, logger, handlerInstrumentation)
-    {
-        _serviceScopeFactory = serviceScopeFactory;
-    }
+    private readonly IServiceScopeFactory _serviceScopeFactory = serviceScopeFactory;
 
     protected override async Task OnHandleMessage(IReceivedMessage<TMessage> receivedMessage, IServiceProvider serviceProvider, CancellationToken cancellationToken)
     {

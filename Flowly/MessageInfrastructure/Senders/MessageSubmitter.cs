@@ -20,7 +20,7 @@ public class MessageSubmitter<TMessage>(
         using var activity = submitterInstrumentation.StartSending(queueSettings.QueueName);
         try
         {
-            var sender = messageBusClient.CreateMessageBusSender(queueSettings.QueueName);
+            var sender = await messageBusClient.CreateMessageBusSender(queueSettings.QueueName);
             await sender.SendMessage(message, MessageProperties.Empty, cancellationToken);
             submitterInstrumentation.RecordSent(queueSettings.QueueName, sw.Elapsed.TotalMilliseconds);
         }

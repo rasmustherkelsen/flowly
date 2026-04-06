@@ -7,10 +7,7 @@ using Microsoft.Extensions.Hosting;
 
 namespace Flowly.Jobs.BackgroundServices;
 
-internal class JobStateMetricsBackgroundService(
-    IDbContextFactory<JobStateDataContext> dbContextFactory,
-    JobStateGaugeMetrics metrics,
-    FlowlyOptions options) : BackgroundService
+internal class JobStateMetricsBackgroundService(IDbContextFactory<JobStateDataContext> dbContextFactory, JobStateGaugeMetrics metrics, FlowlyOptions options) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {

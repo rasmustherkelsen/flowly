@@ -17,10 +17,11 @@ public class ServiceBusMessageHandlerBackgroundServiceTests
             var (serviceBusMessageHandlerBackgroundService, client) = Build("test-queue");
 
             await serviceBusMessageHandlerBackgroundService.StartAsync(CancellationToken.None);
-            await client.CreatedProcessor!.Started;
+            var processor = await client.ProcessorCreated;
+            await processor.Started;
             await serviceBusMessageHandlerBackgroundService.StopAsync(CancellationToken.None);
 
-            Assert.Equal("test-queue", client.CreatedProcessor!.QueueName);
+            Assert.Equal("test-queue", processor.QueueName);
         }
 
         [Fact]
@@ -29,10 +30,11 @@ public class ServiceBusMessageHandlerBackgroundServiceTests
             var (serviceBusMessageHandlerBackgroundService, client) = Build("test-queue", maxConcurrentCalls: 3);
 
             await serviceBusMessageHandlerBackgroundService.StartAsync(CancellationToken.None);
-            await client.CreatedProcessor!.Started;
+            var processor = await client.ProcessorCreated;
+            await processor.Started;
             await serviceBusMessageHandlerBackgroundService.StopAsync(CancellationToken.None);
 
-            Assert.Equal(3, client.CreatedProcessor!.Options.MaxConcurrentCalls);
+            Assert.Equal(3, processor.Options.MaxConcurrentCalls);
         }
 
         [Fact]
@@ -41,10 +43,11 @@ public class ServiceBusMessageHandlerBackgroundServiceTests
             var (serviceBusMessageHandlerBackgroundService, client) = Build("test-queue", readAndDelete: false);
 
             await serviceBusMessageHandlerBackgroundService.StartAsync(CancellationToken.None);
-            await client.CreatedProcessor!.Started;
+            var processor = await client.ProcessorCreated;
+            await processor.Started;
             await serviceBusMessageHandlerBackgroundService.StopAsync(CancellationToken.None);
 
-            Assert.Equal(MessageBusReceiveMode.PeekLock, client.CreatedProcessor!.Options.ReceiveMode);
+            Assert.Equal(MessageBusReceiveMode.PeekLock, processor.Options.ReceiveMode);
         }
 
         [Fact]
@@ -53,10 +56,11 @@ public class ServiceBusMessageHandlerBackgroundServiceTests
             var (serviceBusMessageHandlerBackgroundService, client) = Build("test-queue", readAndDelete: true);
 
             await serviceBusMessageHandlerBackgroundService.StartAsync(CancellationToken.None);
-            await client.CreatedProcessor!.Started;
+            var processor = await client.ProcessorCreated;
+            await processor.Started;
             await serviceBusMessageHandlerBackgroundService.StopAsync(CancellationToken.None);
 
-            Assert.Equal(MessageBusReceiveMode.ReceiveAndDelete, client.CreatedProcessor!.Options.ReceiveMode);
+            Assert.Equal(MessageBusReceiveMode.ReceiveAndDelete, processor.Options.ReceiveMode);
         }
 
         [Fact]
@@ -65,10 +69,11 @@ public class ServiceBusMessageHandlerBackgroundServiceTests
             var (serviceBusMessageHandlerBackgroundService, client) = Build("test-queue");
 
             await serviceBusMessageHandlerBackgroundService.StartAsync(CancellationToken.None);
-            await client.CreatedProcessor!.Started;
+            var processor = await client.ProcessorCreated;
+            await processor.Started;
             await serviceBusMessageHandlerBackgroundService.StopAsync(CancellationToken.None);
 
-            Assert.True(client.CreatedProcessor!.StartProcessingWasCalled);
+            Assert.True(processor.StartProcessingWasCalled);
         }
     }
 
@@ -81,10 +86,11 @@ public class ServiceBusMessageHandlerBackgroundServiceTests
             var (serviceBusMessageHandlerBackgroundService, client) = Build(handler: handler);
 
             await serviceBusMessageHandlerBackgroundService.StartAsync(CancellationToken.None);
-            await client.CreatedProcessor!.Started;
+            var processor = await client.ProcessorCreated;
+            await processor.Started;
 
             var message = new TestMessage("hello");
-            await client.CreatedProcessor!.FireProcessMessage(new FakeReceivedMessage<TestMessage>(message));
+            await processor.FireProcessMessage(new FakeReceivedMessage<TestMessage>(message));
 
             await serviceBusMessageHandlerBackgroundService.StopAsync(CancellationToken.None);
 
@@ -94,14 +100,15 @@ public class ServiceBusMessageHandlerBackgroundServiceTests
         [Fact]
         public async Task CreatesNewScopePerMessage()
         {
-            var scopeFactory = new FakeServiceScopeFactory<MessageHandlerBase<TestMessage>>(new RecordingMessageHandler());
+            var scopeFactory = new FakeServiceScopeFactory<MessageHandler<TestMessage>>(new RecordingMessageHandler());
             var (serviceBusMessageHandlerBackgroundService, client) = Build(scopeFactory: scopeFactory);
 
             await serviceBusMessageHandlerBackgroundService.StartAsync(CancellationToken.None);
-            await client.CreatedProcessor!.Started;
+            var processor = await client.ProcessorCreated;
+            await processor.Started;
 
-            await client.CreatedProcessor!.FireProcessMessage(new FakeReceivedMessage<TestMessage>(new TestMessage("a")));
-            await client.CreatedProcessor!.FireProcessMessage(new FakeReceivedMessage<TestMessage>(new TestMessage("b")));
+            await processor.FireProcessMessage(new FakeReceivedMessage<TestMessage>(new TestMessage("a")));
+            await processor.FireProcessMessage(new FakeReceivedMessage<TestMessage>(new TestMessage("b")));
 
             await serviceBusMessageHandlerBackgroundService.StopAsync(CancellationToken.None);
 
@@ -117,10 +124,11 @@ public class ServiceBusMessageHandlerBackgroundServiceTests
             var (serviceBusMessageHandlerBackgroundService, client) = Build();
 
             await serviceBusMessageHandlerBackgroundService.StartAsync(CancellationToken.None);
-            await client.CreatedProcessor!.Started;
+            var processor = await client.ProcessorCreated;
+            await processor.Started;
 
             var exception = await Record.ExceptionAsync(() =>
-                client.CreatedProcessor!.FireProcessError(new ErrorDetails(new Exception("boom"), "endpoint")));
+                processor.FireProcessError(new ErrorDetails(new Exception("boom"), "endpoint")));
 
             await serviceBusMessageHandlerBackgroundService.StopAsync(CancellationToken.None);
 
@@ -133,11 +141,11 @@ public class ServiceBusMessageHandlerBackgroundServiceTests
         bool readAndDelete = false,
         int maxConcurrentCalls = 1,
         RecordingMessageHandler? handler = null,
-        FakeServiceScopeFactory<MessageHandlerBase<TestMessage>>? scopeFactory = null)
+        FakeServiceScopeFactory<MessageHandler<TestMessage>>? scopeFactory = null)
     {
         var client = new FakeMessageBusClient();
         var settings = new HandlerSettings<TestMessage>(queueName, "TestHandler", readAndDelete, maxConcurrentCalls);
-        var factory = scopeFactory ?? new FakeServiceScopeFactory<MessageHandlerBase<TestMessage>>(handler ?? new RecordingMessageHandler());
+        var factory = scopeFactory ?? new FakeServiceScopeFactory<MessageHandler<TestMessage>>(handler ?? new RecordingMessageHandler());
         var serviceBusMessageHandlerBackgroundService = new ServiceBusMessageHandlerBackgroundService<TestMessage>(
             client, factory, settings, NullLogger<ServiceBusMessageHandlerBackgroundService<TestMessage>>.Instance, new HandlerInstrumentation(false));
         return (serviceBusMessageHandlerBackgroundService, client);
@@ -145,7 +153,7 @@ public class ServiceBusMessageHandlerBackgroundServiceTests
 
     private record TestMessage(string Value);
 
-    private class RecordingMessageHandler : MessageHandlerBase<TestMessage>
+    private class RecordingMessageHandler : MessageHandler<TestMessage>
     {
         public TestMessage? ReceivedMessage { get; private set; }
 
@@ -158,19 +166,21 @@ public class ServiceBusMessageHandlerBackgroundServiceTests
 
     private class FakeMessageBusClient : IMessageBusClient
     {
-        public FakeMessageBusProcessor<TestMessage>? CreatedProcessor { get; private set; }
+        private readonly TaskCompletionSource<FakeMessageBusProcessor<TestMessage>> _processorCreated = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public IMessageBusProcessor<TMessage> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options)
+        public Task<FakeMessageBusProcessor<TestMessage>> ProcessorCreated => _processorCreated.Task;
+
+        public Task<IMessageBusProcessor<TMessage>> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options)
         {
             var processor = new FakeMessageBusProcessor<TMessage>(queueName, options);
-            CreatedProcessor = (FakeMessageBusProcessor<TestMessage>)(object)processor;
-            return processor;
+            _processorCreated.SetResult((FakeMessageBusProcessor<TestMessage>)(object)processor);
+            return Task.FromResult<IMessageBusProcessor<TMessage>>(processor);
         }
 
-        public IMessageBusReceiver CreateReceiver(string queueName) => throw new NotImplementedException();
-        public IExecutionLaneProcessor CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options) => throw new NotImplementedException();
-        public IMessageBusSender CreateMessageBusSender(string queueName) => throw new NotImplementedException();
-        public IDeadLetterReceiver CreateDeadLetterReceiver(string queueName) => throw new NotImplementedException();
+        public Task<IMessageBusReceiver> CreateReceiver(string queueName) => throw new NotImplementedException();
+        public Task<IExecutionLaneProcessor> CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options) => throw new NotImplementedException();
+        public Task<IMessageBusSender> CreateMessageBusSender(string queueName) => throw new NotImplementedException();
+        public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName) => throw new NotImplementedException();
         public Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default) => throw new NotImplementedException();
     }
 

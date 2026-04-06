@@ -6,9 +6,7 @@ using Microsoft.Extensions.Options;
 
 namespace Flowly.Jobs.BackgroundServices;
 
-internal class JobMaintenanceBackgroundService(
-    IServiceScopeFactory serviceScopeFactory,
-    IOptions<JobStateTrackingOptions> options) : BackgroundService
+internal class JobMaintenanceBackgroundService(IServiceScopeFactory serviceScopeFactory, IOptions<JobStateTrackingOptions> options) : BackgroundService
 {
     private static readonly TimeSpan HungJobThreshold = TimeSpan.FromHours(3);
     private static readonly TimeSpan Interval = TimeSpan.FromMinutes(1);

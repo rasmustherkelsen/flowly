@@ -7,20 +7,18 @@ using Microsoft.Extensions.Logging;
 
 namespace Flowly.MessageInfrastructure.BackgroundServices;
 
-internal class ServiceBusMessageHandlerBackgroundService<TMessage> : ServiceBusMessageHandlerBackgroundServiceBase<TMessage> where TMessage : class
+internal class ServiceBusMessageHandlerBackgroundService<TMessage>(
+    IMessageBusClient messageBusClient,
+    IServiceScopeFactory serviceScopeFactory,
+    HandlerSettings<TMessage> handlerSettings,
+    ILogger<ServiceBusMessageHandlerBackgroundService<TMessage>> logger,
+    HandlerInstrumentation handlerInstrumentation)
+    : ServiceBusMessageHandlerBackgroundServiceBase<TMessage>(messageBusClient, serviceScopeFactory, handlerSettings, logger, handlerInstrumentation)
+    where TMessage : class
 {
-    public ServiceBusMessageHandlerBackgroundService(
-        IMessageBusClient messageBusClient,
-        IServiceScopeFactory serviceScopeFactory,
-        HandlerSettings<TMessage> handlerSettings,
-        ILogger<ServiceBusMessageHandlerBackgroundService<TMessage>> logger,
-        HandlerInstrumentation handlerInstrumentation) : base(messageBusClient, serviceScopeFactory, handlerSettings, logger, handlerInstrumentation)
-    {
-    }
-
     protected override async Task OnHandleMessage(IReceivedMessage<TMessage> receivedMessage, IServiceProvider serviceProvider, CancellationToken cancellationToken)
     {
-        var handler = serviceProvider.GetRequiredService<MessageHandlerBase<TMessage>>();
+        var handler = serviceProvider.GetRequiredService<MessageHandler<TMessage>>();
         await handler.Handle(new MessageContext<TMessage>(receivedMessage.Body, cancellationToken));
     }
 

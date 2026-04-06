@@ -8,7 +8,7 @@ namespace Flowly.Jobs.MessageHandlers;
 internal class CreateJobStateHandler(
     IJobStateRepository jobStateRepository, 
     IJobAliveStatusRepository jobAliveStatusRepository,
-    ICustomJobStateRepository customJobStateRepository) : MessageHandlerBase<CreateJobState>
+    ICustomJobStateRepository customJobStateRepository) : MessageHandler<CreateJobState>
 {
     public override async Task Handle(IMessageContext<CreateJobState> messageContext)
         => await Task.WhenAll(

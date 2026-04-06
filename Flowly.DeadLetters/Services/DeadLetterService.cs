@@ -24,7 +24,7 @@ internal class DeadLetterService(IDeadLetterRepository repository, IMessageBusCl
             kvp => kvp.Key,
             kvp => ConvertJsonElement(kvp.Value));
 
-        var sender = messageBusClient.CreateMessageBusSender(deadLetter.QueueName);
+        var sender = await messageBusClient.CreateMessageBusSender(deadLetter.QueueName);
         await sender.SendRawMessage(deadLetter.MessageBody, applicationProperties, cancellationToken);
 
         await repository.MarkAsRequeued(messageId, requeuedBy, cancellationToken);

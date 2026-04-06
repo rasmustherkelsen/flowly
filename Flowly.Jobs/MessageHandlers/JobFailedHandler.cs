@@ -5,7 +5,7 @@ using Flowly.MessageInfrastructure.Receivers;
 
 namespace Flowly.Jobs.MessageHandlers;
 
-internal class JobFailedHandler(IJobStateRepository jobStateRepository) : MessageHandlerBase<JobFailed>
+internal class JobFailedHandler(IJobStateRepository jobStateRepository) : MessageHandler<JobFailed>
 {
     public override async Task Handle(IMessageContext<JobFailed> jobFailed)
         => await jobStateRepository.UpdateJobFailed(jobFailed.Message);

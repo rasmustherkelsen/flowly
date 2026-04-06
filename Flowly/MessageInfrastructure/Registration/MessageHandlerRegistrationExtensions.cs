@@ -8,7 +8,7 @@ namespace Flowly.MessageInfrastructure.Registration;
 public static class MessageHandlerRegistrationExtensions
 {
     public static IMessageHandlerBuilder<TMessage> AddMessageHandler<TMessage, THandler>(this IFlowlyBuilder flowlyBuilder)
-        where THandler : MessageHandlerBase<TMessage>
+        where THandler : MessageHandler<TMessage>
         where TMessage : class
     {
         var resolvedQueueOptions = HandlerQueueOptionsResolver.Resolve<THandler, TMessage>();
@@ -23,7 +23,7 @@ public static class MessageHandlerRegistrationExtensions
 
         var services = flowlyBuilder.Services
             .AddScoped<THandler>()
-            .AddScoped<MessageHandlerBase<TMessage>, THandler>();
+            .AddScoped<MessageHandler<TMessage>, THandler>();
 
         services
             .AddSingleton(new HandlerSettings<TMessage>(resolvedQueueName, typeof(THandler).Name, false, resolvedQueueOptions.MaxConcurrentCalls, resolvedQueueOptions.MaxRetries, resolvedQueueOptions.RetryDelaySeconds))

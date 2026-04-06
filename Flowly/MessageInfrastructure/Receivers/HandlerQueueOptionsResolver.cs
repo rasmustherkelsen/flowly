@@ -59,9 +59,9 @@ public static class HandlerQueueOptionsResolver
 
     private static void ApplyConfigure(Type handlerType, HandlerQueueOptions options)
     {
-        var configureMethod = handlerType.GetMethod(nameof(MessageHandlerBase<object>.Configure), [typeof(HandlerQueueOptions)]);
+        var configureMethod = handlerType.GetMethod(nameof(MessageHandler<object>.Configure), [typeof(HandlerQueueOptions)]);
 
-        if (configureMethod is null || configureMethod.DeclaringType == typeof(MessageHandlerBase<>))
+        if (configureMethod is null || configureMethod.DeclaringType == typeof(MessageHandler<>))
         {
             return;
         }

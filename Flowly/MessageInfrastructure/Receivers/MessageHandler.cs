@@ -2,7 +2,7 @@ using Flowly.MessageInfrastructure.Model;
 
 namespace Flowly.MessageInfrastructure.Receivers;
 
-public abstract class MessageHandlerBase<TMessage>
+public abstract class MessageHandler<TMessage>
 {
     public virtual void Configure(HandlerQueueOptions options)
     {

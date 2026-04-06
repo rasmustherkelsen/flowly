@@ -15,10 +15,11 @@ namespace Flowly.Jobs.BackgroundServices;
 
 internal class RecurringJobHandlerBackgroundService<TRecurringJobHandler> : BackgroundService where TRecurringJobHandler : IRecurringJobHandler
 {
+    private readonly IMessageBusClient _messageBusClient;
     private readonly IServiceScopeFactory _serviceScopeFactory;
     private readonly RecurringJobSettings _settings;
     private readonly ILogger<RecurringJobHandlerBackgroundService<TRecurringJobHandler>> _logger;
-    private readonly IExecutionLaneProcessor _executionLaneProcessor;
+    private IExecutionLaneProcessor? _executionLaneProcessor;
     private readonly HandlerInstrumentation _handlerInstrumentation;
     private readonly string _handlerName = typeof(TRecurringJobHandler).Name;
 
@@ -50,19 +51,20 @@ internal class RecurringJobHandlerBackgroundService<TRecurringJobHandler> : Back
         ILogger<RecurringJobHandlerBackgroundService<TRecurringJobHandler>> logger,
         HandlerInstrumentation handlerInstrumentation)
     {
+        _messageBusClient = messageBusClient;
         _serviceScopeFactory = serviceScopeFactory;
         _settings = settings;
         _logger = logger;
         _handlerInstrumentation = handlerInstrumentation;
-
-        _executionLaneProcessor = messageBusClient.CreateExecutionLaneProcessor(
-            JobQueuesNames.RecurringJobs,
-            settings.SessionName,
-            new MessageBusProcessorOptions(1, MessageBusReceiveMode.ReceiveAndDelete));
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        _executionLaneProcessor = await _messageBusClient.CreateExecutionLaneProcessor(
+            JobQueuesNames.RecurringJobs,
+            _settings.SessionName,
+            new MessageBusProcessorOptions(1, MessageBusReceiveMode.ReceiveAndDelete));
+
         await using var scope = _serviceScopeFactory.CreateAsyncScope();
         var messageSender = scope.ServiceProvider.GetRequiredService<IMessageSender>();
         await messageSender.Send(new CreateRecurringJobState(_settings.SessionName, _settings.JobDescription, DateTime.UtcNow, _settings.CronExpression), stoppingToken);
@@ -119,8 +121,11 @@ internal class RecurringJobHandlerBackgroundService<TRecurringJobHandler> : Back
 
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
-        await _executionLaneProcessor.StopProcessing(cancellationToken);
-        await _executionLaneProcessor.DisposeAsync();
+        if (_executionLaneProcessor != null)
+        {
+            await _executionLaneProcessor.StopProcessing(cancellationToken);
+            await _executionLaneProcessor.DisposeAsync();
+        }
         await base.StopAsync(cancellationToken);
     }
 }

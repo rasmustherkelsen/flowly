@@ -6,7 +6,7 @@ using RabbitMQ.Client.Events;
 
 namespace Flowly.RabbitMQ;
 
-internal class RabbitMqReceivedMessage<TMessage>(IChannel channel, BasicDeliverEventArgs args) : IReceivedMessage<TMessage>
+internal class RabbitMqReceivedMessage<TMessage>(IChannel channel, BasicDeliverEventArgs args, bool autoAck = false) : IReceivedMessage<TMessage>
 {
     private TMessage? _body;
 
@@ -20,10 +20,16 @@ internal class RabbitMqReceivedMessage<TMessage>(IChannel channel, BasicDeliverE
         RetryCount: GetRetryCount(args.BasicProperties));
 
     public Task Complete(CancellationToken cancellationToken = default)
-        => channel.BasicAckAsync(args.DeliveryTag, multiple: false, cancellationToken).AsTask();
+    {
+        if (autoAck) return Task.CompletedTask;
+        return channel.BasicAckAsync(args.DeliveryTag, multiple: false, cancellationToken).AsTask();
+    }
 
     public Task DeadLetter(string? reason = null, CancellationToken cancellationToken = default)
-        => channel.BasicNackAsync(args.DeliveryTag, multiple: false, requeue: false, cancellationToken).AsTask();
+    {
+        if (autoAck) return Task.CompletedTask;
+        return channel.BasicNackAsync(args.DeliveryTag, multiple: false, requeue: false, cancellationToken).AsTask();
+    }
 
     private static int GetRetryCount(IReadOnlyBasicProperties properties)
     {

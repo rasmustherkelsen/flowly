@@ -5,8 +5,8 @@ namespace Flowly.MessageInfrastructure.Receivers;
 
 public static class BatchMessageHandlerOptionsResolver
 {
-    public const int DefaultMaxMessagesBeforeProcessing = 100;
-    public static readonly TimeSpan DefaultMaxWaitTime = TimeSpan.FromSeconds(30);
+    private const int DefaultMaxMessagesBeforeProcessing = 100;
+    private static readonly TimeSpan DefaultMaxWaitTime = TimeSpan.FromSeconds(30);
 
     public static ResolvedBatchMessageHandlerOptions Resolve<THandler>() where THandler : class
     {

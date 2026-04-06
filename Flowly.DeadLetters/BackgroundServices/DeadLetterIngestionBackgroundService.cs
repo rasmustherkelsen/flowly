@@ -22,7 +22,7 @@ internal class DeadLetterIngestionBackgroundService(
         {
             try
             {
-                await using var receiver = messageBusClient.CreateDeadLetterReceiver(settings.QueueName);
+                await using var receiver = await messageBusClient.CreateDeadLetterReceiver(settings.QueueName);
 
                 while (!stoppingToken.IsCancellationRequested)
                 {

@@ -10,16 +10,16 @@ internal class FakeMessageBusClient : IMessageBusClient
 
     public FakeMessageBusSender GetSender(string queueName) => _senders[queueName];
 
-    public IMessageBusSender CreateMessageBusSender(string queueName)
+    public Task<IMessageBusSender> CreateMessageBusSender(string queueName)
     {
         var sender = new FakeMessageBusSender();
         _senders[queueName] = sender;
-        return sender;
+        return Task.FromResult<IMessageBusSender>(sender);
     }
 
-    public IMessageBusReceiver CreateReceiver(string queueName) => throw new NotSupportedException();
-    public IMessageBusProcessor<TMessage> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options) => throw new NotSupportedException();
-    public IExecutionLaneProcessor CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options) => throw new NotSupportedException();
-    public IDeadLetterReceiver CreateDeadLetterReceiver(string queueName) => throw new NotSupportedException();
+    public Task<IMessageBusReceiver> CreateReceiver(string queueName) => throw new NotSupportedException();
+    public Task<IMessageBusProcessor<TMessage>> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options) => throw new NotSupportedException();
+    public Task<IExecutionLaneProcessor> CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options) => throw new NotSupportedException();
+    public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName) => throw new NotSupportedException();
     public Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 }

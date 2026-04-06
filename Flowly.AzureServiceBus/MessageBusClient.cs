@@ -9,13 +9,13 @@ internal class MessageBusClient(ServiceBusClient serviceBusClient, ServiceBusAdm
 {
     private readonly ConcurrentDictionary<string, IMessageBusSender> _serviceBusSenders = new();
 
-    public IMessageBusReceiver CreateReceiver(string queueName)
+    public Task<IMessageBusReceiver> CreateReceiver(string queueName)
     {
         var receiver = serviceBusClient.CreateReceiver(queueName);
-        return new ServiceBusMessageBusReceiver(receiver);
+        return Task.FromResult<IMessageBusReceiver>(new ServiceBusMessageBusReceiver(receiver));
     }
 
-    public IMessageBusProcessor<TMessage> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options)
+    public Task<IMessageBusProcessor<TMessage>> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options)
     {
         var serviceBusProcessorOptions = new ServiceBusProcessorOptions
         {
@@ -25,10 +25,10 @@ internal class MessageBusClient(ServiceBusClient serviceBusClient, ServiceBusAdm
             ReceiveMode = options.ReceiveMode == MessageBusReceiveMode.ReceiveAndDelete ? ServiceBusReceiveMode.ReceiveAndDelete : ServiceBusReceiveMode.PeekLock
         };
 
-        return new MessageBusProcessor<TMessage>(serviceBusClient.CreateProcessor(queueName, serviceBusProcessorOptions));
+        return Task.FromResult<IMessageBusProcessor<TMessage>>(new MessageBusProcessor<TMessage>(serviceBusClient.CreateProcessor(queueName, serviceBusProcessorOptions)));
     }
 
-    public IExecutionLaneProcessor CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options)
+    public Task<IExecutionLaneProcessor> CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options)
     {
         var serviceBusSessionProcessorOptions = new ServiceBusSessionProcessorOptions
         {
@@ -38,20 +38,20 @@ internal class MessageBusClient(ServiceBusClient serviceBusClient, ServiceBusAdm
 
         serviceBusSessionProcessorOptions.SessionIds.Add(laneFilter);
 
-        return new ExecutionLaneProcessor(serviceBusClient.CreateSessionProcessor(queueName, serviceBusSessionProcessorOptions));
+        return Task.FromResult<IExecutionLaneProcessor>(new ExecutionLaneProcessor(serviceBusClient.CreateSessionProcessor(queueName, serviceBusSessionProcessorOptions)));
     }
 
-    public IMessageBusSender CreateMessageBusSender(string queueName) 
-        => _serviceBusSenders.GetOrAdd(queueName, q => new MessageBusSender(serviceBusClient.CreateSender(q)));
+    public Task<IMessageBusSender> CreateMessageBusSender(string queueName)
+        => Task.FromResult<IMessageBusSender>(_serviceBusSenders.GetOrAdd(queueName, q => new MessageBusSender(serviceBusClient.CreateSender(q))));
 
-    public IDeadLetterReceiver CreateDeadLetterReceiver(string queueName)
+    public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName)
     {
         var receiver = serviceBusClient.CreateReceiver(queueName, new ServiceBusReceiverOptions
         {
             SubQueue = SubQueue.DeadLetter
         });
-        
-        return new ServiceBusDeadLetterReceiver(receiver);
+
+        return Task.FromResult<IDeadLetterReceiver>(new ServiceBusDeadLetterReceiver(receiver));
     }
 
     public async Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default)

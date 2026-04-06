@@ -10,7 +10,7 @@ namespace Flowly.Jobs.MessageHandlers;
 internal class StartRecurringJobMessageHandler(
     IJobStateRepository jobStateRepository,
     IMessageBusClient messageBusClient,
-    ILogger<StartRecurringJobMessageHandler> logger) : MessageHandlerBase<StartRecurringJobMessage>
+    ILogger<StartRecurringJobMessageHandler> logger) : MessageHandler<StartRecurringJobMessage>
 {
     public override async Task Handle(IMessageContext<StartRecurringJobMessage> messageContext)
     {
@@ -23,7 +23,7 @@ internal class StartRecurringJobMessageHandler(
             return;
         }
         
-        var messageBusSender = messageBusClient.CreateMessageBusSender(JobQueuesNames.RecurringJobs);
+        var messageBusSender = await messageBusClient.CreateMessageBusSender(JobQueuesNames.RecurringJobs);
         await messageBusSender.SendEmptyMessage(new MessageProperties(recurringJob.JobId.ToString(), recurringJob.JobTypeName));
     }
 }

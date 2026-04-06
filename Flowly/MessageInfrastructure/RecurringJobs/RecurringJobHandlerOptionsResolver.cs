@@ -4,10 +4,6 @@ using System.Runtime.CompilerServices;
 
 namespace Flowly.MessageInfrastructure.RecurringJobs;
 
-public sealed record ResolvedRecurringJobHandlerOptions(
-    string JobDescription,
-    string CronExpression);
-
 public static class RecurringJobHandlerOptionsResolver
 {
     public static ResolvedRecurringJobHandlerOptions Resolve<TRecurringJobHandler>() where TRecurringJobHandler : class, IRecurringJobHandler

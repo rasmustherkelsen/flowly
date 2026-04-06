@@ -4,7 +4,7 @@ using MessageContracts;
 
 namespace BackendProcessor.JobHandlers;
 
-class SomeQueryProcessor : MessageHandlerBase<SomeQueryMessage>
+class SomeQueryProcessor : MessageHandler<SomeQueryMessage>
 {
     public override void Configure(HandlerQueueOptions options)
     {

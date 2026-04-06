@@ -11,7 +11,7 @@ namespace Flowly.MessageInfrastructure.BackgroundServices;
 public abstract class ServiceBusMessageHandlerBackgroundServiceBase<TMessage> : BackgroundService where TMessage : class
 {
     private readonly IMessageBusClient _messageBusClient;
-    private readonly IMessageBusProcessor<TMessage> _messageBusProcessor;
+    private IMessageBusProcessor<TMessage>? _messageBusProcessor;
     private readonly IServiceScopeFactory _serviceScopeFactory;
     private readonly HandlerSettings<TMessage> _handlerSettings;
     private readonly ILogger _logger;
@@ -29,17 +29,17 @@ public abstract class ServiceBusMessageHandlerBackgroundServiceBase<TMessage> : 
         _handlerSettings = handlerSettings;
         _logger = logger;
         _handlerInstrumentation = handlerInstrumentation;
-
-        _messageBusProcessor = messageBusClient.CreateProcessor<TMessage>(
-            handlerSettings.QueueName,
-            new MessageBusProcessorOptions(handlerSettings.MaxConcurrentCalls,
-                handlerSettings.ReadAndDelete
-                    ? MessageBusReceiveMode.ReceiveAndDelete
-                    : MessageBusReceiveMode.PeekLock));
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        _messageBusProcessor = await _messageBusClient.CreateProcessor<TMessage>(
+            _handlerSettings.QueueName,
+            new MessageBusProcessorOptions(_handlerSettings.MaxConcurrentCalls,
+                _handlerSettings.ReadAndDelete
+                    ? MessageBusReceiveMode.ReceiveAndDelete
+                    : MessageBusReceiveMode.PeekLock));
+
         _messageBusProcessor.ProcessMessage += OnProcessMessage;
         _messageBusProcessor.ProcessError += OnProcessError;
 
@@ -94,7 +94,7 @@ public abstract class ServiceBusMessageHandlerBackgroundServiceBase<TMessage> : 
         var scheduledTime = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(_handlerSettings.RetryDelaySeconds);
         var props = receivedMessage.Properties with { RetryCount = retryCount, ScheduledEnqueueTime = scheduledTime };
 
-        var sender = _messageBusClient.CreateMessageBusSender(_handlerSettings.QueueName);
+        var sender = await _messageBusClient.CreateMessageBusSender(_handlerSettings.QueueName);
         await sender.SendMessage(receivedMessage.Body, props, cancellationToken);
     }
 
@@ -106,8 +106,11 @@ public abstract class ServiceBusMessageHandlerBackgroundServiceBase<TMessage> : 
 
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
-        await _messageBusProcessor.StopProcessing(cancellationToken);
-        await _messageBusProcessor.DisposeAsync();
+        if (_messageBusProcessor != null)
+        {
+            await _messageBusProcessor.StopProcessing(cancellationToken);
+            await _messageBusProcessor.DisposeAsync();
+        }
         await base.StopAsync(cancellationToken);
     }
 

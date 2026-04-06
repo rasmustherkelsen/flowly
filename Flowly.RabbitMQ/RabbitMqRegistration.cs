@@ -8,13 +8,15 @@ namespace Flowly.RabbitMQ;
 
 public static class RabbitMqRegistration
 {
-    public static IFlowlyBuilder UseRabbitMq(this IFlowlyBuilder flowlyBuilder, string connectionName)
+    public static IFlowlyBuilder UseRabbitMq(this IFlowlyBuilder flowlyBuilder)
+        => flowlyBuilder.UseRabbitMq("amqp://guest:guest@localhost:5672/");
+
+    public static IFlowlyBuilder UseRabbitMq(this IFlowlyBuilder flowlyBuilder, string connection)
     {
         flowlyBuilder.Services.AddSingleton<IConnection>(sp =>
         {
             var configuration = sp.GetRequiredService<IConfiguration>();
-            var uri = configuration.GetConnectionString(connectionName)
-                ?? throw new InvalidOperationException($"Connection string '{connectionName}' not found.");
+            var uri = configuration.GetConnectionString(connection) ?? connection;
 
             var factory = new ConnectionFactory
             {

@@ -6,50 +6,72 @@ namespace Flowly.RabbitMQ;
 
 internal class RabbitMqMessageBusClient(IConnection connection) : IMessageBusClient
 {
-    private readonly ConcurrentDictionary<string, Lazy<IMessageBusSender>> _senders = new();
+    private readonly ConcurrentDictionary<string, IMessageBusSender> _senders = new();
+    private readonly SemaphoreSlim _senderLock = new(1, 1);
 
-    public IMessageBusReceiver CreateReceiver(string queueName)
+    public async Task<IMessageBusReceiver> CreateReceiver(string queueName)
     {
-        var channel = connection.CreateChannelAsync().GetAwaiter().GetResult();
+        var channel = await connection.CreateChannelAsync();
         return new RabbitMqMessageBusReceiver(channel, queueName);
     }
 
-    public IMessageBusProcessor<TMessage> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options)
+    public async Task<IMessageBusProcessor<TMessage>> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options)
     {
         var channelOptions = new CreateChannelOptions(
             publisherConfirmationsEnabled: false,
             publisherConfirmationTrackingEnabled: false,
             consumerDispatchConcurrency: (ushort)Math.Max(1, options.MaxConcurrentCalls));
-        var channel = connection.CreateChannelAsync(channelOptions).GetAwaiter().GetResult();
+        
+        var channel = await connection.CreateChannelAsync(channelOptions);
+        
         return new RabbitMqMessageBusProcessor<TMessage>(channel, queueName, options);
     }
 
-    public IExecutionLaneProcessor CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options)
+    public async Task<IExecutionLaneProcessor> CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options)
     {
         var channelOptions = new CreateChannelOptions(
             publisherConfirmationsEnabled: false,
             publisherConfirmationTrackingEnabled: false,
             consumerDispatchConcurrency: 1);
-        var channel = connection.CreateChannelAsync(channelOptions).GetAwaiter().GetResult();
+        
+        var channel = await connection.CreateChannelAsync(channelOptions);
+        
         return new RabbitMqExecutionLaneProcessor(channel, queueName, laneFilter);
     }
 
-    public IMessageBusSender CreateMessageBusSender(string queueName)
-        => _senders.GetOrAdd(queueName, q => new Lazy<IMessageBusSender>(() =>
-        {
-            var channel = connection.CreateChannelAsync().GetAwaiter().GetResult();
-            return new RabbitMqMessageBusSender(q, channel);
-        })).Value;
-
-    public IDeadLetterReceiver CreateDeadLetterReceiver(string queueName)
+    public async Task<IMessageBusSender> CreateMessageBusSender(string queueName)
     {
-        var channel = connection.CreateChannelAsync().GetAwaiter().GetResult();
+        if (_senders.TryGetValue(queueName, out var existing))
+            return existing;
+
+        await _senderLock.WaitAsync();
+        
+        try
+        {
+            if (_senders.TryGetValue(queueName, out existing))
+                return existing;
+
+            var channel = await connection.CreateChannelAsync();
+            var sender = new RabbitMqMessageBusSender(queueName, channel);
+            _senders[queueName] = sender;
+            return sender;
+        }
+        finally
+        {
+            _senderLock.Release();
+        }
+    }
+
+    public async Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName)
+    {
+        var channel = await connection.CreateChannelAsync();
         return new RabbitMqDeadLetterReceiver(channel, $"{queueName}.dead-letter");
     }
 
     public async Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default)
     {
         await using var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
+        
         var result = await channel.QueueDeclareAsync(
             queue: $"{queueName}.dead-letter",
             durable: true,
@@ -57,6 +79,7 @@ internal class RabbitMqMessageBusClient(IConnection connection) : IMessageBusCli
             autoDelete: false,
             passive: true,
             cancellationToken: cancellationToken);
+        
         return result.MessageCount;
     }
 }

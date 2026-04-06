@@ -37,7 +37,7 @@ internal class RabbitMqMessageBusProcessor<TMessage>(IChannel channel, string qu
 
         consumer.ReceivedAsync += async (_, args) =>
         {
-            var received = new RabbitMqReceivedMessage<TMessage>(channel, args);
+            var received = new RabbitMqReceivedMessage<TMessage>(channel, args, autoAck);
             List<Func<IReceivedMessage<TMessage>, CancellationToken, Task>> handlers;
             lock (_processMessageLock) { handlers = [.._processMessageHandlers]; }
             foreach (var handler in handlers)

@@ -19,7 +19,7 @@ internal class JobSubmitter<TMessage>(
 
         await messageSender.Send(createJobState, cancellationToken);
 
-        var messageBusSender = messageBusClient.CreateMessageBusSender(queueSettings.QueueName);
+        var messageBusSender = await messageBusClient.CreateMessageBusSender(queueSettings.QueueName);
 
         await messageBusSender.SendMessage(message, new MessageProperties(jobId.InnerId.ToString(), string.Empty), cancellationToken);
 

@@ -139,16 +139,16 @@ public class ServiceBusMessageBatchHandlerBackgroundServiceTests
     {
         public string? CreatedReceiverQueueName { get; private set; }
 
-        public IMessageBusReceiver CreateReceiver(string queueName)
+        public Task<IMessageBusReceiver> CreateReceiver(string queueName)
         {
             CreatedReceiverQueueName = queueName;
-            return receiver;
+            return Task.FromResult<IMessageBusReceiver>(receiver);
         }
 
-        public IMessageBusProcessor<TMessage> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options) => throw new NotImplementedException();
-        public IExecutionLaneProcessor CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options) => throw new NotImplementedException();
-        public IMessageBusSender CreateMessageBusSender(string queueName) => throw new NotImplementedException();
-        public IDeadLetterReceiver CreateDeadLetterReceiver(string queueName) => throw new NotImplementedException();
+        public Task<IMessageBusProcessor<TMessage>> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options) => throw new NotImplementedException();
+        public Task<IExecutionLaneProcessor> CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options) => throw new NotImplementedException();
+        public Task<IMessageBusSender> CreateMessageBusSender(string queueName) => throw new NotImplementedException();
+        public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName) => throw new NotImplementedException();
         public Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default) => throw new NotImplementedException();
     }
 
