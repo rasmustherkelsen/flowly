@@ -24,9 +24,20 @@ internal sealed class FlowlyQueueDiscovery
         try
         {
             var targetAssembly = loadContext.LoadFromAssemblyPath(fullAssemblyPath);
-            var configuration = ResolveConfigurationType(targetAssembly, configurationType);
-            var queueNames = BuildAndExtractQueues(configuration, workingDirectory ?? Path.GetDirectoryName(fullAssemblyPath)!);
 
+            Type configuration;
+            try
+            {
+                configuration = ResolveConfigurationType(targetAssembly, configurationType);
+            }
+            catch (FlowlyConfigurationNotFoundException) when (configurationType is null)
+            {
+                var effectiveWorkingDirectory = workingDirectory ?? Path.GetDirectoryName(fullAssemblyPath)!;
+                var queues = HostBasedQueueDiscovery.DiscoverQueues(fullAssemblyPath, effectiveWorkingDirectory);
+                return new FlowlyQueueDiscoveryResult("(inline configuration)", queues);
+            }
+
+            var queueNames = BuildAndExtractQueues(configuration, workingDirectory ?? Path.GetDirectoryName(fullAssemblyPath)!);
             return new FlowlyQueueDiscoveryResult(configuration.FullName ?? configuration.Name, queueNames);
         }
         finally

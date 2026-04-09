@@ -50,7 +50,7 @@ public static class AddFlowlyExtension
         return builder;
     }
 
-    private sealed class InlineFlowlyConfiguration(Action<IFlowlyBuilder> configure) : IFlowlyConfiguration
+    private sealed class InlineFlowlyConfiguration(Action<IFlowlyBuilder> configure) : FlowlyDesignTimeFactory, IFlowlyConfiguration
     {
         public void Configure(IFlowlyBuilder builder) => configure(builder);
     }
