@@ -8,6 +8,7 @@
   
   <ItemGroup>
     <PackageReference Include="Aspire.Azure.Messaging.ServiceBus" Version="13.1.2" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="10.0.5" />
   </ItemGroup>
   
   <ItemGroup>

@@ -1,7 +1,6 @@
 using Flowly.MessageInfrastructure.Registration;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using RabbitMQ.Client;
 
 namespace Flowly.RabbitMQ;
 
@@ -9,24 +8,30 @@ public static class RabbitMqRegistration
 {
     public const string TransportType = "RabbitMQ";
 
-    public static IFlowlyBuilder UseRabbitMq(this IFlowlyBuilder flowlyBuilder, string? name = null, bool? createTopology = null)
-        => flowlyBuilder.RegisterRabbitMq("amqp://guest:guest@localhost:5672/", name, createTopology);
+    public static IFlowlyBuilder UseRabbitMq(
+        this IFlowlyBuilder flowlyBuilder,
+        string? name = null,
+        bool? createTopology = null,
+        bool enableHealthCheck = false)
+        => flowlyBuilder.RegisterRabbitMq("amqp://guest:guest@localhost:5672/", name, createTopology, enableHealthCheck);
 
     public static IFlowlyBuilder UseRabbitMq(
         this IFlowlyBuilder flowlyBuilder,
         string connection,
         string? name = null,
-        bool? createTopology = null)
+        bool? createTopology = null,
+        bool enableHealthCheck = false)
     {
         var uri = flowlyBuilder.Configuration.GetConnectionString(connection) ?? connection;
-        return flowlyBuilder.RegisterRabbitMq(uri, name, createTopology);
+        return flowlyBuilder.RegisterRabbitMq(uri, name, createTopology, enableHealthCheck);
     }
 
     private static IFlowlyBuilder RegisterRabbitMq(
         this IFlowlyBuilder flowlyBuilder,
         string uri,
         string? name,
-        bool? createTopology)
+        bool? createTopology,
+        bool enableHealthCheck)
     {
         var services = flowlyBuilder.Services;
         var clientRegistry = ProviderNameResolver.GetRegistry(services);
@@ -38,6 +43,13 @@ public static class RabbitMqRegistration
         var topologyCreator = new RabbitMqMessagingTopologyCreator(lazyConnection);
 
         clientRegistry.Register(effectiveName, messageBusClient, createTopology);
+
+        if (enableHealthCheck)
+        {
+            services
+                .AddHealthChecks()
+                .AddCheck(HealthCheckName(effectiveName), new RabbitMqHealthCheck(lazyConnection), tags: ["rabbitmq"]);
+        }
 
         var topologyRegistry = services
             .Where(s => s.ServiceType == typeof(IMessagingTopologyCreatorRegistry))
@@ -52,6 +64,9 @@ public static class RabbitMqRegistration
 
         return flowlyBuilder;
     }
+
+    private static string HealthCheckName(string effectiveName)
+        => effectiveName == "__primary__" ? "rabbitmq" : $"rabbitmq-{effectiveName}";
 
     private static string ResolveProviderName(IMessageBusClientRegistry registry, string? name)
     {

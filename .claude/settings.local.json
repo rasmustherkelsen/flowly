@@ -18,7 +18,8 @@
       "Bash(dotnet csharp:*)",
       "Bash(cat)",
       "Bash(dotnet run:*)",
-      "Bash(dotnet sln:*)"
+      "Bash(dotnet sln:*)",
+      "Bash(dotnet add:*)"
     ]
   }
 }

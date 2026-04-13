@@ -10,20 +10,23 @@ namespace Flowly.AzureServiceBus;
 public static class AzureServiceBusRegistration
 {
     private const string TransportType = "AzureServiceBus";
+    private const int EmulatorPort = 5672;
+    private const int ProductionPort = 443;
 
     private const string EmulatorConnectionString = "Endpoint=sb://localhost;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;";
 
-    public static IFlowlyBuilder UseAzureServiceBus(this IFlowlyBuilder flowlyBuilder)
-        => flowlyBuilder.UseAzureServiceBus(EmulatorConnectionString);
+    public static IFlowlyBuilder UseAzureServiceBus(this IFlowlyBuilder flowlyBuilder, bool enableHealthCheck = false)
+        => flowlyBuilder.UseAzureServiceBus(EmulatorConnectionString, enableHealthCheck: enableHealthCheck);
 
     public static IFlowlyBuilder UseAzureServiceBus(
         this IFlowlyBuilder flowlyBuilder,
         string connection,
         string? name = null,
-        bool? createTopology = null)
+        bool? createTopology = null,
+        bool enableHealthCheck = false)
     {
         var connectionString = flowlyBuilder.Configuration.GetConnectionString(connection) ?? connection;
-        return flowlyBuilder.RegisterAzureServiceBus(connectionString, name, createTopology);
+        return flowlyBuilder.RegisterAzureServiceBus(connectionString, name, createTopology, enableHealthCheck);
     }
 
     public static IFlowlyBuilder UseAzureServiceBus(
@@ -31,7 +34,8 @@ public static class AzureServiceBusRegistration
         string fullyQualifiedNamespaceOrConfigKey,
         TokenCredential credential,
         string? name = null,
-        bool? createTopology = null)
+        bool? createTopology = null,
+        bool enableHealthCheck = false)
     {
         var fullyQualifiedNamespace =
             flowlyBuilder.Configuration[fullyQualifiedNamespaceOrConfigKey]
@@ -40,19 +44,23 @@ public static class AzureServiceBusRegistration
         var serviceBusClient = new ServiceBusClient(fullyQualifiedNamespace, credential);
         var adminClient = new ServiceBusAdministrationClient(fullyQualifiedNamespace, credential);
 
-        return flowlyBuilder.RegisterAzureServiceBusClients(serviceBusClient, adminClient, name, createTopology);
+        return flowlyBuilder.RegisterAzureServiceBusClients(serviceBusClient, adminClient, name, createTopology, enableHealthCheck, host: fullyQualifiedNamespace, port: ProductionPort);
     }
 
     private static IFlowlyBuilder RegisterAzureServiceBus(
         this IFlowlyBuilder flowlyBuilder,
         string connectionString,
         string? name,
-        bool? createTopology)
+        bool? createTopology,
+        bool enableHealthCheck)
     {
         var serviceBusClient = new ServiceBusClient(connectionString);
         var adminClient = new ServiceBusAdministrationClient(connectionString);
 
-        return flowlyBuilder.RegisterAzureServiceBusClients(serviceBusClient, adminClient, name, createTopology);
+        var isEmulator = connectionString.Contains("UseDevelopmentEmulator=true", StringComparison.OrdinalIgnoreCase);
+        var port = isEmulator ? EmulatorPort : ProductionPort;
+
+        return flowlyBuilder.RegisterAzureServiceBusClients(serviceBusClient, adminClient, name, createTopology, enableHealthCheck, host: serviceBusClient.FullyQualifiedNamespace, port: port);
     }
 
     private static IFlowlyBuilder RegisterAzureServiceBusClients(
@@ -60,7 +68,10 @@ public static class AzureServiceBusRegistration
         ServiceBusClient serviceBusClient,
         ServiceBusAdministrationClient adminClient,
         string? name,
-        bool? createTopology)
+        bool? createTopology,
+        bool enableHealthCheck,
+        string host,
+        int port)
     {
         var services = flowlyBuilder.Services;
         var clientRegistry = ProviderNameResolver.GetRegistry(services);
@@ -71,6 +82,13 @@ public static class AzureServiceBusRegistration
         var topologyCreator = new MessagingTopologyCreator(serviceBusClient, adminClient);
 
         clientRegistry.Register(effectiveName, messageBusClient, createTopology);
+
+        if (enableHealthCheck)
+        {
+            services
+                .AddHealthChecks()
+                .AddCheck(HealthCheckName(effectiveName), new AzureServiceBusHealthCheck(host, port), tags: ["azure-service-bus"]);
+        }
 
         var topologyRegistry = services
             .Where(s => s.ServiceType == typeof(IMessagingTopologyCreatorRegistry))
@@ -85,6 +103,9 @@ public static class AzureServiceBusRegistration
 
         return flowlyBuilder;
     }
+
+    private static string HealthCheckName(string effectiveName)
+        => effectiveName == "__primary__" ? "azure-service-bus" : $"azure-service-bus-{effectiveName}";
 
     private static string ResolveProviderName(IMessageBusClientRegistry registry, string? name)
     {

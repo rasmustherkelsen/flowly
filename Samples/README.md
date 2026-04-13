@@ -7,6 +7,7 @@ Each sample is self-contained and runnable. Pick the one matching your transport
 | Sample | What it shows |
 |---|---|
 | [SendReceive](AzureServiceBus/SendReceive/README.md) | Minimal send/receive against the local ASB emulator via Docker Compose |
+| [HealthChecks](AzureServiceBus/HealthChecks/README.md) | `IHealthCheck` integration — exposes `/health` so Kubernetes can detect a broken ASB connection |
 | [Aspire](AzureServiceBus/Aspire/README.md) | Full-featured: jobs, batch handlers, recurring jobs, dead letters, OpenTelemetry, custom dashboard |
 
 ## RabbitMQ
@@ -14,6 +15,7 @@ Each sample is self-contained and runnable. Pick the one matching your transport
 | Sample | What it shows |
 |---|---|
 | [SendReceive](RabbitMQ/SendReceive/README.md) | Minimal send/receive against a local RabbitMQ broker via Docker Compose |
+| [HealthChecks](RabbitMQ/HealthChecks/README.md) | `IHealthCheck` integration — exposes `/health` so Kubernetes can detect a broken RabbitMQ connection |
 | [Aspire](RabbitMQ/Aspire/README.md) | Full-featured: jobs, batch handlers, recurring jobs, dead letters, OpenTelemetry, custom dashboard |
 
 ## MultiBus
