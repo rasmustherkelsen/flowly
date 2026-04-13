@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Flowly.MessageInfrastructure.Model;
 using Flowly.MessageInfrastructure.Receivers;
+using Flowly.MessageInfrastructure.Registration;
 using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.MessagingAbstractions;
 using Microsoft.Extensions.DependencyInjection;
@@ -10,13 +11,13 @@ using Microsoft.Extensions.Logging;
 namespace Flowly.MessageInfrastructure.BackgroundServices;
 
 internal class ServiceBusMessageBatchHandlerBackgroundService<TMessage>(
-    IMessageBusClient messageBusClient,
+    IMessageBusClientRegistry clientRegistry,
     ServiceBusMessageBatchHandlerBackgroundService<TMessage>.BatchQueueSettings batchQueueSettings,
     IServiceScopeFactory serviceScopeFactory,
     ILogger<ServiceBusMessageBatchHandlerBackgroundService<TMessage>> logger,
     HandlerInstrumentation handlerInstrumentation) : BackgroundService where TMessage : class
 {
-    public record BatchQueueSettings(string QueueName, int MaxMessagesBeforeProcessing, TimeSpan MaxWaitTime);
+    public record BatchQueueSettings(string QueueName, string ProviderName, int MaxMessagesBeforeProcessing, TimeSpan MaxWaitTime);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -26,7 +27,9 @@ internal class ServiceBusMessageBatchHandlerBackgroundService<TMessage>(
             logger.LogInformation("{MessageHandlerName} batch waiting for messages on queue '{QueueName}'", messageHandlerForLog.GetType().Name, batchQueueSettings.QueueName);
         }
 
-        await using var receiver = await messageBusClient.CreateReceiver(batchQueueSettings.QueueName);
+        var client = clientRegistry.GetClient(batchQueueSettings.ProviderName);
+        var messagingSystem = client.MessagingSystem;
+        await using var receiver = await client.CreateReceiver(batchQueueSettings.QueueName);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -47,7 +50,7 @@ internal class ServiceBusMessageBatchHandlerBackgroundService<TMessage>(
                 logger.LogInformation("{MessageHandlerName} received {ReceivedMessagesCount} messages", handlerName, receivedMessages.Count);
 
                 var sw = Stopwatch.StartNew();
-                using var activity = handlerInstrumentation.StartHandling(handlerName, batchQueueSettings.QueueName);
+                using var activity = handlerInstrumentation.StartHandling(handlerName, batchQueueSettings.QueueName, messagingSystem, MessageProperties.Empty);
 
                 try
                 {

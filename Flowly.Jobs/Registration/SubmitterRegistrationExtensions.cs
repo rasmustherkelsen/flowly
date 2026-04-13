@@ -1,4 +1,4 @@
-﻿using Flowly.Jobs.Messages;
+using Flowly.Jobs.Messages;
 using Flowly.Jobs.Model;
 using Flowly.Jobs.Senders;
 using Flowly.MessageInfrastructure;
@@ -30,9 +30,10 @@ public static class SubmitterRegistrationExtensions
                 return flowlyBuilder;
 
             var queueName = MessageQueueNameResolver.Resolve<TMessage>();
+            var providerName = ProviderNameResolver.Resolve(flowlyBuilder.Services, typeof(TMessage));
 
             flowlyBuilder.Services
-                .AddSingleton(new JobSubmitter<TMessage>.QueueSettings(queueName))
+                .AddSingleton(new JobSubmitter<TMessage>.QueueSettings(queueName, providerName))
                 .AddSingleton<IJobSubmitter<TMessage>, JobSubmitter<TMessage>>()
                 .AddSingleton<IJobMessageSender, JobMessageSender>();
 

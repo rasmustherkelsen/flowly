@@ -4,6 +4,7 @@ using Flowly.Jobs.Messages;
 using Flowly.Jobs.Model;
 using Flowly.MessageInfrastructure;
 using Flowly.MessageInfrastructure.RecurringJobs;
+using Flowly.MessageInfrastructure.Registration;
 using Flowly.MessageInfrastructure.Senders;
 using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.MessagingAbstractions;
@@ -15,13 +16,14 @@ namespace Flowly.Jobs.BackgroundServices;
 
 internal class RecurringJobHandlerBackgroundService<TRecurringJobHandler> : BackgroundService where TRecurringJobHandler : IRecurringJobHandler
 {
-    private readonly IMessageBusClient _messageBusClient;
+    private readonly IMessageBusClientRegistry _clientRegistry;
     private readonly IServiceScopeFactory _serviceScopeFactory;
     private readonly RecurringJobSettings _settings;
     private readonly ILogger<RecurringJobHandlerBackgroundService<TRecurringJobHandler>> _logger;
     private IExecutionLaneProcessor? _executionLaneProcessor;
     private readonly HandlerInstrumentation _handlerInstrumentation;
     private readonly string _handlerName = typeof(TRecurringJobHandler).Name;
+    private string _messagingSystem = string.Empty;
 
     public class RecurringJobSettings
     {
@@ -45,13 +47,13 @@ internal class RecurringJobHandlerBackgroundService<TRecurringJobHandler> : Back
     }
 
     public RecurringJobHandlerBackgroundService(
-        IMessageBusClient messageBusClient,
+        IMessageBusClientRegistry clientRegistry,
         IServiceScopeFactory serviceScopeFactory,
         RecurringJobSettings settings,
         ILogger<RecurringJobHandlerBackgroundService<TRecurringJobHandler>> logger,
         HandlerInstrumentation handlerInstrumentation)
     {
-        _messageBusClient = messageBusClient;
+        _clientRegistry = clientRegistry;
         _serviceScopeFactory = serviceScopeFactory;
         _settings = settings;
         _logger = logger;
@@ -60,7 +62,11 @@ internal class RecurringJobHandlerBackgroundService<TRecurringJobHandler> : Back
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _executionLaneProcessor = await _messageBusClient.CreateExecutionLaneProcessor(
+        // Recurring jobs always run on the primary provider
+        var client = _clientRegistry.GetClient(_clientRegistry.PrimaryProviderName);
+        _messagingSystem = client.MessagingSystem;
+
+        _executionLaneProcessor = await client.CreateExecutionLaneProcessor(
             JobQueuesNames.RecurringJobs,
             _settings.SessionName,
             new MessageBusProcessorOptions(1, MessageBusReceiveMode.ReceiveAndDelete));
@@ -83,7 +89,7 @@ internal class RecurringJobHandlerBackgroundService<TRecurringJobHandler> : Back
 
         _handlerInstrumentation.RecordReceived(_handlerName, JobQueuesNames.RecurringJobs);
         var sw = Stopwatch.StartNew();
-        using var activity = _handlerInstrumentation.StartHandling(_handlerName, JobQueuesNames.RecurringJobs);
+        using var activity = _handlerInstrumentation.StartHandling(_handlerName, JobQueuesNames.RecurringJobs, _messagingSystem, receivedMessage.Properties);
 
         var jobId = new JobId(Guid.Parse(receivedMessage.Properties.MessageId));
 

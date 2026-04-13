@@ -1,4 +1,5 @@
 using Flowly.DeadLetters.Repositories;
+using Flowly.MessageInfrastructure.Registration;
 using Flowly.MessagingAbstractions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -7,7 +8,7 @@ using Microsoft.Extensions.Logging;
 namespace Flowly.DeadLetters.BackgroundServices;
 
 internal class DeadLetterIngestionBackgroundService(
-    IMessageBusClient messageBusClient,
+    IMessageBusClientRegistry clientRegistry,
     DeadLetterIngestionSettings settings,
     IServiceScopeFactory serviceScopeFactory,
     ILogger<DeadLetterIngestionBackgroundService> logger) : BackgroundService
@@ -22,7 +23,8 @@ internal class DeadLetterIngestionBackgroundService(
         {
             try
             {
-                await using var receiver = await messageBusClient.CreateDeadLetterReceiver(settings.QueueName);
+                var client = clientRegistry.GetClient(settings.ProviderName);
+                await using var receiver = await client.CreateDeadLetterReceiver(settings.QueueName);
 
                 while (!stoppingToken.IsCancellationRequested)
                 {

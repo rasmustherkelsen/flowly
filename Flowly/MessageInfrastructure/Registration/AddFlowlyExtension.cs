@@ -61,6 +61,14 @@ public static class AddFlowlyExtension
         IFlowlyConfiguration module,
         Action<FlowlyOptions>? configureOptions)
     {
+        // Registries must be added as concrete instances before Configure() runs so that
+        // UseAzureServiceBus / UseRabbitMq and ProviderNameResolver can access them
+        // without calling BuildServiceProvider().
+        var clientRegistry = new MessageBusClientRegistry();
+        var topologyRegistry = new MessagingTopologyCreatorRegistry();
+        services.TryAddSingleton<IMessageBusClientRegistry>(clientRegistry);
+        services.TryAddSingleton<IMessagingTopologyCreatorRegistry>(topologyRegistry);
+
         services.TryAddSingleton<IQueueManager, QueueManager>();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, QueueRegistrarHostedService>());
 

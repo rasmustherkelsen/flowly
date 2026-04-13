@@ -1,13 +1,15 @@
 ﻿using Flowly.Jobs.Model;
+using Flowly.MessageInfrastructure.Registration;
 using Flowly.MessagingAbstractions;
 
 namespace Flowly.Jobs.Senders;
 
-internal class RecurringJobInvoker(IMessageBusClient messageBusClient) : IRecurringJobInvoker
+internal class RecurringJobInvoker(IMessageBusClientRegistry clientRegistry) : IRecurringJobInvoker
 {
     public async Task Submit(RecurringJob recurringJob)
     {
-        var messageBusSender = await messageBusClient.CreateMessageBusSender(JobQueuesNames.RecurringJobs);
+        var client = clientRegistry.GetClient(clientRegistry.PrimaryProviderName);
+        var messageBusSender = await client.CreateMessageBusSender(JobQueuesNames.RecurringJobs);
         await messageBusSender.SendEmptyMessage(new MessageProperties(recurringJob.JobId.ToString(), string.Empty, recurringJob.JobTypeName));
     }
 }

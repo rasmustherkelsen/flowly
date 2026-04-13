@@ -5,7 +5,8 @@ internal static class QueueDiscoveryRunner
     public static (IReadOnlyList<QueueDiscoveryQueue> QueueDefinitions, IReadOnlyList<string> ConfigurationTypes) DiscoverQueues(
         IReadOnlyList<QueueDiscoverySource> sources,
         string? configurationType,
-        DirectoryInfo? workingDirectory)
+        DirectoryInfo? workingDirectory,
+        string? providerName = null)
     {
         var queueDefinitions = new Dictionary<string, QueueDiscoveryQueue>(StringComparer.OrdinalIgnoreCase);
         var configurationTypes = new SortedSet<string>(StringComparer.Ordinal);
@@ -20,10 +21,12 @@ internal static class QueueDiscoveryRunner
                 result = new FlowlyQueueDiscovery().DiscoverQueues(
                     source.Assembly.FullName,
                     configurationType,
-                    effectiveWorkingDirectory?.FullName);
+                    effectiveWorkingDirectory?.FullName,
+                    providerName);
             }
             catch (FlowlyConfigurationNotFoundException)
             {
+                failures.Add($"- {source.Assembly.FullName}: No Flowly configuration found. Ensure the assembly references Flowly and contains a FlowlyDesignTimeFactory or uses AddFlowly().");
                 continue;
             }
             catch (Exception ex)
@@ -70,11 +73,14 @@ internal static class QueueDiscoveryRunner
 
         if (failures.Count > 0)
         {
+            var previous = Console.ForegroundColor;
+            Console.ForegroundColor = ConsoleColor.Yellow;
             Console.Error.WriteLine("Warning: Some inputs were skipped during queue discovery:");
             foreach (var failure in failures)
             {
                 Console.Error.WriteLine(failure);
             }
+            Console.ForegroundColor = previous;
         }
 
         if (queueDefinitions.Count == 0)

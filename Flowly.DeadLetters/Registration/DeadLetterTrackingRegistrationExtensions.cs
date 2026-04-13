@@ -49,11 +49,12 @@ public static class DeadLetterTrackingRegistrationExtensions
             throw new InvalidOperationException("Dead letter tracking is not configured. Call AddSqlServerDeadLetterTracking() or AddPostgresDeadLetterTracking() before using WithDeadLetterTracking().");
 
         var queueName = builder.QueueName;
+        var providerName = builder.ProviderName;
 
         if (builder.Services.Any(s => s.ServiceType == typeof(DeadLetterIngestionSettings) && s.ImplementationInstance is DeadLetterIngestionSettings ds && ds.QueueName == queueName))
             return builder;
 
-        builder.Services.AddSingleton(new DeadLetterIngestionSettings(queueName));
+        builder.Services.AddSingleton(new DeadLetterIngestionSettings(queueName, providerName));
         builder.Services.AddHostedService<DeadLetterIngestionBackgroundService>();
 
         return builder;

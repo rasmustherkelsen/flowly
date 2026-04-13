@@ -2,6 +2,8 @@ namespace Flowly.MessagingAbstractions;
 
 public interface IMessageBusClient
 {
+    string MessagingSystem { get; }
+
     Task<IMessageBusReceiver> CreateReceiver(string queueName);
 
     Task<IMessageBusProcessor<TMessage>> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options);

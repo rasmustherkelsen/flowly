@@ -1,5 +1,4 @@
 using Flowly.MessageInfrastructure.Registration;
-using Flowly.MessagingAbstractions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using RabbitMQ.Client;
@@ -8,28 +7,64 @@ namespace Flowly.RabbitMQ;
 
 public static class RabbitMqRegistration
 {
-    public static IFlowlyBuilder UseRabbitMq(this IFlowlyBuilder flowlyBuilder)
-        => flowlyBuilder.UseRabbitMq("amqp://guest:guest@localhost:5672/");
+    public const string TransportType = "RabbitMQ";
 
-    public static IFlowlyBuilder UseRabbitMq(this IFlowlyBuilder flowlyBuilder, string connection)
+    public static IFlowlyBuilder UseRabbitMq(this IFlowlyBuilder flowlyBuilder, string? name = null, bool? createTopology = null)
+        => flowlyBuilder.RegisterRabbitMq("amqp://guest:guest@localhost:5672/", name, createTopology);
+
+    public static IFlowlyBuilder UseRabbitMq(
+        this IFlowlyBuilder flowlyBuilder,
+        string connection,
+        string? name = null,
+        bool? createTopology = null)
     {
-        flowlyBuilder.Services.AddSingleton<IConnection>(sp =>
-        {
-            var configuration = sp.GetRequiredService<IConfiguration>();
-            var uri = configuration.GetConnectionString(connection) ?? connection;
+        var uri = flowlyBuilder.Configuration.GetConnectionString(connection) ?? connection;
+        return flowlyBuilder.RegisterRabbitMq(uri, name, createTopology);
+    }
 
-            var factory = new ConnectionFactory
-            {
-                Uri = new Uri(uri),
-                AutomaticRecoveryEnabled = true
-            };
+    private static IFlowlyBuilder RegisterRabbitMq(
+        this IFlowlyBuilder flowlyBuilder,
+        string uri,
+        string? name,
+        bool? createTopology)
+    {
+        var services = flowlyBuilder.Services;
+        var clientRegistry = ProviderNameResolver.GetRegistry(services);
 
-            return factory.CreateConnectionAsync().GetAwaiter().GetResult();
-        });
+        var effectiveName = ResolveProviderName(clientRegistry, name);
 
-        flowlyBuilder.Services.AddSingleton<IMessageBusClient, RabbitMqMessageBusClient>();
-        flowlyBuilder.Services.AddTransient<IMessagingTopologyCreator, RabbitMqMessagingTopologyCreator>();
+        var lazyConnection = new RabbitMqLazyConnection(uri);
+        var messageBusClient = new RabbitMqMessageBusClient(lazyConnection);
+        var topologyCreator = new RabbitMqMessagingTopologyCreator(lazyConnection);
+
+        clientRegistry.Register(effectiveName, messageBusClient, createTopology);
+
+        var topologyRegistry = services
+            .Where(s => s.ServiceType == typeof(IMessagingTopologyCreatorRegistry))
+            .Select(s => s.ImplementationInstance)
+            .OfType<IMessagingTopologyCreatorRegistry>()
+            .First();
+
+        topologyRegistry.Register(effectiveName, topologyCreator);
+
+        var isPrimary = clientRegistry.GetAll().Count == 1;
+        services.AddSingleton(new ProviderQueueManifest(effectiveName, isPrimary, TransportType));
 
         return flowlyBuilder;
+    }
+
+    private static string ResolveProviderName(IMessageBusClientRegistry registry, string? name)
+    {
+        if (name is null)
+        {
+            if (registry.GetAll().Count > 0)
+                throw new InvalidOperationException(
+                    "Secondary RabbitMQ providers must have an explicit name. " +
+                    "Pass name: \"...\" to UseRabbitMq().");
+
+            return "__primary__";
+        }
+
+        return name;
     }
 }

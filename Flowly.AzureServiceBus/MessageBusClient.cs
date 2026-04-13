@@ -9,6 +9,8 @@ internal class MessageBusClient(ServiceBusClient serviceBusClient, ServiceBusAdm
 {
     private readonly ConcurrentDictionary<string, IMessageBusSender> _serviceBusSenders = new();
 
+    public string MessagingSystem => "azure_service_bus";
+
     public Task<IMessageBusReceiver> CreateReceiver(string queueName)
     {
         var receiver = serviceBusClient.CreateReceiver(queueName);
@@ -42,7 +44,7 @@ internal class MessageBusClient(ServiceBusClient serviceBusClient, ServiceBusAdm
     }
 
     public Task<IMessageBusSender> CreateMessageBusSender(string queueName)
-        => Task.FromResult<IMessageBusSender>(_serviceBusSenders.GetOrAdd(queueName, q => new MessageBusSender(serviceBusClient.CreateSender(q))));
+        => Task.FromResult(_serviceBusSenders.GetOrAdd(queueName, q => new MessageBusSender(serviceBusClient.CreateSender(q))));
 
     public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName)
     {

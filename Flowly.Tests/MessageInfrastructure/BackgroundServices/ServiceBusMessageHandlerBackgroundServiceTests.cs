@@ -116,6 +116,60 @@ public class ServiceBusMessageHandlerBackgroundServiceTests
         }
     }
 
+    public class OnProcessMessageWithCorruptBody
+    {
+        [Fact]
+        public async Task DeadLettersMessage()
+        {
+            var (serviceBusMessageHandlerBackgroundService, client) = Build();
+
+            await serviceBusMessageHandlerBackgroundService.StartAsync(CancellationToken.None);
+            var processor = await client.ProcessorCreated;
+            await processor.Started;
+
+            var poisonMessage = new ThrowingReceivedMessage<TestMessage>();
+            await processor.FireProcessMessage(poisonMessage);
+
+            await serviceBusMessageHandlerBackgroundService.StopAsync(CancellationToken.None);
+
+            Assert.True(poisonMessage.DeadLettered);
+        }
+
+        [Fact]
+        public async Task DoesNotInvokeHandler()
+        {
+            var handler = new RecordingMessageHandler();
+            var (serviceBusMessageHandlerBackgroundService, client) = Build(handler: handler);
+
+            await serviceBusMessageHandlerBackgroundService.StartAsync(CancellationToken.None);
+            var processor = await client.ProcessorCreated;
+            await processor.Started;
+
+            await processor.FireProcessMessage(new ThrowingReceivedMessage<TestMessage>());
+
+            await serviceBusMessageHandlerBackgroundService.StopAsync(CancellationToken.None);
+
+            Assert.Null(handler.ReceivedMessage);
+        }
+
+        [Fact]
+        public async Task DoesNotThrow()
+        {
+            var (serviceBusMessageHandlerBackgroundService, client) = Build();
+
+            await serviceBusMessageHandlerBackgroundService.StartAsync(CancellationToken.None);
+            var processor = await client.ProcessorCreated;
+            await processor.Started;
+
+            var exception = await Record.ExceptionAsync(() =>
+                processor.FireProcessMessage(new ThrowingReceivedMessage<TestMessage>()));
+
+            await serviceBusMessageHandlerBackgroundService.StopAsync(CancellationToken.None);
+
+            Assert.Null(exception);
+        }
+    }
+
     public class OnProcessError
     {
         [Fact]
@@ -144,10 +198,11 @@ public class ServiceBusMessageHandlerBackgroundServiceTests
         FakeServiceScopeFactory<MessageHandler<TestMessage>>? scopeFactory = null)
     {
         var client = new FakeMessageBusClient();
-        var settings = new HandlerSettings<TestMessage>(queueName, "TestHandler", readAndDelete, maxConcurrentCalls);
+        var clientRegistry = new FakeMessageBusClientRegistry(client);
+        var settings = new HandlerSettings<TestMessage>(queueName, "__primary__", "TestHandler", readAndDelete, maxConcurrentCalls);
         var factory = scopeFactory ?? new FakeServiceScopeFactory<MessageHandler<TestMessage>>(handler ?? new RecordingMessageHandler());
         var serviceBusMessageHandlerBackgroundService = new ServiceBusMessageHandlerBackgroundService<TestMessage>(
-            client, factory, settings, NullLogger<ServiceBusMessageHandlerBackgroundService<TestMessage>>.Instance, new HandlerInstrumentation(false));
+            clientRegistry, factory, settings, NullLogger<ServiceBusMessageHandlerBackgroundService<TestMessage>>.Instance, new HandlerInstrumentation(false));
         return (serviceBusMessageHandlerBackgroundService, client);
     }
 
@@ -167,6 +222,8 @@ public class ServiceBusMessageHandlerBackgroundServiceTests
     private class FakeMessageBusClient : IMessageBusClient
     {
         private readonly TaskCompletionSource<FakeMessageBusProcessor<TestMessage>> _processorCreated = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public string MessagingSystem => "fake";
 
         public Task<FakeMessageBusProcessor<TestMessage>> ProcessorCreated => _processorCreated.Task;
 

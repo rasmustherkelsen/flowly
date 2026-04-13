@@ -106,11 +106,12 @@ public class ServiceBusMessageBatchHandlerBackgroundServiceTests
     {
         var receiver = new FakeMessageBusReceiver(messages ?? [], stopAfterFirstBatch: messages is { Length: > 0 });
         var client = new FakeMessageBusClient(receiver);
+        var clientRegistry = new FakeMessageBusClientRegistry(client);
         var settings = new ServiceBusMessageBatchHandlerBackgroundService<TestMessage>.BatchQueueSettings(
-            queueName, maxMessages, maxWaitTime == default ? TimeSpan.FromSeconds(1) : maxWaitTime);
+            queueName, "__primary__", maxMessages, maxWaitTime == default ? TimeSpan.FromSeconds(1) : maxWaitTime);
         var scopeFactory = new FakeServiceScopeFactory<BatchMessageHandlerBase<TestMessage>>(handler ?? new RecordingBatchHandler());
         var serviceBusMessageBatchHandlerBackgroundService = new ServiceBusMessageBatchHandlerBackgroundService<TestMessage>(
-            client, settings, scopeFactory, NullLogger<ServiceBusMessageBatchHandlerBackgroundService<TestMessage>>.Instance, new HandlerInstrumentation(false));
+            clientRegistry, settings, scopeFactory, NullLogger<ServiceBusMessageBatchHandlerBackgroundService<TestMessage>>.Instance, new HandlerInstrumentation(false));
         return (serviceBusMessageBatchHandlerBackgroundService, client, receiver);
     }
 
@@ -137,6 +138,8 @@ public class ServiceBusMessageBatchHandlerBackgroundServiceTests
 
     private class FakeMessageBusClient(FakeMessageBusReceiver receiver) : IMessageBusClient
     {
+        public string MessagingSystem => "fake";
+
         public string? CreatedReceiverQueueName { get; private set; }
 
         public Task<IMessageBusReceiver> CreateReceiver(string queueName)

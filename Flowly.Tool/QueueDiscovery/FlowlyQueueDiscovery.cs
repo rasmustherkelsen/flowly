@@ -6,7 +6,7 @@ namespace Flowly.Tool.QueueDiscovery;
 
 internal sealed class FlowlyQueueDiscovery
 {
-    public FlowlyQueueDiscoveryResult DiscoverQueues(string assemblyPath, string? configurationType, string? workingDirectory)
+    public FlowlyQueueDiscoveryResult DiscoverQueues(string assemblyPath, string? configurationType, string? workingDirectory, string? providerName = null)
     {
         var fullAssemblyPath = Path.GetFullPath(assemblyPath);
         if (!File.Exists(fullAssemblyPath))
@@ -32,13 +32,16 @@ internal sealed class FlowlyQueueDiscovery
             }
             catch (FlowlyConfigurationNotFoundException) when (configurationType is null)
             {
+                if (!IsFlowlyReferenced(fullAssemblyPath))
+                    throw;
+
                 var effectiveWorkingDirectory = workingDirectory ?? Path.GetDirectoryName(fullAssemblyPath)!;
                 var queues = HostBasedQueueDiscovery.DiscoverQueues(fullAssemblyPath, effectiveWorkingDirectory);
                 return new FlowlyQueueDiscoveryResult("(inline configuration)", queues);
             }
 
-            var queueNames = BuildAndExtractQueues(configuration, workingDirectory ?? Path.GetDirectoryName(fullAssemblyPath)!);
-            return new FlowlyQueueDiscoveryResult(configuration.FullName ?? configuration.Name, queueNames);
+            var queueDefinitions = BuildAndExtractQueues(configuration, workingDirectory ?? Path.GetDirectoryName(fullAssemblyPath)!, providerName);
+            return new FlowlyQueueDiscoveryResult(configuration.FullName ?? configuration.Name, queueDefinitions);
         }
         finally
         {
@@ -121,7 +124,7 @@ internal sealed class FlowlyQueueDiscovery
         }
     }
 
-    private static IReadOnlyList<QueueDiscoveryQueue> BuildAndExtractQueues(Type configurationType, string workingDirectory)
+    private static IReadOnlyList<QueueDiscoveryQueue> BuildAndExtractQueues(Type configurationType, string workingDirectory, string? providerNameFilter)
     {
         var previousDirectory = Directory.GetCurrentDirectory();
 
@@ -140,44 +143,34 @@ internal sealed class FlowlyQueueDiscovery
             var builder = createBuilderMethod.Invoke(instance, null) as IFlowlyBuilder
                 ?? throw new InvalidOperationException("Flowly builder creation failed.");
 
-            var queueDefinitions = builder.Services
-                .Where(sd => sd.ImplementationInstance is DeferredQueueRegistration)
-                .Select(sd => (DeferredQueueRegistration)sd.ImplementationInstance!)
-                .Where(registration => !string.IsNullOrWhiteSpace(registration.QueueName))
-                .GroupBy(registration => registration.QueueName, StringComparer.OrdinalIgnoreCase)
-                .Select(group =>
-                {
-                    var first = group.First();
-
-                    var defaultMessageTimeToLive = ResolveConsistentValue(
-                        group.Select(x => x.DefaultMessageTimeToLive),
-                        TimeSpan.FromDays(1),
-                        first.QueueName,
-                        nameof(DeferredQueueRegistration.DefaultMessageTimeToLive));
-
-                    var deadLetterOnMessageExpiration = ResolveConsistentValue(
-                        group.Select(x => x.DeadLetterOnMessageExpiration),
-                        true,
-                        first.QueueName,
-                        nameof(DeferredQueueRegistration.DeadLetterOnMessageExpiration));
-
-                    var lockDuration = ResolveConsistentValue(
-                        group.Select(x => x.LockDuration),
-                        TimeSpan.FromMinutes(5),
-                        first.QueueName,
-                        nameof(DeferredQueueRegistration.LockDuration));
-
-                    return new QueueDiscoveryQueue(
-                        first.QueueName,
-                        group.Any(x => x.RequiresSession),
-                        defaultMessageTimeToLive,
-                        deadLetterOnMessageExpiration,
-                        lockDuration);
-                })
-                .OrderBy(queue => queue.Name, StringComparer.OrdinalIgnoreCase)
+            var manifests = builder.Services
+                .Where(sd => sd.ImplementationInstance is ProviderQueueManifest)
+                .Select(sd => (ProviderQueueManifest)sd.ImplementationInstance!)
                 .ToArray();
 
-            return queueDefinitions;
+            var selectedManifests = providerNameFilter is null
+                ? manifests.Where(m => m.IsPrimary).ToArray()
+                : manifests.Where(m => string.Equals(m.ProviderName, providerNameFilter, StringComparison.OrdinalIgnoreCase)).ToArray();
+
+            if (providerNameFilter is not null && selectedManifests.Length == 0)
+            {
+                var available = string.Join(", ", manifests.Select(m => m.ProviderName));
+                throw new InvalidOperationException(
+                    $"No provider named '{providerNameFilter}' was found. Available providers: {available}");
+            }
+
+            return selectedManifests
+                .SelectMany(m => m.Queues.Select(r => new QueueDiscoveryQueue(
+                    r.QueueName,
+                    m.ProviderName,
+                    r.RequiresSession,
+                    r.DefaultMessageTimeToLive ?? TimeSpan.FromDays(1),
+                    r.DeadLetterOnMessageExpiration ?? true,
+                    r.LockDuration ?? TimeSpan.FromMinutes(5))))
+                .GroupBy(q => q.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(g => g.First())
+                .OrderBy(q => q.Name, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
         }
         finally
         {
@@ -185,25 +178,6 @@ internal sealed class FlowlyQueueDiscovery
         }
     }
 
-    private static T ResolveConsistentValue<T>(IEnumerable<T?> values, T defaultValue, string queueName, string settingName)
-        where T : struct
-    {
-        var concreteValues = values
-            .Where(value => value is not null)
-            .Select(value => value!.Value)
-            .Distinct()
-            .ToArray();
-
-        if (concreteValues.Length == 0)
-        {
-            return defaultValue;
-        }
-
-        if (concreteValues.Length == 1)
-        {
-            return concreteValues[0];
-        }
-
-        throw new InvalidOperationException($"Conflicting queue setting '{settingName}' for queue '{queueName}'.");
-    }
+    private static bool IsFlowlyReferenced(string assemblyPath) =>
+        File.Exists(Path.Combine(Path.GetDirectoryName(assemblyPath)!, "Flowly.dll"));
 }

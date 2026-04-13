@@ -24,7 +24,7 @@ public sealed class SubmitterInstrumentation : IDisposable
 
     internal bool IsEnabled => _meter != null;
 
-    public Activity? StartSending(string queueName)
+    public Activity? StartSending(string queueName, string messagingSystem, string messageId)
     {
         if (!_enabled) return null;
 
@@ -32,13 +32,18 @@ public sealed class SubmitterInstrumentation : IDisposable
             $"flowly.send {queueName}",
             ActivityKind.Producer,
             default(ActivityContext),
-            [new KeyValuePair<string, object?>("queue", queueName)]);
+            [
+                new KeyValuePair<string, object?>(FlowlyInstrumentationConstants.MessagingSystem, messagingSystem),
+                new KeyValuePair<string, object?>(FlowlyInstrumentationConstants.MessagingDestinationName, queueName),
+                new KeyValuePair<string, object?>(FlowlyInstrumentationConstants.MessagingOperationType, "publish"),
+                new KeyValuePair<string, object?>(FlowlyInstrumentationConstants.MessagingMessageId, messageId),
+            ]);
     }
 
     public void RecordSent(string queueName, double durationMs)
     {
         Activity.Current?.SetTag("outcome", "success");
-        var tags = new TagList { { "queue", queueName } };
+        var tags = new TagList { { FlowlyInstrumentationConstants.MessagingDestinationName, queueName } };
         _sent?.Add(1, tags);
         _duration?.Record(durationMs, tags);
     }
@@ -47,7 +52,7 @@ public sealed class SubmitterInstrumentation : IDisposable
     {
         Activity.Current?.SetStatus(ActivityStatusCode.Error);
         Activity.Current?.SetTag("outcome", "failed");
-        _failed?.Add(1, new TagList { { "queue", queueName } });
+        _failed?.Add(1, new TagList { { FlowlyInstrumentationConstants.MessagingDestinationName, queueName } });
     }
 
     public void Dispose() => _meter?.Dispose();

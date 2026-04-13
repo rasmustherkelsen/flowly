@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using Flowly.MessagingAbstractions;
@@ -61,6 +62,12 @@ internal class RabbitMqMessageBusSender(string queueName, IChannel channel) : IM
 
         if (messageProperties.RetryCount > 0)
             props.Headers["flowly-retry-count"] = messageProperties.RetryCount;
+
+        if (Activity.Current?.Id is { } traceparent)
+            props.Headers["traceparent"] = traceparent;
+
+        if (Activity.Current?.TraceStateString is { Length: > 0 } tracestate)
+            props.Headers["tracestate"] = tracestate;
 
         string routingKey;
         if (messageProperties.ScheduledEnqueueTime.HasValue)

@@ -12,7 +12,7 @@ public class ApiFlowlyConfiguration : FlowlyDesignTimeFactory, IFlowlyConfigurat
     public void Configure(IFlowlyBuilder builder)
     {
         builder
-            .UseRabbitMq("RabbitMQ")
+            .UseRabbitMq(connection: "RabbitMQ")
             .AddPostgresDeadLetterTracking(builder.Configuration.GetConnectionString("FlowlyDeadLetters")!, enableMigrations: false)
             .AddJobStateTrackingClient(builder.Configuration.GetConnectionString("FlowlyJobs")!)
             .AddJobSubmitter<ProcessOrder>()

@@ -12,8 +12,9 @@ internal static class HostBasedQueueDiscovery
     private static readonly TimeSpan DefaultMessageTimeToLive = TimeSpan.FromDays(1);
     private static readonly TimeSpan DefaultLockDuration = TimeSpan.FromMinutes(5);
     private const bool DefaultDeadLetterOnMessageExpiration = true;
+    private const string FallbackProviderName = "__primary__";
 
-    public static IReadOnlyList<QueueDiscoveryQueue> DiscoverQueues(string assemblyPath, string workingDirectory)
+    public static IReadOnlyList<QueueDiscoveryQueue> DiscoverQueues(string assemblyPath, string workingDirectory, string? providerNameFilter = null)
     {
         var outputFile = Path.GetTempFileName();
 
@@ -61,7 +62,7 @@ internal static class HostBasedQueueDiscovery
                     (stderr.Length > 0 ? stderr.ToString() : "(no stderr output)"));
             }
 
-            return ParseOutput(outputFile);
+            return ParseOutput(outputFile, providerNameFilter);
         }
         finally
         {
@@ -69,14 +70,18 @@ internal static class HostBasedQueueDiscovery
         }
     }
 
-    private static IReadOnlyList<QueueDiscoveryQueue> ParseOutput(string outputFile)
+    private static IReadOnlyList<QueueDiscoveryQueue> ParseOutput(string outputFile, string? providerNameFilter)
     {
         var json = File.ReadAllText(outputFile);
         var entries = JsonSerializer.Deserialize<HostDiscoveredQueue[]>(
             json,
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
 
-        return entries
+        var filtered = providerNameFilter is null
+            ? entries.Where(e => IsPrimaryProvider(e.ProviderName))
+            : entries.Where(e => string.Equals(e.ProviderName, providerNameFilter, StringComparison.OrdinalIgnoreCase));
+
+        return filtered
             .Where(e => !string.IsNullOrWhiteSpace(e.QueueName))
             .GroupBy(e => e.QueueName, StringComparer.OrdinalIgnoreCase)
             .Select(group =>
@@ -103,6 +108,7 @@ internal static class HostBasedQueueDiscovery
 
                 return new QueueDiscoveryQueue(
                     first.QueueName,
+                    first.ProviderName ?? FallbackProviderName,
                     group.Any(e => e.RequiresSession),
                     defaultMessageTimeToLive,
                     deadLetterOnMessageExpiration,
@@ -111,6 +117,11 @@ internal static class HostBasedQueueDiscovery
             .OrderBy(q => q.Name, StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
+
+    private static bool IsPrimaryProvider(string? providerName) =>
+        providerName is null
+        || string.Equals(providerName, FallbackProviderName, StringComparison.OrdinalIgnoreCase)
+        || string.Equals(providerName, "__primary__", StringComparison.OrdinalIgnoreCase);
 
     private static T ResolveConsistentValue<T>(IEnumerable<T?> values, T defaultValue, string queueName, string settingName)
         where T : struct
@@ -129,6 +140,7 @@ internal static class HostBasedQueueDiscovery
 
     private sealed record HostDiscoveredQueue(
         string QueueName,
+        string? ProviderName,
         bool RequiresSession,
         string? DefaultMessageTimeToLive,
         bool? DeadLetterOnMessageExpiration,

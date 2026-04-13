@@ -15,3 +15,9 @@ Each sample is self-contained and runnable. Pick the one matching your transport
 |---|---|
 | [SendReceive](RabbitMQ/SendReceive/README.md) | Minimal send/receive against a local RabbitMQ broker via Docker Compose |
 | [Aspire](RabbitMQ/Aspire/README.md) | Full-featured: jobs, batch handlers, recurring jobs, dead letters, OpenTelemetry, custom dashboard |
+
+## MultiBus
+
+| Sample | What it shows |
+|---|---|
+| [SendReceive](MultiBus/SendReceive/README.md) | Minimal send/receive across Azure Service Bus and RabbitMQ simultaneously, using `[ProviderAffinity]` to route messages to specific transports |

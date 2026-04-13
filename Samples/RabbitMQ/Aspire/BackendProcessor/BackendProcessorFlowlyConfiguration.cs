@@ -15,7 +15,7 @@ public class BackendProcessorFlowlyConfiguration : FlowlyDesignTimeFactory, IFlo
     public void Configure(IFlowlyBuilder builder)
     {
         builder
-            .UseRabbitMq("RabbitMQ")
+            .UseRabbitMq(connection: "RabbitMQ")
 
             .AddPostgresJobStateTracking(
                 builder.Configuration.GetConnectionString("FlowlyJobs")!,
