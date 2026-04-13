@@ -7,6 +7,13 @@ public static class FlowlyInstrumentationConstants
     public const string MeterName = "Flowly";
     public const string ActivitySourceName = "Flowly";
 
+    // OTel messaging semantic convention attribute names
+    public const string MessagingSystem = "messaging.system";
+    public const string MessagingDestinationName = "messaging.destination.name";
+    public const string MessagingOperationType = "messaging.operation.type";
+    public const string MessagingMessageId = "messaging.message.id";
+    public const string MessagingMessageConversationId = "messaging.message.conversation_id";
+
     public const string HandlerMessagesReceived = "flowly.handler.messages.received";
     public const string HandlerMessagesSucceeded = "flowly.handler.messages.succeeded";
     public const string HandlerMessagesFailed = "flowly.handler.messages.failed";

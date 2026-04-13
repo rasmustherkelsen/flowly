@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Azure.Messaging.ServiceBus;
 using Flowly.MessagingAbstractions;
@@ -40,6 +41,12 @@ internal class MessageBusSender(ServiceBusSender serviceBusSender) : IMessageBus
 
         if (messageProperties.ScheduledEnqueueTime.HasValue)
             serviceBusMessage.ScheduledEnqueueTime = messageProperties.ScheduledEnqueueTime.Value;
+
+        if (Activity.Current?.Id is { } traceparent)
+            serviceBusMessage.ApplicationProperties["traceparent"] = traceparent;
+
+        if (Activity.Current?.TraceStateString is { Length: > 0 } tracestate)
+            serviceBusMessage.ApplicationProperties["tracestate"] = tracestate;
 
         await serviceBusSender.SendMessageAsync(serviceBusMessage, cancellationToken);
     }

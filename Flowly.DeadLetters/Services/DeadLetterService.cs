@@ -1,11 +1,15 @@
 using System.Text.Json;
+using Flowly.DeadLetters.BackgroundServices;
 using Flowly.DeadLetters.DatabaseModel;
 using Flowly.DeadLetters.Repositories;
-using Flowly.MessagingAbstractions;
+using Flowly.MessageInfrastructure.Registration;
 
 namespace Flowly.DeadLetters.Services;
 
-internal class DeadLetterService(IDeadLetterRepository repository, IMessageBusClient messageBusClient) : IDeadLetterService
+internal class DeadLetterService(
+    IDeadLetterRepository repository,
+    IMessageBusClientRegistry clientRegistry,
+    IEnumerable<DeadLetterIngestionSettings> ingestionSettings) : IDeadLetterService
 {
     public async Task<IReadOnlyCollection<DeadLetter>> GetDeadLetters(CancellationToken cancellationToken = default)
         => await repository.GetAll(cancellationToken);
@@ -24,7 +28,8 @@ internal class DeadLetterService(IDeadLetterRepository repository, IMessageBusCl
             kvp => kvp.Key,
             kvp => ConvertJsonElement(kvp.Value));
 
-        var sender = await messageBusClient.CreateMessageBusSender(deadLetter.QueueName);
+        var providerName = ResolveProviderName(deadLetter.QueueName);
+        var sender = await clientRegistry.GetClient(providerName).CreateMessageBusSender(deadLetter.QueueName);
         await sender.SendRawMessage(deadLetter.MessageBody, applicationProperties, cancellationToken);
 
         await repository.MarkAsRequeued(messageId, requeuedBy, cancellationToken);
@@ -40,6 +45,14 @@ internal class DeadLetterService(IDeadLetterRepository repository, IMessageBusCl
                 $"Dead letter '{messageId}' has already been requeued and cannot be discarded.");
 
         await repository.Delete(messageId, cancellationToken);
+    }
+
+    private string ResolveProviderName(string queueName)
+    {
+        var settings = ingestionSettings
+            .FirstOrDefault(s => string.Equals(s.QueueName, queueName, StringComparison.OrdinalIgnoreCase));
+
+        return settings?.ProviderName ?? clientRegistry.PrimaryProviderName;
     }
 
     private static object ConvertJsonElement(object value)

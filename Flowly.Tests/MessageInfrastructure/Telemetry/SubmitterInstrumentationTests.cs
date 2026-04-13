@@ -63,7 +63,7 @@ public class SubmitterInstrumentationTests
         public void StartSending_ReturnsNull()
         {
             using var submitterInstrumentation = new SubmitterInstrumentation(false);
-            var activity = submitterInstrumentation.StartSending("my-queue");
+            var activity = submitterInstrumentation.StartSending("my-queue", "fake", "msg-123");
             Assert.Null(activity);
         }
     }

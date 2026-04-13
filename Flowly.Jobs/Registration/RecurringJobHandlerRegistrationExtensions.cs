@@ -1,4 +1,4 @@
-﻿using Flowly.Jobs.BackgroundServices;
+using Flowly.Jobs.BackgroundServices;
 using Flowly.Jobs.Messages;
 using Flowly.MessageInfrastructure.RecurringJobs;
 using Flowly.MessageInfrastructure.Registration;
@@ -13,12 +13,15 @@ public static class RecurringJobHandlerRegistrationExtensions
     {
         var resolvedOptions = RecurringJobHandlerOptionsResolver.Resolve<TRecurringJob>();
 
-        flowlyBuilder.AddQueueRegistration(JobQueuesNames.RecurringJobs, requiresSession: true);
+        // Recurring jobs always use the primary provider
+        var primaryProviderName = ProviderNameResolver.GetRegistry(flowlyBuilder.Services).PrimaryProviderName;
+
+        flowlyBuilder.AddQueueRegistration(JobQueuesNames.RecurringJobs, requiresSession: true, primaryProviderName);
 
         flowlyBuilder.Services
             .AddSingleton(new RecurringJobHandlerBackgroundService<TRecurringJob>.RecurringJobSettings(
-                resolvedOptions.JobDescription, 
-                typeof(TRecurringJob).Name, 
+                resolvedOptions.JobDescription,
+                typeof(TRecurringJob).Name,
                 resolvedOptions.CronExpression))
             .AddHostedService<RecurringJobHandlerBackgroundService<TRecurringJob>>()
             .AddScoped<TRecurringJob>();

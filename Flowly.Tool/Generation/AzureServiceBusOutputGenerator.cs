@@ -87,6 +87,9 @@ internal static class AzureServiceBusOutputGenerator
         return sb.ToString();
     }
 
+    private static readonly TimeSpan EmulatorMaxMessageTimeToLive = TimeSpan.FromHours(1);
+    private static readonly TimeSpan EmulatorMaxDuplicateDetectionHistoryTimeWindow = TimeSpan.FromMinutes(5);
+
     private static object CreateEmulatorQueue(QueueDiscoveryQueue queueDefinition)
     {
         return new
@@ -95,8 +98,11 @@ internal static class AzureServiceBusOutputGenerator
             Properties = new
             {
                 DeadLetteringOnMessageExpiration = queueDefinition.DeadLetterOnMessageExpiration,
-                DefaultMessageTimeToLive = ToIso8601Duration(queueDefinition.DefaultMessageTimeToLive),
-                DuplicateDetectionHistoryTimeWindow = "PT10M",
+                DefaultMessageTimeToLive = ToIso8601Duration(
+                    queueDefinition.DefaultMessageTimeToLive > EmulatorMaxMessageTimeToLive
+                        ? EmulatorMaxMessageTimeToLive
+                        : queueDefinition.DefaultMessageTimeToLive),
+                DuplicateDetectionHistoryTimeWindow = ToIso8601Duration(EmulatorMaxDuplicateDetectionHistoryTimeWindow),
                 ForwardDeadLetteredMessagesTo = string.Empty,
                 ForwardTo = string.Empty,
                 LockDuration = ToIso8601Duration(queueDefinition.LockDuration),

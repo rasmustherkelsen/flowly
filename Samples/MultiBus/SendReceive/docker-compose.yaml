@@ -1,0 +1,33 @@
+services:
+  sql-server:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    ports:
+      - "1433:1433"
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=Pass@word1
+    container_name: servicebus-sql
+
+  servicebus-emulator:
+    image: mcr.microsoft.com/azure-messaging/servicebus-emulator:latest
+    environment:
+      SQL_SERVER: sql-server
+      MSSQL_SA_PASSWORD: 'Pass@word1'
+      ACCEPT_EULA: Y
+      SQL_WAIT_INTERVAL: 15
+    ports:
+      - "5672:5672"
+    volumes:
+      - ./sbconfig.json:/ServiceBus_Emulator/ConfigFiles/Config.json
+    depends_on:
+      - sql-server
+  
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5673:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest

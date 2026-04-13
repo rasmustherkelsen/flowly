@@ -16,6 +16,15 @@ public static class AddFlowlyExtension
         return builder;
     }
 
+    public static IHostApplicationBuilder AddFlowly(
+        this IHostApplicationBuilder builder,
+        Action<FlowlyOptions>? configureOptions,
+        Action<IFlowlyBuilder> configure)
+    {
+        Register(builder.Services, builder.Configuration, new InlineFlowlyConfiguration(configure), configureOptions);
+        return builder;
+    }
+
     public static IHostApplicationBuilder AddFlowly(this IHostApplicationBuilder builder, Action<FlowlyOptions>? configureOptions = null)
     {
         var assembly = Assembly.GetEntryAssembly() ?? throw new InvalidOperationException("Could not determine the entry assembly.");
@@ -41,12 +50,25 @@ public static class AddFlowlyExtension
         return builder;
     }
 
+    private sealed class InlineFlowlyConfiguration(Action<IFlowlyBuilder> configure) : FlowlyDesignTimeFactory, IFlowlyConfiguration
+    {
+        public void Configure(IFlowlyBuilder builder) => configure(builder);
+    }
+
     private static void Register(
         IServiceCollection services,
         IConfiguration configuration,
         IFlowlyConfiguration module,
         Action<FlowlyOptions>? configureOptions)
     {
+        // Registries must be added as concrete instances before Configure() runs so that
+        // UseAzureServiceBus / UseRabbitMq and ProviderNameResolver can access them
+        // without calling BuildServiceProvider().
+        var clientRegistry = new MessageBusClientRegistry();
+        var topologyRegistry = new MessagingTopologyCreatorRegistry();
+        services.TryAddSingleton<IMessageBusClientRegistry>(clientRegistry);
+        services.TryAddSingleton<IMessagingTopologyCreatorRegistry>(topologyRegistry);
+
         services.TryAddSingleton<IQueueManager, QueueManager>();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, QueueRegistrarHostedService>());
 

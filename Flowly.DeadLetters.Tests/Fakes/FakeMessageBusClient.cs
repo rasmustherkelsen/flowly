@@ -6,6 +6,8 @@ internal class FakeMessageBusClient : IMessageBusClient
 {
     private readonly Dictionary<string, FakeMessageBusSender> _senders = [];
 
+    public string MessagingSystem => "fake";
+
     public IReadOnlyCollection<string> CreatedSenders => _senders.Keys.ToList();
 
     public FakeMessageBusSender GetSender(string queueName) => _senders[queueName];

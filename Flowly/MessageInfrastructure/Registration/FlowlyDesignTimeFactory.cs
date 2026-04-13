@@ -29,18 +29,25 @@ public abstract class FlowlyDesignTimeFactory
         return builder;
     }
 
-    public static IReadOnlyList<DeferredQueueRegistration> DiscoverQueues<TConfig>() where TConfig : FlowlyDesignTimeFactory, IFlowlyConfiguration, new()
+    public static IReadOnlyList<ProviderQueueManifest> DiscoverQueues<TConfig>() where TConfig : FlowlyDesignTimeFactory, IFlowlyConfiguration, new()
         => DiscoverQueues(typeof(TConfig));
 
-    public static IReadOnlyList<DeferredQueueRegistration> DiscoverQueues(Type configType)
+    public static IReadOnlyList<ProviderQueueManifest> DiscoverQueues(Type configType)
     {
         var services = new ServiceCollection();
+
+        var clientRegistry = new MessageBusClientRegistry();
+        var topologyRegistry = new MessagingTopologyCreatorRegistry();
+        services.AddSingleton<IMessageBusClientRegistry>(clientRegistry);
+        services.AddSingleton<IMessagingTopologyCreatorRegistry>(topologyRegistry);
+
         var builder = new FlowlyBuilder(services, new DiscoveryConfiguration());
         var instance = (IFlowlyConfiguration)Activator.CreateInstance(configType)!;
         instance.Configure(builder);
+
         return services
-            .Where(s => s.ServiceType == typeof(DeferredQueueRegistration) && s.ImplementationInstance is DeferredQueueRegistration)
-            .Select(s => (DeferredQueueRegistration)s.ImplementationInstance!)
+            .Where(s => s.ImplementationInstance is ProviderQueueManifest)
+            .Select(s => (ProviderQueueManifest)s.ImplementationInstance!)
             .ToList();
     }
 
@@ -58,7 +65,8 @@ public abstract class FlowlyDesignTimeFactory
 
         private sealed class DiscoverySection : IConfigurationSection
         {
-            private const string Placeholder = "flowly-discovery-placeholder";
+            //"Endpoint=sb://flowly-discovery-placeholder;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;"
+            private const string PlaceholderConnectionString = "Endpoint=sb://flowly-discovery-placeholder;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE";
             private readonly string _path;
 
             public DiscoverySection(string path)
@@ -68,13 +76,13 @@ public abstract class FlowlyDesignTimeFactory
                 Path = path;
             }
 
-            public string? this[string key] { get => Placeholder; set { } }
+            public string? this[string key] { get => PlaceholderConnectionString; set { } }
 
             public string Key { get; }
 
             public string Path { get; }
 
-            public string? Value { get => Placeholder; set { } }
+            public string? Value { get => PlaceholderConnectionString; set { } }
 
             public IConfigurationSection GetSection(string key) => new DiscoverySection($"{_path}:{key}");
 

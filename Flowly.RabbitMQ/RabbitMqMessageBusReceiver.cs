@@ -1,5 +1,7 @@
+using System.Threading.Channels;
 using Flowly.MessagingAbstractions;
 using RabbitMQ.Client;
+using RabbitMQ.Client.Events;
 
 namespace Flowly.RabbitMQ;
 
@@ -10,25 +12,46 @@ internal class RabbitMqMessageBusReceiver(IChannel channel, string queueName) : 
         TimeSpan maxWaitTime,
         CancellationToken cancellationToken = default)
     {
+        await channel.BasicQosAsync(
+            prefetchSize: 0,
+            prefetchCount: (ushort)maxMessagesBeforeProcessing,
+            global: false,
+            cancellationToken: cancellationToken);
+
         var messages = new List<IReceivedMessage<TMessage>>(maxMessagesBeforeProcessing);
-        var deadline = DateTimeOffset.UtcNow + maxWaitTime;
+        var messageBuffer = Channel.CreateBounded<(ulong DeliveryTag, ReadOnlyMemory<byte> Body, IReadOnlyBasicProperties Properties)>(maxMessagesBeforeProcessing);
 
-        while (messages.Count < maxMessagesBeforeProcessing && DateTimeOffset.UtcNow < deadline && !cancellationToken.IsCancellationRequested)
+        var consumer = new AsyncEventingBasicConsumer(channel);
+
+        consumer.ReceivedAsync += (_, args) =>
         {
-            var result = await channel.BasicGetAsync(queueName, autoAck: false, cancellationToken);
-            if (result is null)
-            {
-                var remaining = deadline - DateTimeOffset.UtcNow;
-                if (remaining <= TimeSpan.Zero) break;
-                await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken);
-                continue;
-            }
+            messageBuffer.Writer.TryWrite((args.DeliveryTag, args.Body.ToArray(), args.BasicProperties));
+            return Task.CompletedTask;
+        };
 
-            messages.Add(new RabbitMqBatchReceivedMessage<TMessage>(
-                channel,
-                result.DeliveryTag,
-                result.Body,
-                result.BasicProperties));
+        var consumerTag = await channel.BasicConsumeAsync(queueName, autoAck: false, consumer, cancellationToken);
+
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(maxWaitTime);
+
+        try
+        {
+            while (messages.Count < maxMessagesBeforeProcessing)
+            {
+                try
+                {
+                    var (deliveryTag, body, properties) = await messageBuffer.Reader.ReadAsync(timeoutCts.Token);
+                    messages.Add(new RabbitMqBatchReceivedMessage<TMessage>(channel, deliveryTag, body, properties));
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+            }
+        }
+        finally
+        {
+            await channel.BasicCancelAsync(consumerTag, cancellationToken: CancellationToken.None);
         }
 
         return messages;

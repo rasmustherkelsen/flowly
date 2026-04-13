@@ -3,6 +3,7 @@ using Flowly.Jobs.Model;
 using Flowly.Jobs.Receivers;
 using Flowly.MessageInfrastructure.BackgroundServices;
 using Flowly.MessageInfrastructure.Model;
+using Flowly.MessageInfrastructure.Registration;
 using Flowly.MessageInfrastructure.Senders;
 using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.MessagingAbstractions;
@@ -12,11 +13,11 @@ using Microsoft.Extensions.Logging;
 namespace Flowly.Jobs.BackgroundServices;
 
 internal class JobHandlerBackgroundService<TMessage>(
-    IMessageBusClient messageBusClient,
+    IMessageBusClientRegistry clientRegistry,
     IServiceScopeFactory serviceScopeFactory,
     HandlerSettings<TMessage> handlerSettings,
     ILogger<JobHandlerBackgroundService<TMessage>> logger,
-    HandlerInstrumentation handlerInstrumentation) : ServiceBusMessageHandlerBackgroundServiceBase<TMessage>(messageBusClient, serviceScopeFactory, handlerSettings, logger, handlerInstrumentation) where TMessage : class, IJobMessage
+    HandlerInstrumentation handlerInstrumentation) : ServiceBusMessageHandlerBackgroundServiceBase<TMessage>(clientRegistry, serviceScopeFactory, handlerSettings, logger, handlerInstrumentation) where TMessage : class, IJobMessage
 {
     private readonly IServiceScopeFactory _serviceScopeFactory = serviceScopeFactory;
 
@@ -61,7 +62,6 @@ internal class JobHandlerBackgroundService<TMessage>(
 
         var messageSender = serviceProvider.GetRequiredService<IMessageSender>();
         await messageSender.Send(new JobFailed(jobId, reason, DateTime.UtcNow), cancellationToken);
-        await receivedMessage.Complete(cancellationToken);
     }
 
     protected override Task OnMessageHandlingError(ILogger logger, IServiceProvider serviceProvider, ErrorDetails errorDetails)

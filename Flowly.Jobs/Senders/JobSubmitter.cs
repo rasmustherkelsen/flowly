@@ -1,16 +1,17 @@
-﻿using Flowly.Jobs.Messages;
+using Flowly.Jobs.Messages;
 using Flowly.Jobs.Model;
+using Flowly.MessageInfrastructure.Registration;
 using Flowly.MessageInfrastructure.Senders;
 using Flowly.MessagingAbstractions;
 
 namespace Flowly.Jobs.Senders;
 
 internal class JobSubmitter<TMessage>(
-    IMessageBusClient messageBusClient,
+    IMessageBusClientRegistry clientRegistry,
     JobSubmitter<TMessage>.QueueSettings queueSettings,
     IMessageSender messageSender) : IJobSubmitter<TMessage> where TMessage : IJobMessage
 {
-    internal record QueueSettings(string QueueName);
+    internal record QueueSettings(string QueueName, string ProviderName);
 
     public async Task<JobId> SubmitJob(TMessage message, CancellationToken cancellationToken = default)
     {
@@ -19,7 +20,8 @@ internal class JobSubmitter<TMessage>(
 
         await messageSender.Send(createJobState, cancellationToken);
 
-        var messageBusSender = await messageBusClient.CreateMessageBusSender(queueSettings.QueueName);
+        var client = clientRegistry.GetClient(queueSettings.ProviderName);
+        var messageBusSender = await client.CreateMessageBusSender(queueSettings.QueueName);
 
         await messageBusSender.SendMessage(message, new MessageProperties(jobId.InnerId.ToString(), string.Empty), cancellationToken);
 

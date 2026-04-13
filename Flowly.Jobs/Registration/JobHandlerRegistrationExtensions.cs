@@ -1,4 +1,4 @@
-﻿using Flowly.Jobs.BackgroundServices;
+using Flowly.Jobs.BackgroundServices;
 using Flowly.Jobs.Model;
 using Flowly.Jobs.Receivers;
 using Flowly.MessageInfrastructure.Model;
@@ -14,6 +14,7 @@ public static class JobHandlerRegistrationExtensions
         where THandler : JobMessageHandlerBase<TMessage>
         where TMessage : class, IJobMessage
     {
+        var providerName = ProviderNameResolver.Resolve(flowlyBuilder.Services, typeof(TMessage));
         var resolvedQueueOptions = HandlerQueueOptionsResolver.Resolve<THandler, TMessage>();
         var resolvedQueueName = resolvedQueueOptions.QueueName;
 
@@ -22,14 +23,15 @@ public static class JobHandlerRegistrationExtensions
             false,
             resolvedQueueOptions.DefaultMessageTimeToLive,
             resolvedQueueOptions.DeadLetterOnMessageExpiration,
-            resolvedQueueOptions.LockDuration));
+            resolvedQueueOptions.LockDuration),
+            providerName);
 
         flowlyBuilder.Services
             .AddScoped<THandler>()
             .AddScoped<JobMessageHandlerBase<TMessage>, THandler>()
-            .AddSingleton(new HandlerSettings<TMessage>(resolvedQueueName, typeof(THandler).Name, true, resolvedQueueOptions.MaxConcurrentCalls, resolvedQueueOptions.MaxRetries, resolvedQueueOptions.RetryDelaySeconds))
+            .AddSingleton(new HandlerSettings<TMessage>(resolvedQueueName, providerName, typeof(THandler).Name, true, resolvedQueueOptions.MaxConcurrentCalls, resolvedQueueOptions.MaxRetries, resolvedQueueOptions.RetryDelaySeconds))
             .AddHostedService<JobHandlerBackgroundService<TMessage>>();
-            
+
         flowlyBuilder.AddJobStateSubmitters();
 
         return flowlyBuilder;

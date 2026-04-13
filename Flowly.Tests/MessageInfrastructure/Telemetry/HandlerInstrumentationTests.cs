@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using Flowly.MessageInfrastructure.Telemetry;
+using Flowly.MessagingAbstractions;
 
 namespace Flowly.Tests.MessageInfrastructure.Telemetry;
 
@@ -122,8 +124,51 @@ public class HandlerInstrumentationTests
         public void StartHandling_ReturnsNull()
         {
             using var handlerInstrumentation = new HandlerInstrumentation(false);
-            var activity = handlerInstrumentation.StartHandling("MyHandler", "my-queue");
+            var activity = handlerInstrumentation.StartHandling("MyHandler", "my-queue", "fake", MessageProperties.Empty);
             Assert.Null(activity);
+        }
+    }
+
+    public class StartHandling
+    {
+        [Fact]
+        public void WithParentContext_CreatesChildSpan()
+        {
+            using var activityListener = new ActivityListener
+            {
+                ShouldListenTo = source => source.Name == FlowlyInstrumentationConstants.ActivitySourceName,
+                Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllData
+            };
+            ActivitySource.AddActivityListener(activityListener);
+
+            var traceId = ActivityTraceId.CreateRandom();
+            var parentSpanId = ActivitySpanId.CreateRandom();
+            var parentContext = new ActivityContext(traceId, parentSpanId, ActivityTraceFlags.Recorded, isRemote: true);
+            var messageProperties = new MessageProperties("msg-123", "corr-456");
+
+            using var handlerInstrumentation = new HandlerInstrumentation(true);
+            using var activity = handlerInstrumentation.StartHandling("MyHandler", "my-queue", "azure_service_bus", messageProperties, parentContext);
+
+            Assert.NotNull(activity);
+            Assert.Equal(traceId, activity.TraceId);
+            Assert.Equal(parentSpanId, activity.ParentSpanId);
+        }
+
+        [Fact]
+        public void WithoutParentContext_CreatesRootSpan()
+        {
+            using var activityListener = new ActivityListener
+            {
+                ShouldListenTo = source => source.Name == FlowlyInstrumentationConstants.ActivitySourceName,
+                Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllData
+            };
+            ActivitySource.AddActivityListener(activityListener);
+
+            using var handlerInstrumentation = new HandlerInstrumentation(true);
+            using var activity = handlerInstrumentation.StartHandling("MyHandler", "my-queue", "azure_service_bus", MessageProperties.Empty);
+
+            Assert.NotNull(activity);
+            Assert.Equal(default, activity.ParentSpanId);
         }
     }
 }

@@ -8,19 +8,17 @@ namespace Flowly.AzureServiceBus.Aspire;
 
 public static class FlowlyAzureServiceBusExtensions
 {
-    public static IResourceBuilder<AzureServiceBusResource> AddFlowly(
-        this IResourceBuilder<AzureServiceBusResource> serviceBus,
-        IResourceBuilder<ProjectResource> project)
+    private const string AzureServiceBusTransportType = "AzureServiceBus";
+
+    public static IResourceBuilder<AzureServiceBusResource> AddFlowly(this IResourceBuilder<AzureServiceBusResource> serviceBus, IResourceBuilder<ProjectResource> project, string? providerName = null)
     {
         var metadata = project.Resource.Annotations.OfType<IProjectMetadata>().Single();
         var assemblyPath = FindAssemblyPath(metadata.ProjectPath);
-        var queues = DiscoverQueuesFromAssembly(assemblyPath);
+        var queues = DiscoverQueuesFromAssembly(assemblyPath, providerName);
         return RegisterQueues(serviceBus, queues);
     }
 
-    private static IResourceBuilder<AzureServiceBusResource> RegisterQueues(
-        IResourceBuilder<AzureServiceBusResource> serviceBus,
-        IReadOnlyList<DeferredQueueRegistration> queues)
+    private static IResourceBuilder<AzureServiceBusResource> RegisterQueues(IResourceBuilder<AzureServiceBusResource> serviceBus, IReadOnlyList<DeferredQueueRegistration> queues)
     {
         var annotation = serviceBus.Resource.Annotations
             .OfType<FlowlyQueueAnnotation>()
@@ -57,7 +55,7 @@ public static class FlowlyAzureServiceBusExtensions
         return serviceBus;
     }
 
-    private static IReadOnlyList<DeferredQueueRegistration> DiscoverQueuesFromAssembly(string assemblyPath)
+    private static IReadOnlyList<DeferredQueueRegistration> DiscoverQueuesFromAssembly(string assemblyPath, string? providerName)
     {
         var loadContext = new AssemblyLoadContext($"flowly-aspire-{Guid.NewGuid():N}", isCollectible: true);
         loadContext.Resolving += (_, name) =>
@@ -72,12 +70,16 @@ public static class FlowlyAzureServiceBusExtensions
 
             var configTypes = assembly.GetTypes()
                 .Where(t => t is { IsClass: true, IsAbstract: false }
-                         && typeof(FlowlyDesignTimeFactory).IsAssignableFrom(t)
-                         && typeof(IFlowlyConfiguration).IsAssignableFrom(t))
+                            && typeof(FlowlyDesignTimeFactory).IsAssignableFrom(t)
+                            && typeof(IFlowlyConfiguration).IsAssignableFrom(t))
                 .ToList();
 
-            return configTypes
-                .SelectMany(t => FlowlyDesignTimeFactory.DiscoverQueues(t))
+            var manifests = configTypes.SelectMany(t => FlowlyDesignTimeFactory.DiscoverQueues(t)).ToList();
+
+            var selectedManifests = SelectManifests(manifests, providerName);
+
+            return selectedManifests
+                .SelectMany(m => m.Queues)
                 .GroupBy(r => r.QueueName, StringComparer.OrdinalIgnoreCase)
                 .Select(g => g.First())
                 .ToList();
@@ -88,13 +90,49 @@ public static class FlowlyAzureServiceBusExtensions
         }
     }
 
+    private static IReadOnlyList<ProviderQueueManifest> SelectManifests(IReadOnlyList<ProviderQueueManifest> manifests, string? providerName)
+    {
+        if (providerName is not null)
+        {
+            var matched = manifests
+                .Where(m => string.Equals(m.ProviderName, providerName, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (matched.Count == 0)
+            {
+                var available = string.Join(", ", manifests.Select(m => m.ProviderName));
+                throw new InvalidOperationException(
+                    $"No provider named '{providerName}' was found. Available providers: {available}");
+            }
+
+            return matched;
+        }
+
+        var azurePrimary = manifests
+            .Where(m => m.IsPrimary && string.Equals(m.TransportType, AzureServiceBusTransportType, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (azurePrimary.Count > 0)
+            return azurePrimary;
+
+        var anyAzure = manifests
+            .Where(m => string.Equals(m.TransportType, AzureServiceBusTransportType, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (anyAzure.Count > 0)
+            return anyAzure;
+
+        var primaryManifests = manifests.Where(m => m.IsPrimary).ToList();
+        return primaryManifests.Count > 0 ? primaryManifests : manifests;
+    }
+
     private static TimeSpan EmulatorMaxTtl(TimeSpan value) =>
         value > TimeSpan.FromHours(1) ? TimeSpan.FromHours(1) : value;
 
     private static string FindAssemblyPath(string projectPath)
     {
         var projectDir = Path.GetDirectoryName(projectPath)
-            ?? throw new InvalidOperationException($"Cannot determine directory for project: {projectPath}");
+                         ?? throw new InvalidOperationException($"Cannot determine directory for project: {projectPath}");
 
         var assemblyName = Path.GetFileNameWithoutExtension(projectPath);
         var binDir = Path.Combine(projectDir, "bin");
@@ -104,10 +142,10 @@ public static class FlowlyAzureServiceBusExtensions
                 $"No build output found for '{assemblyName}'. Build the project before starting the AppHost.");
 
         var dll = Directory.GetFiles(binDir, $"{assemblyName}.dll", SearchOption.AllDirectories)
-            .OrderByDescending(File.GetLastWriteTime)
-            .FirstOrDefault()
-            ?? throw new InvalidOperationException(
-                $"Assembly '{assemblyName}.dll' not found under '{binDir}'. Build the project before starting the AppHost.");
+                      .OrderByDescending(File.GetLastWriteTime)
+                      .FirstOrDefault()
+                  ?? throw new InvalidOperationException(
+                      $"Assembly '{assemblyName}.dll' not found under '{binDir}'. Build the project before starting the AppHost.");
 
         return dll;
     }

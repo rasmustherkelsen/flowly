@@ -1,3 +1,4 @@
+using Flowly.DeadLetters.BackgroundServices;
 using Flowly.DeadLetters.DatabaseModel;
 using Flowly.DeadLetters.Services;
 using Flowly.DeadLetters.Tests.Fakes;
@@ -12,7 +13,7 @@ public class DeadLetterServiceTests
         public async Task ThrowsKeyNotFound_WhenMessageIdDoesNotExist()
         {
             var repository = new FakeDeadLetterRepository();
-            var deadLetterService = new DeadLetterService(repository, new FakeMessageBusClient());
+            var deadLetterService = BuildService(repository, new FakeMessageBusClient());
 
             await Assert.ThrowsAsync<KeyNotFoundException>(() => deadLetterService.Requeue("nonexistent-id"));
         }
@@ -22,7 +23,7 @@ public class DeadLetterServiceTests
         {
             var repository = new FakeDeadLetterRepository();
             repository.Add(BuildDeadLetter("msg-1", DeadLetterStatus.Requeued));
-            var deadLetterService = new DeadLetterService(repository, new FakeMessageBusClient());
+            var deadLetterService = BuildService(repository, new FakeMessageBusClient());
 
             await Assert.ThrowsAsync<InvalidOperationException>(() => deadLetterService.Requeue("msg-1"));
         }
@@ -33,7 +34,7 @@ public class DeadLetterServiceTests
             var repository = new FakeDeadLetterRepository();
             repository.Add(BuildDeadLetter("msg-1", DeadLetterStatus.Pending, queueName: "my-queue", body: "hello"));
             var messageBusClient = new FakeMessageBusClient();
-            var deadLetterService = new DeadLetterService(repository, messageBusClient);
+            var deadLetterService = BuildService(repository, messageBusClient);
 
             await deadLetterService.Requeue("msg-1");
 
@@ -48,7 +49,7 @@ public class DeadLetterServiceTests
             var repository = new FakeDeadLetterRepository();
             repository.Add(BuildDeadLetter("msg-1", DeadLetterStatus.Pending, properties: """{"flowly-retry-count":2,"source":"test"}"""));
             var messageBusClient = new FakeMessageBusClient();
-            var deadLetterService = new DeadLetterService(repository, messageBusClient);
+            var deadLetterService = BuildService(repository, messageBusClient);
 
             await deadLetterService.Requeue("msg-1");
 
@@ -63,7 +64,7 @@ public class DeadLetterServiceTests
         {
             var repository = new FakeDeadLetterRepository();
             repository.Add(BuildDeadLetter("msg-1", DeadLetterStatus.Pending));
-            var deadLetterService = new DeadLetterService(repository, new FakeMessageBusClient());
+            var deadLetterService = BuildService(repository, new FakeMessageBusClient());
 
             await deadLetterService.Requeue("msg-1", requeuedBy: "admin");
 
@@ -78,7 +79,7 @@ public class DeadLetterServiceTests
         public async Task ThrowsKeyNotFound_WhenMessageIdDoesNotExist()
         {
             var repository = new FakeDeadLetterRepository();
-            var deadLetterService = new DeadLetterService(repository, new FakeMessageBusClient());
+            var deadLetterService = BuildService(repository, new FakeMessageBusClient());
 
             await Assert.ThrowsAsync<KeyNotFoundException>(() => deadLetterService.Discard("nonexistent-id"));
         }
@@ -88,7 +89,7 @@ public class DeadLetterServiceTests
         {
             var repository = new FakeDeadLetterRepository();
             repository.Add(BuildDeadLetter("msg-1", DeadLetterStatus.Requeued));
-            var deadLetterService = new DeadLetterService(repository, new FakeMessageBusClient());
+            var deadLetterService = BuildService(repository, new FakeMessageBusClient());
 
             await Assert.ThrowsAsync<InvalidOperationException>(() => deadLetterService.Discard("msg-1"));
         }
@@ -98,7 +99,7 @@ public class DeadLetterServiceTests
         {
             var repository = new FakeDeadLetterRepository();
             repository.Add(BuildDeadLetter("msg-1", DeadLetterStatus.Pending));
-            var deadLetterService = new DeadLetterService(repository, new FakeMessageBusClient());
+            var deadLetterService = BuildService(repository, new FakeMessageBusClient());
 
             await deadLetterService.Discard("msg-1");
 
@@ -111,13 +112,16 @@ public class DeadLetterServiceTests
             var repository = new FakeDeadLetterRepository();
             repository.Add(BuildDeadLetter("msg-1", DeadLetterStatus.Pending));
             var messageBusClient = new FakeMessageBusClient();
-            var deadLetterService = new DeadLetterService(repository, messageBusClient);
+            var deadLetterService = BuildService(repository, messageBusClient);
 
             await deadLetterService.Discard("msg-1");
 
             Assert.Empty(messageBusClient.CreatedSenders);
         }
     }
+
+    private static DeadLetterService BuildService(FakeDeadLetterRepository repository, FakeMessageBusClient client) =>
+        new(repository, new FakeMessageBusClientRegistry(client), [new DeadLetterIngestionSettings("test-queue", "__primary__")]);
 
     private static DeadLetter BuildDeadLetter(
         string messageId,

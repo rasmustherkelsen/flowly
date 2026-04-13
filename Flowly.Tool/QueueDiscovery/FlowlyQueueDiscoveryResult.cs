@@ -2,6 +2,7 @@ namespace Flowly.Tool.QueueDiscovery;
 
 internal sealed record QueueDiscoveryQueue(
     string Name,
+    string ProviderName,
     bool RequiresSession,
     TimeSpan DefaultMessageTimeToLive,
     bool DeadLetterOnMessageExpiration,

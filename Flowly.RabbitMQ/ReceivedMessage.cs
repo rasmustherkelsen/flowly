@@ -17,7 +17,9 @@ internal class RabbitMqReceivedMessage<TMessage>(IChannel channel, BasicDeliverE
     public MessageProperties Properties { get; } = new(
         args.BasicProperties.MessageId ?? string.Empty,
         args.BasicProperties.CorrelationId ?? string.Empty,
-        RetryCount: GetRetryCount(args.BasicProperties));
+        RetryCount: GetRetryCount(args.BasicProperties),
+        Traceparent: GetStringHeader(args.BasicProperties, "traceparent"),
+        Tracestate: GetStringHeader(args.BasicProperties, "tracestate"));
 
     public Task Complete(CancellationToken cancellationToken = default)
     {
@@ -41,6 +43,19 @@ internal class RabbitMqReceivedMessage<TMessage>(IChannel channel, BasicDeliverE
             long l => (int)l,
             byte[] b => int.TryParse(Encoding.UTF8.GetString(b), out var parsed) ? parsed : 0,
             _ => 0
+        };
+    }
+
+    private static string? GetStringHeader(IReadOnlyBasicProperties properties, string key)
+    {
+        if (properties.Headers is null) return null;
+        if (!properties.Headers.TryGetValue(key, out var value)) return null;
+
+        return value switch
+        {
+            string s => s,
+            byte[] b => Encoding.UTF8.GetString(b),
+            _ => null
         };
     }
 }

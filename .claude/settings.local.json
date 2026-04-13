@@ -2,7 +2,23 @@
   "permissions": {
     "allow": [
       "Bash(dotnet build:*)",
-      "Bash(dotnet test:*)"
+      "Bash(dotnet test:*)",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__query-docs",
+      "Bash(awk '{print $NF}')",
+      "Bash(grep \"\\\\.cs$\")",
+      "Bash(find:*)",
+      "Bash(grep -r \"InternalsVisibleTo\" /Users/rasmus/Source/TriumfNas/SimpleTransit/Flowly/*.csproj)",
+      "Bash(xargs cat:*)",
+      "Bash(xargs ls:*)",
+      "Bash(dotnet sln add:*)",
+      "Read(//private/tmp/**)",
+      "Bash(dotnet-ildasm /Users/rasmus/.nuget/packages/aspire.hosting.azure.servicebus/13.1.2/lib/net8.0/Aspire.Hosting.Azure.ServiceBus.dll)",
+      "Bash(dotnet script:*)",
+      "Bash(dotnet csharp:*)",
+      "Bash(cat)",
+      "Bash(dotnet run:*)",
+      "Bash(dotnet sln:*)"
     ]
   }
 }

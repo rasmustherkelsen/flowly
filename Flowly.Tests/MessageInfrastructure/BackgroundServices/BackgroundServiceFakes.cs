@@ -1,7 +1,23 @@
+using Flowly.MessageInfrastructure.Registration;
 using Flowly.MessagingAbstractions;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Flowly.Tests.MessageInfrastructure.BackgroundServices;
+
+internal class FakeMessageBusClientRegistry(IMessageBusClient client) : IMessageBusClientRegistry
+{
+    private const string Primary = "__primary__";
+
+    public string PrimaryProviderName => Primary;
+
+    public IMessageBusClient GetClient(string providerName) => client;
+
+    public bool IsRegistered(string providerName) => true;
+
+    public IReadOnlyList<RegisteredTransport> GetAll() => [new RegisteredTransport(Primary, IsPrimary: true, CreateTopologyOverride: null)];
+
+    public void Register(string providerName, IMessageBusClient messageBusClient, bool? createTopologyOverride) { }
+}
 
 internal class FakeReceivedMessage<TMessage>(TMessage body, MessageProperties? properties = null) : IReceivedMessage<TMessage>
 {
@@ -16,6 +32,23 @@ internal class FakeReceivedMessage<TMessage>(TMessage body, MessageProperties? p
         Completed = true;
         return Task.CompletedTask;
     }
+
+    public Task DeadLetter(string? reason = null, CancellationToken cancellationToken = default)
+    {
+        DeadLettered = true;
+        DeadLetterReason = reason;
+        return Task.CompletedTask;
+    }
+}
+
+internal class ThrowingReceivedMessage<TMessage> : IReceivedMessage<TMessage>
+{
+    public TMessage Body => throw new InvalidOperationException($"Deserialized message body is null for type {typeof(TMessage).FullName}.");
+    public MessageProperties Properties { get; } = MessageProperties.Empty;
+    public bool DeadLettered { get; private set; }
+    public string? DeadLetterReason { get; private set; }
+
+    public Task Complete(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
     public Task DeadLetter(string? reason = null, CancellationToken cancellationToken = default)
     {

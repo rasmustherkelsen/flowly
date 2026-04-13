@@ -5,9 +5,7 @@ namespace Flowly.AzureServiceBus;
 
 internal class BatchReceivedMessage<TMessage>(ServiceBusReceiver receiver, ServiceBusReceivedMessage message) : IReceivedMessage<TMessage>
 {
-    private TMessage? _body;
-
-    public TMessage Body => _body
+    public TMessage Body => field
         ??= message.Body.ToObjectFromJson<TMessage>()
             ?? throw new InvalidOperationException($"Deserialized message body is null for type {typeof(TMessage).FullName}.");
 

@@ -1,27 +1,32 @@
 using System.Diagnostics;
+using Flowly.MessageInfrastructure.Registration;
 using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.MessagingAbstractions;
 
 namespace Flowly.MessageInfrastructure.Senders;
 
 public class MessageSubmitter<TMessage>(
-    IMessageBusClient messageBusClient,
+    IMessageBusClientRegistry clientRegistry,
     MessageSubmitter<TMessage>.QueueSettings queueSettings,
     SubmitterInstrumentation submitterInstrumentation) : IMessageSubmitter<TMessage>
 {
-    public class QueueSettings(string queueName)
+    public class QueueSettings(string queueName, string providerName)
     {
         public string QueueName { get; } = queueName;
+        public string ProviderName { get; } = providerName;
     }
 
     public async Task Submit(TMessage message, CancellationToken cancellationToken)
     {
         var sw = Stopwatch.StartNew();
-        using var activity = submitterInstrumentation.StartSending(queueSettings.QueueName);
+        var client = clientRegistry.GetClient(queueSettings.ProviderName);
+        var messageId = Guid.NewGuid().ToString();
+        using var activity = submitterInstrumentation.StartSending(queueSettings.QueueName, client.MessagingSystem, messageId);
+
         try
         {
-            var sender = await messageBusClient.CreateMessageBusSender(queueSettings.QueueName);
-            await sender.SendMessage(message, MessageProperties.Empty, cancellationToken);
+            var sender = await client.CreateMessageBusSender(queueSettings.QueueName);
+            await sender.SendMessage(message, new MessageProperties(messageId, string.Empty), cancellationToken);
             submitterInstrumentation.RecordSent(queueSettings.QueueName, sw.Elapsed.TotalMilliseconds);
         }
         catch

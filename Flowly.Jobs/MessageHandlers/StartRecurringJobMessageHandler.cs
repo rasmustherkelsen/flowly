@@ -2,6 +2,7 @@
 using Flowly.Jobs.Repositories;
 using Flowly.MessageInfrastructure.Model;
 using Flowly.MessageInfrastructure.Receivers;
+using Flowly.MessageInfrastructure.Registration;
 using Flowly.MessagingAbstractions;
 using Microsoft.Extensions.Logging;
 
@@ -9,7 +10,7 @@ namespace Flowly.Jobs.MessageHandlers;
 
 internal class StartRecurringJobMessageHandler(
     IJobStateRepository jobStateRepository,
-    IMessageBusClient messageBusClient,
+    IMessageBusClientRegistry clientRegistry,
     ILogger<StartRecurringJobMessageHandler> logger) : MessageHandler<StartRecurringJobMessage>
 {
     public override async Task Handle(IMessageContext<StartRecurringJobMessage> messageContext)
@@ -22,8 +23,9 @@ internal class StartRecurringJobMessageHandler(
             logger.LogError($"Unknown recurring job id: '{messageContext.Message.JobId}'. Stopping processing");
             return;
         }
-        
-        var messageBusSender = await messageBusClient.CreateMessageBusSender(JobQueuesNames.RecurringJobs);
+
+        var client = clientRegistry.GetClient(clientRegistry.PrimaryProviderName);
+        var messageBusSender = await client.CreateMessageBusSender(JobQueuesNames.RecurringJobs);
         await messageBusSender.SendEmptyMessage(new MessageProperties(recurringJob.JobId.ToString(), recurringJob.JobTypeName));
     }
 }
