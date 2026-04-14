@@ -8,11 +8,14 @@ internal class QueueRegistrarHostedService(
     IEnumerable<ProviderQueueManifest> manifests,
     IMessageBusClientRegistry clientRegistry,
     IMessagingTopologyCreatorRegistry topologyRegistry,
+    ICrossProviderConflictValidator conflictValidator,
     FlowlyOptions flowlyOptions,
     ILogger<QueueRegistrarHostedService> logger) : IHostedService
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {
+        conflictValidator.Validate(manifests);
+
         foreach (var manifest in manifests)
         {
             var transport = clientRegistry.GetAll()

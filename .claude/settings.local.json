@@ -23,7 +23,8 @@
       "Bash(xargs -I{} dotnet-script {})",
       "Read(//Users/rasmus/.nuget/**)",
       "Bash(dotnet-csc /tmp/InspectConn.cs)",
-      "Bash(dotnet:*)"
+      "Bash(dotnet:*)",
+      "Bash(ls /Users/rasmus/Source/TriumfNas/SimpleTransit/*.md)"
     ]
   }
 }

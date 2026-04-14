@@ -528,6 +528,36 @@ public class OrderCreatedHandler : MessageHandlerBase<OrderCreated>
 
 ---
 
+## Multi-Provider
+
+Flowly supports running multiple message brokers in the same service. A second provider is registered by calling `UseAzureServiceBus` or `UseRabbitMq` a second time with a distinct name:
+
+```csharp
+builder
+    .UseAzureServiceBus("AzureServiceBus")   // primary — receives messages with no explicit affinity
+    .AddMessageHandler<OrderCreated, OrderCreatedHandler>()
+
+    .UseRabbitMq("Rabbit")                   // secondary
+    .AddMessageHandler<AnalyticsEvent, AnalyticsEventHandler>();
+```
+
+Pin a message type to a specific provider by annotating its message class:
+
+```csharp
+[ProviderAffinity("Rabbit")]
+public record AnalyticsEvent(Guid UserId, string EventName);
+```
+
+At startup, Flowly validates cross-provider topology consistency:
+
+- **Same transport type + same queue name + conflicting settings** → throws `InvalidOperationException`
+- **Different transport types + same queue name** → logs a warning and continues
+- **Same queue name + identical settings** → allowed silently
+
+See **[Multi-Provider Configuration](multi-provider.md)** for routing rules, all supported scenarios, and the full startup validation reference.
+
+---
+
 ## Status
 
-Flowly is under active development. Azure Service Bus is the primary transport. RabbitMQ support is planned.
+Flowly is under active development. Azure Service Bus and RabbitMQ transports are supported.

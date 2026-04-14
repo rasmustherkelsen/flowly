@@ -70,6 +70,7 @@ public static class AddFlowlyExtension
         services.TryAddSingleton<IMessagingTopologyCreatorRegistry>(topologyRegistry);
 
         services.TryAddSingleton<IQueueManager, QueueManager>();
+        services.TryAddSingleton<ICrossProviderConflictValidator, CrossProviderConflictValidator>();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, QueueRegistrarHostedService>());
 
         var options = new FlowlyOptions();

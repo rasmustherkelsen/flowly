@@ -54,7 +54,6 @@ public sealed class ProviderQueueManifest
         if (EqualityComparer<T>.Default.Equals(a.Value, b.Value))
             return a;
 
-        throw new InvalidOperationException(
-            $"Conflicting queue setting '{settingName}' for queue '{queueName}' on provider '{settingName}'.");
+        throw new InvalidOperationException($"Conflicting queue setting '{settingName}' for queue '{queueName}' on provider '{settingName}'.");
     }
 }
