@@ -13,18 +13,20 @@ public static class RabbitMqRegistration
         this IFlowlyBuilder flowlyBuilder,
         string? name = null,
         bool? createTopology = null,
-        bool enableHealthCheck = false)
-        => flowlyBuilder.RegisterRabbitMq("amqp://guest:guest@localhost:5672/", name, createTopology, enableHealthCheck);
+        bool enableHealthCheck = false,
+        long? maxMessageSizeBytes = null)
+        => flowlyBuilder.RegisterRabbitMq("amqp://guest:guest@localhost:5672/", name, createTopology, enableHealthCheck, maxMessageSizeBytes);
 
     public static IFlowlyBuilder UseRabbitMq(
         this IFlowlyBuilder flowlyBuilder,
         string connection,
         string? name = null,
         bool? createTopology = null,
-        bool enableHealthCheck = false)
+        bool enableHealthCheck = false,
+        long? maxMessageSizeBytes = null)
     {
         var uri = flowlyBuilder.Configuration.GetConnectionString(connection) ?? connection;
-        return flowlyBuilder.RegisterRabbitMq(uri, name, createTopology, enableHealthCheck);
+        return flowlyBuilder.RegisterRabbitMq(uri, name, createTopology, enableHealthCheck, maxMessageSizeBytes);
     }
 
     private static IFlowlyBuilder RegisterRabbitMq(
@@ -32,7 +34,8 @@ public static class RabbitMqRegistration
         string uri,
         string? name,
         bool? createTopology,
-        bool enableHealthCheck)
+        bool enableHealthCheck,
+        long? maxMessageSizeBytes)
     {
         var services = flowlyBuilder.Services;
         var clientRegistry = ProviderNameResolver.GetRegistry(services);
@@ -40,7 +43,7 @@ public static class RabbitMqRegistration
         var effectiveName = ResolveProviderName(clientRegistry, name);
 
         var connectionPool = new RabbitMqConnectionPool(uri);
-        var messageBusClient = new RabbitMqMessageBusClient(connectionPool);
+        var messageBusClient = new RabbitMqMessageBusClient(connectionPool, maxMessageSizeBytes);
         var topologyCreator = new RabbitMqMessagingTopologyCreator(connectionPool);
 
         clientRegistry.Register(effectiveName, messageBusClient, createTopology);

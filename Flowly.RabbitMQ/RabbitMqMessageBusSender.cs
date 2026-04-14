@@ -6,7 +6,7 @@ using RabbitMQ.Client;
 
 namespace Flowly.RabbitMQ;
 
-internal class RabbitMqMessageBusSender(string queueName, IChannel channel) : IMessageBusSender
+internal class RabbitMqMessageBusSender(string queueName, IChannel channel, long? maxMessageSizeBytes) : IMessageBusSender
 {
     private readonly SemaphoreSlim _semaphore = new(1, 1);
 
@@ -22,6 +22,9 @@ internal class RabbitMqMessageBusSender(string queueName, IChannel channel) : IM
     public async Task SendRawMessage(string rawBody, IReadOnlyDictionary<string, object> applicationProperties, CancellationToken cancellationToken = default)
     {
         var body = Encoding.UTF8.GetBytes(rawBody);
+
+        ValidateMessageSize(body.Length);
+
         var props = new BasicProperties
         {
             DeliveryMode = DeliveryModes.Persistent,
@@ -47,6 +50,8 @@ internal class RabbitMqMessageBusSender(string queueName, IChannel channel) : IM
 
     private async Task CommonSend(ReadOnlyMemory<byte> body, MessageProperties messageProperties, CancellationToken cancellationToken)
     {
+        ValidateMessageSize(body.Length);
+
         var props = new BasicProperties
         {
             DeliveryMode = DeliveryModes.Persistent,
@@ -101,5 +106,11 @@ internal class RabbitMqMessageBusSender(string queueName, IChannel channel) : IM
         {
             _semaphore.Release();
         }
+    }
+
+    private void ValidateMessageSize(long actualBytes)
+    {
+        if (maxMessageSizeBytes.HasValue && actualBytes > maxMessageSizeBytes.Value)
+            throw new MessageTooLargeException(queueName, actualBytes, maxMessageSizeBytes.Value);
     }
 }

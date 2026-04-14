@@ -4,7 +4,7 @@ using RabbitMQ.Client;
 
 namespace Flowly.RabbitMQ;
 
-internal class RabbitMqMessageBusClient(IRabbitMqConnectionPool connectionPool) : IMessageBusClient
+internal class RabbitMqMessageBusClient(IRabbitMqConnectionPool connectionPool, long? maxMessageSizeBytes = null) : IMessageBusClient
 {
     private readonly ConcurrentDictionary<string, IMessageBusSender> _senders = new();
     private readonly SemaphoreSlim _senderLock = new(1, 1);
@@ -58,7 +58,7 @@ internal class RabbitMqMessageBusClient(IRabbitMqConnectionPool connectionPool) 
 
             var connection = await connectionPool.GetPublisherConnection();
             var channel = await connection.CreateChannelAsync();
-            var sender = new RabbitMqMessageBusSender(queueName, channel);
+            var sender = new RabbitMqMessageBusSender(queueName, channel, maxMessageSizeBytes);
             _senders[queueName] = sender;
             return sender;
         }

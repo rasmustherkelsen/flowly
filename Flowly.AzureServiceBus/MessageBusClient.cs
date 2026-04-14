@@ -5,7 +5,7 @@ using Flowly.MessagingAbstractions;
 
 namespace Flowly.AzureServiceBus;
 
-internal class MessageBusClient(ServiceBusClient serviceBusClient, ServiceBusAdministrationClient administrationClient) : IMessageBusClient
+internal class MessageBusClient(ServiceBusClient serviceBusClient, ServiceBusAdministrationClient administrationClient, long? maxMessageSizeBytes) : IMessageBusClient
 {
     private readonly ConcurrentDictionary<string, IMessageBusSender> _serviceBusSenders = new();
 
@@ -44,7 +44,7 @@ internal class MessageBusClient(ServiceBusClient serviceBusClient, ServiceBusAdm
     }
 
     public Task<IMessageBusSender> CreateMessageBusSender(string queueName)
-        => Task.FromResult(_serviceBusSenders.GetOrAdd(queueName, q => new MessageBusSender(serviceBusClient.CreateSender(q))));
+        => Task.FromResult(_serviceBusSenders.GetOrAdd(queueName, q => new MessageBusSender(serviceBusClient.CreateSender(q), maxMessageSizeBytes)));
 
     public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName)
     {
