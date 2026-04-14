@@ -6,15 +6,13 @@ namespace Flowly.Tests.MessageInfrastructure.BackgroundServices;
 
 internal class FakeMessageBusClientRegistry(IMessageBusClient client) : IMessageBusClientRegistry
 {
-    private const string Primary = "__primary__";
-
-    public string PrimaryProviderName => Primary;
+    public string PrimaryProviderName => "azure-service-bus";
 
     public IMessageBusClient GetClient(string providerName) => client;
 
     public bool IsRegistered(string providerName) => true;
 
-    public IReadOnlyList<RegisteredTransport> GetAll() => [new RegisteredTransport(Primary, IsPrimary: true, CreateTopologyOverride: null)];
+    public IReadOnlyList<RegisteredTransport> GetAll() => [new RegisteredTransport("azure-service-bus", IsPrimary: true, CreateTopologyOverride: null)];
 
     public void Register(string providerName, IMessageBusClient messageBusClient, bool? createTopologyOverride) { }
 }

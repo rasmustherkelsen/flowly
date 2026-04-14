@@ -23,6 +23,16 @@ public class AzureServiceBusRegistrationTests
         }
 
         [Fact]
+        public void WithoutName_RegistersWithDefaultProviderName()
+        {
+            var (builder, registry) = CreateBuilder();
+
+            builder.UseAzureServiceBus("testnamespace.servicebus.windows.net", new FakeTokenCredential());
+
+            Assert.Equal("azure-service-bus", registry.GetAll()[0].Name);
+        }
+
+        [Fact]
         public void WithExplicitName_RegistersWithThatName()
         {
             var (builder, registry) = CreateBuilder();

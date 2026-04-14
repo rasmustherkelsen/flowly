@@ -121,7 +121,7 @@ public class DeadLetterServiceTests
     }
 
     private static DeadLetterService BuildService(FakeDeadLetterRepository repository, FakeMessageBusClient client) =>
-        new(repository, new FakeMessageBusClientRegistry(client), [new DeadLetterIngestionSettings("test-queue", "__primary__")]);
+        new(repository, new FakeMessageBusClientRegistry(client), [new DeadLetterIngestionSettings("test-queue", "azure-service-bus")]);
 
     private static DeadLetter BuildDeadLetter(
         string messageId,

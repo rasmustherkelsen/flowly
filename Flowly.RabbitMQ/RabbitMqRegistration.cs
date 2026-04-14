@@ -7,6 +7,7 @@ namespace Flowly.RabbitMQ;
 public static class RabbitMqRegistration
 {
     public const string TransportType = "RabbitMQ";
+    private const string DefaultProviderName = "rabbitmq";
 
     public static IFlowlyBuilder UseRabbitMq(
         this IFlowlyBuilder flowlyBuilder,
@@ -66,7 +67,7 @@ public static class RabbitMqRegistration
     }
 
     private static string HealthCheckName(string effectiveName)
-        => effectiveName == "__primary__" ? "rabbitmq" : $"rabbitmq-{effectiveName}";
+        => effectiveName == DefaultProviderName ? DefaultProviderName : $"{DefaultProviderName}-{effectiveName}";
 
     private static string ResolveProviderName(IMessageBusClientRegistry registry, string? name)
     {
@@ -77,7 +78,7 @@ public static class RabbitMqRegistration
                     "Secondary RabbitMQ providers must have an explicit name. " +
                     "Pass name: \"...\" to UseRabbitMq().");
 
-            return "__primary__";
+            return DefaultProviderName;
         }
 
         return name;

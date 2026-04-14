@@ -20,6 +20,7 @@ internal class CommandLineParserHostedService(IEnumerable<ProviderQueueManifest>
             .SelectMany(m => m.Queues.Select(r => new QueueDiscoveryEntry(
                 r.QueueName,
                 m.ProviderName,
+                m.IsPrimary,
                 r.RequiresSession,
                 r.DefaultMessageTimeToLive?.ToString("c"),
                 r.DeadLetterOnMessageExpiration,
@@ -45,6 +46,7 @@ internal class CommandLineParserHostedService(IEnumerable<ProviderQueueManifest>
     private sealed record QueueDiscoveryEntry(
         string QueueName,
         string ProviderName,
+        bool IsPrimary,
         bool RequiresSession,
         string? DefaultMessageTimeToLive,
         bool? DeadLetterOnMessageExpiration,

@@ -10,6 +10,7 @@ namespace Flowly.AzureServiceBus;
 public static class AzureServiceBusRegistration
 {
     private const string TransportType = "AzureServiceBus";
+    private const string DefaultProviderName = "azure-service-bus";
     private const int EmulatorPort = 5672;
     private const int ProductionPort = 443;
 
@@ -105,7 +106,7 @@ public static class AzureServiceBusRegistration
     }
 
     private static string HealthCheckName(string effectiveName)
-        => effectiveName == "__primary__" ? "azure-service-bus" : $"azure-service-bus-{effectiveName}";
+        => effectiveName == DefaultProviderName ? DefaultProviderName : $"{DefaultProviderName}-{effectiveName}";
 
     private static string ResolveProviderName(IMessageBusClientRegistry registry, string? name)
     {
@@ -116,7 +117,7 @@ public static class AzureServiceBusRegistration
                     "Secondary Azure Service Bus providers must have an explicit name. " +
                     "Pass name: \"...\" to UseAzureServiceBus().");
 
-            return "__primary__";
+            return DefaultProviderName;
         }
 
         return name;

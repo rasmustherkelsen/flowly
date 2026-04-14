@@ -12,7 +12,6 @@ internal static class HostBasedQueueDiscovery
     private static readonly TimeSpan DefaultMessageTimeToLive = TimeSpan.FromDays(1);
     private static readonly TimeSpan DefaultLockDuration = TimeSpan.FromMinutes(5);
     private const bool DefaultDeadLetterOnMessageExpiration = true;
-    private const string FallbackProviderName = "__primary__";
 
     public static IReadOnlyList<QueueDiscoveryQueue> DiscoverQueues(string assemblyPath, string workingDirectory, string? providerNameFilter = null)
     {
@@ -78,7 +77,7 @@ internal static class HostBasedQueueDiscovery
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
 
         var filtered = providerNameFilter is null
-            ? entries.Where(e => IsPrimaryProvider(e.ProviderName))
+            ? entries.Where(e => e.IsPrimary)
             : entries.Where(e => string.Equals(e.ProviderName, providerNameFilter, StringComparison.OrdinalIgnoreCase));
 
         return filtered
@@ -108,7 +107,7 @@ internal static class HostBasedQueueDiscovery
 
                 return new QueueDiscoveryQueue(
                     first.QueueName,
-                    first.ProviderName ?? FallbackProviderName,
+                    first.ProviderName,
                     group.Any(e => e.RequiresSession),
                     defaultMessageTimeToLive,
                     deadLetterOnMessageExpiration,
@@ -117,11 +116,6 @@ internal static class HostBasedQueueDiscovery
             .OrderBy(q => q.Name, StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
-
-    private static bool IsPrimaryProvider(string? providerName) =>
-        providerName is null
-        || string.Equals(providerName, FallbackProviderName, StringComparison.OrdinalIgnoreCase)
-        || string.Equals(providerName, "__primary__", StringComparison.OrdinalIgnoreCase);
 
     private static T ResolveConsistentValue<T>(IEnumerable<T?> values, T defaultValue, string queueName, string settingName)
         where T : struct
@@ -140,7 +134,8 @@ internal static class HostBasedQueueDiscovery
 
     private sealed record HostDiscoveredQueue(
         string QueueName,
-        string? ProviderName,
+        string ProviderName,
+        bool IsPrimary,
         bool RequiresSession,
         string? DefaultMessageTimeToLive,
         bool? DeadLetterOnMessageExpiration,
