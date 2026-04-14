@@ -159,12 +159,44 @@ public class QueueRegistrarHostedServiceTests
             Assert.Equal(3, topologyCreator.ReceivedDescriptions.Count);
         }
 
+        [Fact]
+        public async Task PassesCancellationTokenToTopologyCreator()
+        {
+            using var cts = new CancellationTokenSource();
+            var topologyCreator = new SpyTopologyCreator();
+            var manifest = ManifestWith("asb", "AzureServiceBus", "order-placed");
+            var service = Build(
+                manifests: [manifest],
+                topologyCreators: [("asb", topologyCreator)]);
+
+            await service.StartAsync(cts.Token);
+
+            Assert.Equal(cts.Token, topologyCreator.ReceivedCancellationToken);
+        }
+
+        [Fact]
+        public async Task WhenTopologyCreationDisabled_PassesCancellationTokenToValidator()
+        {
+            using var cts = new CancellationTokenSource();
+            var topologyValidator = new SpyTopologyValidator("asb");
+            var manifest = ManifestWith("asb", "AzureServiceBus", "order-placed");
+            var service = Build(
+                manifests: [manifest],
+                topologyValidators: [topologyValidator],
+                createTopology: false);
+
+            await service.StartAsync(cts.Token);
+
+            Assert.Equal(cts.Token, topologyValidator.ReceivedCancellationToken);
+        }
+
         private static QueueRegistrarHostedService Build(
             IEnumerable<ProviderQueueManifest>? manifests = null,
             IEnumerable<(string ProviderName, SpyTopologyCreator Creator)>? topologyCreators = null,
             ICrossProviderConflictValidator? validator = null,
             bool createTopology = true,
-            IEnumerable<(string ProviderName, bool Override)>? transportOverrides = null)
+            IEnumerable<(string ProviderName, bool Override)>? transportOverrides = null,
+            IEnumerable<IMessagingTopologyValidator>? topologyValidators = null)
         {
             manifests ??= [];
             topologyCreators ??= [];
@@ -186,7 +218,7 @@ public class QueueRegistrarHostedServiceTests
                 manifests,
                 clientRegistry,
                 topologyRegistry,
-                [],
+                topologyValidators ?? [],
                 validator,
                 new FlowlyOptions { CreateTopology = createTopology },
                 new NullLogger<QueueRegistrarHostedService>());
@@ -222,11 +254,25 @@ public class QueueRegistrarHostedServiceTests
         {
             public bool WasCalled { get; private set; }
             public List<IQueueDescription> ReceivedDescriptions { get; } = [];
+            public CancellationToken ReceivedCancellationToken { get; private set; }
 
             public Task CreateTopology(IReadOnlyCollection<IQueueDescription> queueDescriptions, CancellationToken cancellationToken)
             {
                 WasCalled = true;
                 ReceivedDescriptions.AddRange(queueDescriptions);
+                ReceivedCancellationToken = cancellationToken;
+                return Task.CompletedTask;
+            }
+        }
+
+        private sealed class SpyTopologyValidator(string providerName) : IMessagingTopologyValidator
+        {
+            public string ProviderName => providerName;
+            public CancellationToken ReceivedCancellationToken { get; private set; }
+
+            public Task Validate(IReadOnlyCollection<IQueueDescription> queueDescriptions, CancellationToken cancellationToken)
+            {
+                ReceivedCancellationToken = cancellationToken;
                 return Task.CompletedTask;
             }
         }
