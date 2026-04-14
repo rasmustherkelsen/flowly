@@ -21,6 +21,7 @@ Flowly is a queue-based messaging abstraction for .NET. It sits between your app
 |---|---|
 | `Flowly` | Core abstractions: handlers, senders, queue topology, retry engine |
 | `Flowly.AzureServiceBus` | Azure Service Bus transport |
+| `Flowly.RabbitMQ` | RabbitMQ transport |
 | `Flowly.Jobs` | Job state tracking and CRON scheduling core |
 | `Flowly.Jobs.SqlServer` | SQL Server backend for job state tracking |
 | `Flowly.Jobs.Postgres` | PostgreSQL backend for job state tracking |
@@ -555,6 +556,41 @@ At startup, Flowly validates cross-provider topology consistency:
 - **Same queue name + identical settings** → allowed silently
 
 See **[Multi-Provider Configuration](multi-provider.md)** for routing rules, all supported scenarios, and the full startup validation reference.
+
+---
+
+## RabbitMQ Transport
+
+### Registration
+
+```csharp
+builder.UseRabbitMq("RabbitMQ")   // connection string name in appsettings
+    .AddMessageHandler<OrderCreated, OrderCreatedHandler>();
+```
+
+The default connection string is `amqp://guest:guest@localhost:5672/`. Pass a configuration key or a literal AMQP URI.
+
+### Retry topology and `createTopology`
+
+Flowly's retry mechanism for RabbitMQ works by publishing the retried message to a `{queue}.retry` queue with a per-message TTL. When the TTL expires, RabbitMQ's Dead Letter Exchange (DLX) routes the message back to the main queue. This requires the retry queue to be declared with specific arguments:
+
+| Argument | Value |
+|---|---|
+| `x-dead-letter-exchange` | `""` (default exchange) |
+| `x-dead-letter-routing-key` | `{queue}` (the main queue name) |
+
+By default (`createTopology: true`), Flowly creates the full queue topology — including the `.retry` queue, `.dlx` exchange, and `.dead-letter` queue — at startup. No manual configuration is required.
+
+When `createTopology: false`, you are responsible for provisioning this topology before starting the application. **Flowly validates the retry queues at startup** and throws `InvalidOperationException` if any `{queue}.retry` queue is missing:
+
+```
+RabbitMQ retry queue 'order-created.retry' does not exist.
+When createTopology is false, the retry queue must be pre-declared with
+x-dead-letter-exchange="" and x-dead-letter-routing-key="order-created".
+Either set createTopology: true or ensure the queue topology is provisioned before startup.
+```
+
+> **Important:** The startup check confirms that the retry queue *exists*, but cannot verify that the DLX arguments are set correctly. If the queue was declared without the correct `x-dead-letter-exchange` and `x-dead-letter-routing-key` arguments, retried messages will expire silently without being re-routed. Always use the exact arguments listed above.
 
 ---
 

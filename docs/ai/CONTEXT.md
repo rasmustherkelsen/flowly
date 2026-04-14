@@ -19,6 +19,7 @@ This document gives an AI assistant the context needed to work effectively in th
 /
 ├── Flowly/                          # Core abstractions and infrastructure
 ├── Flowly.AzureServiceBus/          # Azure Service Bus transport implementation
+├── Flowly.RabbitMQ/                 # RabbitMQ transport implementation
 ├── Flowly.Jobs/                     # Job tracking, CRON scheduling, job state DB
 ├── Flowly.Jobs.SqlServer/           # SQL Server backend for job state tracking
 ├── Flowly.Jobs.Postgres/            # PostgreSQL backend for job state tracking
@@ -485,7 +486,33 @@ For plain Docker Compose, use `Flowly.Tool` to generate `emulator-config.json` f
 
 ---
 
-### 13. Naming & Conventions
+### 13. Transport Internals (RabbitMQ)
+
+| Feature | Implementation |
+|---|---|
+| Regular handler | `AsyncEventingBasicConsumer` (push-based), manual ack |
+| Batch handler | `BasicGetAsync` polling loop |
+| Recurring job handler | Execution lane queue per job type |
+| Serialization | `System.Text.Json` |
+| Retry republish | Re-publish to `{queue}.retry` with per-message TTL (`x-expiration`); DLX routes back to main queue on expiry |
+| Dead letter | `BasicNackAsync(requeue: false)` routes to `{queue}.dead-letter` via DLX exchange `{queue}.dlx` |
+| Connection pooling | Separate publisher and consumer connections (`IRabbitMqConnectionPool`) |
+
+#### Retry queue topology — DLX constraint
+
+The retry delay mechanism depends on a pre-configured Dead Letter Exchange. `RabbitMqMessagingTopologyCreator` declares the following for each queue when `createTopology: true` (the default):
+
+- `{queue}.retry` — durable, with `x-dead-letter-exchange: ""` and `x-dead-letter-routing-key: {queue}`
+- `{queue}.dlx` — direct exchange for dead-lettering exhausted messages
+- `{queue}.dead-letter` — durable queue bound to `{queue}.dlx`
+
+When `createTopology: false`, the retry queue must be pre-declared with those exact arguments. **Flowly validates this at startup**: if `{queue}.retry` does not exist, startup fails with `InvalidOperationException` that names the missing queue and lists the required arguments.
+
+The validator uses `QueueDeclarePassiveAsync` to confirm existence. It cannot verify that the DLX arguments are set correctly — if the queue exists but was declared without `x-dead-letter-exchange`, retried messages will expire silently without re-routing. Always declare the retry queue with the exact arguments above.
+
+---
+
+### 14. Naming & Conventions
 
 - Message types are plain `record` or `class` types — no base class required for regular messages
 - Job message types must implement `IJobMessage`
@@ -497,7 +524,7 @@ For plain Docker Compose, use `Flowly.Tool` to generate `emulator-config.json` f
 
 ---
 
-### 14. Testing Conventions
+### 15. Testing Conventions
 
 Tests live in `Flowly.Tests/`, which mirrors the source tree structure:
 
@@ -534,7 +561,7 @@ Rules:
 
 ---
 
-### 15. Key File Locations
+### 16. Key File Locations
 
 | What | Where |
 |---|---|
@@ -546,6 +573,10 @@ Rules:
 | Azure SB wiring | `Flowly.AzureServiceBus/AzureServiceBusRegistration.cs` |
 | Azure SB settlement | `Flowly.AzureServiceBus/ReceivedMessage.cs` |
 | Azure SB dead letter receiver | `Flowly.AzureServiceBus/DeadLetterReceiver.cs` |
+| RabbitMQ wiring | `Flowly.RabbitMQ/RabbitMqRegistration.cs` |
+| RabbitMQ topology creation | `Flowly.RabbitMQ/RabbitMqMessagingTopologyCreator.cs` |
+| RabbitMQ retry DLX validation | `Flowly.RabbitMQ/RabbitMqRetryTopologyValidator.cs` |
+| RabbitMQ connection pool | `Flowly.RabbitMQ/RabbitMqConnectionPool.cs` |
 | Job DB entities | `Flowly.Jobs/DatabaseModel/` |
 | Job domain models | `Flowly.Jobs/Model/` |
 | Job DI extensions | `Flowly.Jobs/Registration/` |
@@ -558,12 +589,12 @@ Rules:
 
 ---
 
-### 16. Current Status & Roadmap Notes
+### 17. Current Status & Roadmap Notes
 
-- Azure Service Bus is the primary (and currently only complete) transport
-- RabbitMQ and other providers are planned but not yet implemented
-- The abstraction layer (`IMessageBusClient`, etc.) is designed to be transport-agnostic
-- Retry delay is implemented via `ScheduledEnqueueTime` on re-publish; transport implementations must honor it
+- Azure Service Bus and RabbitMQ are both implemented transports
+- The abstraction layer (`IMessageBusClient`, etc.) is transport-agnostic
+- Retry delay: ASB uses `ScheduledEnqueueTime`; RabbitMQ uses per-message TTL (`x-expiration`) on a `.retry` queue with DLX routing back to the main queue
+- When `createTopology: false` on RabbitMQ, the retry topology is validated at startup via `RabbitMqRetryTopologyValidator` — missing queues cause `InvalidOperationException`
 - Dead letter management API (list, requeue, fix-and-requeue, discard via HTTP) is planned but not yet built
 
 ---

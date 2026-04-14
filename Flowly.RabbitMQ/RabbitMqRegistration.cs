@@ -1,4 +1,5 @@
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessagingAbstractions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -62,6 +63,9 @@ public static class RabbitMqRegistration
             .First();
 
         topologyRegistry.Register(effectiveName, topologyCreator);
+
+        services.AddSingleton<IMessagingTopologyValidator>(
+            new RabbitMqRetryTopologyValidator(effectiveName, connectionPool));
 
         var isPrimary = clientRegistry.GetAll().Count == 1;
         services.AddSingleton(new ProviderQueueManifest(effectiveName, isPrimary, TransportType));

@@ -186,6 +186,7 @@ public class QueueRegistrarHostedServiceTests
                 manifests,
                 clientRegistry,
                 topologyRegistry,
+                [],
                 validator,
                 new FlowlyOptions { CreateTopology = createTopology },
                 new NullLogger<QueueRegistrarHostedService>());

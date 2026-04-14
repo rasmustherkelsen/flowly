@@ -8,6 +8,7 @@ internal class QueueRegistrarHostedService(
     IEnumerable<ProviderQueueManifest> manifests,
     IMessageBusClientRegistry clientRegistry,
     IMessagingTopologyCreatorRegistry topologyRegistry,
+    IEnumerable<IMessagingTopologyValidator> topologyValidators,
     ICrossProviderConflictValidator conflictValidator,
     FlowlyOptions flowlyOptions,
     ILogger<QueueRegistrarHostedService> logger) : IHostedService
@@ -22,17 +23,24 @@ internal class QueueRegistrarHostedService(
                 .FirstOrDefault(t => string.Equals(t.Name, manifest.ProviderName, StringComparison.OrdinalIgnoreCase));
 
             var createTopology = transport?.CreateTopologyOverride ?? flowlyOptions.CreateTopology;
+            var queueDescriptions = ResolveQueueDescriptions(manifest);
 
             if (!createTopology)
             {
                 logger.LogDebug("Skipping topology creation for provider '{Provider}'", manifest.ProviderName);
+
+                var validator = topologyValidators.FirstOrDefault(v =>
+                    string.Equals(v.ProviderName, manifest.ProviderName, StringComparison.OrdinalIgnoreCase));
+
+                if (validator != null)
+                    await validator.Validate(queueDescriptions, cancellationToken);
+
                 continue;
             }
 
             logger.LogDebug("Creating messaging topology for provider '{Provider}'", manifest.ProviderName);
 
             var topologyCreator = topologyRegistry.GetCreator(manifest.ProviderName);
-            var queueDescriptions = ResolveQueueDescriptions(manifest);
             await topologyCreator.CreateTopology(queueDescriptions, cancellationToken);
 
             logger.LogInformation("Messaging topology created for provider '{Provider}'", manifest.ProviderName);
