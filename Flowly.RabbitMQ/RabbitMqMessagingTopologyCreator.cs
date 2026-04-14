@@ -3,11 +3,11 @@ using RabbitMQ.Client;
 
 namespace Flowly.RabbitMQ;
 
-internal class RabbitMqMessagingTopologyCreator(RabbitMqLazyConnection lazyConnection) : IMessagingTopologyCreator
+internal class RabbitMqMessagingTopologyCreator(IRabbitMqConnectionPool connectionPool) : IMessagingTopologyCreator
 {
     public async Task CreateTopology(IReadOnlyCollection<IQueueDescription> queueDescriptions, CancellationToken cancellationToken)
     {
-        var connection = await lazyConnection.GetAsync(cancellationToken);
+        var connection = await connectionPool.GetConsumerConnection(cancellationToken);
         await using var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
 
         foreach (var queue in queueDescriptions)

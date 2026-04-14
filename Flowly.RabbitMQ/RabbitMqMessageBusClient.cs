@@ -4,7 +4,7 @@ using RabbitMQ.Client;
 
 namespace Flowly.RabbitMQ;
 
-internal class RabbitMqMessageBusClient(RabbitMqLazyConnection lazyConnection) : IMessageBusClient
+internal class RabbitMqMessageBusClient(IRabbitMqConnectionPool connectionPool) : IMessageBusClient
 {
     private readonly ConcurrentDictionary<string, IMessageBusSender> _senders = new();
     private readonly SemaphoreSlim _senderLock = new(1, 1);
@@ -13,14 +13,14 @@ internal class RabbitMqMessageBusClient(RabbitMqLazyConnection lazyConnection) :
 
     public async Task<IMessageBusReceiver> CreateReceiver(string queueName)
     {
-        var connection = await lazyConnection.GetAsync();
+        var connection = await connectionPool.GetConsumerConnection();
         var channel = await connection.CreateChannelAsync();
         return new RabbitMqMessageBusReceiver(channel, queueName);
     }
 
     public async Task<IMessageBusProcessor<TMessage>> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options)
     {
-        var connection = await lazyConnection.GetAsync();
+        var connection = await connectionPool.GetConsumerConnection();
         var channelOptions = new CreateChannelOptions(
             publisherConfirmationsEnabled: false,
             publisherConfirmationTrackingEnabled: false,
@@ -33,7 +33,7 @@ internal class RabbitMqMessageBusClient(RabbitMqLazyConnection lazyConnection) :
 
     public async Task<IExecutionLaneProcessor> CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options)
     {
-        var connection = await lazyConnection.GetAsync();
+        var connection = await connectionPool.GetConsumerConnection();
         var channelOptions = new CreateChannelOptions(
             publisherConfirmationsEnabled: false,
             publisherConfirmationTrackingEnabled: false,
@@ -56,7 +56,7 @@ internal class RabbitMqMessageBusClient(RabbitMqLazyConnection lazyConnection) :
             if (_senders.TryGetValue(queueName, out existing))
                 return existing;
 
-            var connection = await lazyConnection.GetAsync();
+            var connection = await connectionPool.GetPublisherConnection();
             var channel = await connection.CreateChannelAsync();
             var sender = new RabbitMqMessageBusSender(queueName, channel);
             _senders[queueName] = sender;
@@ -70,14 +70,14 @@ internal class RabbitMqMessageBusClient(RabbitMqLazyConnection lazyConnection) :
 
     public async Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName)
     {
-        var connection = await lazyConnection.GetAsync();
+        var connection = await connectionPool.GetConsumerConnection();
         var channel = await connection.CreateChannelAsync();
         return new RabbitMqDeadLetterReceiver(channel, $"{queueName}.dead-letter");
     }
 
     public async Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default)
     {
-        var connection = await lazyConnection.GetAsync(cancellationToken);
+        var connection = await connectionPool.GetConsumerConnection(cancellationToken);
         await using var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
 
         var result = await channel.QueueDeclareAsync(

@@ -38,9 +38,9 @@ public static class RabbitMqRegistration
 
         var effectiveName = ResolveProviderName(clientRegistry, name);
 
-        var lazyConnection = new RabbitMqLazyConnection(uri);
-        var messageBusClient = new RabbitMqMessageBusClient(lazyConnection);
-        var topologyCreator = new RabbitMqMessagingTopologyCreator(lazyConnection);
+        var connectionPool = new RabbitMqConnectionPool(uri);
+        var messageBusClient = new RabbitMqMessageBusClient(connectionPool);
+        var topologyCreator = new RabbitMqMessagingTopologyCreator(connectionPool);
 
         clientRegistry.Register(effectiveName, messageBusClient, createTopology);
 
@@ -48,7 +48,7 @@ public static class RabbitMqRegistration
         {
             services
                 .AddHealthChecks()
-                .AddCheck(HealthCheckName(effectiveName), new RabbitMqHealthCheck(lazyConnection), tags: ["rabbitmq"]);
+                .AddCheck(HealthCheckName(effectiveName), new RabbitMqHealthCheck(connectionPool), tags: ["rabbitmq"]);
         }
 
         var topologyRegistry = services
