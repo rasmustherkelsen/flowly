@@ -202,7 +202,7 @@ public class ServiceBusMessageHandlerBackgroundServiceTests
         var settings = new HandlerSettings<TestMessage>(queueName, "azure-service-bus", "TestHandler", readAndDelete, maxConcurrentCalls);
         var factory = scopeFactory ?? new FakeServiceScopeFactory<MessageHandler<TestMessage>>(handler ?? new RecordingMessageHandler());
         var serviceBusMessageHandlerBackgroundService = new ServiceBusMessageHandlerBackgroundService<TestMessage>(
-            clientRegistry, factory, settings, NullLogger<ServiceBusMessageHandlerBackgroundService<TestMessage>>.Instance, new HandlerInstrumentation(false));
+            clientRegistry, factory, settings, NullLogger<ServiceBusMessageHandlerBackgroundService<TestMessage>>.Instance, new NullHandlerInstrumentation());
         return (serviceBusMessageHandlerBackgroundService, client);
     }
 

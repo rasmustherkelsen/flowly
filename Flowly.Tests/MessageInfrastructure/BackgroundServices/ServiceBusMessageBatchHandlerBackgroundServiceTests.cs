@@ -111,7 +111,7 @@ public class ServiceBusMessageBatchHandlerBackgroundServiceTests
             queueName, "azure-service-bus", maxMessages, maxWaitTime == default ? TimeSpan.FromSeconds(1) : maxWaitTime);
         var scopeFactory = new FakeServiceScopeFactory<BatchMessageHandlerBase<TestMessage>>(handler ?? new RecordingBatchHandler());
         var serviceBusMessageBatchHandlerBackgroundService = new ServiceBusMessageBatchHandlerBackgroundService<TestMessage>(
-            clientRegistry, settings, scopeFactory, NullLogger<ServiceBusMessageBatchHandlerBackgroundService<TestMessage>>.Instance, new HandlerInstrumentation(false));
+            clientRegistry, settings, scopeFactory, NullLogger<ServiceBusMessageBatchHandlerBackgroundService<TestMessage>>.Instance, new NullHandlerInstrumentation());
         return (serviceBusMessageBatchHandlerBackgroundService, client, receiver);
     }
 

@@ -16,7 +16,7 @@ public abstract class ServiceBusMessageHandlerBackgroundServiceBase<TMessage> : 
     private readonly IServiceScopeFactory _serviceScopeFactory;
     private readonly HandlerSettings<TMessage> _handlerSettings;
     private readonly ILogger _logger;
-    private readonly HandlerInstrumentation _handlerInstrumentation;
+    private readonly IHandlerInstrumentation _handlerInstrumentation;
     private string _messagingSystem = string.Empty;
 
     public ServiceBusMessageHandlerBackgroundServiceBase(
@@ -24,7 +24,7 @@ public abstract class ServiceBusMessageHandlerBackgroundServiceBase<TMessage> : 
         IServiceScopeFactory serviceScopeFactory,
         HandlerSettings<TMessage> handlerSettings,
         ILogger logger,
-        HandlerInstrumentation handlerInstrumentation)
+        IHandlerInstrumentation handlerInstrumentation)
     {
         _clientRegistry = clientRegistry;
         _serviceScopeFactory = serviceScopeFactory;

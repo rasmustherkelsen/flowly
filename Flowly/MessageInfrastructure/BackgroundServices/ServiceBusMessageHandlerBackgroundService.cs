@@ -13,7 +13,7 @@ internal class ServiceBusMessageHandlerBackgroundService<TMessage>(
     IServiceScopeFactory serviceScopeFactory,
     HandlerSettings<TMessage> handlerSettings,
     ILogger<ServiceBusMessageHandlerBackgroundService<TMessage>> logger,
-    HandlerInstrumentation handlerInstrumentation)
+    IHandlerInstrumentation handlerInstrumentation)
     : ServiceBusMessageHandlerBackgroundServiceBase<TMessage>(clientRegistry, serviceScopeFactory, handlerSettings, logger, handlerInstrumentation)
     where TMessage : class
 {

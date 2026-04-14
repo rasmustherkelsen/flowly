@@ -21,7 +21,7 @@ internal class RecurringJobHandlerBackgroundService<TRecurringJobHandler> : Back
     private readonly RecurringJobSettings _settings;
     private readonly ILogger<RecurringJobHandlerBackgroundService<TRecurringJobHandler>> _logger;
     private IExecutionLaneProcessor? _executionLaneProcessor;
-    private readonly HandlerInstrumentation _handlerInstrumentation;
+    private readonly IHandlerInstrumentation _handlerInstrumentation;
     private readonly string _handlerName = typeof(TRecurringJobHandler).Name;
     private string _messagingSystem = string.Empty;
 
@@ -51,7 +51,7 @@ internal class RecurringJobHandlerBackgroundService<TRecurringJobHandler> : Back
         IServiceScopeFactory serviceScopeFactory,
         RecurringJobSettings settings,
         ILogger<RecurringJobHandlerBackgroundService<TRecurringJobHandler>> logger,
-        HandlerInstrumentation handlerInstrumentation)
+        IHandlerInstrumentation handlerInstrumentation)
     {
         _clientRegistry = clientRegistry;
         _serviceScopeFactory = serviceScopeFactory;

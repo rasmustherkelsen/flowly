@@ -77,8 +77,15 @@ public static class AddFlowlyExtension
         configureOptions?.Invoke(options);
         services.TryAddSingleton(options);
 
-        services.TryAddSingleton(new HandlerInstrumentation(options.EnableTelemetry));
-        services.TryAddSingleton(new SubmitterInstrumentation(options.EnableTelemetry));
+        IHandlerInstrumentation handlerInstrumentation = options.EnableTelemetry
+            ? new HandlerInstrumentation()
+            : new NullHandlerInstrumentation();
+        ISubmitterInstrumentation submitterInstrumentation = options.EnableTelemetry
+            ? new SubmitterInstrumentation()
+            : new NullSubmitterInstrumentation();
+
+        services.TryAddSingleton(handlerInstrumentation);
+        services.TryAddSingleton(submitterInstrumentation);
 
         services.AddHostedService<CommandLineParserHostedService>();
 

@@ -8,7 +8,7 @@ namespace Flowly.MessageInfrastructure.Senders;
 public class MessageSubmitter<TMessage>(
     IMessageBusClientRegistry clientRegistry,
     MessageSubmitter<TMessage>.QueueSettings queueSettings,
-    SubmitterInstrumentation submitterInstrumentation) : IMessageSubmitter<TMessage>
+    ISubmitterInstrumentation submitterInstrumentation) : IMessageSubmitter<TMessage>
 {
     public class QueueSettings(string queueName, string providerName)
     {

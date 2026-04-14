@@ -15,7 +15,7 @@ internal class ServiceBusMessageBatchHandlerBackgroundService<TMessage>(
     ServiceBusMessageBatchHandlerBackgroundService<TMessage>.BatchQueueSettings batchQueueSettings,
     IServiceScopeFactory serviceScopeFactory,
     ILogger<ServiceBusMessageBatchHandlerBackgroundService<TMessage>> logger,
-    HandlerInstrumentation handlerInstrumentation) : BackgroundService where TMessage : class
+    IHandlerInstrumentation handlerInstrumentation) : BackgroundService where TMessage : class
 {
     public record BatchQueueSettings(string QueueName, string ProviderName, int MaxMessagesBeforeProcessing, TimeSpan MaxWaitTime);
 

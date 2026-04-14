@@ -23,7 +23,7 @@ public class SubmitterInstrumentationTests
             meterListener.SetMeasurementEventCallback<double>((_, value, _, _) => duration = value);
             meterListener.Start();
 
-            using var submitterInstrumentation = new SubmitterInstrumentation(true);
+            using var submitterInstrumentation = new SubmitterInstrumentation();
             submitterInstrumentation.RecordSent("my-queue", 42.0);
 
             Assert.Equal(1, sentCount);
@@ -43,7 +43,7 @@ public class SubmitterInstrumentationTests
             meterListener.SetMeasurementEventCallback<long>((_, value, _, _) => recorded = value);
             meterListener.Start();
 
-            using var submitterInstrumentation = new SubmitterInstrumentation(true);
+            using var submitterInstrumentation = new SubmitterInstrumentation();
             submitterInstrumentation.RecordFailed("my-queue");
 
             Assert.Equal(1, recorded);
@@ -53,18 +53,32 @@ public class SubmitterInstrumentationTests
     public class WhenDisabled
     {
         [Fact]
-        public void NoMeterIsCreated()
+        public void IsEnabled_ReturnsFalse()
         {
-            using var submitterInstrumentation = new SubmitterInstrumentation(false);
+            var submitterInstrumentation = new NullSubmitterInstrumentation();
             Assert.False(submitterInstrumentation.IsEnabled);
         }
 
         [Fact]
         public void StartSending_ReturnsNull()
         {
-            using var submitterInstrumentation = new SubmitterInstrumentation(false);
+            var submitterInstrumentation = new NullSubmitterInstrumentation();
             var activity = submitterInstrumentation.StartSending("my-queue", "fake", "msg-123");
             Assert.Null(activity);
+        }
+
+        [Fact]
+        public void RecordSent_DoesNotThrow()
+        {
+            var submitterInstrumentation = new NullSubmitterInstrumentation();
+            submitterInstrumentation.RecordSent("my-queue", 42.0);
+        }
+
+        [Fact]
+        public void RecordFailed_DoesNotThrow()
+        {
+            var submitterInstrumentation = new NullSubmitterInstrumentation();
+            submitterInstrumentation.RecordFailed("my-queue");
         }
     }
 }

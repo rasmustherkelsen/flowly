@@ -17,7 +17,7 @@ internal class JobHandlerBackgroundService<TMessage>(
     IServiceScopeFactory serviceScopeFactory,
     HandlerSettings<TMessage> handlerSettings,
     ILogger<JobHandlerBackgroundService<TMessage>> logger,
-    HandlerInstrumentation handlerInstrumentation) : ServiceBusMessageHandlerBackgroundServiceBase<TMessage>(clientRegistry, serviceScopeFactory, handlerSettings, logger, handlerInstrumentation) where TMessage : class, IJobMessage
+    IHandlerInstrumentation handlerInstrumentation) : ServiceBusMessageHandlerBackgroundServiceBase<TMessage>(clientRegistry, serviceScopeFactory, handlerSettings, logger, handlerInstrumentation) where TMessage : class, IJobMessage
 {
     private readonly IServiceScopeFactory _serviceScopeFactory = serviceScopeFactory;
 

@@ -22,7 +22,7 @@ public class HandlerInstrumentationTests
             meterListener.SetMeasurementEventCallback<long>((_, value, _, _) => recorded = value);
             meterListener.Start();
 
-            using var handlerInstrumentation = new HandlerInstrumentation(true);
+            using var handlerInstrumentation = new HandlerInstrumentation();
             handlerInstrumentation.RecordReceived("MyHandler", "my-queue");
 
             meterListener.RecordObservableInstruments();
@@ -46,7 +46,7 @@ public class HandlerInstrumentationTests
             meterListener.SetMeasurementEventCallback<double>((_, value, _, _) => duration = value);
             meterListener.Start();
 
-            using var handlerInstrumentation = new HandlerInstrumentation(true);
+            using var handlerInstrumentation = new HandlerInstrumentation();
             handlerInstrumentation.RecordSucceeded("MyHandler", "my-queue", 123.4);
 
             Assert.Equal(1, succeededCount);
@@ -66,7 +66,7 @@ public class HandlerInstrumentationTests
             meterListener.SetMeasurementEventCallback<long>((_, value, _, _) => recorded = value);
             meterListener.Start();
 
-            using var handlerInstrumentation = new HandlerInstrumentation(true);
+            using var handlerInstrumentation = new HandlerInstrumentation();
             handlerInstrumentation.RecordFailed("MyHandler", "my-queue");
 
             Assert.Equal(1, recorded);
@@ -85,7 +85,7 @@ public class HandlerInstrumentationTests
             meterListener.SetMeasurementEventCallback<long>((_, value, _, _) => recorded = value);
             meterListener.Start();
 
-            using var handlerInstrumentation = new HandlerInstrumentation(true);
+            using var handlerInstrumentation = new HandlerInstrumentation();
             handlerInstrumentation.RecordRetried("MyHandler", "my-queue");
 
             Assert.Equal(1, recorded);
@@ -104,7 +104,7 @@ public class HandlerInstrumentationTests
             meterListener.SetMeasurementEventCallback<long>((_, value, _, _) => recorded = value);
             meterListener.Start();
 
-            using var handlerInstrumentation = new HandlerInstrumentation(true);
+            using var handlerInstrumentation = new HandlerInstrumentation();
             handlerInstrumentation.RecordReceived("MyHandler", "my-queue", count: 5);
 
             Assert.Equal(5, recorded);
@@ -114,18 +114,46 @@ public class HandlerInstrumentationTests
     public class WhenDisabled
     {
         [Fact]
-        public void NoMeterIsCreated()
+        public void IsEnabled_ReturnsFalse()
         {
-            using var handlerInstrumentation = new HandlerInstrumentation(false);
+            var handlerInstrumentation = new NullHandlerInstrumentation();
             Assert.False(handlerInstrumentation.IsEnabled);
         }
 
         [Fact]
         public void StartHandling_ReturnsNull()
         {
-            using var handlerInstrumentation = new HandlerInstrumentation(false);
+            var handlerInstrumentation = new NullHandlerInstrumentation();
             var activity = handlerInstrumentation.StartHandling("MyHandler", "my-queue", "fake", MessageProperties.Empty);
             Assert.Null(activity);
+        }
+
+        [Fact]
+        public void RecordReceived_DoesNotThrow()
+        {
+            var handlerInstrumentation = new NullHandlerInstrumentation();
+            handlerInstrumentation.RecordReceived("MyHandler", "my-queue");
+        }
+
+        [Fact]
+        public void RecordSucceeded_DoesNotThrow()
+        {
+            var handlerInstrumentation = new NullHandlerInstrumentation();
+            handlerInstrumentation.RecordSucceeded("MyHandler", "my-queue", 100.0);
+        }
+
+        [Fact]
+        public void RecordFailed_DoesNotThrow()
+        {
+            var handlerInstrumentation = new NullHandlerInstrumentation();
+            handlerInstrumentation.RecordFailed("MyHandler", "my-queue");
+        }
+
+        [Fact]
+        public void RecordRetried_DoesNotThrow()
+        {
+            var handlerInstrumentation = new NullHandlerInstrumentation();
+            handlerInstrumentation.RecordRetried("MyHandler", "my-queue");
         }
     }
 
@@ -146,7 +174,7 @@ public class HandlerInstrumentationTests
             var parentContext = new ActivityContext(traceId, parentSpanId, ActivityTraceFlags.Recorded, isRemote: true);
             var messageProperties = new MessageProperties("msg-123", "corr-456");
 
-            using var handlerInstrumentation = new HandlerInstrumentation(true);
+            using var handlerInstrumentation = new HandlerInstrumentation();
             using var activity = handlerInstrumentation.StartHandling("MyHandler", "my-queue", "azure_service_bus", messageProperties, parentContext);
 
             Assert.NotNull(activity);
@@ -164,7 +192,7 @@ public class HandlerInstrumentationTests
             };
             ActivitySource.AddActivityListener(activityListener);
 
-            using var handlerInstrumentation = new HandlerInstrumentation(true);
+            using var handlerInstrumentation = new HandlerInstrumentation();
             using var activity = handlerInstrumentation.StartHandling("MyHandler", "my-queue", "azure_service_bus", MessageProperties.Empty);
 
             Assert.NotNull(activity);
