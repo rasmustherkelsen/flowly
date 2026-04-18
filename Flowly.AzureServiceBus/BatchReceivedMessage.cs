@@ -12,7 +12,7 @@ internal class BatchReceivedMessage<TMessage>(ServiceBusReceiver receiver, Servi
     public MessageProperties Properties { get; } = new(
         message.MessageId,
         message.CorrelationId,
-        RetryCount: message.ApplicationProperties.TryGetValue("flowly-retry-count", out var rc) ? Convert.ToInt32(rc) : 0);
+        RetryCount: message.ApplicationProperties.TryGetValue(FlowlyMessageProperties.RetryCount, out var rc) ? Convert.ToInt32(rc) : 0);
 
     public Task Complete(CancellationToken cancellationToken = default)
         => receiver.CompleteMessageAsync(message, cancellationToken);

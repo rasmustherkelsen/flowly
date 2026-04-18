@@ -1,8 +1,10 @@
+using BackendProcessor.EventHandlers;
 using BackendProcessor.JobHandlers;
 using Flowly.DeadLetters.Postgres.Registration;
 using Flowly.DeadLetters.Registration;
 using Flowly.Jobs.Postgres.Registration;
 using Flowly.Jobs.Registration;
+using Flowly.MessageInfrastructure.Events.Registration;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.OpenTelemetry;
 using Flowly.RabbitMQ;
@@ -40,7 +42,11 @@ public class BackendProcessorFlowlyConfiguration : FlowlyDesignTimeFactory, IFlo
             .AddRecurringJob<RecurringImportHandler>()
             .AddRecurringJob<FrequentlyRecurringHandler>()
             .AddMessageHandler<SomeQueryMessage, SomeQueryProcessor>()
-            .WithDeadLetterTracking();
+            .WithDeadLetterTracking()
+
+            .AddEventHandler<OrderProcessedEvent, OrderProcessedEventHandler>()
+
+            .AddEventSubmitter<OrderProcessedEvent>();
 
         builder.Services.AddOpenTelemetry()
             .WithMetrics(m => m.AddFlowlyInstrumentation())

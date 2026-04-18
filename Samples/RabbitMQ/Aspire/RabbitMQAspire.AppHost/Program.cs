@@ -23,6 +23,12 @@ backendProcessor
     .WaitFor(flowlyJobsDatabase)
     .WaitFor(flowlyDeadLettersDatabase);
 
+var backendFinanceProcessor = builder.AddProject<Projects.BackendFinanceProcessor>("BackendFinanceProcessor");
+
+backendFinanceProcessor
+    .WithReference(rabbitMq)
+    .WaitFor(rabbitMq);
+
 var api = builder.AddProject<Projects.Api>("api")
     .WithReference(rabbitMq)
     .WithReference(flowlyJobsDatabase)

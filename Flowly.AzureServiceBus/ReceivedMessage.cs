@@ -13,7 +13,7 @@ internal class ReceivedMessage<TMessage>(ProcessMessageEventArgs args) : IReceiv
     public MessageProperties Properties { get; } = new(
         args.Message.MessageId,
         args.Message.CorrelationId,
-        RetryCount: args.Message.ApplicationProperties.TryGetValue("flowly-retry-count", out var rc) ? Convert.ToInt32(rc) : 0,
+        RetryCount: args.Message.ApplicationProperties.TryGetValue(FlowlyMessageProperties.RetryCount, out var rc) ? Convert.ToInt32(rc) : 0,
         Traceparent: args.Message.ApplicationProperties.TryGetValue("traceparent", out var tp) ? tp as string : null,
         Tracestate: args.Message.ApplicationProperties.TryGetValue("tracestate", out var ts) ? ts as string : null);
 

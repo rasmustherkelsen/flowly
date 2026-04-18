@@ -2,13 +2,14 @@ namespace Flowly.Tool.QueueDiscovery;
 
 internal static class QueueDiscoveryRunner
 {
-    public static (IReadOnlyList<QueueDiscoveryQueue> QueueDefinitions, IReadOnlyList<string> ConfigurationTypes) DiscoverQueues(
+    public static (IReadOnlyList<QueueDiscoveryQueue> QueueDefinitions, IReadOnlyList<QueueDiscoveryEvent> EventDefinitions, IReadOnlyList<string> ConfigurationTypes) DiscoverQueues(
         IReadOnlyList<QueueDiscoverySource> sources,
         string? configurationType,
         DirectoryInfo? workingDirectory,
         string? providerName = null)
     {
         var queueDefinitions = new Dictionary<string, QueueDiscoveryQueue>(StringComparer.OrdinalIgnoreCase);
+        var eventDefinitions = new Dictionary<string, QueueDiscoveryEvent>(StringComparer.OrdinalIgnoreCase);
         var configurationTypes = new SortedSet<string>(StringComparer.Ordinal);
         var failures = new List<string>();
 
@@ -23,6 +24,10 @@ internal static class QueueDiscoveryRunner
                     configurationType,
                     effectiveWorkingDirectory?.FullName,
                     providerName);
+            }
+            catch (MissingTransportProviderException)
+            {
+                throw;
             }
             catch (FlowlyConfigurationNotFoundException)
             {
@@ -69,6 +74,12 @@ internal static class QueueDiscoveryRunner
 
                 queueDefinitions.Add(queueDefinition.Name, queueDefinition);
             }
+
+            foreach (var eventDefinition in result.EventDefinitions)
+            {
+                var key = $"{eventDefinition.TopicOrExchangeName.ToLowerInvariant()}|{eventDefinition.SubscriptionName.ToLowerInvariant()}";
+                eventDefinitions.TryAdd(key, eventDefinition);
+            }
         }
 
         if (failures.Count > 0)
@@ -83,10 +94,10 @@ internal static class QueueDiscoveryRunner
             Console.ForegroundColor = previous;
         }
 
-        if (queueDefinitions.Count == 0)
+        if (queueDefinitions.Count == 0 && eventDefinitions.Count == 0)
         {
             throw new InvalidOperationException(
-                "No queues were discovered from provided inputs. " +
+                "No queues or events were discovered from provided inputs. " +
                 (failures.Count > 0
                     ? "All inputs failed queue discovery."
                     : "No FlowlyDesignTimeFactory-based configuration was found."));
@@ -97,6 +108,12 @@ internal static class QueueDiscoveryRunner
             .OrderBy(queue => queue.Name, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        return (orderedQueueDefinitions, configurationTypes.ToArray());
+        var orderedEventDefinitions = eventDefinitions
+            .Values
+            .OrderBy(e => e.TopicOrExchangeName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(e => e.SubscriptionName, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return (orderedQueueDefinitions, orderedEventDefinitions, configurationTypes.ToArray());
     }
 }

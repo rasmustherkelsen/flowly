@@ -43,7 +43,7 @@ internal static class AzureServiceBusCommand
             var workingDirectory = parseResult.GetValue(shared.WorkingDirectory);
             var providerName = parseResult.GetValue(providerNameOption);
 
-            var (queueDefinitions, configurationTypes) = QueueDiscoveryRunner.DiscoverQueues(sources, configurationType, workingDirectory, providerName);
+            var (queueDefinitions, eventDefinitions, configurationTypes) = QueueDiscoveryRunner.DiscoverQueues(sources, configurationType, workingDirectory, providerName);
 
             if (configurationTypes.Count == 1)
             {
@@ -61,6 +61,11 @@ internal static class AzureServiceBusCommand
             foreach (var queue in queueDefinitions.Select(x => x.Name))
             {
                 Console.WriteLine(queue);
+            }
+
+            foreach (var @event in eventDefinitions)
+            {
+                Console.WriteLine($"[topic] {@event.TopicOrExchangeName} / {@event.SubscriptionName}");
             }
         }));
 
@@ -94,8 +99,8 @@ internal static class AzureServiceBusCommand
             var @namespace = parseResult.GetValue(namespaceOption) ?? "sbemulatorns";
             var providerName = parseResult.GetValue(providerNameOption);
 
-            var (queueDefinitions, _) = QueueDiscoveryRunner.DiscoverQueues(sources, configurationType, workingDirectory, providerName);
-            var json = AzureServiceBusOutputGenerator.CreateEmulatorConfigJson(@namespace, queueDefinitions);
+            var (queueDefinitions, eventDefinitions, _) = QueueDiscoveryRunner.DiscoverQueues(sources, configurationType, workingDirectory, providerName);
+            var json = AzureServiceBusOutputGenerator.CreateEmulatorConfigJson(@namespace, queueDefinitions, eventDefinitions);
             OutputWriter.Write(json, output);
         }));
 
@@ -134,8 +139,8 @@ internal static class AzureServiceBusCommand
             var serviceBusNamespaceName = parseResult.GetValue(namespaceNameOption) ?? "sb-flowly";
             var providerName = parseResult.GetValue(providerNameOption);
 
-            var (queueDefinitions, _) = QueueDiscoveryRunner.DiscoverQueues(sources, configurationType, workingDirectory, providerName);
-            var bicep = AzureServiceBusOutputGenerator.CreateBicepTemplate(namespaceResourceName, serviceBusNamespaceName, queueDefinitions);
+            var (queueDefinitions, eventDefinitions, _) = QueueDiscoveryRunner.DiscoverQueues(sources, configurationType, workingDirectory, providerName);
+            var bicep = AzureServiceBusOutputGenerator.CreateBicepTemplate(namespaceResourceName, serviceBusNamespaceName, queueDefinitions, eventDefinitions);
             OutputWriter.Write(bicep, output);
         }));
 
@@ -179,12 +184,13 @@ internal static class AzureServiceBusCommand
             var namespaceVariable = parseResult.GetValue(namespaceVariableOption) ?? "azureServiceBus";
             var providerName = parseResult.GetValue(providerNameOption);
 
-            var (queueDefinitions, _) = QueueDiscoveryRunner.DiscoverQueues(sources, configurationType, workingDirectory, providerName);
+            var (queueDefinitions, eventDefinitions, _) = QueueDiscoveryRunner.DiscoverQueues(sources, configurationType, workingDirectory, providerName);
             var code = AzureServiceBusOutputGenerator.CreateAspireBootstrapCode(
                 builderVariable,
                 connectionName,
                 namespaceVariable,
-                queueDefinitions.Select(x => x.Name).ToArray());
+                queueDefinitions.Select(x => x.Name).ToArray(),
+                eventDefinitions);
             OutputWriter.Write(code, output);
         }));
 

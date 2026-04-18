@@ -3,13 +3,15 @@ using Flowly.DeadLetters.BackgroundServices;
 using Flowly.DeadLetters.DatabaseModel;
 using Flowly.DeadLetters.Repositories;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessagingAbstractions;
 
 namespace Flowly.DeadLetters.Services;
 
 internal class DeadLetterService(
     IDeadLetterRepository repository,
     IMessageBusClientRegistry clientRegistry,
-    IEnumerable<DeadLetterIngestionSettings> ingestionSettings) : IDeadLetterService
+    IEnumerable<DeadLetterIngestionSettings> ingestionSettings,
+    IEnumerable<EventSubscriptionDeadLetterIngestionSettings> eventSubscriptionIngestionSettings) : IDeadLetterService
 {
     public async Task<IReadOnlyCollection<DeadLetter>> GetDeadLetters(CancellationToken cancellationToken = default)
         => await repository.GetAll(cancellationToken);
@@ -28,8 +30,14 @@ internal class DeadLetterService(
             kvp => kvp.Key,
             kvp => ConvertJsonElement(kvp.Value));
 
+        applicationProperties.Remove(FlowlyMessageProperties.RetryCount);
+
+        if (deadLetter.SubscriptionName is not null)
+            applicationProperties[FlowlyMessageProperties.TargetSubscription] = deadLetter.SubscriptionName;
+
         var providerName = ResolveProviderName(deadLetter.QueueName);
-        var sender = await clientRegistry.GetClient(providerName).CreateMessageBusSender(deadLetter.QueueName);
+        var client = clientRegistry.GetClient(providerName);
+        var sender = await ResolveSender(client, deadLetter, cancellationToken);
         await sender.SendRawMessage(deadLetter.MessageBody, applicationProperties, cancellationToken);
 
         await repository.MarkAsRequeued(messageId, requeuedBy, cancellationToken);
@@ -47,12 +55,32 @@ internal class DeadLetterService(
         await repository.Delete(messageId, cancellationToken);
     }
 
-    private string ResolveProviderName(string queueName)
+    private static Task<IMessageBusSender> ResolveSender(IMessageBusClient client, DeadLetter deadLetter, CancellationToken cancellationToken)
     {
-        var settings = ingestionSettings
-            .FirstOrDefault(s => string.Equals(s.QueueName, queueName, StringComparison.OrdinalIgnoreCase));
+        if (deadLetter.SubscriptionName is not null)
+        {
+            if (client is not IEventCapableMessageBusClient eventCapableClient)
+                throw new InvalidOperationException(
+                    $"The message bus client does not support events and cannot requeue event subscription dead letters.");
 
-        return settings?.ProviderName ?? clientRegistry.PrimaryProviderName;
+            return eventCapableClient.CreateEventRetrySender(deadLetter.QueueName, deadLetter.SubscriptionName);
+        }
+
+        return client.CreateMessageBusSender(deadLetter.QueueName);
+    }
+
+    private string ResolveProviderName(string queueOrTopicName)
+    {
+        var queueSettings = ingestionSettings
+            .FirstOrDefault(s => string.Equals(s.QueueName, queueOrTopicName, StringComparison.OrdinalIgnoreCase));
+
+        if (queueSettings != null)
+            return queueSettings.ProviderName;
+
+        var subscriptionSettings = eventSubscriptionIngestionSettings
+            .FirstOrDefault(s => string.Equals(s.TopicOrExchangeName, queueOrTopicName, StringComparison.OrdinalIgnoreCase));
+
+        return subscriptionSettings?.ProviderName ?? clientRegistry.PrimaryProviderName;
     }
 
     private static object ConvertJsonElement(object value)

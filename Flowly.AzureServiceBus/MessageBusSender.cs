@@ -39,7 +39,7 @@ internal class MessageBusSender(ServiceBusSender serviceBusSender, long? maxMess
             serviceBusMessage.SessionId = messageProperties.SessionId;
 
         if (messageProperties.RetryCount > 0)
-            serviceBusMessage.ApplicationProperties["flowly-retry-count"] = messageProperties.RetryCount;
+            serviceBusMessage.ApplicationProperties[FlowlyMessageProperties.RetryCount] = messageProperties.RetryCount;
 
         if (messageProperties.ScheduledEnqueueTime.HasValue)
             serviceBusMessage.ScheduledEnqueueTime = messageProperties.ScheduledEnqueueTime.Value;

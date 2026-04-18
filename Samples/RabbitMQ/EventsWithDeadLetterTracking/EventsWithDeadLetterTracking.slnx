@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/Flowly/">
+    <Project Path="../../../Flowly.DeadLetters.Postgres/Flowly.DeadLetters.Postgres.csproj" />
+    <Project Path="../../../Flowly.DeadLetters/Flowly.DeadLetters.csproj" />
+    <Project Path="../../../Flowly.RabbitMQ/Flowly.RabbitMQ.csproj" />
+    <Project Path="../../../Flowly/Flowly.csproj" />
+  </Folder>
+  <Project Path="Console/Console.csproj" />
+  <Project Path="Messages/Messages.csproj" />
+  <Project Path="Receiver/Receiver.csproj" />
+  <Project Path="ReceiverNoRetry/ReceiverNoRetry.csproj" />
+  <Project Path="Sender/Sender.csproj" />
+</Solution>

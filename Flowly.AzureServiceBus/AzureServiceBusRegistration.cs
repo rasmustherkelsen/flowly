@@ -2,6 +2,7 @@ using Azure.Core;
 using Azure.Messaging.ServiceBus;
 using Azure.Messaging.ServiceBus.Administration;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessagingAbstractions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -102,6 +103,14 @@ public static class AzureServiceBusRegistration
             .First();
 
         topologyRegistry.Register(effectiveName, topologyCreator);
+
+        var eventTopologyRegistry = services
+            .Where(s => s.ServiceType == typeof(IEventTopologyCreatorRegistry))
+            .Select(s => s.ImplementationInstance)
+            .OfType<IEventTopologyCreatorRegistry>()
+            .First();
+
+        eventTopologyRegistry.Register(effectiveName, topologyCreator);
 
         var isPrimary = clientRegistry.GetAll().Count == 1;
         services.AddSingleton(new ProviderQueueManifest(effectiveName, isPrimary, TransportType));

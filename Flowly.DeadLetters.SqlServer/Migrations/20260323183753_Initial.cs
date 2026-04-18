@@ -23,6 +23,7 @@ namespace Flowly.DeadLetters.SqlServer.Migrations
                     DeadLetterReason = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
                     DeadLetterErrorDescription = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: true),
                     Status = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
+                    SubscriptionName = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
                     RequeuedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
                     RequeuedBy = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true)
                 },

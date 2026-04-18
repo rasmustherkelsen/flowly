@@ -9,10 +9,20 @@ public class QueueRegistrarHostedServiceTests
     public class StartAsync
     {
         [Fact]
+        public async Task NoTransportProviderRegistered_Throws()
+        {
+            var service = Build();
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => service.StartAsync(CancellationToken.None));
+        }
+
+        [Fact]
         public async Task ValidatorIsCalled()
         {
             var validator = new SpyConflictValidator();
-            var service = Build(validator: validator);
+            var service = Build(
+                topologyCreators: [("asb", new SpyTopologyCreator())],
+                validator: validator);
 
             await service.StartAsync(CancellationToken.None);
 
@@ -182,6 +192,7 @@ public class QueueRegistrarHostedServiceTests
             var manifest = ManifestWith("asb", "AzureServiceBus", "order-placed");
             var service = Build(
                 manifests: [manifest],
+                topologyCreators: [("asb", new SpyTopologyCreator())],
                 topologyValidators: [topologyValidator],
                 createTopology: false);
 
@@ -218,6 +229,7 @@ public class QueueRegistrarHostedServiceTests
                 manifests,
                 clientRegistry,
                 topologyRegistry,
+                new EventTopologyCreatorRegistry(),
                 topologyValidators ?? [],
                 validator,
                 new FlowlyOptions { CreateTopology = createTopology },

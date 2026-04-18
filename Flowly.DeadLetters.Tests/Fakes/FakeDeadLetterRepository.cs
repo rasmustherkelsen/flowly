@@ -17,7 +17,13 @@ internal class FakeDeadLetterRepository : IDeadLetterRepository
     public Task SaveBatch(IReadOnlyCollection<IDeadLetterMessage> messages, string queueName, CancellationToken cancellationToken = default)
         => Task.CompletedTask;
 
+    public Task SaveBatchForSubscription(IReadOnlyCollection<IDeadLetterMessage> messages, string topicName, string subscriptionName, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
     public Task<DateTimeOffset?> GetLastIngestionTime(string queueName, CancellationToken cancellationToken = default)
+        => Task.FromResult<DateTimeOffset?>(null);
+
+    public Task<DateTimeOffset?> GetLastIngestionTimeForSubscription(string topicName, string subscriptionName, CancellationToken cancellationToken = default)
         => Task.FromResult<DateTimeOffset?>(null);
 
     public Task<DeadLetter?> Get(string messageId, CancellationToken cancellationToken = default)

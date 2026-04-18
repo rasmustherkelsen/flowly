@@ -19,6 +19,7 @@
 
 # JetBrains
 .idea/
+!.run/
 
 # Mono auto generated files
 mono_crash.*

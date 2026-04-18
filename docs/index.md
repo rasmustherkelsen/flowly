@@ -4,6 +4,30 @@ Flowly is a queue-based messaging abstraction for .NET. It sits between your app
 
 ---
 
+## Quick Navigation
+
+- [Why Flowly?](#why-flowly)
+- [Packages](#packages)
+- [Getting Started](#getting-started)
+- [Defining Messages](#defining-messages)
+- [Message Handlers](#message-handlers)
+- [Sending Messages](#sending-messages)
+- [Events (Fan-Out)](#events-fan-out)
+- [Retry Policy](#retry-policy)
+- [Dead Letter Tracking](#dead-letter-tracking)
+- [Job Tracking](#job-tracking)
+- [Recurring Jobs](#recurring-jobs)
+- [Local Development](#local-development)
+- [Flowly.Tool CLI](#flowlytool-cli)
+- [Full Configuration Example](#full-configuration-example)
+- [Multi-Provider](#multi-provider)
+- [Azure Service Bus Transport](#azure-service-bus-transport)
+- [RabbitMQ Transport](#rabbitmq-transport)
+- [OpenTelemetry](#opentelemetry)
+- [Status](#status)
+
+---
+
 ## Why Flowly?
 
 - **Provider-agnostic** — swap the message broker without changing application code
@@ -28,6 +52,7 @@ Flowly is a queue-based messaging abstraction for .NET. It sits between your app
 | `Flowly.DeadLetters` | Dead letter tracking core |
 | `Flowly.DeadLetters.SqlServer` | SQL Server backend for dead letter tracking |
 | `Flowly.DeadLetters.Postgres` | PostgreSQL backend for dead letter tracking |
+| `Flowly.OpenTelemetry` | OpenTelemetry metrics and traces for handlers and submitters |
 | `Flowly.Tool` | `dotnet flowly` CLI for queue discovery and code generation |
 
 ---
@@ -189,6 +214,86 @@ public class OrderService(IMessageSender sender)
 
 ---
 
+## Events (Fan-Out)
+
+Events let multiple independent services each receive a copy of the same occurrence. Use events when several consumers need to react to the same thing — as opposed to a regular message, where only one handler processes each message.
+
+### Publishing an event
+
+Register a submitter and inject `IEventSender`:
+
+```csharp
+builder.AddEventSubmitter<OrderProcessed>();
+```
+
+```csharp
+public class OrderService(IEventSender eventSender)
+{
+    public async Task CompleteOrder(Order order, CancellationToken ct)
+    {
+        await eventSender.RaiseEvent(new OrderProcessed(order.Id), ct);
+    }
+}
+```
+
+### Subscribing to an event
+
+Inherit `EventHandlerBase<TEvent>` and register the handler:
+
+```csharp
+public class OrderProcessedEventHandler : EventHandlerBase<OrderProcessed>
+{
+    public override Task Handle(IEventContext<OrderProcessed> ctx, CancellationToken ct)
+    {
+        // runs in every service that registers this handler
+        return Task.CompletedTask;
+    }
+}
+```
+
+```csharp
+builder.AddEventHandler<OrderProcessed, OrderProcessedEventHandler>();
+```
+
+### Event and subscription naming
+
+| What | Rule |
+|---|---|
+| Topic / exchange name | Derived from event type: PascalCase → kebab-case, strip trailing `Event` (`OrderProcessedEvent` → `order-processed`) |
+| Subscription / queue name | Derived from handler class name: PascalCase → kebab-case (`OrderProcessedEventHandler` → `order-processed-event-handler`) |
+| Override topic name | `[EventName("custom-name")]` on the event type |
+
+### Subscription name uniqueness across services
+
+The subscription name is derived from the **handler class name**. Two services that both define a class called `OrderProcessedEventHandler` will derive the same subscription name (`order-processed-event-handler`) and end up sharing a single subscription — meaning only one of them receives each event instead of both.
+
+**Each subscriber service must use a distinct handler class name.** Prefix the class name with the service or domain context:
+
+```csharp
+// BackendProcessor — subscription: "order-processed-event-handler"
+public class OrderProcessedEventHandler : EventHandlerBase<OrderProcessed> { ... }
+
+// BackendFinanceProcessor — subscription: "finance-order-processed-event-handler"
+public class FinanceOrderProcessedEventHandler : EventHandlerBase<OrderProcessed> { ... }
+```
+
+Flowly cannot detect name collisions across separately deployed services, so uniqueness must be maintained by convention.
+
+### Dead letter tracking for events
+
+Event handlers support `.WithDeadLetterTracking()` the same way regular handlers do:
+
+```csharp
+builder
+    .AddSqlServerDeadLetterTracking(connectionString)
+    .AddEventHandler<OrderProcessed, OrderProcessedEventHandler>()
+    .WithDeadLetterTracking();
+```
+
+When a dead-lettered event is requeued, Flowly re-publishes it to the topic with a `flowly-target-subscription` header. Only the originating subscriber's filter accepts the message, so only that subscriber receives the requeued event.
+
+---
+
 ## Retry Policy
 
 When a handler throws, Flowly can retry the message automatically before giving up.
@@ -253,7 +358,9 @@ The raw body is stored without deserialization — this ensures malformed messag
 
 ### Supported handler types
 
-Dead letter tracking is supported only on `MessageHandlerBase<T>` handlers. Job handlers use the job database as the failure record. Recurring jobs re-trigger via the CRON scheduler.
+Dead letter tracking is supported on `MessageHandlerBase<T>` and `EventHandlerBase<TEvent>` handlers. Job handlers use the job database as the failure record. Recurring jobs re-trigger via the CRON scheduler.
+
+For event handlers, the `SubscriptionName` field in the `DeadLetters` table identifies which subscriber dead-lettered the event. Requeuing re-publishes to the topic with a `flowly-target-subscription` header so only the originating subscriber receives the requeued event.
 
 ---
 
@@ -396,12 +503,29 @@ var azureServiceBus = builder
 
 var backendProcessor = builder.AddProject<Projects.BackendProcessor>("BackendProcessor");
 
-azureServiceBus.AddFlowly(backendProcessor);   // auto-discovers queues
+// Auto-discovers queues and events from the project's FlowlyDesignTimeFactory
+azureServiceBus.AddFlowly(backendProcessor);
 
 backendProcessor
     .WithReference(azureServiceBus)
     .WaitFor(azureServiceBus);
 ```
+
+When a service uses inline Flowly configuration (no `FlowlyDesignTimeFactory` class), there is no design-time class to discover — declare the topology explicitly instead:
+
+```csharp
+var backendFinanceProcessor = builder.AddProject<Projects.BackendFinanceProcessor>("BackendFinanceProcessor");
+
+// Explicit topology for services that use inline AddFlowly() configuration
+azureServiceBus.AddFlowly(backendFinanceProcessor, topology =>
+    topology.AddEventSubscription<OrderProcessedEvent>("finance-order-processed-event-handler"));
+
+backendFinanceProcessor
+    .WithReference(azureServiceBus)
+    .WaitFor(azureServiceBus);
+```
+
+`IFlowlyAspireTopologyBuilder` supports `.AddQueue(name)` and `.AddEventSubscription<TEvent>(subscriptionName)`. The topic name for `AddEventSubscription` is derived from the event type the same way as at runtime.
 
 Reference `Flowly.AzureServiceBus.Aspire` in the AppHost `.csproj` with `IsAspireProjectResource="false"`:
 
@@ -503,7 +627,11 @@ public class MyServiceConfiguration : FlowlyDesignTimeFactory, IFlowlyConfigurat
 
             // Submitters
             .AddMessageSubmitter<OrderCreated>()
-            .AddJobSubmitter<ProcessReportJob>();
+            .AddJobSubmitter<ProcessReportJob>()
+
+            // Events (fan-out)
+            .AddEventHandler<OrderCompleted, OrderCompletedEventHandler>()
+            .AddEventSubmitter<OrderCompleted>();
     }
 }
 ```
@@ -559,6 +687,22 @@ See **[Multi-Provider Configuration](multi-provider.md)** for routing rules, all
 
 ---
 
+## Azure Service Bus Transport
+
+Pass `enableHealthCheck: true` to register a health check under the tag `"azure-service-bus"`:
+
+```csharp
+builder.UseAzureServiceBus("AzureServiceBus", enableHealthCheck: true);
+```
+
+Managed identity is supported by passing a `TokenCredential` instead of a connection string:
+
+```csharp
+builder.UseAzureServiceBus("sb-myapp.servicebus.windows.net", new DefaultAzureCredential());
+```
+
+---
+
 ## RabbitMQ Transport
 
 ### Registration
@@ -569,6 +713,12 @@ builder.UseRabbitMq("RabbitMQ")   // connection string name in appsettings
 ```
 
 The default connection string is `amqp://guest:guest@localhost:5672/`. Pass a configuration key or a literal AMQP URI.
+
+Pass `enableHealthCheck: true` to register a health check under the tag `"rabbitmq"`:
+
+```csharp
+builder.UseRabbitMq("RabbitMQ", enableHealthCheck: true);
+```
 
 ### Retry topology and `createTopology`
 
@@ -591,6 +741,50 @@ Either set createTopology: true or ensure the queue topology is provisioned befo
 ```
 
 > **Important:** The startup check confirms that the retry queue *exists*, but cannot verify that the DLX arguments are set correctly. If the queue was declared without the correct `x-dead-letter-exchange` and `x-dead-letter-routing-key` arguments, retried messages will expire silently without being re-routed. Always use the exact arguments listed above.
+
+---
+
+## OpenTelemetry
+
+The `Flowly.OpenTelemetry` package wires Flowly's metrics and traces into the OpenTelemetry SDK.
+
+### Setup
+
+```csharp
+builder.Services.AddOpenTelemetry()
+    .WithMetrics(metrics => metrics.AddFlowlyInstrumentation())
+    .WithTracing(tracing => tracing.AddFlowlyInstrumentation());
+```
+
+### Metrics
+
+All metrics use the meter name `"Flowly"` and follow the `messaging.*` semantic conventions for their attributes (`messaging.destination.name`, `messaging.system`, etc.).
+
+| Metric | Type | Description |
+|---|---|---|
+| `flowly.handler.messages.received` | Counter | Messages received by regular handlers |
+| `flowly.handler.messages.succeeded` | Counter | Messages processed successfully |
+| `flowly.handler.messages.failed` | Counter | Messages that failed processing |
+| `flowly.handler.messages.retried` | Counter | Messages scheduled for retry |
+| `flowly.handler.processing.duration` | Histogram (ms) | Processing time per message |
+| `flowly.event.handler.received` | Counter | Events received by event handlers |
+| `flowly.event.handler.succeeded` | Counter | Events processed successfully |
+| `flowly.event.handler.failed` | Counter | Events that failed processing |
+| `flowly.event.handler.retried` | Counter | Events scheduled for retry |
+| `flowly.event.handler.processing.duration` | Histogram (ms) | Processing time per event |
+| `flowly.submitter.messages.sent` | Counter | Messages sent by submitters |
+| `flowly.submitter.messages.failed` | Counter | Send failures |
+| `flowly.submitter.send.duration` | Histogram (ms) | Send duration |
+| `flowly.event.publisher.raised` | Counter | Events raised |
+| `flowly.event.publisher.failed` | Counter | Event publish failures |
+| `flowly.event.publisher.raise.duration` | Histogram (ms) | Event publish duration |
+| `flowly.deadletters.pending` | Counter | Dead letters ingested |
+| `flowly.jobs.failed` | Counter | Jobs transitioned to Failed |
+| `flowly.jobs.running` | Counter | Jobs currently running |
+
+### Traces
+
+Each message or event handled creates a span named `flowly.handle {queueName}` with kind `Consumer`. The span includes `handler`, `messaging.system`, `messaging.destination.name`, `messaging.message.id`, and `messaging.message.conversation_id` attributes.
 
 ---
 

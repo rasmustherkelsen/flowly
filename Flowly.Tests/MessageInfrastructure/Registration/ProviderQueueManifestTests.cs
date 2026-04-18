@@ -1,3 +1,4 @@
+using Flowly.MessageInfrastructure.Events.Registration;
 using Flowly.MessageInfrastructure.Registration;
 
 namespace Flowly.Tests.MessageInfrastructure.Registration;
@@ -101,6 +102,52 @@ public class ProviderQueueManifestTests
             manifest.Add(new DeferredQueueRegistration("my-queue", DefaultMessageTimeToLive: ttl));
 
             Assert.Equal(ttl, manifest.Queues[0].DefaultMessageTimeToLive);
+        }
+    }
+
+    public class AddEvent
+    {
+        [Fact]
+        public void NewEvent_IsAddedToManifest()
+        {
+            var manifest = new ProviderQueueManifest("primary", isPrimary: true, "AzureServiceBus");
+            var registration = new DeferredEventRegistration("order-placed", "email-notification-handler");
+
+            manifest.AddEvent(registration);
+
+            Assert.Single(manifest.Events);
+            Assert.Equal("order-placed", manifest.Events[0].TopicOrExchangeName);
+            Assert.Equal("email-notification-handler", manifest.Events[0].SubscriptionName);
+        }
+
+        [Fact]
+        public void DuplicateEvent_SameTopicAndSubscription_IsIgnored()
+        {
+            var manifest = new ProviderQueueManifest("primary", isPrimary: true, "AzureServiceBus");
+            manifest.AddEvent(new DeferredEventRegistration("order-placed", "email-notification-handler"));
+            manifest.AddEvent(new DeferredEventRegistration("order-placed", "email-notification-handler"));
+
+            Assert.Single(manifest.Events);
+        }
+
+        [Fact]
+        public void DuplicateEvent_SameTopicDifferentSubscription_BothAdded()
+        {
+            var manifest = new ProviderQueueManifest("primary", isPrimary: true, "AzureServiceBus");
+            manifest.AddEvent(new DeferredEventRegistration("order-placed", "email-notification-handler"));
+            manifest.AddEvent(new DeferredEventRegistration("order-placed", "sms-notification-handler"));
+
+            Assert.Equal(2, manifest.Events.Count);
+        }
+
+        [Fact]
+        public void EventLookup_IsCaseInsensitive()
+        {
+            var manifest = new ProviderQueueManifest("primary", isPrimary: true, "AzureServiceBus");
+            manifest.AddEvent(new DeferredEventRegistration("Order-Placed", "Email-Notification-Handler"));
+            manifest.AddEvent(new DeferredEventRegistration("order-placed", "email-notification-handler"));
+
+            Assert.Single(manifest.Events);
         }
     }
 }

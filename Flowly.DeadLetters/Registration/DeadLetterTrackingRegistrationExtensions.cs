@@ -2,6 +2,7 @@ using Flowly.DeadLetters.BackgroundServices;
 using Flowly.DeadLetters.Repositories;
 using Flowly.DeadLetters.Services;
 using Flowly.DeadLetters.Telemetry;
+using Flowly.MessageInfrastructure.Events.Registration;
 using Flowly.MessageInfrastructure.Registration;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -56,6 +57,36 @@ public static class DeadLetterTrackingRegistrationExtensions
 
         builder.Services.AddSingleton(new DeadLetterIngestionSettings(queueName, providerName));
         builder.Services.AddHostedService<DeadLetterIngestionBackgroundService>();
+
+        return builder;
+    }
+
+    /// <summary>
+    /// Opts this event subscription into dead letter tracking. Events that are dead-lettered by this subscriber
+    /// will be read from the broker subscription DLQ and persisted to the dead letter store.
+    /// Requeuing a dead-lettered event republishes it to the topic, so all subscribers will receive it again —
+    /// ensure handlers are idempotent before using requeue.
+    /// Requires AddSqlServerDeadLetterTracking or AddPostgresDeadLetterTracking to have been called.
+    /// </summary>
+    public static IFlowlyBuilder WithDeadLetterTracking<TEvent>(this IEventHandlerBuilder<TEvent> builder)
+        where TEvent : class
+    {
+        if (builder.Services.All(s => s.ServiceType != SentinelType))
+            throw new InvalidOperationException("Dead letter tracking is not configured. Call AddSqlServerDeadLetterTracking() or AddPostgresDeadLetterTracking() before using WithDeadLetterTracking().");
+
+        var topicOrExchangeName = builder.TopicOrExchangeName;
+        var subscriptionName = builder.SubscriptionName;
+        var providerName = builder.ProviderName;
+
+        if (builder.Services.Any(s =>
+                s.ServiceType == typeof(EventSubscriptionDeadLetterIngestionSettings) &&
+                s.ImplementationInstance is EventSubscriptionDeadLetterIngestionSettings existing &&
+                existing.TopicOrExchangeName == topicOrExchangeName &&
+                existing.SubscriptionName == subscriptionName))
+            return builder;
+
+        builder.Services.AddSingleton(new EventSubscriptionDeadLetterIngestionSettings(topicOrExchangeName, subscriptionName, providerName));
+        builder.Services.AddHostedService<EventSubscriptionDeadLetterIngestionBackgroundService>();
 
         return builder;
     }

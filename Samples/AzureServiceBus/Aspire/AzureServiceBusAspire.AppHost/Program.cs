@@ -1,4 +1,5 @@
 using Flowly.AzureServiceBus.Aspire;
+using MessageContracts;
 
 var builder = DistributedApplication.CreateBuilder(args);
 
@@ -16,8 +17,11 @@ var azureServiceBus = builder
     });
 
 var backendProcessor = builder.AddProject<Projects.BackendProcessor>("BackendProcessor");
-
 azureServiceBus.AddFlowly(backendProcessor);
+
+var backendFinanceProcessor = builder.AddProject<Projects.BackendFinanceProcessor>("BackendFinanceProcessor");
+azureServiceBus.AddFlowly(backendFinanceProcessor, topology =>
+    topology.AddEventSubscription<OrderProcessedEvent>("finance-order-processed-event-handler"));
 
 backendProcessor
     .WaitFor(azureServiceBus)
@@ -26,6 +30,10 @@ backendProcessor
     .WithReference(azureServiceBus)
     .WithReference(flowlyJobsDatabase)
     .WithReference(flowlyDeadLettersDatabase);
+
+backendFinanceProcessor
+    .WaitFor(azureServiceBus)
+    .WithReference(azureServiceBus);
 
 var api = builder.AddProject<Projects.Api>("api")
     .WithReference(azureServiceBus)

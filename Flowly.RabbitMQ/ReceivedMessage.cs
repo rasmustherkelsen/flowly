@@ -36,7 +36,7 @@ internal class RabbitMqReceivedMessage<TMessage>(IChannel channel, BasicDeliverE
     private static int GetRetryCount(IReadOnlyBasicProperties properties)
     {
         if (properties.Headers is null) return 0;
-        if (!properties.Headers.TryGetValue("flowly-retry-count", out var rc)) return 0;
+        if (!properties.Headers.TryGetValue(FlowlyMessageProperties.RetryCount, out var rc)) return 0;
         return rc switch
         {
             int i => i,

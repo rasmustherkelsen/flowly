@@ -8,6 +8,7 @@ internal class QueueRegistrarHostedService(
     IEnumerable<ProviderQueueManifest> manifests,
     IMessageBusClientRegistry clientRegistry,
     IMessagingTopologyCreatorRegistry topologyRegistry,
+    IEventTopologyCreatorRegistry eventTopologyRegistry,
     IEnumerable<IMessagingTopologyValidator> topologyValidators,
     ICrossProviderConflictValidator conflictValidator,
     FlowlyOptions flowlyOptions,
@@ -15,6 +16,11 @@ internal class QueueRegistrarHostedService(
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {
+        if (!clientRegistry.GetAll().Any())
+            throw new InvalidOperationException(
+                "No transport provider has been registered. " +
+                "Call a transport provider extension (e.g. UseAzureServiceBus()) in your IFlowlyConfiguration before registering handlers or submitters.");
+
         conflictValidator.Validate(manifests);
 
         foreach (var manifest in manifests)
@@ -43,6 +49,16 @@ internal class QueueRegistrarHostedService(
             var topologyCreator = topologyRegistry.GetCreator(manifest.ProviderName);
             await topologyCreator.CreateTopology(queueDescriptions, cancellationToken);
 
+            var eventDescriptions = ResolveEventDescriptions(manifest);
+            if (eventDescriptions.Count > 0)
+            {
+                var eventTopologyCreator = eventTopologyRegistry.TryGetCreator(manifest.ProviderName);
+                if (eventTopologyCreator != null)
+                    await eventTopologyCreator.CreateEventTopology(eventDescriptions, cancellationToken);
+                else
+                    logger.LogWarning("Provider '{Provider}' has event registrations but no event topology creator is registered.", manifest.ProviderName);
+            }
+
             logger.LogInformation("Messaging topology created for provider '{Provider}'", manifest.ProviderName);
         }
     }
@@ -57,5 +73,14 @@ internal class QueueRegistrarHostedService(
                 r.DeadLetterOnMessageExpiration ?? true,
                 r.LockDuration ?? TimeSpan.FromMinutes(5),
                 r.RequiresSession))
+            .ToList();
+
+    private static IReadOnlyList<IEventDescription> ResolveEventDescriptions(ProviderQueueManifest manifest) =>
+        manifest.Events
+            .Select(e => (IEventDescription)new EventDescription(
+                e.TopicOrExchangeName,
+                e.SubscriptionName,
+                e.DefaultMessageTimeToLive ?? TimeSpan.FromDays(1),
+                e.DeadLetterOnMessageExpiration ?? true))
             .ToList();
 }

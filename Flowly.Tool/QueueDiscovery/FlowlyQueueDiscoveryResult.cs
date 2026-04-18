@@ -8,9 +8,17 @@ internal sealed record QueueDiscoveryQueue(
     bool DeadLetterOnMessageExpiration,
     TimeSpan LockDuration);
 
+internal sealed record QueueDiscoveryEvent(
+    string TopicOrExchangeName,
+    string SubscriptionName,
+    string ProviderName,
+    TimeSpan DefaultMessageTimeToLive,
+    bool DeadLetterOnMessageExpiration);
+
 internal sealed record FlowlyQueueDiscoveryResult(
     string ConfigurationType,
-    IReadOnlyList<QueueDiscoveryQueue> QueueDefinitions)
+    IReadOnlyList<QueueDiscoveryQueue> QueueDefinitions,
+    IReadOnlyList<QueueDiscoveryEvent> EventDefinitions)
 {
     public IReadOnlyList<string> Queues => QueueDefinitions.Select(x => x.Name).ToArray();
 }

@@ -1,4 +1,5 @@
 using System.Text;
+using Flowly.MessagingAbstractions;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 
@@ -25,7 +26,7 @@ public class RabbitMqBatchReceivedMessageTests
         {
             var basicProperties = new BasicProperties
             {
-                Headers = new Dictionary<string, object?> { ["flowly-retry-count"] = 3 }
+                Headers = new Dictionary<string, object?> { [FlowlyMessageProperties.RetryCount] = 3 }
             };
 
             var message = new RabbitMqBatchReceivedMessage<TestMessage>(
@@ -42,7 +43,7 @@ public class RabbitMqBatchReceivedMessageTests
         {
             var basicProperties = new BasicProperties
             {
-                Headers = new Dictionary<string, object?> { ["flowly-retry-count"] = Encoding.UTF8.GetBytes("2") }
+                Headers = new Dictionary<string, object?> { [FlowlyMessageProperties.RetryCount] = Encoding.UTF8.GetBytes("2") }
             };
 
             var message = new RabbitMqBatchReceivedMessage<TestMessage>(

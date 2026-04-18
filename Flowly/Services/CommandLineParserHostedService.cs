@@ -16,7 +16,7 @@ internal class CommandLineParserHostedService(IEnumerable<ProviderQueueManifest>
         var outputPath = Environment.GetEnvironmentVariable(CommandLineParserHostedServiceDefinitions.OutputFileEnvVar);
         if (outputPath is null) return Task.CompletedTask;
 
-        var entries = manifests
+        var queueEntries = manifests
             .SelectMany(m => m.Queues.Select(r => new QueueDiscoveryEntry(
                 r.QueueName,
                 m.ProviderName,
@@ -27,7 +27,19 @@ internal class CommandLineParserHostedService(IEnumerable<ProviderQueueManifest>
                 r.LockDuration?.ToString("c"))))
             .ToArray();
 
-        File.WriteAllText(outputPath, JsonSerializer.Serialize(entries));
+        var eventEntries = manifests
+            .SelectMany(m => m.Events.Select(e => new EventDiscoveryEntry(
+                e.TopicOrExchangeName,
+                e.SubscriptionName,
+                m.ProviderName,
+                m.IsPrimary,
+                e.DefaultMessageTimeToLive?.ToString("c"),
+                e.DeadLetterOnMessageExpiration)))
+            .ToArray();
+
+        var output = new DiscoveryOutput(queueEntries, eventEntries);
+
+        File.WriteAllText(outputPath, JsonSerializer.Serialize(output));
         lifetime.StopApplication();
 
         return Task.CompletedTask;
@@ -43,6 +55,10 @@ internal class CommandLineParserHostedService(IEnumerable<ProviderQueueManifest>
 
     public Task StoppedAsync(CancellationToken _) => Task.CompletedTask;
 
+    private sealed record DiscoveryOutput(
+        QueueDiscoveryEntry[] Queues,
+        EventDiscoveryEntry[] Events);
+
     private sealed record QueueDiscoveryEntry(
         string QueueName,
         string ProviderName,
@@ -51,4 +67,12 @@ internal class CommandLineParserHostedService(IEnumerable<ProviderQueueManifest>
         string? DefaultMessageTimeToLive,
         bool? DeadLetterOnMessageExpiration,
         string? LockDuration);
+
+    private sealed record EventDiscoveryEntry(
+        string TopicOrExchangeName,
+        string SubscriptionName,
+        string ProviderName,
+        bool IsPrimary,
+        string? DefaultMessageTimeToLive,
+        bool? DeadLetterOnMessageExpiration);
 }

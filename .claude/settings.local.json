@@ -24,7 +24,11 @@
       "Read(//Users/rasmus/.nuget/**)",
       "Bash(dotnet-csc /tmp/InspectConn.cs)",
       "Bash(dotnet:*)",
-      "Bash(ls /Users/rasmus/Source/TriumfNas/SimpleTransit/*.md)"
+      "Bash(ls /Users/rasmus/Source/TriumfNas/SimpleTransit/*.md)",
+      "Bash(grep -E '\\\\.\\(cs|csproj|json\\)$')",
+      "Bash(uuidgen)",
+      "Bash(sort -t: -k2 -n)",
+      "Bash(git *)"
     ]
   }
 }

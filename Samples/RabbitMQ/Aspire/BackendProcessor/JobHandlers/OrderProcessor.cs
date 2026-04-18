@@ -1,12 +1,13 @@
 using Flowly.Jobs.Model;
 using Flowly.Jobs.Receivers;
+using Flowly.MessageInfrastructure.Events;
 using Flowly.MessageInfrastructure.Receivers;
 using MessageContracts;
 
 namespace BackendProcessor.JobHandlers;
 
-[MaxConcurrentCalls(10)]
-class OrderProcessor(ILogger<OrderProcessor> logger) : JobMessageHandlerBase<ProcessOrder>
+[MaxConcurrentCalls(5)]
+class OrderProcessor(ILogger<OrderProcessor> logger, IServiceScopeFactory serviceScopeFactory) : JobMessageHandlerBase<ProcessOrder>
 {
     public override async Task Handle(IJobMessageContext<ProcessOrder> messageContext)
     {
@@ -18,5 +19,9 @@ class OrderProcessor(ILogger<OrderProcessor> logger) : JobMessageHandlerBase<Pro
             await messageContext.SaveState(new { ProgressPercentage = (i + 1) * 10 });
             await Task.Delay(delay, messageContext.CancellationToken);
         }
+
+        var scope = serviceScopeFactory.CreateScope();
+        var eventSender = scope.ServiceProvider.GetRequiredService<IEventSender>();
+        await eventSender.RaiseEvent(new OrderProcessedEvent(messageContext.Message.OrderId.ToString()), messageContext.CancellationToken);
     }
 }

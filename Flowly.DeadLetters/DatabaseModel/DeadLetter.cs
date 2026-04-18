@@ -12,6 +12,13 @@ public class DeadLetter
     [MaxLength(200)]
     public required string QueueName { get; init; }
 
+    /// <summary>
+    /// Set when this dead letter originates from an event subscription.
+    /// QueueName holds the topic name; SubscriptionName identifies which subscriber dead-lettered the event.
+    /// </summary>
+    [MaxLength(200)]
+    public string? SubscriptionName { get; init; }
+
     public required string MessageBody { get; init; }
 
     public required string MessageProperties { get; init; }

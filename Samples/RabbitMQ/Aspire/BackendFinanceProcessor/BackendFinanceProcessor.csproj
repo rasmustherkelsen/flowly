@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\..\..\..\Flowly.OpenTelemetry\Flowly.OpenTelemetry.csproj" />
+        <ProjectReference Include="..\MessageContracts\MessageContracts.csproj" />
+        <ProjectReference Include="..\RabbitMQAspire.ServiceDefaults\RabbitMQAspire.ServiceDefaults.csproj" />
+        <ProjectReference Include="..\..\..\..\Flowly.RabbitMQ\Flowly.RabbitMQ.csproj" />
+    </ItemGroup>
+
+</Project>

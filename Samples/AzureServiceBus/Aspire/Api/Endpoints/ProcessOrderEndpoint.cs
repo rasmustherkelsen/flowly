@@ -6,7 +6,7 @@ namespace Api.Endpoints;
 
 class ProcessOrderEndpoint(IJobMessageSender jobMessageSender) : Endpoint<ProcessOrderEndpoint.ProcessOrderRequest>
 {
-    internal record ProcessOrderRequest(Guid CustomerId, int? MessageCount);
+    internal record ProcessOrderRequest(int? MessageCount);
 
     public override void Configure()
     {
@@ -18,7 +18,7 @@ class ProcessOrderEndpoint(IJobMessageSender jobMessageSender) : Endpoint<Proces
     {
         for (int i = 0; i < (req.MessageCount ?? 1); i++)
         {
-            await jobMessageSender.QueueJob(new ProcessOrder(req.CustomerId, $"Order Submitted at {DateTime.UtcNow}"), cancellationToken);
+            await jobMessageSender.QueueJob(new ProcessOrder(Guid.NewGuid(), $"Order Submitted at {DateTime.UtcNow}"), cancellationToken);
         }
 
         await Send.OkAsync(cancellation: cancellationToken);

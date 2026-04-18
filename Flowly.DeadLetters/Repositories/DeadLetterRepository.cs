@@ -8,6 +8,30 @@ namespace Flowly.DeadLetters.Repositories;
 internal class DeadLetterRepository(IDbContextFactory<DeadLetterDataContext> contextFactory) : IDeadLetterRepository
 {
     public async Task SaveBatch(IReadOnlyCollection<IDeadLetterMessage> messages, string queueName, CancellationToken cancellationToken = default)
+        => await PersistBatch(messages, queueName, subscriptionName: null, cancellationToken);
+
+    public async Task SaveBatchForSubscription(IReadOnlyCollection<IDeadLetterMessage> messages, string topicName, string subscriptionName, CancellationToken cancellationToken = default)
+        => await PersistBatch(messages, topicName, subscriptionName, cancellationToken);
+
+    public async Task<DateTimeOffset?> GetLastIngestionTime(string queueName, CancellationToken cancellationToken = default)
+    {
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+
+        return await context.DeadLetters
+            .Where(d => d.QueueName == queueName && d.SubscriptionName == null)
+            .MaxAsync(d => (DateTimeOffset?)d.DeadLetteredAt, cancellationToken);
+    }
+
+    public async Task<DateTimeOffset?> GetLastIngestionTimeForSubscription(string topicName, string subscriptionName, CancellationToken cancellationToken = default)
+    {
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+
+        return await context.DeadLetters
+            .Where(d => d.QueueName == topicName && d.SubscriptionName == subscriptionName)
+            .MaxAsync(d => (DateTimeOffset?)d.DeadLetteredAt, cancellationToken);
+    }
+
+    private async Task PersistBatch(IReadOnlyCollection<IDeadLetterMessage> messages, string queueName, string? subscriptionName, CancellationToken cancellationToken)
     {
         await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
 
@@ -24,6 +48,7 @@ internal class DeadLetterRepository(IDbContextFactory<DeadLetterDataContext> con
             {
                 MessageId = message.MessageId,
                 QueueName = queueName,
+                SubscriptionName = subscriptionName,
                 MessageBody = message.RawBody,
                 MessageProperties = JsonSerializer.Serialize(message.ApplicationProperties),
                 DeadLetteredAt = message.EnqueuedTime,
@@ -37,15 +62,6 @@ internal class DeadLetterRepository(IDbContextFactory<DeadLetterDataContext> con
             await context.DeadLetters.AddRangeAsync(newDeadLetters, cancellationToken);
             await context.SaveChangesAsync(cancellationToken);
         }
-    }
-
-    public async Task<DateTimeOffset?> GetLastIngestionTime(string queueName, CancellationToken cancellationToken = default)
-    {
-        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
-
-        return await context.DeadLetters
-            .Where(d => d.QueueName == queueName)
-            .MaxAsync(d => (DateTimeOffset?)d.DeadLetteredAt, cancellationToken);
     }
 
     public async Task<IReadOnlyCollection<DeadLetter>> GetAll(CancellationToken cancellationToken = default)

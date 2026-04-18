@@ -13,7 +13,7 @@ internal static class HostBasedQueueDiscovery
     private static readonly TimeSpan DefaultLockDuration = TimeSpan.FromMinutes(5);
     private const bool DefaultDeadLetterOnMessageExpiration = true;
 
-    public static IReadOnlyList<QueueDiscoveryQueue> DiscoverQueues(string assemblyPath, string workingDirectory, string? providerNameFilter = null)
+    public static (IReadOnlyList<QueueDiscoveryQueue> Queues, IReadOnlyList<QueueDiscoveryEvent> Events) Discover(string assemblyPath, string workingDirectory, string? providerNameFilter = null)
     {
         var outputFile = Path.GetTempFileName();
 
@@ -53,6 +53,11 @@ internal static class HostBasedQueueDiscovery
                     "Ensure the application does not block indefinitely during startup.");
             }
 
+            if (IsNoTransportProviderError(stderr.ToString()))
+                throw new MissingTransportProviderException(
+                    "No transport provider has been configured. " +
+                    "Add a transport provider (e.g. UseAzureServiceBus()) in your IFlowlyConfiguration.");
+
             if (new FileInfo(outputFile).Length == 0)
             {
                 throw new InvalidOperationException(
@@ -69,13 +74,21 @@ internal static class HostBasedQueueDiscovery
         }
     }
 
-    private static IReadOnlyList<QueueDiscoveryQueue> ParseOutput(string outputFile, string? providerNameFilter)
+    private static (IReadOnlyList<QueueDiscoveryQueue> Queues, IReadOnlyList<QueueDiscoveryEvent> Events) ParseOutput(string outputFile, string? providerNameFilter)
     {
         var json = File.ReadAllText(outputFile);
-        var entries = JsonSerializer.Deserialize<HostDiscoveredQueue[]>(
-            json,
-            new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
+        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        var output = JsonSerializer.Deserialize<HostDiscoveryOutput>(json, options)
+            ?? new HostDiscoveryOutput([], []);
 
+        var queues = ParseQueues(output.Queues ?? [], providerNameFilter);
+        var events = ParseEvents(output.Events ?? [], providerNameFilter);
+
+        return (queues, events);
+    }
+
+    private static IReadOnlyList<QueueDiscoveryQueue> ParseQueues(HostDiscoveredQueue[] entries, string? providerNameFilter)
+    {
         var filtered = providerNameFilter is null
             ? entries.Where(e => e.IsPrimary)
             : entries.Where(e => string.Equals(e.ProviderName, providerNameFilter, StringComparison.OrdinalIgnoreCase));
@@ -117,6 +130,44 @@ internal static class HostBasedQueueDiscovery
             .ToArray();
     }
 
+    private static IReadOnlyList<QueueDiscoveryEvent> ParseEvents(HostDiscoveredEvent[] entries, string? providerNameFilter)
+    {
+        var filtered = providerNameFilter is null
+            ? entries.Where(e => e.IsPrimary)
+            : entries.Where(e => string.Equals(e.ProviderName, providerNameFilter, StringComparison.OrdinalIgnoreCase));
+
+        return filtered
+            .GroupBy(
+                e => $"{e.TopicOrExchangeName.ToLowerInvariant()}|{e.SubscriptionName.ToLowerInvariant()}",
+                StringComparer.OrdinalIgnoreCase)
+            .Select(group =>
+            {
+                var first = group.First();
+
+                var defaultMessageTimeToLive = ResolveConsistentValue(
+                    group.Select(e => e.DefaultMessageTimeToLive is not null ? TimeSpan.Parse(e.DefaultMessageTimeToLive) : (TimeSpan?)null),
+                    DefaultMessageTimeToLive,
+                    first.TopicOrExchangeName,
+                    nameof(HostDiscoveredEvent.DefaultMessageTimeToLive));
+
+                var deadLetterOnMessageExpiration = ResolveConsistentValue(
+                    group.Select(e => e.DeadLetterOnMessageExpiration),
+                    DefaultDeadLetterOnMessageExpiration,
+                    first.TopicOrExchangeName,
+                    nameof(HostDiscoveredEvent.DeadLetterOnMessageExpiration));
+
+                return new QueueDiscoveryEvent(
+                    first.TopicOrExchangeName,
+                    first.SubscriptionName,
+                    first.ProviderName,
+                    defaultMessageTimeToLive,
+                    deadLetterOnMessageExpiration);
+            })
+            .OrderBy(e => e.TopicOrExchangeName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(e => e.SubscriptionName, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
     private static T ResolveConsistentValue<T>(IEnumerable<T?> values, T defaultValue, string queueName, string settingName)
         where T : struct
     {
@@ -132,6 +183,13 @@ internal static class HostBasedQueueDiscovery
         throw new InvalidOperationException($"Conflicting queue setting '{settingName}' for queue '{queueName}'.");
     }
 
+    private static bool IsNoTransportProviderError(string stderr) =>
+        stderr.Contains("No transport provider", StringComparison.OrdinalIgnoreCase);
+
+    private sealed record HostDiscoveryOutput(
+        HostDiscoveredQueue[]? Queues,
+        HostDiscoveredEvent[]? Events);
+
     private sealed record HostDiscoveredQueue(
         string QueueName,
         string ProviderName,
@@ -140,4 +198,12 @@ internal static class HostBasedQueueDiscovery
         string? DefaultMessageTimeToLive,
         bool? DeadLetterOnMessageExpiration,
         string? LockDuration);
+
+    private sealed record HostDiscoveredEvent(
+        string TopicOrExchangeName,
+        string SubscriptionName,
+        string ProviderName,
+        bool IsPrimary,
+        string? DefaultMessageTimeToLive,
+        bool? DeadLetterOnMessageExpiration);
 }

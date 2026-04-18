@@ -36,12 +36,12 @@ internal sealed class FlowlyQueueDiscovery
                     throw;
 
                 var effectiveWorkingDirectory = workingDirectory ?? Path.GetDirectoryName(fullAssemblyPath)!;
-                var queues = HostBasedQueueDiscovery.DiscoverQueues(fullAssemblyPath, effectiveWorkingDirectory);
-                return new FlowlyQueueDiscoveryResult("(inline configuration)", queues);
+                var (queues, events) = HostBasedQueueDiscovery.Discover(fullAssemblyPath, effectiveWorkingDirectory);
+                return new FlowlyQueueDiscoveryResult("(inline configuration)", queues, events);
             }
 
-            var queueDefinitions = BuildAndExtractQueues(configuration, workingDirectory ?? Path.GetDirectoryName(fullAssemblyPath)!, providerName);
-            return new FlowlyQueueDiscoveryResult(configuration.FullName ?? configuration.Name, queueDefinitions);
+            var (queueDefinitions, eventDefinitions) = BuildAndExtractQueues(configuration, workingDirectory ?? Path.GetDirectoryName(fullAssemblyPath)!, providerName);
+            return new FlowlyQueueDiscoveryResult(configuration.FullName ?? configuration.Name, queueDefinitions, eventDefinitions);
         }
         finally
         {
@@ -124,7 +124,7 @@ internal sealed class FlowlyQueueDiscovery
         }
     }
 
-    private static IReadOnlyList<QueueDiscoveryQueue> BuildAndExtractQueues(Type configurationType, string workingDirectory, string? providerNameFilter)
+    private static (IReadOnlyList<QueueDiscoveryQueue> Queues, IReadOnlyList<QueueDiscoveryEvent> Events) BuildAndExtractQueues(Type configurationType, string workingDirectory, string? providerNameFilter)
     {
         var previousDirectory = Directory.GetCurrentDirectory();
 
@@ -159,7 +159,7 @@ internal sealed class FlowlyQueueDiscovery
                     $"No provider named '{providerNameFilter}' was found. Available providers: {available}");
             }
 
-            return selectedManifests
+            var queues = selectedManifests
                 .SelectMany(m => m.Queues.Select(r => new QueueDiscoveryQueue(
                     r.QueueName,
                     m.ProviderName,
@@ -171,6 +171,21 @@ internal sealed class FlowlyQueueDiscovery
                 .Select(g => g.First())
                 .OrderBy(q => q.Name, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
+
+            var events = selectedManifests
+                .SelectMany(m => m.Events.Select(e => new QueueDiscoveryEvent(
+                    e.TopicOrExchangeName,
+                    e.SubscriptionName,
+                    m.ProviderName,
+                    e.DefaultMessageTimeToLive ?? TimeSpan.FromDays(1),
+                    e.DeadLetterOnMessageExpiration ?? true)))
+                .GroupBy(e => $"{e.TopicOrExchangeName.ToLowerInvariant()}|{e.SubscriptionName.ToLowerInvariant()}")
+                .Select(g => g.First())
+                .OrderBy(e => e.TopicOrExchangeName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(e => e.SubscriptionName, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            return (queues, events);
         }
         finally
         {

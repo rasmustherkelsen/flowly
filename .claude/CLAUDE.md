@@ -68,6 +68,7 @@ Registered in `Program.cs` via `services.AddFlowly<MyConfig>(configuration)` or 
 | `BatchMessageHandlerBase<T>` | Multiple messages together | No | No | `.AddBatchMessageHandler<T, TH>()` |
 | `JobMessageHandlerBase<T>` | Job with state tracking (`T : IJobMessage`) | Yes | No | `.AddJobHandler<T, TH>()` |
 | `RecurringJobHandlerBase` | CRON-scheduled background job | No | No | `.AddRecurringJob<TH>()` |
+| `EventHandlerBase<TEvent>` | Fan-out event (all subscribers receive) | Yes | Yes — requeue re-publishes to the topic/exchange with `flowly-target-subscription` set; only the originating subscriber receives the requeued message. | `.AddEventHandler<TEvent, TH>()` |
 
 ### Queue Names
 
@@ -77,6 +78,7 @@ Owned by the **message contract**, not the handler. Auto-generated: PascalCase �
 
 - `IMessageSender.Send(msg)` — fire and forget (requires `.AddMessageSubmitter<T>()`)
 - `IJobMessageSender.QueueJob(msg)` — returns `Guid` job ID (requires `.AddJobSubmitter<T>()`)
+- `IEventSender.RaiseEvent<TEvent>(event)` — fan-out event publish (requires `.AddEventSubmitter<TEvent>()`)
 
 ### Retry Policy
 
@@ -88,7 +90,11 @@ SQL Server or PostgreSQL via EF Core. Tables: `Job`, `JobAliveStatus`, `CustomJo
 
 ### Dead Letter Tracking (`Flowly.DeadLetters/`)
 
-Opt-in per handler. The framework registers a background service per opted-in queue that reads from the broker's dead letter sub-queue and persists records to a DB table (`DeadLetters`). Fields stored: raw message body, raw application properties (JSON), broker-provided reason and error description, timestamps, and status (`Pending / Requeued / Discarded`). Only `MessageHandlerBase<T>` handlers support this. Requires `.AddSqlServerDeadLetterTracking()` or `.AddPostgresDeadLetterTracking()`.
+Opt-in per handler. The framework registers a background service per opted-in queue/subscription that reads from the broker's dead letter sub-queue and persists records to a DB table (`DeadLetters`). Fields stored: raw message body, raw application properties (JSON), broker-provided reason and error description, timestamps, status (`Pending / Requeued / Discarded`), and an optional `SubscriptionName` for event subscription dead letters.
+
+Supported on `MessageHandlerBase<T>` and `EventHandlerBase<TEvent>` handlers. Requires `.AddSqlServerDeadLetterTracking()` or `.AddPostgresDeadLetterTracking()`.
+
+For event subscribers: `QueueName` in the DB holds the topic/exchange name; `SubscriptionName` identifies which subscriber dead-lettered the event. Requeuing re-publishes to the topic/exchange with a `flowly-target-subscription` property — only the originating subscriber's subscription filter accepts the message, so only that subscriber receives the requeued event.
 
 ### Recurring Jobs
 

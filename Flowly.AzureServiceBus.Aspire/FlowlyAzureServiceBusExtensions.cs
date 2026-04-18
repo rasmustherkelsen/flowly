@@ -2,6 +2,7 @@ using System.Runtime.Loader;
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Azure;
+using Flowly.MessageInfrastructure.Events.Registration;
 using Flowly.MessageInfrastructure.Registration;
 
 namespace Flowly.AzureServiceBus.Aspire;
@@ -10,25 +11,39 @@ public static class FlowlyAzureServiceBusExtensions
 {
     private const string AzureServiceBusTransportType = "AzureServiceBus";
 
+    /// <summary>
+    /// Discovers topology from the project's <see cref="FlowlyDesignTimeFactory"/> + <see cref="IFlowlyConfiguration"/>
+    /// class and registers the required queues, topics, and subscriptions with the emulator.
+    /// Use this overload when the project uses the class-based configuration pattern.
+    /// </summary>
     public static IResourceBuilder<AzureServiceBusResource> AddFlowly(this IResourceBuilder<AzureServiceBusResource> serviceBus, IResourceBuilder<ProjectResource> project, string? providerName = null)
     {
         var metadata = project.Resource.Annotations.OfType<IProjectMetadata>().Single();
         var assemblyPath = FindAssemblyPath(metadata.ProjectPath);
-        var queues = DiscoverQueuesFromAssembly(assemblyPath, providerName);
-        return RegisterQueues(serviceBus, queues);
+        var (queues, events) = DiscoverFromAssembly(assemblyPath, providerName);
+        serviceBus = RegisterQueues(serviceBus, queues);
+        serviceBus = RegisterEvents(serviceBus, events);
+        return serviceBus;
+    }
+
+    /// <summary>
+    /// Registers queues, topics, and subscriptions with the emulator using an explicit topology
+    /// description. Use this overload when the project uses the inline configuration pattern
+    /// (<c>builder.AddFlowly(options, configure => ...)</c>) and has no design-time factory class
+    /// that assembly scanning can discover.
+    /// </summary>
+    public static IResourceBuilder<AzureServiceBusResource> AddFlowly(this IResourceBuilder<AzureServiceBusResource> serviceBus, IResourceBuilder<ProjectResource> project, Action<IFlowlyAspireTopologyBuilder> describeTopology)
+    {
+        var builder = new FlowlyAspireTopologyBuilder();
+        describeTopology(builder);
+        serviceBus = RegisterQueues(serviceBus, builder.Queues);
+        serviceBus = RegisterEvents(serviceBus, builder.Events);
+        return serviceBus;
     }
 
     private static IResourceBuilder<AzureServiceBusResource> RegisterQueues(IResourceBuilder<AzureServiceBusResource> serviceBus, IReadOnlyList<DeferredQueueRegistration> queues)
     {
-        var annotation = serviceBus.Resource.Annotations
-            .OfType<FlowlyQueueAnnotation>()
-            .FirstOrDefault();
-
-        if (annotation is null)
-        {
-            annotation = new FlowlyQueueAnnotation();
-            serviceBus.WithAnnotation(annotation);
-        }
+        var annotation = GetOrCreateAnnotation(serviceBus);
 
         var registeredNames = annotation.Queues
             .Select(q => q.Resource.Name)
@@ -55,7 +70,45 @@ public static class FlowlyAzureServiceBusExtensions
         return serviceBus;
     }
 
-    private static IReadOnlyList<DeferredQueueRegistration> DiscoverQueuesFromAssembly(string assemblyPath, string? providerName)
+    private static IResourceBuilder<AzureServiceBusResource> RegisterEvents(IResourceBuilder<AzureServiceBusResource> serviceBus, IReadOnlyList<DeferredEventRegistration> events)
+    {
+        var annotation = GetOrCreateAnnotation(serviceBus);
+
+        foreach (var @event in events)
+        {
+            if (!annotation.TryGetTopic(@event.TopicOrExchangeName, out var topicBuilder))
+            {
+                topicBuilder = serviceBus
+                    .AddServiceBusTopic(@event.TopicOrExchangeName)
+                    .WithProperties(t =>
+                    {
+                        t.DefaultMessageTimeToLive = EmulatorMaxTtl(@event.DefaultMessageTimeToLive ?? TimeSpan.FromDays(1));
+                    });
+
+                annotation.AddTopic(@event.TopicOrExchangeName, topicBuilder);
+            }
+
+            topicBuilder.AddServiceBusSubscription(@event.SubscriptionName);
+        }
+
+        return serviceBus;
+    }
+
+    private static FlowlyQueueAnnotation GetOrCreateAnnotation(IResourceBuilder<AzureServiceBusResource> serviceBus)
+    {
+        var annotation = serviceBus.Resource.Annotations
+            .OfType<FlowlyQueueAnnotation>()
+            .FirstOrDefault();
+
+        if (annotation is not null)
+            return annotation;
+
+        annotation = new FlowlyQueueAnnotation();
+        serviceBus.WithAnnotation(annotation);
+        return annotation;
+    }
+
+    private static (IReadOnlyList<DeferredQueueRegistration> Queues, IReadOnlyList<DeferredEventRegistration> Events) DiscoverFromAssembly(string assemblyPath, string? providerName)
     {
         var loadContext = new AssemblyLoadContext($"flowly-aspire-{Guid.NewGuid():N}", isCollectible: true);
         loadContext.Resolving += (_, name) =>
@@ -75,14 +128,21 @@ public static class FlowlyAzureServiceBusExtensions
                 .ToList();
 
             var manifests = configTypes.SelectMany(t => FlowlyDesignTimeFactory.DiscoverQueues(t)).ToList();
-
             var selectedManifests = SelectManifests(manifests, providerName);
 
-            return selectedManifests
+            var queues = selectedManifests
                 .SelectMany(m => m.Queues)
                 .GroupBy(r => r.QueueName, StringComparer.OrdinalIgnoreCase)
                 .Select(g => g.First())
                 .ToList();
+
+            var events = selectedManifests
+                .SelectMany(m => m.Events)
+                .GroupBy(e => (e.TopicOrExchangeName, e.SubscriptionName), new TopicSubscriptionComparer())
+                .Select(g => g.First())
+                .ToList();
+
+            return (queues, events);
         }
         finally
         {
@@ -148,5 +208,17 @@ public static class FlowlyAzureServiceBusExtensions
                       $"Assembly '{assemblyName}.dll' not found under '{binDir}'. Build the project before starting the AppHost.");
 
         return dll;
+    }
+
+    private sealed class TopicSubscriptionComparer : IEqualityComparer<(string Topic, string Subscription)>
+    {
+        public bool Equals((string Topic, string Subscription) x, (string Topic, string Subscription) y)
+            => string.Equals(x.Topic, y.Topic, StringComparison.OrdinalIgnoreCase) &&
+               string.Equals(x.Subscription, y.Subscription, StringComparison.OrdinalIgnoreCase);
+
+        public int GetHashCode((string Topic, string Subscription) obj)
+            => HashCode.Combine(
+                obj.Topic.ToLowerInvariant(),
+                obj.Subscription.ToLowerInvariant());
     }
 }

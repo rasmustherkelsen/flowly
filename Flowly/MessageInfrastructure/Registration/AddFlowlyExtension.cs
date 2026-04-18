@@ -1,4 +1,5 @@
 using System.Reflection;
+using Flowly.MessageInfrastructure.Events.Telemetry;
 using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.Services;
 using Microsoft.Extensions.Configuration;
@@ -66,8 +67,10 @@ public static class AddFlowlyExtension
         // without calling BuildServiceProvider().
         var clientRegistry = new MessageBusClientRegistry();
         var topologyRegistry = new MessagingTopologyCreatorRegistry();
+        var eventTopologyRegistry = new EventTopologyCreatorRegistry();
         services.TryAddSingleton<IMessageBusClientRegistry>(clientRegistry);
         services.TryAddSingleton<IMessagingTopologyCreatorRegistry>(topologyRegistry);
+        services.TryAddSingleton<IEventTopologyCreatorRegistry>(eventTopologyRegistry);
 
         services.TryAddSingleton<IQueueManager, QueueManager>();
         services.TryAddSingleton<ICrossProviderConflictValidator, CrossProviderConflictValidator>();
@@ -83,9 +86,17 @@ public static class AddFlowlyExtension
         ISubmitterInstrumentation submitterInstrumentation = options.EnableTelemetry
             ? new SubmitterInstrumentation()
             : new NullSubmitterInstrumentation();
+        IEventHandlerInstrumentation eventHandlerInstrumentation = options.EnableTelemetry
+            ? new EventHandlerInstrumentation()
+            : new NullEventHandlerInstrumentation();
+        IEventPublisherInstrumentation eventPublisherInstrumentation = options.EnableTelemetry
+            ? new EventPublisherInstrumentation()
+            : new NullEventPublisherInstrumentation();
 
         services.TryAddSingleton(handlerInstrumentation);
         services.TryAddSingleton(submitterInstrumentation);
+        services.TryAddSingleton(eventHandlerInstrumentation);
+        services.TryAddSingleton(eventPublisherInstrumentation);
 
         services.AddHostedService<CommandLineParserHostedService>();
 

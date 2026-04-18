@@ -1,13 +1,14 @@
 # Azure Service Bus — Aspire
 
-Full-featured Flowly sample using Azure Service Bus with .NET Aspire. Demonstrates the complete feature set: job state tracking, batch message handling, recurring jobs, dead letter tracking, and OpenTelemetry integration.
+Full-featured Flowly sample using Azure Service Bus with .NET Aspire. Demonstrates the complete feature set: job state tracking, batch message handling, recurring jobs, dead letter tracking, fan-out events, and OpenTelemetry integration.
 
 ## Projects
 
 | Project | Purpose |
 |---|---|
-| `MessageContracts` | Shared message contracts (`ProcessOrder`, `RebuildIndexMessage`, `SomeQueryMessage`) |
-| `BackendProcessor` | Handles all messages; owns queue topology via `BackendProcessorFlowlyConfiguration` |
+| `MessageContracts` | Shared message contracts (`ProcessOrder`, `RebuildIndexMessage`, `SomeQueryMessage`, `OrderProcessedEvent`) |
+| `BackendProcessor` | Handles all messages and publishes events; owns queue topology via `BackendProcessorFlowlyConfiguration` |
+| `BackendFinanceProcessor` | Subscribes to `OrderProcessedEvent` to write orders to the accounting system |
 | `Api` | HTTP API that submits jobs and messages, reads job state and dead letters |
 | `AzureServiceBusAspire.AppHost` | Aspire host: wires up ASB emulator, SQL Server, and all projects |
 | `AzureServiceBusAspire.ServiceDefaults` | Shared Aspire service defaults (logging, health checks, OTel) |
@@ -19,8 +20,9 @@ Full-featured Flowly sample using Azure Service Bus with .NET Aspire. Demonstrat
 - **Batch handler** (`RebuildIndexMessage` → `RebuildIndexBatchHandler`): processes multiple messages in one invocation
 - **Recurring jobs** (`RecurringImportHandler`, `FrequentlyRecurringHandler`): CRON-scheduled background work
 - **Message handler with retry + dead letter tracking** (`SomeQueryMessage` → `SomeQueryProcessor`): randomly fails to exercise the retry policy; dead-lettered messages are persisted to SQL Server
+- **Fan-out events** (`OrderProcessedEvent`): after completing an order, `BackendProcessor` raises the event; both `OrderProcessedEventHandler` (BackendProcessor) and `FinanceOrderProcessedEventHandler` (BackendFinanceProcessor) receive it independently
 - **OpenTelemetry** metrics and traces via `AddFlowlyInstrumentation()`
-- **Queue topology auto-registration** via `Flowly.AzureServiceBus.Aspire` — queues are created in the emulator automatically by reading `BackendProcessorFlowlyConfiguration` at AppHost startup
+- **Queue topology auto-registration** via `Flowly.AzureServiceBus.Aspire` — queues and event subscriptions are created in the emulator automatically at AppHost startup
 - **Next.js dashboard** (`Dashboard/`) — UI for submitting orders, viewing live job progress, inspecting and requeueing dead letters, and manually triggering recurring jobs
 
 ## Prerequisites
@@ -36,7 +38,7 @@ Full-featured Flowly sample using Azure Service Bus with .NET Aspire. Demonstrat
 dotnet run --project AzureServiceBusAspire.AppHost
 ```
 
-Aspire starts the ASB emulator, SQL Server, BackendProcessor, Api, and the dashboard. Open the Aspire dashboard URL printed to the console to see logs, traces, and resource health.
+Aspire starts the ASB emulator, SQL Server, BackendProcessor, BackendFinanceProcessor, Api, and the dashboard. Open the Aspire dashboard URL printed to the console to see logs, traces, and resource health.
 
 ### What to observe
 
@@ -45,6 +47,7 @@ Aspire starts the ASB emulator, SQL Server, BackendProcessor, Api, and the dashb
 - The **Jobs** page shows live job progress, including intermediate state saved by `OrderProcessor`.
 - The **Dead Letters** page lists messages that exhausted all retries; from here you can requeue or discard them.
 - The **Recurring Jobs** page lets you trigger `RecurringImportHandler` and `FrequentlyRecurringHandler` on demand.
-- Watch `BackendProcessor` logs to see jobs progressing through `Created → Started → Completed`.
+- Watch `BackendProcessor` logs to see jobs progressing through `Created → Started → Completed`, and the `OrderProcessedEvent` being raised and handled (email notification log line).
+- Watch `BackendFinanceProcessor` logs to see `FinanceOrderProcessedEventHandler` receive the same event and log the accounting system write.
 - `SomeQueryProcessor` fails ~50% of the time — watch retries fire and eventually dead-letter to the `FlowlyDeadLetters` database.
 - Recurring jobs fire every 10 and 30 seconds respectively; observe them in the BackendProcessor logs.

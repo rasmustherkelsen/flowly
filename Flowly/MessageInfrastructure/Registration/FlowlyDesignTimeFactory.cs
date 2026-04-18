@@ -36,10 +36,9 @@ public abstract class FlowlyDesignTimeFactory
     {
         var services = new ServiceCollection();
 
-        var clientRegistry = new MessageBusClientRegistry();
-        var topologyRegistry = new MessagingTopologyCreatorRegistry();
-        services.AddSingleton<IMessageBusClientRegistry>(clientRegistry);
-        services.AddSingleton<IMessagingTopologyCreatorRegistry>(topologyRegistry);
+        services.AddSingleton<IMessageBusClientRegistry>(new MessageBusClientRegistry());
+        services.AddSingleton<IMessagingTopologyCreatorRegistry>(new MessagingTopologyCreatorRegistry());
+        services.AddSingleton<IEventTopologyCreatorRegistry>(new EventTopologyCreatorRegistry());
 
         var builder = new FlowlyBuilder(services, new DiscoveryConfiguration());
         var instance = (IFlowlyConfiguration)Activator.CreateInstance(configType)!;

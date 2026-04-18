@@ -67,6 +67,10 @@ namespace Flowly.DeadLetters.Postgres.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
+                    b.Property<string>("SubscriptionName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.HasKey("MessageId");
 
                     b.ToTable("DeadLetters");

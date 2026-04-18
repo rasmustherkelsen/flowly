@@ -1,8 +1,11 @@
+using Flowly.MessageInfrastructure.Events.Registration;
+
 namespace Flowly.MessageInfrastructure.Registration;
 
 public sealed class ProviderQueueManifest
 {
     private readonly List<DeferredQueueRegistration> _queues = [];
+    private readonly List<DeferredEventRegistration> _events = [];
 
     public ProviderQueueManifest(string providerName, bool isPrimary, string transportType)
     {
@@ -19,6 +22,8 @@ public sealed class ProviderQueueManifest
 
     public IReadOnlyList<DeferredQueueRegistration> Queues => _queues;
 
+    public IReadOnlyList<DeferredEventRegistration> Events => _events;
+
     internal void Add(DeferredQueueRegistration registration)
     {
         if (string.IsNullOrWhiteSpace(registration.QueueName))
@@ -34,6 +39,16 @@ public sealed class ProviderQueueManifest
         }
 
         _queues[existing] = Merge(_queues[existing], registration);
+    }
+
+    internal void AddEvent(DeferredEventRegistration registration)
+    {
+        var alreadyRegistered = _events.Any(e =>
+            string.Equals(e.TopicOrExchangeName, registration.TopicOrExchangeName, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(e.SubscriptionName, registration.SubscriptionName, StringComparison.OrdinalIgnoreCase));
+
+        if (!alreadyRegistered)
+            _events.Add(registration);
     }
 
     private static DeferredQueueRegistration Merge(DeferredQueueRegistration a, DeferredQueueRegistration b)

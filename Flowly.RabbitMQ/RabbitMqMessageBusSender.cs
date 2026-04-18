@@ -66,7 +66,7 @@ internal class RabbitMqMessageBusSender(string queueName, IChannel channel, long
             props.CorrelationId = messageProperties.CorrelationId;
 
         if (messageProperties.RetryCount > 0)
-            props.Headers["flowly-retry-count"] = messageProperties.RetryCount;
+            props.Headers[FlowlyMessageProperties.RetryCount] = messageProperties.RetryCount;
 
         if (Activity.Current?.Id is { } traceparent)
             props.Headers["traceparent"] = traceparent;

@@ -64,6 +64,14 @@ public static class RabbitMqRegistration
 
         topologyRegistry.Register(effectiveName, topologyCreator);
 
+        var eventTopologyRegistry = services
+            .Where(s => s.ServiceType == typeof(IEventTopologyCreatorRegistry))
+            .Select(s => s.ImplementationInstance)
+            .OfType<IEventTopologyCreatorRegistry>()
+            .First();
+
+        eventTopologyRegistry.Register(effectiveName, topologyCreator);
+
         services.AddSingleton<IMessagingTopologyValidator>(
             new RabbitMqRetryTopologyValidator(effectiveName, connectionPool));
 

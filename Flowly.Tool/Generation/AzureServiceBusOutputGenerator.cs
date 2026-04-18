@@ -1,14 +1,20 @@
 using System.Text;
 using System.Text.Json;
 using System.Xml;
+using Flowly.MessagingAbstractions;
 using Flowly.Tool.QueueDiscovery;
 
 namespace Flowly.Tool.Generation;
 
 internal static class AzureServiceBusOutputGenerator
 {
-    public static string CreateEmulatorConfigJson(string @namespace, IReadOnlyList<QueueDiscoveryQueue> queueDefinitions)
+    public static string CreateEmulatorConfigJson(string @namespace, IReadOnlyList<QueueDiscoveryQueue> queueDefinitions, IReadOnlyList<QueueDiscoveryEvent> eventDefinitions)
     {
+        var topicGroups = eventDefinitions
+            .GroupBy(e => e.TopicOrExchangeName, StringComparer.OrdinalIgnoreCase)
+            .Select(g => CreateEmulatorTopic(g.Key, g.ToList()))
+            .ToArray();
+
         var payload = new
         {
             UserConfig = new
@@ -19,7 +25,7 @@ internal static class AzureServiceBusOutputGenerator
                     {
                         Name = @namespace,
                         Queues = queueDefinitions.Select(CreateEmulatorQueue).ToArray(),
-                        Topics = Array.Empty<object>()
+                        Topics = topicGroups
                     }
                 },
                 Logging = new
@@ -35,7 +41,7 @@ internal static class AzureServiceBusOutputGenerator
         });
     }
 
-    public static string CreateBicepTemplate(string namespaceResourceName, string serviceBusNamespaceName, IReadOnlyList<QueueDiscoveryQueue> queueDefinitions)
+    public static string CreateBicepTemplate(string namespaceResourceName, string serviceBusNamespaceName, IReadOnlyList<QueueDiscoveryQueue> queueDefinitions, IReadOnlyList<QueueDiscoveryEvent> eventDefinitions)
     {
         var sb = new StringBuilder();
 
@@ -69,10 +75,49 @@ internal static class AzureServiceBusOutputGenerator
             sb.AppendLine();
         }
 
+        foreach (var topicGroup in eventDefinitions.GroupBy(e => e.TopicOrExchangeName, StringComparer.OrdinalIgnoreCase))
+        {
+            var topicName = topicGroup.Key;
+            var firstEvent = topicGroup.First();
+            sb.AppendLine($"resource topic_{ToIdentifier(topicName)} 'Microsoft.ServiceBus/namespaces/topics@2024-01-01' = {{");
+            sb.AppendLine($"  name: '${{serviceBusNamespace.name}}/{topicName}'");
+            sb.AppendLine("  properties: {");
+            sb.AppendLine($"    defaultMessageTimeToLive: '{ToIso8601Duration(firstEvent.DefaultMessageTimeToLive)}'");
+            sb.AppendLine("  }");
+            sb.AppendLine("}");
+            sb.AppendLine();
+
+            foreach (var sub in topicGroup)
+            {
+                var subId = $"{ToIdentifier(topicName)}_{ToIdentifier(sub.SubscriptionName)}";
+                sb.AppendLine($"resource subscription_{subId} 'Microsoft.ServiceBus/namespaces/topics/subscriptions@2024-01-01' = {{");
+                sb.AppendLine($"  name: '${{topic_{ToIdentifier(topicName)}.name}}/{sub.SubscriptionName}'");
+                sb.AppendLine("  properties: {");
+                sb.AppendLine("    maxDeliveryCount: 10");
+                sb.AppendLine($"    deadLetteringOnMessageExpiration: {sub.DeadLetterOnMessageExpiration.ToString().ToLowerInvariant()}");
+                sb.AppendLine($"    defaultMessageTimeToLive: '{ToIso8601Duration(sub.DefaultMessageTimeToLive)}'");
+                sb.AppendLine("  }");
+                sb.AppendLine("}");
+                sb.AppendLine();
+
+                sb.AppendLine($"resource rule_{subId} 'Microsoft.ServiceBus/namespaces/topics/subscriptions/rules@2024-01-01' = {{");
+                sb.AppendLine($"  name: '${{subscription_{subId}.name}}/$Default'");
+                sb.AppendLine("  properties: {");
+                sb.AppendLine("    filterType: 'SqlFilter'");
+                sb.AppendLine("    sqlFilter: {");
+                sb.AppendLine($"      sqlExpression: '(NOT EXISTS([{FlowlyMessageProperties.TargetSubscription}])) OR [{FlowlyMessageProperties.TargetSubscription}] = ''{sub.SubscriptionName}'''");
+                sb.AppendLine("    }");
+                sb.AppendLine("  }");
+                sb.AppendLine($"  dependsOn: [subscription_{subId}]");
+                sb.AppendLine("}");
+                sb.AppendLine();
+            }
+        }
+
         return sb.ToString();
     }
 
-    public static string CreateAspireBootstrapCode(string builderVariableName, string connectionName, string namespaceVariableName, IReadOnlyList<string> queueNames)
+    public static string CreateAspireBootstrapCode(string builderVariableName, string connectionName, string namespaceVariableName, IReadOnlyList<string> queueNames, IReadOnlyList<QueueDiscoveryEvent> eventDefinitions)
     {
         var sb = new StringBuilder();
 
@@ -82,6 +127,18 @@ internal static class AzureServiceBusOutputGenerator
         foreach (var queueName in queueNames)
         {
             sb.AppendLine($"var {ToQueueVariableName(queueName)} = {namespaceVariableName}.AddServiceBusQueue(\"{queueName}\");");
+        }
+
+        foreach (var topicGroup in eventDefinitions.GroupBy(e => e.TopicOrExchangeName, StringComparer.OrdinalIgnoreCase))
+        {
+            sb.AppendLine();
+            var topicName = topicGroup.Key;
+            var topicVariable = ToQueueVariableName(topicName).Replace("Queue", "Topic");
+            sb.AppendLine($"var {topicVariable} = {namespaceVariableName}.AddServiceBusTopic(\"{topicName}\");");
+            foreach (var sub in topicGroup)
+            {
+                sb.AppendLine($"{topicVariable}.AddServiceBusSubscription(\"{sub.SubscriptionName}\");");
+            }
         }
 
         return sb.ToString();
@@ -110,6 +167,51 @@ internal static class AzureServiceBusOutputGenerator
                 RequiresDuplicateDetection = false,
                 RequiresSession = queueDefinition.RequiresSession
             }
+        };
+    }
+
+    private static object CreateEmulatorTopic(string topicName, IReadOnlyList<QueueDiscoveryEvent> subscriptions)
+    {
+        return new
+        {
+            Name = topicName,
+            Properties = new
+            {
+                DefaultMessageTimeToLive = ToIso8601Duration(
+                    subscriptions[0].DefaultMessageTimeToLive > EmulatorMaxMessageTimeToLive
+                        ? EmulatorMaxMessageTimeToLive
+                        : subscriptions[0].DefaultMessageTimeToLive),
+                DuplicateDetectionHistoryTimeWindow = ToIso8601Duration(EmulatorMaxDuplicateDetectionHistoryTimeWindow),
+                RequiresDuplicateDetection = false
+            },
+            Subscriptions = subscriptions.Select(s => new
+            {
+                Name = s.SubscriptionName,
+                Properties = new
+                {
+                    DeadLetteringOnMessageExpiration = s.DeadLetterOnMessageExpiration,
+                    DefaultMessageTimeToLive = ToIso8601Duration(
+                        s.DefaultMessageTimeToLive > EmulatorMaxMessageTimeToLive
+                            ? EmulatorMaxMessageTimeToLive
+                            : s.DefaultMessageTimeToLive),
+                    MaxDeliveryCount = 10
+                },
+                Rules = new[]
+                {
+                    new
+                    {
+                        Name = "$Default",
+                        Properties = new
+                        {
+                            FilterType = "Sql",
+                            SqlFilter = new
+                            {
+                                SqlExpression = $"(NOT EXISTS([{FlowlyMessageProperties.TargetSubscription}])) OR [{FlowlyMessageProperties.TargetSubscription}] = '{s.SubscriptionName}'"
+                            }
+                        }
+                    }
+                }
+            }).ToArray()
         };
     }
 

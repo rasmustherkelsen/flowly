@@ -29,5 +29,15 @@ public static class FlowlyInstrumentationConstants
     public const string JobsFailed = "flowly.jobs.failed";
     public const string JobsRunning = "flowly.jobs.running";
 
+    public const string EventHandlerMessagesReceived = "flowly.event.handler.received";
+    public const string EventHandlerMessagesSucceeded = "flowly.event.handler.succeeded";
+    public const string EventHandlerMessagesFailed = "flowly.event.handler.failed";
+    public const string EventHandlerMessagesRetried = "flowly.event.handler.retried";
+    public const string EventHandlerProcessingDuration = "flowly.event.handler.processing.duration";
+
+    public const string EventPublisherEventsRaised = "flowly.event.publisher.raised";
+    public const string EventPublisherEventsFailed = "flowly.event.publisher.failed";
+    public const string EventPublisherRaiseDuration = "flowly.event.publisher.raise.duration";
+
     internal static readonly ActivitySource ActivitySource = new(ActivitySourceName);
 }

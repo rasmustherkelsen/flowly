@@ -105,9 +105,11 @@ public class AzureServiceBusRegistrationTests
         var services = new ServiceCollection();
         var registry = new FakeMessageBusClientRegistry();
         var topologyRegistry = new FakeMessagingTopologyCreatorRegistry();
+        var eventTopologyRegistry = new FakeEventTopologyCreatorRegistry();
 
         services.AddSingleton<IMessageBusClientRegistry>(registry);
         services.AddSingleton<IMessagingTopologyCreatorRegistry>(topologyRegistry);
+        services.AddSingleton<IEventTopologyCreatorRegistry>(eventTopologyRegistry);
 
         var builder = new FakeFlowlyBuilder(services, configuration ?? new ConfigurationBuilder().Build());
 
@@ -144,6 +146,12 @@ public class AzureServiceBusRegistrationTests
     {
         public void Register(string providerName, IMessagingTopologyCreator creator) { }
         public IMessagingTopologyCreator GetCreator(string providerName) => throw new NotImplementedException();
+    }
+
+    private sealed class FakeEventTopologyCreatorRegistry : IEventTopologyCreatorRegistry
+    {
+        public void Register(string providerName, IEventTopologyCreator creator) { }
+        public IEventTopologyCreator? TryGetCreator(string providerName) => null;
     }
 
     private sealed class FakeTokenCredential : TokenCredential
