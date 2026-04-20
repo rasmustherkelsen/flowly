@@ -1,5 +1,5 @@
 name: Publish to NuGet
-run-name: publishing Flowly to Nuget
+run-name: Publishing Flowly to Nuget
 
 on:
   push:
