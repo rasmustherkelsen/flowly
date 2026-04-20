@@ -1,4 +1,4 @@
-# Flowly
+<img src="assets/flowly-logo.svg" alt="Flowly" height="56">
 
 Flowly is a queue-based messaging abstraction for .NET. It sits between your application code and the underlying message broker, giving you a clean, convention-driven API for message handling, job tracking, retries, dead letter management, and recurring scheduled work.
 

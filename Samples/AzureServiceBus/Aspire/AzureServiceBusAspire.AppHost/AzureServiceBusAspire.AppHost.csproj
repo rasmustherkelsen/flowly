@@ -20,7 +20,7 @@
     <ProjectReference Include="..\BackendProcessor\BackendProcessor.csproj" />
     <ProjectReference Include="..\BackendFinanceProcessor\BackendFinanceProcessor.csproj" />
     <ProjectReference Include="..\MessageContracts\MessageContracts.csproj" IsAspireProjectResource="false" />
-    <ProjectReference Include="..\..\..\..\Flowly.AzureServiceBus.Aspire\Flowly.AzureServiceBus.Aspire.csproj" IsAspireProjectResource="false" />
+    <ProjectReference Include="..\..\..\..\src\Flowly.AzureServiceBus.Aspire\Flowly.AzureServiceBus.Aspire.csproj" IsAspireProjectResource="false" />
   </ItemGroup>
 
 </Project>

@@ -28,7 +28,18 @@
       "Bash(grep -E '\\\\.\\(cs|csproj|json\\)$')",
       "Bash(uuidgen)",
       "Bash(sort -t: -k2 -n)",
-      "Bash(git *)"
+      "Bash(git *)",
+      "Bash(sort echo *)",
+      "Bash(xargs perl *)",
+      "Bash(python3 *)",
+      "Bash(node -e \"require\\('sharp'\\)\")",
+      "Bash(node -e \"require\\('canvas'\\)\")",
+      "Bash(brew list *)",
+      "Bash(pip3 show *)",
+      "Bash(pip3 install *)",
+      "Bash(brew install *)",
+      "Bash(wait)",
+      "Bash(rsvg-convert -w 128 -h 128 /Users/rasmus/Source/TriumfNas/SimpleTransit/docs/assets/flowly-icon.svg -o /Users/rasmus/Source/TriumfNas/SimpleTransit/docs/assets/flowly-icon.png)"
     ]
   }
 }

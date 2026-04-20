@@ -9,7 +9,7 @@
 $ErrorActionPreference = "Stop"
 
 $scriptDir = $PSScriptRoot
-$repoRoot = Resolve-Path "$scriptDir/../../.."
+$repoRoot = Resolve-Path "$scriptDir/../../../src"
 $toolProject = Join-Path $repoRoot "Flowly.Tool/Flowly.Tool.csproj"
 $packOutput = Join-Path $repoRoot "Flowly.Tool/bin/Release"
 
@@ -22,9 +22,9 @@ dotnet tool uninstall --global Flowly.Tool 2>$null
 dotnet tool install --global Flowly.Tool --add-source $packOutput
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-Write-Host "Generating sbconfig.json from Sender, ReceiverOne and ReceiverTwo..."
+Write-Host "Generating sbconfig.json from EventSender, ReceiverOne and ReceiverTwo..."
 flowly azure-service-bus emulator-config `
-    --project "$scriptDir/Sender" `
+    --project "$scriptDir/EventSender" `
     --project "$scriptDir/ReceiverOne" `
     --project "$scriptDir/ReceiverTwo" `
     --namespace "sbemulatorns" `

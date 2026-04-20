@@ -8,7 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\..\..\Flowly.RabbitMQ\Flowly.RabbitMQ.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Flowly.RabbitMQ\Flowly.RabbitMQ.csproj" />
     <ProjectReference Include="..\Messages\Messages.csproj" />
   </ItemGroup>
 

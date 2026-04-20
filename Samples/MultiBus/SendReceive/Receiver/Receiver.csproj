@@ -7,8 +7,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\..\..\Flowly.AzureServiceBus\Flowly.AzureServiceBus.csproj" />
-    <ProjectReference Include="..\..\..\..\Flowly.RabbitMQ\Flowly.RabbitMQ.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Flowly.AzureServiceBus\Flowly.AzureServiceBus.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Flowly.RabbitMQ\Flowly.RabbitMQ.csproj" />
     <ProjectReference Include="..\Messages\Messages.csproj" />
   </ItemGroup>
 

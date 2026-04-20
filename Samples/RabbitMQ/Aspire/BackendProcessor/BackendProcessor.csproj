@@ -14,12 +14,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\..\..\Flowly.OpenTelemetry\Flowly.OpenTelemetry.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Flowly.OpenTelemetry\Flowly.OpenTelemetry.csproj" />
     <ProjectReference Include="..\MessageContracts\MessageContracts.csproj" />
     <ProjectReference Include="..\RabbitMQAspire.ServiceDefaults\RabbitMQAspire.ServiceDefaults.csproj" />
-    <ProjectReference Include="..\..\..\..\Flowly.RabbitMQ\Flowly.RabbitMQ.csproj" />
-    <ProjectReference Include="..\..\..\..\Flowly.Jobs.Postgres\Flowly.Jobs.Postgres.csproj" />
-    <ProjectReference Include="..\..\..\..\Flowly.DeadLetters.Postgres\Flowly.DeadLetters.Postgres.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Flowly.RabbitMQ\Flowly.RabbitMQ.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Flowly.Jobs.Postgres\Flowly.Jobs.Postgres.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Flowly.DeadLetters.Postgres\Flowly.DeadLetters.Postgres.csproj" />
   </ItemGroup>
 
 </Project>

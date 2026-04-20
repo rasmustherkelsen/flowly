@@ -17,7 +17,7 @@ services:
   receiver:
     build:
       context: ../../..
-      dockerfile: Samples/RabbitMQ/HealthChecks/Receiver/Dockerfile
+      dockerfile: samples/RabbitMQ/HealthChecks/Receiver/Dockerfile
     ports:
       - "8080:8080"
     environment:

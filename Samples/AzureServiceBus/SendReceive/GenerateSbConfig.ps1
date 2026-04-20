@@ -9,7 +9,7 @@
 $ErrorActionPreference = "Stop"
 
 $scriptDir = $PSScriptRoot
-$repoRoot = Resolve-Path "$scriptDir/../../.."
+$repoRoot = Resolve-Path "$scriptDir/../../../src"
 $toolProject = Join-Path $repoRoot "Flowly.Tool/Flowly.Tool.csproj"
 $packOutput = Join-Path $repoRoot "Flowly.Tool/bin/Release"
 

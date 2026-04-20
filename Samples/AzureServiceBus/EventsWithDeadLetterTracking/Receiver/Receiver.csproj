@@ -7,8 +7,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\..\..\Flowly.AzureServiceBus\Flowly.AzureServiceBus.csproj" />
-    <ProjectReference Include="..\..\..\..\Flowly.DeadLetters.SqlServer\Flowly.DeadLetters.SqlServer.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Flowly.AzureServiceBus\Flowly.AzureServiceBus.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Flowly.DeadLetters.SqlServer\Flowly.DeadLetters.SqlServer.csproj" />
     <ProjectReference Include="..\Messages\Messages.csproj" />
   </ItemGroup>
 

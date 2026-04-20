@@ -8,10 +8,10 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\..\..\..\Flowly.OpenTelemetry\Flowly.OpenTelemetry.csproj" />
+        <ProjectReference Include="..\..\..\..\src\Flowly.OpenTelemetry\Flowly.OpenTelemetry.csproj" />
         <ProjectReference Include="..\MessageContracts\MessageContracts.csproj" />
         <ProjectReference Include="..\RabbitMQAspire.ServiceDefaults\RabbitMQAspire.ServiceDefaults.csproj" />
-        <ProjectReference Include="..\..\..\..\Flowly.RabbitMQ\Flowly.RabbitMQ.csproj" />
+        <ProjectReference Include="..\..\..\..\src\Flowly.RabbitMQ\Flowly.RabbitMQ.csproj" />
     </ItemGroup>
 
 </Project>

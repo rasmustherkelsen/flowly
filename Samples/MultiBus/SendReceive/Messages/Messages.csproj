@@ -7,7 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\..\..\Flowly\Flowly.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Flowly\Flowly.csproj" />
   </ItemGroup>
 
 </Project>

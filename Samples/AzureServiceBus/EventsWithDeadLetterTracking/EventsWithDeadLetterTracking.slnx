@@ -1,10 +1,4 @@
 <Solution>
-  <Folder Name="/Flowly/">
-    <Project Path="../../../Flowly.AzureServiceBus/Flowly.AzureServiceBus.csproj" />
-    <Project Path="../../../Flowly.DeadLetters.SqlServer/Flowly.DeadLetters.SqlServer.csproj" />
-    <Project Path="../../../Flowly.DeadLetters/Flowly.DeadLetters.csproj" />
-    <Project Path="../../../Flowly/Flowly.csproj" />
-  </Folder>
   <Project Path="Console/Console.csproj" />
   <Project Path="Messages/Messages.csproj" />
   <Project Path="Receiver/Receiver.csproj" />

@@ -18,9 +18,9 @@
   <ItemGroup>
     <ProjectReference Include="..\MessageContracts\MessageContracts.csproj" />
     <ProjectReference Include="..\AzureServiceBusAspire.ServiceDefaults\AzureServiceBusAspire.ServiceDefaults.csproj" />
-    <ProjectReference Include="..\..\..\..\Flowly.AzureServiceBus\Flowly.AzureServiceBus.csproj" />
-    <ProjectReference Include="..\..\..\..\Flowly.DeadLetters.SqlServer\Flowly.DeadLetters.SqlServer.csproj" />
-    <ProjectReference Include="..\..\..\..\Flowly.Jobs.SqlServer\Flowly.Jobs.SqlServer.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Flowly.AzureServiceBus\Flowly.AzureServiceBus.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Flowly.DeadLetters.SqlServer\Flowly.DeadLetters.SqlServer.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Flowly.Jobs.SqlServer\Flowly.Jobs.SqlServer.csproj" />
   </ItemGroup>
 
 </Project>

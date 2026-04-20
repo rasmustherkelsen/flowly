@@ -17,11 +17,11 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
+import Image from 'next/image';
 import MenuIcon from '@mui/icons-material/Menu';
 import WorkHistoryIcon from '@mui/icons-material/WorkHistory';
 import EventRepeatIcon from '@mui/icons-material/EventRepeat';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
-import HubIcon from '@mui/icons-material/Hub';
 import SendIcon from '@mui/icons-material/Send';
 
 const DRAWER_WIDTH = 220;
@@ -40,7 +40,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const drawer = (
     <Box>
       <Toolbar sx={{ gap: 1 }}>
-        <HubIcon color="primary" />
+        <Image src="/flowly-icon.svg" alt="Flowly" width={32} height={32} />
         <Typography variant="h6" fontWeight={700} color="primary">
           Flowly
         </Typography>

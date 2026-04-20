@@ -1,6 +1,0 @@
-<component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="Sample - AzureServiceBus - EventsWithDeadLetterTracking" type="CompoundRunConfigurationType">
-    <toRun name="ReceiverNoRetry: http" type="LaunchSettings" />
-    <method v="2" />
-  </configuration>
-</component>
