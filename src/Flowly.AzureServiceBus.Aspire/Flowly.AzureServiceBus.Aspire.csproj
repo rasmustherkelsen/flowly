@@ -4,6 +4,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <PackageId>Flowly.AzureServiceBus.Aspire</PackageId>
+    <Description>Aspire AppHost integration for Flowly Azure Service Bus.</Description>
   </PropertyGroup>
 
   <ItemGroup>

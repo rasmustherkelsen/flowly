@@ -1,0 +1,10 @@
+<Project>
+  <PropertyGroup>
+    <Authors>Rasmus Therkelsen</Authors>
+    <PackageProjectUrl>https://github.com/rasmustherkelsen/flowly</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/rasmustherkelsen/flowly</RepositoryUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+</Project>

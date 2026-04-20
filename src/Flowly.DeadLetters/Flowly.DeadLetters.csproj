@@ -4,6 +4,8 @@
         <TargetFramework>net10.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
+        <PackageId>Flowly.DeadLetters</PackageId>
+        <Description>Dead letter tracking core for Flowly.</Description>
     </PropertyGroup>
 
     <ItemGroup>

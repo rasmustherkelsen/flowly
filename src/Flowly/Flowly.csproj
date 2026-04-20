@@ -4,6 +4,8 @@
 		<TargetFramework>net10.0</TargetFramework>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
+		<PackageId>Flowly</PackageId>
+		<Description>Transport-agnostic queue-based messaging abstraction for .NET. Supports dead letter tracking, jobs, and recurring jobs.</Description>
 	</PropertyGroup>
 
 	<ItemGroup>
