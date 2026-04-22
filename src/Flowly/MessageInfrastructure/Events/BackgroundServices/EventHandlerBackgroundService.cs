@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using Flowly.MessageInfrastructure.Events.Telemetry;
 using Flowly.MessageInfrastructure.Registration;
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -18,19 +18,17 @@ internal class EventHandlerBackgroundService<TEvent, THandler>(
     where TEvent : class
     where THandler : EventHandlerBase<TEvent>
 {
-    private IMessageBusProcessor<TEvent>? _processor;
     private string _messagingSystem = string.Empty;
+    private IMessageBusProcessor<TEvent>? _processor;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var client = clientRegistry.GetClient(settings.ProviderName);
 
         if (client is not IEventCapableMessageBusClient eventCapableClient)
-        {
             throw new InvalidOperationException(
                 $"The message bus client for provider '{settings.ProviderName}' does not support events. " +
                 $"The client must implement {nameof(IEventCapableMessageBusClient)}.");
-        }
 
         _messagingSystem = client.MessagingSystem;
 
@@ -152,7 +150,7 @@ internal class EventHandlerBackgroundService<TEvent, THandler>(
     {
         if (properties.Traceparent is null) return default;
 
-        return ActivityContext.TryParse(properties.Traceparent, properties.Tracestate, isRemote: true, out var context)
+        return ActivityContext.TryParse(properties.Traceparent, properties.Tracestate, true, out var context)
             ? context
             : default;
     }

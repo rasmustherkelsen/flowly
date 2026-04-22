@@ -33,7 +33,7 @@ dotnet test --filter "FullyQualifiedName~MessageQueueNameResolverTests+Resolve"
 - `Flowly.DeadLetters/` — dead letter tracking core (ingestion background service, EF Core model)
 - `Flowly.DeadLetters.SqlServer/` — SQL Server backend for dead letter tracking
 - `Flowly.DeadLetters.Postgres/` — PostgreSQL backend for dead letter tracking
-- `Flowly.Tool/` — `dotnet flowly` CLI tool
+- `Flowly.Tool/` — `flowly` CLI tool
 - `Samples/AzureServiceBus/Aspire/` — reference Aspire sample
 
 ## Architecture Overview
@@ -128,10 +128,10 @@ public class MessageQueueNameResolverTests
 dotnet pack Flowly.Tool/Flowly.Tool.csproj -c Release
 dotnet tool install --global --add-source ./Flowly.Tool/bin/Release Flowly.Tool
 
-dotnet flowly azure-service-bus queues --project ./MyProcessor
-dotnet flowly azure-service-bus emulator-config --project ./MyProcessor --namespace EmulatorNamespace --output ./servicebus-config.json
-dotnet flowly azure-service-bus bicep --project ./MyProcessor --service-bus-namespace-name sb-flowly --output ./queues.bicep
-dotnet flowly azure-service-bus aspire-code --project ./MyProcessor --connection-name EmulatorNamespace --output ./aspire-bootstrap.cs
+flowly azure-service-bus queues --project ./MyProcessor
+flowly azure-service-bus emulator-config --project ./MyProcessor --namespace EmulatorNamespace --output ./servicebus-config.json
+flowly azure-service-bus bicep --project ./MyProcessor --service-bus-namespace-name sb-flowly --output ./queues.bicep
+flowly azure-service-bus aspire-code --project ./MyProcessor --connection-name EmulatorNamespace --output ./aspire-bootstrap.cs
 ```
 
 ## Aspire AppHost Integration (`Flowly.AzureServiceBus.Aspire`)
@@ -152,4 +152,4 @@ backendProcessor
 
 Reference the package with `IsAspireProjectResource="false"` in the AppHost `.csproj`. See `Samples/AzureServiceBus/Aspire/Flowly.AppHost/` for a complete example.
 
-For plain Docker Compose, use `dotnet flowly azure-service-bus emulator-config` instead.
+For plain Docker Compose, use `flowly azure-service-bus emulator-config` instead.

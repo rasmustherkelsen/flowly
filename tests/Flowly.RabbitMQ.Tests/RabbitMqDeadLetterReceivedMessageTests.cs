@@ -1,11 +1,15 @@
 using System.Text;
-using Flowly.MessagingAbstractions;
 using RabbitMQ.Client;
 
 namespace Flowly.RabbitMQ.Tests;
 
 public class RabbitMqDeadLetterReceivedMessageTests
 {
+    private static ReadOnlyMemory<byte> Encode(string text)
+    {
+        return Encoding.UTF8.GetBytes(text);
+    }
+
     public class MessageId
     {
         [Fact]
@@ -136,6 +140,4 @@ public class RabbitMqDeadLetterReceivedMessageTests
             Assert.Equal(new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero), message.EnqueuedTime);
         }
     }
-
-    private static ReadOnlyMemory<byte> Encode(string text) => Encoding.UTF8.GetBytes(text);
 }

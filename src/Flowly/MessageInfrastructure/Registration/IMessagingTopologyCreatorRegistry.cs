@@ -1,4 +1,4 @@
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 
 namespace Flowly.MessageInfrastructure.Registration;
 

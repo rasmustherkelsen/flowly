@@ -1,5 +1,5 @@
 using Flowly.MessageInfrastructure.Registration;
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 
 namespace Flowly.Tests.MessageInfrastructure.Registration;
 
@@ -72,6 +72,8 @@ public class MessagingTopologyCreatorRegistryTests
     private class StubMessagingTopologyCreator : IMessagingTopologyCreator
     {
         public Task CreateTopology(IReadOnlyCollection<IQueueDescription> queueDescriptions, CancellationToken cancellationToken)
-            => Task.CompletedTask;
+        {
+            return Task.CompletedTask;
+        }
     }
 }

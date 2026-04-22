@@ -1,4 +1,4 @@
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 
 namespace Flowly.Tests.MessagingAbstractions;
 
@@ -10,8 +10,8 @@ public class MessageBusProcessorOptionsTests
         public void StoresBothValues()
         {
             var messageBusProcessorOptions = new MessageBusProcessorOptions(
-                MaxConcurrentCalls: 4,
-                ReceiveMode: MessageBusReceiveMode.ReceiveAndDelete);
+                4,
+                MessageBusReceiveMode.ReceiveAndDelete);
 
             Assert.Equal(4, messageBusProcessorOptions.MaxConcurrentCalls);
             Assert.Equal(MessageBusReceiveMode.ReceiveAndDelete, messageBusProcessorOptions.ReceiveMode);

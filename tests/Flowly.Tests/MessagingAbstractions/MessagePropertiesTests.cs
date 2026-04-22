@@ -1,5 +1,3 @@
-using Flowly.MessagingAbstractions;
-
 namespace Flowly.Tests.MessagingAbstractions;
 
 public class MessagePropertiesTests
@@ -25,13 +23,13 @@ public class MessagePropertiesTests
         {
             var scheduled = DateTimeOffset.UtcNow;
             var messageProperties = new MessageProperties(
-                MessageId: "msg-1",
-                CorrelationId: "corr-1",
-                SessionId: "sess-1",
-                RetryCount: 3,
-                ScheduledEnqueueTime: scheduled,
-                Traceparent: "tp",
-                Tracestate: "ts");
+                "msg-1",
+                "corr-1",
+                "sess-1",
+                3,
+                scheduled,
+                "tp",
+                "ts");
 
             Assert.Equal("sess-1", messageProperties.SessionId);
             Assert.Equal(3, messageProperties.RetryCount);

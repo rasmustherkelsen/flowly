@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 using RabbitMQ.Client;
 
 namespace Flowly.RabbitMQ;
@@ -17,7 +17,9 @@ internal class RabbitMqMessageBusSender(string queueName, IChannel channel, long
     }
 
     public async Task SendEmptyMessage(MessageProperties messageProperties, CancellationToken cancellationToken = default)
-        => await CommonSend(ReadOnlyMemory<byte>.Empty, messageProperties, cancellationToken);
+    {
+        await CommonSend(ReadOnlyMemory<byte>.Empty, messageProperties, cancellationToken);
+    }
 
     public async Task SendRawMessage(string rawBody, IReadOnlyDictionary<string, object> applicationProperties, CancellationToken cancellationToken = default)
     {
@@ -35,12 +37,12 @@ internal class RabbitMqMessageBusSender(string queueName, IChannel channel, long
         try
         {
             await channel.BasicPublishAsync(
-                exchange: "",
-                routingKey: queueName,
-                mandatory: false,
-                basicProperties: props,
-                body: body,
-                cancellationToken: cancellationToken);
+                "",
+                queueName,
+                false,
+                props,
+                body,
+                cancellationToken);
         }
         finally
         {
@@ -95,12 +97,12 @@ internal class RabbitMqMessageBusSender(string queueName, IChannel channel, long
         try
         {
             await channel.BasicPublishAsync(
-                exchange: "",
-                routingKey: routingKey,
-                mandatory: false,
-                basicProperties: props,
-                body: body,
-                cancellationToken: cancellationToken);
+                "",
+                routingKey,
+                false,
+                props,
+                body,
+                cancellationToken);
         }
         finally
         {

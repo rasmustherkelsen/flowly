@@ -431,7 +431,7 @@ Alternatively override `Configure(HandlerQueueOptions options)` in the handler c
 
 **Queue topology creation** is batched via `DeferredQueueRegistration` singletons collected by `QueueManager`, then provisioned once by `IMessagingTopologyCreator` at startup. Conflicting settings for the same queue name throw `InvalidOperationException`.
 
-The Azure Service Bus implementation of `IMessagingTopologyCreator` creates queues via `ServiceBusAdministrationClient`. It checks `QueueExistsAsync` before calling `CreateQueueAsync`, so existing queues are left untouched. When running against the emulator (namespace starts with `localhost` or `127.0.0.1`), topology creation throws — queues must be pre-created using `dotnet flowly azure-service-bus emulator-config`.
+The Azure Service Bus implementation of `IMessagingTopologyCreator` creates queues via `ServiceBusAdministrationClient`. It checks `QueueExistsAsync` before calling `CreateQueueAsync`, so existing queues are left untouched. When running against the emulator (namespace starts with `localhost` or `127.0.0.1`), topology creation throws — queues must be pre-created using `flowly azure-service-bus emulator-config`.
 
 ---
 
@@ -488,30 +488,39 @@ IEventContext<TEvent>
 
 ### 11. Flowly.Tool CLI
 
-Installed as a .NET global tool (`dotnet flowly`). Requires a `FlowlyDesignTimeFactory` + `IFlowlyConfiguration` in the target assembly.
+Installed as a .NET global tool (`flowly`). For `azure-service-bus` subcommands, the tool requires a `FlowlyDesignTimeFactory` + `IFlowlyConfiguration` in the target assembly (or falls back to host-based discovery for inline `AddFlowly()` configurations). The `docker-compose` command works with both styles — it detects transports and database providers from build output DLL presence, not assembly introspection.
 
 ```bash
 # Pack and install locally
 dotnet pack Flowly.Tool/Flowly.Tool.csproj -c Release
 dotnet tool install --global --add-source ./Flowly.Tool/bin/Release Flowly.Tool
 
+# Generate docker-compose.yml with all local dev dependencies (RabbitMQ, ASB emulator, DB)
+# Detects transports from Flowly.AzureServiceBus.dll / Flowly.RabbitMQ.dll in the build output
+# Detects DB providers from Flowly.Jobs.SqlServer.dll / Flowly.DeadLetters.Postgres.dll etc.
+# When ASB is detected, also generates sbconfig.json alongside the output file
+flowly docker-compose --project ./Sender --project ./Receiver --output docker-compose.yml
+
+# Or pipe to stdout
+flowly docker-compose --project ./Sender --project ./Receiver > docker-compose.yml
+
 # Discover queues from a project
-dotnet flowly azure-service-bus queues --project ./MyProcessor
+flowly azure-service-bus queues --project ./MyProcessor
 
 # Generate Azure Service Bus emulator config
-dotnet flowly azure-service-bus emulator-config \
+flowly azure-service-bus emulator-config \
   --project ./MyProcessor \
   --namespace EmulatorNamespace \
   --output ./servicebus-config.json
 
 # Generate Bicep IaC
-dotnet flowly azure-service-bus bicep \
+flowly azure-service-bus bicep \
   --project ./MyProcessor \
   --service-bus-namespace-name sb-flowly \
   --output ./queues.bicep
 
 # Generate Aspire bootstrap code
-dotnet flowly azure-service-bus aspire-code \
+flowly azure-service-bus aspire-code \
   --project ./MyProcessor \
   --connection-name EmulatorNamespace \
   --output ./aspire-bootstrap.cs
@@ -725,5 +734,5 @@ Rules:
 | Register read-only job access | Call `.AddJobStateTrackingClient(connStr)` in the API's `IFlowlyConfiguration` |
 | Manage dead letters | Inject `IDeadLetterService`, call `.Requeue(id)` or `.Discard(id)` |
 | Add a new queue | Just add a handler — queue is registered automatically from the message type |
-| Generate emulator config | `dotnet flowly azure-service-bus emulator-config --project ./MyProject` |
-| Inspect what queues a project uses | `dotnet flowly azure-service-bus queues --project ./MyProject` |
+| Generate emulator config | `flowly azure-service-bus emulator-config --project ./MyProject` |
+| Inspect what queues a project uses | `flowly azure-service-bus queues --project ./MyProject` |

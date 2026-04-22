@@ -38,7 +38,7 @@ For any sample that uses Docker Compose (rather than Aspire) with the ASB emulat
 ./GenerateSbConfig.ps1
 ```
 
-Explain that this script builds and installs the `dotnet flowly` CLI, introspects the project(s), and writes the queue configuration file that the emulator requires. Note that it must be re-run whenever message contracts change.
+Explain that this script builds and installs the `flowly` CLI, introspects the project(s), and writes the queue configuration file that the emulator requires. Note that it must be re-run whenever message contracts change.
 
 ## Checklist when adding a new sample
 

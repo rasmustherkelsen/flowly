@@ -1,4 +1,4 @@
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 
 namespace Flowly.Tests.MessagingAbstractions;
 
@@ -9,7 +9,7 @@ public class MessageTooLargeExceptionTests
         [Fact]
         public void SetsQueueNameProperty()
         {
-            var messageTooLargeException = new MessageTooLargeException("orders", actualSizeBytes: 5_000, maxSizeBytes: 1_024);
+            var messageTooLargeException = new MessageTooLargeException("orders", 5_000, 1_024);
 
             Assert.Equal("orders", messageTooLargeException.QueueName);
         }
@@ -17,7 +17,7 @@ public class MessageTooLargeExceptionTests
         [Fact]
         public void SetsActualSizeBytesProperty()
         {
-            var messageTooLargeException = new MessageTooLargeException("orders", actualSizeBytes: 5_000, maxSizeBytes: 1_024);
+            var messageTooLargeException = new MessageTooLargeException("orders", 5_000, 1_024);
 
             Assert.Equal(5_000, messageTooLargeException.ActualSizeBytes);
         }
@@ -25,7 +25,7 @@ public class MessageTooLargeExceptionTests
         [Fact]
         public void SetsMaxSizeBytesProperty()
         {
-            var messageTooLargeException = new MessageTooLargeException("orders", actualSizeBytes: 5_000, maxSizeBytes: 1_024);
+            var messageTooLargeException = new MessageTooLargeException("orders", 5_000, 1_024);
 
             Assert.Equal(1_024, messageTooLargeException.MaxSizeBytes);
         }
@@ -33,7 +33,7 @@ public class MessageTooLargeExceptionTests
         [Fact]
         public void MessageContainsQueueName()
         {
-            var messageTooLargeException = new MessageTooLargeException("orders", actualSizeBytes: 5_000, maxSizeBytes: 1_024);
+            var messageTooLargeException = new MessageTooLargeException("orders", 5_000, 1_024);
 
             Assert.Contains("orders", messageTooLargeException.Message);
         }
@@ -41,7 +41,7 @@ public class MessageTooLargeExceptionTests
         [Fact]
         public void MessageContainsActualAndMaxSizeFormattedWithThousandsSeparator()
         {
-            var messageTooLargeException = new MessageTooLargeException("orders", actualSizeBytes: 5_000_000, maxSizeBytes: 1_048_576);
+            var messageTooLargeException = new MessageTooLargeException("orders", 5_000_000, 1_048_576);
 
             Assert.Contains("5,000,000", messageTooLargeException.Message);
             Assert.Contains("1,048,576", messageTooLargeException.Message);

@@ -1,6 +1,6 @@
 using System.Text;
 using System.Text.Json;
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 
@@ -12,7 +12,7 @@ internal class RabbitMqReceivedMessage<TMessage>(IChannel channel, BasicDeliverE
 
     public TMessage Body => _body
         ??= JsonSerializer.Deserialize<TMessage>(args.Body.Span)
-        ?? throw new InvalidOperationException($"Deserialized message body is null for type {typeof(TMessage).FullName}.");
+            ?? throw new InvalidOperationException($"Deserialized message body is null for type {typeof(TMessage).FullName}.");
 
     public MessageProperties Properties { get; } = new(
         args.BasicProperties.MessageId ?? string.Empty,
@@ -24,13 +24,13 @@ internal class RabbitMqReceivedMessage<TMessage>(IChannel channel, BasicDeliverE
     public Task Complete(CancellationToken cancellationToken = default)
     {
         if (autoAck) return Task.CompletedTask;
-        return channel.BasicAckAsync(args.DeliveryTag, multiple: false, cancellationToken).AsTask();
+        return channel.BasicAckAsync(args.DeliveryTag, false, cancellationToken).AsTask();
     }
 
     public Task DeadLetter(string? reason = null, CancellationToken cancellationToken = default)
     {
         if (autoAck) return Task.CompletedTask;
-        return channel.BasicNackAsync(args.DeliveryTag, multiple: false, requeue: false, cancellationToken).AsTask();
+        return channel.BasicNackAsync(args.DeliveryTag, false, false, cancellationToken).AsTask();
     }
 
     private static int GetRetryCount(IReadOnlyBasicProperties properties)
@@ -63,8 +63,10 @@ internal class RabbitMqReceivedMessage<TMessage>(IChannel channel, BasicDeliverE
 internal class RabbitMqUntypedReceivedMessage(BasicDeliverEventArgs args) : IReceivedMessage
 {
     public TBody GetBody<TBody>()
-        => JsonSerializer.Deserialize<TBody>(args.Body.Span)
-        ?? throw new InvalidOperationException($"Deserialized message body is null for type {typeof(TBody).FullName}.");
+    {
+        return JsonSerializer.Deserialize<TBody>(args.Body.Span)
+               ?? throw new InvalidOperationException($"Deserialized message body is null for type {typeof(TBody).FullName}.");
+    }
 
     public MessageProperties Properties { get; } = new(
         args.BasicProperties.MessageId ?? string.Empty,

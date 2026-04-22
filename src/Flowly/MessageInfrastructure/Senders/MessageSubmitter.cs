@@ -1,11 +1,10 @@
 using System.Diagnostics;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.MessageInfrastructure.Telemetry;
-using Flowly.MessagingAbstractions;
 
 namespace Flowly.MessageInfrastructure.Senders;
 
-public class MessageSubmitter<TMessage>(
+internal class MessageSubmitter<TMessage>(
     IMessageBusClientRegistry clientRegistry,
     MessageSubmitter<TMessage>.QueueSettings queueSettings,
     ISubmitterInstrumentation submitterInstrumentation) : IMessageSubmitter<TMessage>

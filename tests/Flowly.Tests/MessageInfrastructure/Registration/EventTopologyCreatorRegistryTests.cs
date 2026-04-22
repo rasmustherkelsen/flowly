@@ -1,5 +1,5 @@
 using Flowly.MessageInfrastructure.Registration;
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 
 namespace Flowly.Tests.MessageInfrastructure.Registration;
 
@@ -56,6 +56,9 @@ public class EventTopologyCreatorRegistryTests
 
     private sealed class StubEventTopologyCreator : IEventTopologyCreator
     {
-        public Task CreateEventTopology(IReadOnlyCollection<IEventDescription> eventDescriptions, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task CreateEventTopology(IReadOnlyCollection<IEventDescription> eventDescriptions, CancellationToken cancellationToken)
+        {
+            return Task.CompletedTask;
+        }
     }
 }

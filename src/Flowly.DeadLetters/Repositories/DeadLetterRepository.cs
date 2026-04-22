@@ -1,6 +1,6 @@
 using System.Text.Json;
 using Flowly.DeadLetters.DatabaseModel;
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 using Microsoft.EntityFrameworkCore;
 
 namespace Flowly.DeadLetters.Repositories;
@@ -8,10 +8,14 @@ namespace Flowly.DeadLetters.Repositories;
 internal class DeadLetterRepository(IDbContextFactory<DeadLetterDataContext> contextFactory) : IDeadLetterRepository
 {
     public async Task SaveBatch(IReadOnlyCollection<IDeadLetterMessage> messages, string queueName, CancellationToken cancellationToken = default)
-        => await PersistBatch(messages, queueName, subscriptionName: null, cancellationToken);
+    {
+        await PersistBatch(messages, queueName, null, cancellationToken);
+    }
 
     public async Task SaveBatchForSubscription(IReadOnlyCollection<IDeadLetterMessage> messages, string topicName, string subscriptionName, CancellationToken cancellationToken = default)
-        => await PersistBatch(messages, topicName, subscriptionName, cancellationToken);
+    {
+        await PersistBatch(messages, topicName, subscriptionName, cancellationToken);
+    }
 
     public async Task<DateTimeOffset?> GetLastIngestionTime(string queueName, CancellationToken cancellationToken = default)
     {
@@ -29,6 +33,68 @@ internal class DeadLetterRepository(IDbContextFactory<DeadLetterDataContext> con
         return await context.DeadLetters
             .Where(d => d.QueueName == topicName && d.SubscriptionName == subscriptionName)
             .MaxAsync(d => (DateTimeOffset?)d.DeadLetteredAt, cancellationToken);
+    }
+
+    public async Task<IReadOnlyCollection<DeadLetter>> GetAll(CancellationToken cancellationToken = default)
+    {
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+
+        return await context.DeadLetters
+            .AsNoTracking()
+            .OrderByDescending(d => d.DeadLetteredAt)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<DeadLetter?> Get(string messageId, CancellationToken cancellationToken = default)
+    {
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+
+        return await context.DeadLetters
+            .FirstOrDefaultAsync(d => d.MessageId == messageId, cancellationToken);
+    }
+
+    public async Task MarkAsRequeued(string messageId, string? requeuedBy, CancellationToken cancellationToken = default)
+    {
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+
+        await context.DeadLetters
+            .Where(d => d.MessageId == messageId)
+            .ExecuteUpdateAsync(s => s
+                    .SetProperty(d => d.Status, DeadLetterStatus.Requeued)
+                    .SetProperty(d => d.RequeuedAt, DateTimeOffset.UtcNow)
+                    .SetProperty(d => d.RequeuedBy, requeuedBy),
+                cancellationToken);
+    }
+
+    public async Task Delete(string messageId, CancellationToken cancellationToken = default)
+    {
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+
+        await context.DeadLetters
+            .Where(d => d.MessageId == messageId)
+            .ExecuteDeleteAsync(cancellationToken);
+    }
+
+    public async Task DeleteRequeuedOlderThan(TimeSpan age, CancellationToken cancellationToken = default)
+    {
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+
+        var cutOff = DateTimeOffset.UtcNow - age;
+
+        await context.DeadLetters
+            .Where(d => d.Status == DeadLetterStatus.Requeued && d.RequeuedAt < cutOff)
+            .ExecuteDeleteAsync(cancellationToken);
+    }
+
+    public async Task DeletePendingOlderThan(TimeSpan age, CancellationToken cancellationToken = default)
+    {
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+
+        var cutOff = DateTimeOffset.UtcNow - age;
+
+        await context.DeadLetters
+            .Where(d => d.Status == DeadLetterStatus.Pending && d.DeadLetteredAt < cutOff)
+            .ExecuteDeleteAsync(cancellationToken);
     }
 
     private async Task PersistBatch(IReadOnlyCollection<IDeadLetterMessage> messages, string queueName, string? subscriptionName, CancellationToken cancellationToken)
@@ -62,67 +128,5 @@ internal class DeadLetterRepository(IDbContextFactory<DeadLetterDataContext> con
             await context.DeadLetters.AddRangeAsync(newDeadLetters, cancellationToken);
             await context.SaveChangesAsync(cancellationToken);
         }
-    }
-
-    public async Task<IReadOnlyCollection<DeadLetter>> GetAll(CancellationToken cancellationToken = default)
-    {
-        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
-
-        return await context.DeadLetters
-            .AsNoTracking()
-            .OrderByDescending(d => d.DeadLetteredAt)
-            .ToListAsync(cancellationToken);
-    }
-
-    public async Task<DeadLetter?> Get(string messageId, CancellationToken cancellationToken = default)
-    {
-        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
-
-        return await context.DeadLetters
-            .FirstOrDefaultAsync(d => d.MessageId == messageId, cancellationToken);
-    }
-
-    public async Task MarkAsRequeued(string messageId, string? requeuedBy, CancellationToken cancellationToken = default)
-    {
-        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
-
-        await context.DeadLetters
-            .Where(d => d.MessageId == messageId)
-            .ExecuteUpdateAsync(s => s
-                .SetProperty(d => d.Status, DeadLetterStatus.Requeued)
-                .SetProperty(d => d.RequeuedAt, DateTimeOffset.UtcNow)
-                .SetProperty(d => d.RequeuedBy, requeuedBy),
-                cancellationToken);
-    }
-
-    public async Task Delete(string messageId, CancellationToken cancellationToken = default)
-    {
-        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
-
-        await context.DeadLetters
-            .Where(d => d.MessageId == messageId)
-            .ExecuteDeleteAsync(cancellationToken);
-    }
-
-    public async Task DeleteRequeuedOlderThan(TimeSpan age, CancellationToken cancellationToken = default)
-    {
-        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
-
-        var cutOff = DateTimeOffset.UtcNow - age;
-
-        await context.DeadLetters
-            .Where(d => d.Status == DeadLetterStatus.Requeued && d.RequeuedAt < cutOff)
-            .ExecuteDeleteAsync(cancellationToken);
-    }
-
-    public async Task DeletePendingOlderThan(TimeSpan age, CancellationToken cancellationToken = default)
-    {
-        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
-
-        var cutOff = DateTimeOffset.UtcNow - age;
-
-        await context.DeadLetters
-            .Where(d => d.Status == DeadLetterStatus.Pending && d.DeadLetteredAt < cutOff)
-            .ExecuteDeleteAsync(cancellationToken);
     }
 }

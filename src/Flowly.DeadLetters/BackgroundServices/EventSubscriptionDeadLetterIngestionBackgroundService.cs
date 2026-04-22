@@ -1,6 +1,6 @@
 using Flowly.DeadLetters.Repositories;
 using Flowly.MessageInfrastructure.Registration;
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -22,7 +22,6 @@ internal class EventSubscriptionDeadLetterIngestionBackgroundService(
             settings.DisplayName);
 
         while (!stoppingToken.IsCancellationRequested)
-        {
             try
             {
                 var client = clientRegistry.GetClient(settings.ProviderName);
@@ -54,10 +53,15 @@ internal class EventSubscriptionDeadLetterIngestionBackgroundService(
                     "Dead letter ingestion error for event subscription '{DisplayName}', restarting receiver",
                     settings.DisplayName);
 
-                try { await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken); }
-                catch (OperationCanceledException) { break; }
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
             }
-        }
     }
 
     private async Task ProcessBatch(IDeadLetterReceiver receiver, IReadOnlyCollection<IDeadLetterMessage> messages, CancellationToken cancellationToken)
@@ -73,10 +77,7 @@ internal class EventSubscriptionDeadLetterIngestionBackgroundService(
                 settings.SubscriptionName,
                 cancellationToken);
 
-            foreach (var message in messages)
-            {
-                await receiver.CompleteMessage(message, cancellationToken);
-            }
+            foreach (var message in messages) await receiver.CompleteMessage(message, cancellationToken);
 
             logger.LogInformation(
                 "Dead letter ingestion persisted {Count} messages from event subscription '{DisplayName}'",
@@ -91,10 +92,7 @@ internal class EventSubscriptionDeadLetterIngestionBackgroundService(
                 settings.DisplayName,
                 messages.Count);
 
-            foreach (var message in messages)
-            {
-                await receiver.AbandonMessage(message, cancellationToken);
-            }
+            foreach (var message in messages) await receiver.AbandonMessage(message, cancellationToken);
         }
     }
 }

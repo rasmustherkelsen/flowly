@@ -10,12 +10,12 @@ public class EventDescriptionTests
         public void StoresAllValues()
         {
             var eventDescription = new EventDescription(
-                topicOrExchangeName: "order-placed",
-                subscriptionName: "audit-log",
-                defaultMessageTimeToLive: TimeSpan.FromHours(4),
-                deadLetterOnMessageExpiration: true);
+                "order-placed",
+                "audit-log",
+                TimeSpan.FromHours(4),
+                true);
 
-            Assert.Equal("order-placed", eventDescription.TopicOrExchangeName);
+            Assert.Equal("order-placed", eventDescription.TopicName);
             Assert.Equal("audit-log", eventDescription.SubscriptionName);
             Assert.Equal(TimeSpan.FromHours(4), eventDescription.DefaultMessageTimeToLive);
             Assert.True(eventDescription.DeadLetterOnMessageExpiration);
@@ -25,10 +25,10 @@ public class EventDescriptionTests
         public void WithOptionalValuesNull_LeavesThemNull()
         {
             var eventDescription = new EventDescription(
-                topicOrExchangeName: "order-placed",
-                subscriptionName: "audit-log",
-                defaultMessageTimeToLive: null,
-                deadLetterOnMessageExpiration: null);
+                "order-placed",
+                "audit-log",
+                null,
+                null);
 
             Assert.Null(eventDescription.DefaultMessageTimeToLive);
             Assert.Null(eventDescription.DeadLetterOnMessageExpiration);

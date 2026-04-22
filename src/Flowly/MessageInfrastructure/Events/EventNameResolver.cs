@@ -5,7 +5,10 @@ namespace Flowly.MessageInfrastructure.Events;
 
 public static class EventNameResolver
 {
-    public static string Resolve<TEvent>() => Resolve(typeof(TEvent));
+    public static string Resolve<TEvent>()
+    {
+        return Resolve(typeof(TEvent));
+    }
 
     public static string Resolve(Type eventType)
     {

@@ -1,17 +1,17 @@
 using Azure.Messaging.ServiceBus;
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 
 namespace Flowly.AzureServiceBus;
 
 internal class ExecutionLaneProcessor(ServiceBusSessionProcessor serviceBusSessionProcessor) : IExecutionLaneProcessor
 {
-    private readonly Lock _processMessageLock = new();
-    private readonly Func<ProcessSessionMessageEventArgs, IReceivedMessage> _toReceivedMessage = args => new ReceivedMessage(args.Message);
-    private readonly Dictionary<Func<IReceivedMessage, CancellationToken, Task>, Func<ProcessSessionMessageEventArgs, Task>> _processMessageHandlerMap = new();
+    private readonly Dictionary<Func<ErrorDetails, Task>, Func<ProcessErrorEventArgs, Task>> _errorHandlerMap = new();
 
     private readonly Lock _processErrorLock = new();
+    private readonly Dictionary<Func<IReceivedMessage, CancellationToken, Task>, Func<ProcessSessionMessageEventArgs, Task>> _processMessageHandlerMap = new();
+    private readonly Lock _processMessageLock = new();
     private readonly Func<ProcessErrorEventArgs, ErrorDetails> _toErrorDetails = args => new ErrorDetails(args.Exception, args.FullyQualifiedNamespace);
-    private readonly Dictionary<Func<ErrorDetails, Task>, Func<ProcessErrorEventArgs, Task>> _errorHandlerMap = new();
+    private readonly Func<ProcessSessionMessageEventArgs, IReceivedMessage> _toReceivedMessage = args => new ReceivedMessage(args.Message);
 
     public event Func<IReceivedMessage, CancellationToken, Task>? ProcessMessage
     {
@@ -46,10 +46,7 @@ internal class ExecutionLaneProcessor(ServiceBusSessionProcessor serviceBusSessi
                 }
             }
 
-            if (adapter != null)
-            {
-                serviceBusSessionProcessor.ProcessMessageAsync -= adapter;
-            }
+            if (adapter != null) serviceBusSessionProcessor.ProcessMessageAsync -= adapter;
         }
     }
 
@@ -86,19 +83,22 @@ internal class ExecutionLaneProcessor(ServiceBusSessionProcessor serviceBusSessi
                 }
             }
 
-            if (adapter != null)
-            {
-                serviceBusSessionProcessor.ProcessErrorAsync -= adapter;
-            }
+            if (adapter != null) serviceBusSessionProcessor.ProcessErrorAsync -= adapter;
         }
     }
 
     public async Task StartProcessing(CancellationToken cancellationToken = default)
-        => await serviceBusSessionProcessor.StartProcessingAsync(cancellationToken);
+    {
+        await serviceBusSessionProcessor.StartProcessingAsync(cancellationToken);
+    }
 
     public async Task StopProcessing(CancellationToken cancellationToken = default)
-        => await serviceBusSessionProcessor.StopProcessingAsync(cancellationToken);
+    {
+        await serviceBusSessionProcessor.StopProcessingAsync(cancellationToken);
+    }
 
-    public ValueTask DisposeAsync() 
-        => serviceBusSessionProcessor.DisposeAsync();
+    public ValueTask DisposeAsync()
+    {
+        return serviceBusSessionProcessor.DisposeAsync();
+    }
 }

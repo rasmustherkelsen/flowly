@@ -1,4 +1,4 @@
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 
 namespace Flowly.MessageInfrastructure.Registration;
 
@@ -8,10 +8,10 @@ internal sealed class MessageBusClientRegistry : IMessageBusClientRegistry
         = new(StringComparer.OrdinalIgnoreCase);
 
     public string PrimaryProviderName => _entries.Values
-        .FirstOrDefault(e => e.Transport.IsPrimary).Transport?.Name
-        ?? throw new InvalidOperationException(
-            "No transport providers have been registered. " +
-            "Call UseAzureServiceBus() or UseRabbitMq() before registering handlers or submitters.");
+                                             .FirstOrDefault(e => e.Transport.IsPrimary).Transport?.Name
+                                         ?? throw new InvalidOperationException(
+                                             "No transport providers have been registered. " +
+                                             "Call UseAzureServiceBus() or UseRabbitMq() before registering handlers or submitters.");
 
     public void Register(string providerName, IMessageBusClient client, bool? createTopologyOverride)
     {
@@ -34,8 +34,13 @@ internal sealed class MessageBusClientRegistry : IMessageBusClientRegistry
             $"Available providers: {available}");
     }
 
-    public bool IsRegistered(string providerName) => _entries.ContainsKey(providerName);
+    public bool IsRegistered(string providerName)
+    {
+        return _entries.ContainsKey(providerName);
+    }
 
-    public IReadOnlyList<RegisteredTransport> GetAll() =>
-        _entries.Values.Select(e => e.Transport).ToList();
+    public IReadOnlyList<RegisteredTransport> GetAll()
+    {
+        return _entries.Values.Select(e => e.Transport).ToList();
+    }
 }

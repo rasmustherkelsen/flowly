@@ -2,7 +2,7 @@ using System.Diagnostics;
 
 namespace Flowly.MessageInfrastructure.Events.Telemetry;
 
-public interface IEventPublisherInstrumentation
+internal interface IEventPublisherInstrumentation
 {
     bool IsEnabled { get; }
 

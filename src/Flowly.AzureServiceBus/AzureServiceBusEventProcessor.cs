@@ -1,19 +1,22 @@
 using Azure.Messaging.ServiceBus;
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 
 namespace Flowly.AzureServiceBus;
 
 internal class AzureServiceBusEventProcessor<TEvent>(ServiceBusProcessor processor) : IMessageBusProcessor<TEvent>
 {
-    private readonly Lock _processMessageLock = new();
-    private readonly Func<ProcessMessageEventArgs, IReceivedMessage<TEvent>> _toReceivedMessage = args => new ReceivedMessage<TEvent>(args);
-    private readonly Dictionary<Func<IReceivedMessage<TEvent>, CancellationToken, Task>, Func<ProcessMessageEventArgs, Task>> _processMessageHandlerMap = new();
-
-    private readonly Lock _processErrorLock = new();
-    private readonly Func<ProcessErrorEventArgs, ErrorDetails> _toErrorDetails = args => new ErrorDetails(args.Exception, args.FullyQualifiedNamespace);
     private readonly Dictionary<Func<ErrorDetails, Task>, Func<ProcessErrorEventArgs, Task>> _errorHandlerMap = new();
 
-    public ValueTask DisposeAsync() => processor.DisposeAsync();
+    private readonly Lock _processErrorLock = new();
+    private readonly Dictionary<Func<IReceivedMessage<TEvent>, CancellationToken, Task>, Func<ProcessMessageEventArgs, Task>> _processMessageHandlerMap = new();
+    private readonly Lock _processMessageLock = new();
+    private readonly Func<ProcessErrorEventArgs, ErrorDetails> _toErrorDetails = args => new ErrorDetails(args.Exception, args.FullyQualifiedNamespace);
+    private readonly Func<ProcessMessageEventArgs, IReceivedMessage<TEvent>> _toReceivedMessage = args => new ReceivedMessage<TEvent>(args);
+
+    public ValueTask DisposeAsync()
+    {
+        return processor.DisposeAsync();
+    }
 
     public event Func<IReceivedMessage<TEvent>, CancellationToken, Task>? ProcessMessage
     {
@@ -92,8 +95,12 @@ internal class AzureServiceBusEventProcessor<TEvent>(ServiceBusProcessor process
     }
 
     public Task StartProcessingMessages(CancellationToken cancellationToken = default)
-        => processor.StartProcessingAsync(cancellationToken);
+    {
+        return processor.StartProcessingAsync(cancellationToken);
+    }
 
     public Task StopProcessing(CancellationToken cancellationToken)
-        => processor.StopProcessingAsync(cancellationToken);
+    {
+        return processor.StopProcessingAsync(cancellationToken);
+    }
 }

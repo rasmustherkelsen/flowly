@@ -1,7 +1,7 @@
 using System.Text;
 using System.Text.Json;
-using Flowly.MessagingAbstractions;
 using Flowly.RabbitMQ.Tests.Fakes;
+using Flowly.Transport;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 
@@ -9,6 +9,20 @@ namespace Flowly.RabbitMQ.Tests;
 
 public class RabbitMqReceivedMessageTests
 {
+    private static BasicDeliverEventArgs BuildArgs(TestMessage body, BasicProperties props, ulong deliveryTag = 1)
+    {
+        var json = JsonSerializer.SerializeToUtf8Bytes(body);
+
+        return new BasicDeliverEventArgs(
+            "consumer",
+            deliveryTag,
+            false,
+            "",
+            "queue",
+            props,
+            json);
+    }
+
     public class Body
     {
         [Fact]
@@ -109,7 +123,7 @@ public class RabbitMqReceivedMessageTests
         public async Task WhenNotAutoAck_AcksChannel()
         {
             var channel = new TrackingChannelStub();
-            var message = new RabbitMqReceivedMessage<TestMessage>(channel, BuildArgs(new TestMessage("x"), new BasicProperties(), deliveryTag: 42), autoAck: false);
+            var message = new RabbitMqReceivedMessage<TestMessage>(channel, BuildArgs(new TestMessage("x"), new BasicProperties(), 42), false);
 
             await message.Complete();
 
@@ -120,7 +134,7 @@ public class RabbitMqReceivedMessageTests
         public async Task WhenAutoAck_DoesNotAckChannel()
         {
             var channel = new TrackingChannelStub();
-            var message = new RabbitMqReceivedMessage<TestMessage>(channel, BuildArgs(new TestMessage("x"), new BasicProperties()), autoAck: true);
+            var message = new RabbitMqReceivedMessage<TestMessage>(channel, BuildArgs(new TestMessage("x"), new BasicProperties()), true);
 
             await message.Complete();
 
@@ -134,7 +148,7 @@ public class RabbitMqReceivedMessageTests
         public async Task WhenNotAutoAck_NacksChannel()
         {
             var channel = new TrackingChannelStub();
-            var message = new RabbitMqReceivedMessage<TestMessage>(channel, BuildArgs(new TestMessage("x"), new BasicProperties(), deliveryTag: 7), autoAck: false);
+            var message = new RabbitMqReceivedMessage<TestMessage>(channel, BuildArgs(new TestMessage("x"), new BasicProperties(), 7), false);
 
             await message.DeadLetter();
 
@@ -145,26 +159,12 @@ public class RabbitMqReceivedMessageTests
         public async Task WhenAutoAck_DoesNotNackChannel()
         {
             var channel = new TrackingChannelStub();
-            var message = new RabbitMqReceivedMessage<TestMessage>(channel, BuildArgs(new TestMessage("x"), new BasicProperties()), autoAck: true);
+            var message = new RabbitMqReceivedMessage<TestMessage>(channel, BuildArgs(new TestMessage("x"), new BasicProperties()), true);
 
             await message.DeadLetter();
 
             Assert.Null(channel.NackedDeliveryTag);
         }
-    }
-
-    private static BasicDeliverEventArgs BuildArgs(TestMessage body, BasicProperties props, ulong deliveryTag = 1)
-    {
-        var json = JsonSerializer.SerializeToUtf8Bytes(body);
-
-        return new BasicDeliverEventArgs(
-            consumerTag: "consumer",
-            deliveryTag: deliveryTag,
-            redelivered: false,
-            exchange: "",
-            routingKey: "queue",
-            properties: props,
-            body: json);
     }
 
     private record TestMessage(string Value);

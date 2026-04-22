@@ -1,5 +1,5 @@
 using Azure.Messaging.ServiceBus;
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 
 namespace Flowly.AzureServiceBus;
 
@@ -12,10 +12,17 @@ internal class ServiceBusDeadLetterReceiver(ServiceBusReceiver receiver) : IDead
     }
 
     public Task CompleteMessage(IDeadLetterMessage message, CancellationToken cancellationToken = default)
-        => receiver.CompleteMessageAsync(((DeadLetterReceivedMessage)message).ServiceBusReceivedMessage, cancellationToken);
+    {
+        return receiver.CompleteMessageAsync(((DeadLetterReceivedMessage)message).ServiceBusReceivedMessage, cancellationToken);
+    }
 
     public Task AbandonMessage(IDeadLetterMessage message, CancellationToken cancellationToken = default)
-        => receiver.AbandonMessageAsync(((DeadLetterReceivedMessage)message).ServiceBusReceivedMessage, cancellationToken: cancellationToken);
+    {
+        return receiver.AbandonMessageAsync(((DeadLetterReceivedMessage)message).ServiceBusReceivedMessage, cancellationToken: cancellationToken);
+    }
 
-    public ValueTask DisposeAsync() => receiver.DisposeAsync();
+    public ValueTask DisposeAsync()
+    {
+        return receiver.DisposeAsync();
+    }
 }

@@ -4,7 +4,7 @@ using Flowly.MessageInfrastructure.Telemetry;
 
 namespace Flowly.MessageInfrastructure.Events.Telemetry;
 
-public sealed class EventPublisherInstrumentation : IEventPublisherInstrumentation, IDisposable
+internal sealed class EventPublisherInstrumentation : IEventPublisherInstrumentation, IDisposable
 {
     private readonly Meter _meter;
     private readonly Counter<long> _raised;

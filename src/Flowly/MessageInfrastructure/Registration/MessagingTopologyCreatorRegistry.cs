@@ -1,4 +1,4 @@
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 
 namespace Flowly.MessageInfrastructure.Registration;
 
@@ -7,8 +7,10 @@ internal sealed class MessagingTopologyCreatorRegistry : IMessagingTopologyCreat
     private readonly Dictionary<string, IMessagingTopologyCreator> _creators
         = new(StringComparer.OrdinalIgnoreCase);
 
-    public void Register(string providerName, IMessagingTopologyCreator creator) =>
+    public void Register(string providerName, IMessagingTopologyCreator creator)
+    {
         _creators[providerName] = creator;
+    }
 
     public IMessagingTopologyCreator GetCreator(string providerName)
     {

@@ -1,9 +1,6 @@
 ﻿using Flowly.Jobs.Messages;
 using Flowly.Jobs.Repositories;
-using Flowly.MessageInfrastructure.Model;
-using Flowly.MessageInfrastructure.Receivers;
 using Flowly.MessageInfrastructure.Registration;
-using Flowly.MessagingAbstractions;
 using Microsoft.Extensions.Logging;
 
 namespace Flowly.Jobs.MessageHandlers;

@@ -1,11 +1,10 @@
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using Flowly.MessageInfrastructure.Telemetry;
-using Flowly.MessagingAbstractions;
 
 namespace Flowly.MessageInfrastructure.Events.Telemetry;
 
-public sealed class EventHandlerInstrumentation : IEventHandlerInstrumentation, IDisposable
+internal sealed class EventHandlerInstrumentation : IEventHandlerInstrumentation, IDisposable
 {
     private readonly Meter _meter;
     private readonly Counter<long> _received;

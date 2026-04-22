@@ -1,8 +1,6 @@
 using Flowly.Jobs.Messages;
 using Flowly.Jobs.Model;
 using Flowly.MessageInfrastructure.Registration;
-using Flowly.MessageInfrastructure.Senders;
-using Flowly.MessagingAbstractions;
 
 namespace Flowly.Jobs.Senders;
 

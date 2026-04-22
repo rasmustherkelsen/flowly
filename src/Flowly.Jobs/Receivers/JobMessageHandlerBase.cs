@@ -1,5 +1,4 @@
 using Flowly.Jobs.Model;
-using Flowly.MessageInfrastructure.Receivers;
 
 namespace Flowly.Jobs.Receivers;
 

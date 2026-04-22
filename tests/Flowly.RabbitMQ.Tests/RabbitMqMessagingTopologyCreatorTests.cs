@@ -1,5 +1,5 @@
-using Flowly.MessagingAbstractions;
 using Flowly.RabbitMQ.Tests.Fakes;
+using Flowly.Transport;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 
@@ -59,10 +59,12 @@ public class RabbitMqMessagingTopologyCreatorTests
     private sealed class SpyConnectionPool(TopologyChannel channel) : IRabbitMqConnectionPool
     {
         public CancellationToken ReceivedCancellationToken { get; private set; }
-        public SpyConnection Connection { get; } = new SpyConnection(channel);
+        public SpyConnection Connection { get; } = new(channel);
 
         public Task<IConnection> GetPublisherConnection(CancellationToken cancellationToken = default)
-            => throw new NotImplementedException();
+        {
+            throw new NotImplementedException();
+        }
 
         public Task<IConnection> GetConsumerConnection(CancellationToken cancellationToken = default)
         {
@@ -95,21 +97,78 @@ public class RabbitMqMessagingTopologyCreatorTests
         public IEnumerable<ShutdownReportEntry> ShutdownReport => [];
         public string ClientProvidedName => string.Empty;
 
-        public Task UpdateSecretAsync(string newSecret, string reason, CancellationToken cancellationToken = default) => throw new NotImplementedException();
-        public Task CloseAsync(ushort reasonCode, string reasonText, TimeSpan timeout, bool abort, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task UpdateSecretAsync(string newSecret, string reason, CancellationToken cancellationToken = default)
+        {
+            throw new NotImplementedException();
+        }
 
-        public event AsyncEventHandler<CallbackExceptionEventArgs>? CallbackExceptionAsync { add { } remove { } }
-        public event AsyncEventHandler<ShutdownEventArgs>? ConnectionShutdownAsync { add { } remove { } }
-        public event AsyncEventHandler<AsyncEventArgs>? RecoverySucceededAsync { add { } remove { } }
-        public event AsyncEventHandler<ConnectionRecoveryErrorEventArgs>? ConnectionRecoveryErrorAsync { add { } remove { } }
-        public event AsyncEventHandler<ConsumerTagChangedAfterRecoveryEventArgs>? ConsumerTagChangeAfterRecoveryAsync { add { } remove { } }
-        public event AsyncEventHandler<QueueNameChangedAfterRecoveryEventArgs>? QueueNameChangedAfterRecoveryAsync { add { } remove { } }
-        public event AsyncEventHandler<RecoveringConsumerEventArgs>? RecoveringConsumerAsync { add { } remove { } }
-        public event AsyncEventHandler<ConnectionBlockedEventArgs>? ConnectionBlockedAsync { add { } remove { } }
-        public event AsyncEventHandler<AsyncEventArgs>? ConnectionUnblockedAsync { add { } remove { } }
+        public Task CloseAsync(ushort reasonCode, string reasonText, TimeSpan timeout, bool abort, CancellationToken cancellationToken = default)
+        {
+            return Task.CompletedTask;
+        }
 
-        public void Dispose() { }
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        public event AsyncEventHandler<CallbackExceptionEventArgs>? CallbackExceptionAsync
+        {
+            add { }
+            remove { }
+        }
+
+        public event AsyncEventHandler<ShutdownEventArgs>? ConnectionShutdownAsync
+        {
+            add { }
+            remove { }
+        }
+
+        public event AsyncEventHandler<AsyncEventArgs>? RecoverySucceededAsync
+        {
+            add { }
+            remove { }
+        }
+
+        public event AsyncEventHandler<ConnectionRecoveryErrorEventArgs>? ConnectionRecoveryErrorAsync
+        {
+            add { }
+            remove { }
+        }
+
+        public event AsyncEventHandler<ConsumerTagChangedAfterRecoveryEventArgs>? ConsumerTagChangeAfterRecoveryAsync
+        {
+            add { }
+            remove { }
+        }
+
+        public event AsyncEventHandler<QueueNameChangedAfterRecoveryEventArgs>? QueueNameChangedAfterRecoveryAsync
+        {
+            add { }
+            remove { }
+        }
+
+        public event AsyncEventHandler<RecoveringConsumerEventArgs>? RecoveringConsumerAsync
+        {
+            add { }
+            remove { }
+        }
+
+        public event AsyncEventHandler<ConnectionBlockedEventArgs>? ConnectionBlockedAsync
+        {
+            add { }
+            remove { }
+        }
+
+        public event AsyncEventHandler<AsyncEventArgs>? ConnectionUnblockedAsync
+        {
+            add { }
+            remove { }
+        }
+
+        public void Dispose()
+        {
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            return ValueTask.CompletedTask;
+        }
     }
 
     private sealed class TopologyChannel : ChannelStub

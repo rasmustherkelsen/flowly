@@ -1,5 +1,5 @@
 using System.Collections.Concurrent;
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 
 namespace Flowly.MessageInfrastructure.Registration;
 
@@ -11,10 +11,7 @@ internal class QueueManager : IQueueManager
 
     public void RegisterQueue(DeferredQueueRegistration registration)
     {
-        if (string.IsNullOrWhiteSpace(registration.QueueName))
-        {
-            return;
-        }
+        if (string.IsNullOrWhiteSpace(registration.QueueName)) return;
 
         _queues.AddOrUpdate(
             registration.QueueName,
@@ -26,16 +23,14 @@ internal class QueueManager : IQueueManager
     {
         if (_queueDescriptions == null)
         {
-            _queueDescriptions = new();
+            _queueDescriptions = new List<QueueDescription>();
             foreach (var registration in _queues.Values.OrderBy(x => x.QueueName, StringComparer.OrdinalIgnoreCase))
-            {
                 _queueDescriptions.Add(new QueueDescription(
                     registration.QueueName,
                     registration.DefaultMessageTimeToLive ?? TimeSpan.FromDays(1),
                     registration.DeadLetterOnMessageExpiration ?? true,
                     registration.LockDuration ?? TimeSpan.FromMinutes(5),
                     registration.RequiresSession));
-            }
         }
 
         return _queueDescriptions;
@@ -43,10 +38,7 @@ internal class QueueManager : IQueueManager
 
     private static DeferredQueueRegistration Merge(DeferredQueueRegistration existingRegistration, DeferredQueueRegistration newRegistration)
     {
-        if (!string.Equals(existingRegistration.QueueName, newRegistration.QueueName, StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException("Cannot merge queue registrations with different names.");
-        }
+        if (!string.Equals(existingRegistration.QueueName, newRegistration.QueueName, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("Cannot merge queue registrations with different names.");
 
         var defaultMessageTimeToLive = MergeSetting(
             existingRegistration.DefaultMessageTimeToLive,
@@ -76,20 +68,11 @@ internal class QueueManager : IQueueManager
 
     private static T? MergeSetting<T>(T? existingValue, T? newValue, string queueName, string settingName) where T : struct
     {
-        if (existingValue is null)
-        {
-            return newValue;
-        }
+        if (existingValue is null) return newValue;
 
-        if (newValue is null)
-        {
-            return existingValue;
-        }
+        if (newValue is null) return existingValue;
 
-        if (EqualityComparer<T>.Default.Equals(existingValue.Value, newValue.Value))
-        {
-            return existingValue;
-        }
+        if (EqualityComparer<T>.Default.Equals(existingValue.Value, newValue.Value)) return existingValue;
 
         throw new InvalidOperationException($"Conflicting queue setting '{settingName}' for queue '{queueName}'.");
     }

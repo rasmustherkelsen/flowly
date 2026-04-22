@@ -1,6 +1,6 @@
 using Flowly.DeadLetters.Repositories;
 using Flowly.MessageInfrastructure.Registration;
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -18,7 +18,6 @@ internal class DeadLetterIngestionHealthBackgroundService(
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)
-        {
             try
             {
                 await Task.Delay(healthSettings.CheckInterval, stoppingToken);
@@ -32,7 +31,6 @@ internal class DeadLetterIngestionHealthBackgroundService(
             {
                 logger.LogError(ex, "Dead letter ingestion health check failed");
             }
-        }
     }
 
     private async Task CheckAll(CancellationToken cancellationToken)
@@ -40,15 +38,9 @@ internal class DeadLetterIngestionHealthBackgroundService(
         await using var scope = serviceScopeFactory.CreateAsyncScope();
         var repository = scope.ServiceProvider.GetRequiredService<IDeadLetterRepository>();
 
-        foreach (var settings in queueSettings)
-        {
-            await CheckQueue(settings.QueueName, settings.ProviderName, repository, cancellationToken);
-        }
+        foreach (var settings in queueSettings) await CheckQueue(settings.QueueName, settings.ProviderName, repository, cancellationToken);
 
-        foreach (var settings in eventSubscriptionSettings)
-        {
-            await CheckEventSubscription(settings, repository, cancellationToken);
-        }
+        foreach (var settings in eventSubscriptionSettings) await CheckEventSubscription(settings, repository, cancellationToken);
     }
 
     private async Task CheckQueue(string queueName, string providerName, IDeadLetterRepository repository, CancellationToken cancellationToken)
@@ -63,13 +55,11 @@ internal class DeadLetterIngestionHealthBackgroundService(
         var stalled = lastIngestion is null || lastIngestion < DateTimeOffset.UtcNow - healthSettings.StallThreshold;
 
         if (stalled)
-        {
             logger.LogWarning(
                 "Dead letter ingestion appears stalled for queue '{QueueName}': {MessageCount} message(s) on the dead letter queue, last ingestion: {LastIngestion}",
                 queueName,
                 messageCount,
                 lastIngestion?.ToString("O") ?? "never");
-        }
     }
 
     private async Task CheckEventSubscription(EventSubscriptionDeadLetterIngestionSettings settings, IDeadLetterRepository repository, CancellationToken cancellationToken)
@@ -95,12 +85,10 @@ internal class DeadLetterIngestionHealthBackgroundService(
         var stalled = lastIngestion is null || lastIngestion < DateTimeOffset.UtcNow - healthSettings.StallThreshold;
 
         if (stalled)
-        {
             logger.LogWarning(
                 "Dead letter ingestion appears stalled for event subscription '{DisplayName}': {MessageCount} message(s) on the dead letter queue, last ingestion: {LastIngestion}",
                 settings.DisplayName,
                 messageCount,
                 lastIngestion?.ToString("O") ?? "never");
-        }
     }
 }

@@ -4,7 +4,7 @@ using System.Runtime.CompilerServices;
 
 namespace Flowly.MessageInfrastructure.Receivers;
 
-public static class HandlerQueueOptionsResolver
+internal static class HandlerQueueOptionsResolver
 {
     private static readonly TimeSpan DefaultLockDuration = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan DefaultMessageTimeToLive = TimeSpan.FromDays(1);

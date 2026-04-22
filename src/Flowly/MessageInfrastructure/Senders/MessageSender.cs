@@ -2,7 +2,7 @@
 
 namespace Flowly.MessageInfrastructure.Senders;
 
-public class MessageSender(IServiceProvider serviceProvider) : IMessageSender
+internal class MessageSender(IServiceProvider serviceProvider) : IMessageSender
 {
     public async Task Send<TMessage>(TMessage message, CancellationToken cancellationToken = default)
     {

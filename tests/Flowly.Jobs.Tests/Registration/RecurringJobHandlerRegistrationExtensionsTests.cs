@@ -1,8 +1,8 @@
 using Flowly.Jobs.BackgroundServices;
-using Flowly.Jobs.Registration;
 using Flowly.Jobs.Tests.Fakes;
 using Flowly.MessageInfrastructure.RecurringJobs;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.Registration;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -10,6 +10,23 @@ namespace Flowly.Jobs.Tests.Registration;
 
 public class RecurringJobHandlerRegistrationExtensionsTests
 {
+    private static IFlowlyBuilder BuildBuilder()
+    {
+        return BuildBuilderWithManifest().Builder;
+    }
+
+    private static (IFlowlyBuilder Builder, ProviderQueueManifest Manifest) BuildBuilderWithManifest(string providerName = "primary")
+    {
+        var services = new ServiceCollection();
+        var registry = new FakeMessageBusClientRegistry(new FakeMessageBusClient(), providerName);
+        services.AddSingleton<IMessageBusClientRegistry>(registry);
+        var manifest = new ProviderQueueManifest(providerName, true, "Fake");
+        services.AddSingleton(manifest);
+        services.AddSingleton<IQueueRegistrar, QueueRegistrar>();
+        var builder = new StubFlowlyBuilder(services);
+        return (builder, manifest);
+    }
+
     public class AddRecurringJob
     {
         [Fact]
@@ -65,19 +82,6 @@ public class RecurringJobHandlerRegistrationExtensionsTests
         }
     }
 
-    private static IFlowlyBuilder BuildBuilder() => BuildBuilderWithManifest().Builder;
-
-    private static (IFlowlyBuilder Builder, ProviderQueueManifest Manifest) BuildBuilderWithManifest(string providerName = "primary")
-    {
-        var services = new ServiceCollection();
-        var registry = new FakeMessageBusClientRegistry(new FakeMessageBusClient(), providerName);
-        services.AddSingleton<IMessageBusClientRegistry>(registry);
-        var manifest = new ProviderQueueManifest(providerName, isPrimary: true, "Fake");
-        services.AddSingleton(manifest);
-        var builder = new StubFlowlyBuilder(services);
-        return (builder, manifest);
-    }
-
     private sealed class StubFlowlyBuilder(IServiceCollection services) : IFlowlyBuilder
     {
         public IServiceCollection Services => services;
@@ -87,6 +91,9 @@ public class RecurringJobHandlerRegistrationExtensionsTests
     [RecurringJob("Runs every minute", "* * * * *")]
     private class SomeRecurringJob : RecurringJobHandlerBase
     {
-        public override Task Handle(CancellationToken cancellationToken) => Task.CompletedTask;
+        public override Task Handle(CancellationToken cancellationToken)
+        {
+            return Task.CompletedTask;
+        }
     }
 }

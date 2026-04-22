@@ -1,5 +1,5 @@
 using Flowly.MessageInfrastructure.Registration;
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -7,6 +7,22 @@ namespace Flowly.RabbitMQ.Tests;
 
 public class RabbitMqRegistrationTests
 {
+    private static (IFlowlyBuilder builder, FakeMessageBusClientRegistry registry) CreateBuilder()
+    {
+        var services = new ServiceCollection();
+        var registry = new FakeMessageBusClientRegistry();
+        var topologyRegistry = new FakeMessagingTopologyCreatorRegistry();
+        var eventTopologyRegistry = new FakeEventTopologyCreatorRegistry();
+
+        services.AddSingleton<IMessageBusClientRegistry>(registry);
+        services.AddSingleton<IMessagingTopologyCreatorRegistry>(topologyRegistry);
+        services.AddSingleton<IEventTopologyCreatorRegistry>(eventTopologyRegistry);
+
+        var builder = new FakeFlowlyBuilder(services, new ConfigurationBuilder().Build());
+
+        return (builder, registry);
+    }
+
     public class UseRabbitMq
     {
         [Fact]
@@ -64,22 +80,6 @@ public class RabbitMqRegistrationTests
         }
     }
 
-    private static (IFlowlyBuilder builder, FakeMessageBusClientRegistry registry) CreateBuilder()
-    {
-        var services = new ServiceCollection();
-        var registry = new FakeMessageBusClientRegistry();
-        var topologyRegistry = new FakeMessagingTopologyCreatorRegistry();
-        var eventTopologyRegistry = new FakeEventTopologyCreatorRegistry();
-
-        services.AddSingleton<IMessageBusClientRegistry>(registry);
-        services.AddSingleton<IMessagingTopologyCreatorRegistry>(topologyRegistry);
-        services.AddSingleton<IEventTopologyCreatorRegistry>(eventTopologyRegistry);
-
-        var builder = new FakeFlowlyBuilder(services, new ConfigurationBuilder().Build());
-
-        return (builder, registry);
-    }
-
     private sealed class FakeFlowlyBuilder(IServiceCollection services, IConfiguration configuration) : IFlowlyBuilder
     {
         public IServiceCollection Services => services;
@@ -98,23 +98,43 @@ public class RabbitMqRegistrationTests
             _transports.Add(new RegisteredTransport(providerName, isPrimary, createTopologyOverride));
         }
 
-        public IMessageBusClient GetClient(string providerName) => throw new NotImplementedException();
+        public IMessageBusClient GetClient(string providerName)
+        {
+            throw new NotImplementedException();
+        }
 
-        public bool IsRegistered(string providerName) =>
-            _transports.Any(t => string.Equals(t.Name, providerName, StringComparison.OrdinalIgnoreCase));
+        public bool IsRegistered(string providerName)
+        {
+            return _transports.Any(t => string.Equals(t.Name, providerName, StringComparison.OrdinalIgnoreCase));
+        }
 
-        public IReadOnlyList<RegisteredTransport> GetAll() => _transports;
+        public IReadOnlyList<RegisteredTransport> GetAll()
+        {
+            return _transports;
+        }
     }
 
     private sealed class FakeMessagingTopologyCreatorRegistry : IMessagingTopologyCreatorRegistry
     {
-        public void Register(string providerName, IMessagingTopologyCreator creator) { }
-        public IMessagingTopologyCreator GetCreator(string providerName) => throw new NotImplementedException();
+        public void Register(string providerName, IMessagingTopologyCreator creator)
+        {
+        }
+
+        public IMessagingTopologyCreator GetCreator(string providerName)
+        {
+            throw new NotImplementedException();
+        }
     }
 
     private sealed class FakeEventTopologyCreatorRegistry : IEventTopologyCreatorRegistry
     {
-        public void Register(string providerName, IEventTopologyCreator creator) { }
-        public IEventTopologyCreator? TryGetCreator(string providerName) => null;
+        public void Register(string providerName, IEventTopologyCreator creator)
+        {
+        }
+
+        public IEventTopologyCreator? TryGetCreator(string providerName)
+        {
+            return null;
+        }
     }
 }

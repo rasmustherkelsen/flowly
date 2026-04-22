@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using Flowly.MessageInfrastructure.Telemetry;
-using Flowly.MessagingAbstractions;
 
 namespace Flowly.Tests.MessageInfrastructure.Telemetry;
 
@@ -105,7 +104,7 @@ public class HandlerInstrumentationTests
             meterListener.Start();
 
             using var handlerInstrumentation = new HandlerInstrumentation();
-            handlerInstrumentation.RecordReceived("MyHandler", "my-queue", count: 5);
+            handlerInstrumentation.RecordReceived("MyHandler", "my-queue", 5);
 
             Assert.Equal(5, recorded);
         }
@@ -165,7 +164,7 @@ public class HandlerInstrumentationTests
             using var activityListener = new ActivityListener
             {
                 ShouldListenTo = source => source.Name == FlowlyInstrumentationConstants.ActivitySourceName,
-                Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllData
+                Sample = (ref _) => ActivitySamplingResult.AllData
             };
             ActivitySource.AddActivityListener(activityListener);
 
@@ -188,7 +187,7 @@ public class HandlerInstrumentationTests
             using var activityListener = new ActivityListener
             {
                 ShouldListenTo = source => source.Name == FlowlyInstrumentationConstants.ActivitySourceName,
-                Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllData
+                Sample = (ref _) => ActivitySamplingResult.AllData
             };
             ActivitySource.AddActivityListener(activityListener);
 

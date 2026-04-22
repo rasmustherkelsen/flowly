@@ -6,6 +6,8 @@ Flowly is a queue-based messaging abstraction for .NET. It sits between your app
 
 ## Quick Navigation
 
+- [RabbitMQ Quickstart](quickstart-rabbitmq.md)
+- [Azure Service Bus Quickstart](quickstart-azure-service-bus.md)
 - [Why Flowly?](#why-flowly)
 - [Packages](#packages)
 - [Getting Started](#getting-started)
@@ -53,7 +55,7 @@ Flowly is a queue-based messaging abstraction for .NET. It sits between your app
 | `Flowly.DeadLetters.SqlServer` | SQL Server backend for dead letter tracking |
 | `Flowly.DeadLetters.Postgres` | PostgreSQL backend for dead letter tracking |
 | `Flowly.OpenTelemetry` | OpenTelemetry metrics and traces for handlers and submitters |
-| `Flowly.Tool` | `dotnet flowly` CLI for queue discovery and code generation |
+| `Flowly.Tool` | `flowly` CLI for queue discovery and code generation |
 
 ---
 
@@ -536,56 +538,100 @@ Reference `Flowly.AzureServiceBus.Aspire` in the AppHost `.csproj` with `IsAspir
 
 ### Docker Compose
 
-Generate the Azure Service Bus emulator configuration file using `Flowly.Tool`:
+Use `flowly docker-compose` to generate a `docker-compose.yml` that includes the right local infrastructure for your project — RabbitMQ, the Azure Service Bus emulator, or both, depending on which transport packages are referenced:
 
 ```bash
-dotnet flowly azure-service-bus emulator-config \
+flowly docker-compose --project ./Sender --project ./Receiver --output docker-compose.yml
+```
+
+For multi-service solutions, pass multiple `--project` flags. The tool detects all transports and database providers across every project and generates a single composed file. Then start everything with:
+
+```bash
+docker compose up -d
+```
+
+When Azure Service Bus is detected, the tool automatically generates `sbconfig.json` alongside `docker-compose.yml` and configures the emulator to mount it. You can also write to stdout and pipe it yourself:
+
+```bash
+flowly docker-compose --project ./Sender --project ./Receiver > docker-compose.yml
+```
+
+For the Azure Service Bus emulator specifically, you can also generate the queue configuration file independently:
+
+```bash
+flowly azure-service-bus emulator-config \
   --project ./MyService \
   --namespace EmulatorNamespace \
   --output ./servicebus-config.json
 ```
-
-Mount this file into the emulator container. Queues are created at emulator startup from the config JSON.
 
 ---
 
 ## Flowly.Tool CLI
 
-The `dotnet flowly` CLI tool operates on your service project at design time. It loads your `IFlowlyConfiguration` class from the built assembly to discover queue topology.
+The `flowly` CLI tool operates on your service project at design time. It loads your `IFlowlyConfiguration` class from the built assembly to discover queue topology.
 
 ### Install
 
 ```bash
-dotnet pack Flowly.Tool/Flowly.Tool.csproj -c Release
-dotnet tool install --global --add-source ./Flowly.Tool/bin/Release Flowly.Tool
+dotnet tool install --global Flowly.Tool
+```
+
+To update to a newer version:
+
+```bash
+dotnet tool update --global Flowly.Tool
+```
+
+To uninstall:
+
+```bash
+dotnet tool uninstall --global Flowly.Tool
 ```
 
 ### Commands
 
 ```bash
+# Generate docker-compose.yml with all local development dependencies
+flowly docker-compose --project ./Sender --project ./Receiver --output docker-compose.yml
+
+# Or pipe to stdout
+flowly docker-compose --project ./Sender --project ./Receiver > docker-compose.yml
+
 # List all queues a project registers
-dotnet flowly azure-service-bus queues --project ./MyService
+flowly azure-service-bus queues --project ./MyService
 
 # Generate Azure Service Bus emulator config JSON
-dotnet flowly azure-service-bus emulator-config \
+flowly azure-service-bus emulator-config \
   --project ./MyService \
   --namespace EmulatorNamespace \
   --output ./servicebus-config.json
 
 # Generate Bicep IaC for queue provisioning
-dotnet flowly azure-service-bus bicep \
+flowly azure-service-bus bicep \
   --project ./MyService \
   --service-bus-namespace-name sb-myapp \
   --output ./queues.bicep
 
 # Generate Aspire AppHost bootstrap code
-dotnet flowly azure-service-bus aspire-code \
+flowly azure-service-bus aspire-code \
   --project ./MyService \
   --connection-name EmulatorNamespace \
   --output ./aspire-bootstrap.cs
 ```
 
 Pass multiple `--project` flags to aggregate queues across several services into a single output file.
+
+#### `docker-compose` options
+
+| Option | Description |
+|---|---|
+| `--project` / `-p` | Path to a `.csproj` or folder. Repeat for multiple projects. |
+| `--output` / `-o` | Write `docker-compose.yml` to this path. Defaults to stdout. |
+| `--namespace` | ASB emulator namespace name (default: `sbemulatorns`). |
+| `--sbconfig-output` | Override the path for the generated `sbconfig.json` (ASB only). |
+
+The tool detects transports from package references (`Flowly.AzureServiceBus.dll`, `Flowly.RabbitMQ.dll`) and database providers from (`Flowly.Jobs.SqlServer.dll`, `Flowly.DeadLetters.Postgres.dll`, etc.) in the build output. No configuration class is required — it works with both inline `AddFlowly()` and `FlowlyDesignTimeFactory` setups.
 
 ---
 

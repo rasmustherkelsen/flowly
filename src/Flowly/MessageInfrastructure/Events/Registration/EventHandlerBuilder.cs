@@ -1,4 +1,3 @@
-using Flowly.MessageInfrastructure.Registration;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -15,7 +14,7 @@ internal class EventHandlerBuilder<TEvent>(
 
     public IConfiguration Configuration => inner.Configuration;
 
-    public string TopicOrExchangeName { get; } = topicOrExchangeName;
+    public string TopicName { get; } = topicOrExchangeName;
 
     public string SubscriptionName { get; } = subscriptionName;
 

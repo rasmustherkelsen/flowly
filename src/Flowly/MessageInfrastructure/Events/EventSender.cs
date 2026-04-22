@@ -2,7 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Flowly.MessageInfrastructure.Events;
 
-public class EventSender(IServiceProvider serviceProvider) : IEventSender
+internal class EventSender(IServiceProvider serviceProvider) : IEventSender
 {
     public Task RaiseEvent<TEvent>(TEvent @event, CancellationToken cancellationToken = default)
     {

@@ -1,5 +1,3 @@
-using Flowly.MessageInfrastructure.Receivers;
-
 namespace Flowly.Tests.MessageInfrastructure.Receivers;
 
 public class BatchMessageHandlerOptionsTests

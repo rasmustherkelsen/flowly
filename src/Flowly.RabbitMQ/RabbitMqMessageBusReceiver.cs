@@ -1,5 +1,5 @@
 using System.Threading.Channels;
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 
@@ -13,10 +13,10 @@ internal class RabbitMqMessageBusReceiver(IChannel channel, string queueName) : 
         CancellationToken cancellationToken = default)
     {
         await channel.BasicQosAsync(
-            prefetchSize: 0,
-            prefetchCount: (ushort)maxMessagesBeforeProcessing,
-            global: false,
-            cancellationToken: cancellationToken);
+            0,
+            (ushort)maxMessagesBeforeProcessing,
+            false,
+            cancellationToken);
 
         var messages = new List<IReceivedMessage<TMessage>>(maxMessagesBeforeProcessing);
         var messageBuffer = Channel.CreateBounded<(ulong DeliveryTag, ReadOnlyMemory<byte> Body, IReadOnlyBasicProperties Properties)>(maxMessagesBeforeProcessing);
@@ -29,7 +29,7 @@ internal class RabbitMqMessageBusReceiver(IChannel channel, string queueName) : 
             return Task.CompletedTask;
         };
 
-        var consumerTag = await channel.BasicConsumeAsync(queueName, autoAck: false, consumer, cancellationToken);
+        var consumerTag = await channel.BasicConsumeAsync(queueName, false, consumer, cancellationToken);
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(maxWaitTime);
@@ -37,7 +37,6 @@ internal class RabbitMqMessageBusReceiver(IChannel channel, string queueName) : 
         try
         {
             while (messages.Count < maxMessagesBeforeProcessing)
-            {
                 try
                 {
                     var (deliveryTag, body, properties) = await messageBuffer.Reader.ReadAsync(timeoutCts.Token);
@@ -45,14 +44,10 @@ internal class RabbitMqMessageBusReceiver(IChannel channel, string queueName) : 
                 }
                 catch (OperationCanceledException)
                 {
-                    while (messages.Count < maxMessagesBeforeProcessing && messageBuffer.Reader.TryRead(out var buffered))
-                    {
-                        messages.Add(new RabbitMqBatchReceivedMessage<TMessage>(channel, buffered.DeliveryTag, buffered.Body, buffered.Properties));
-                    }
+                    while (messages.Count < maxMessagesBeforeProcessing && messageBuffer.Reader.TryRead(out var buffered)) messages.Add(new RabbitMqBatchReceivedMessage<TMessage>(channel, buffered.DeliveryTag, buffered.Body, buffered.Properties));
 
                     break;
                 }
-            }
         }
         finally
         {

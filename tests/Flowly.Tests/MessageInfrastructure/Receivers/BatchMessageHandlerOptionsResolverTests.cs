@@ -63,18 +63,18 @@ public class BatchMessageHandlerOptionsResolverTests
 
     private record SomeMessage;
 
-    private class BareBatchHandler : BatchMessageHandlerBase<SomeMessage>
+    private class BareBatchHandler : BatchMessageHandler<SomeMessage>
     {
         public override Task Handle(IBatchMessageContext<SomeMessage> messageContext) => Task.CompletedTask;
     }
 
     [BatchProcessing(maxMessagesBeforeProcessing: 50, maxWaitTimeInSeconds: 10)]
-    private class HandlerWithBatchAttribute : BatchMessageHandlerBase<SomeMessage>
+    private class HandlerWithBatchAttribute : BatchMessageHandler<SomeMessage>
     {
         public override Task Handle(IBatchMessageContext<SomeMessage> messageContext) => Task.CompletedTask;
     }
 
-    private class HandlerWithConfigure : BatchMessageHandlerBase<SomeMessage>
+    private class HandlerWithConfigure : BatchMessageHandler<SomeMessage>
     {
         public override void Configure(BatchMessageHandlerOptions options)
         {
@@ -86,7 +86,7 @@ public class BatchMessageHandlerOptionsResolverTests
     }
 
     [BatchProcessing(maxMessagesBeforeProcessing: 20, maxWaitTimeInSeconds: 2)]
-    private class HandlerWithAttributeAndConfigure : BatchMessageHandlerBase<SomeMessage>
+    private class HandlerWithAttributeAndConfigure : BatchMessageHandler<SomeMessage>
     {
         public override void Configure(BatchMessageHandlerOptions options)
         {
@@ -97,7 +97,7 @@ public class BatchMessageHandlerOptionsResolverTests
         public override Task Handle(IBatchMessageContext<SomeMessage> messageContext) => Task.CompletedTask;
     }
 
-    private class HandlerWithPartialConfigure : BatchMessageHandlerBase<SomeMessage>
+    private class HandlerWithPartialConfigure : BatchMessageHandler<SomeMessage>
     {
         public override void Configure(BatchMessageHandlerOptions options)
         {
@@ -107,7 +107,7 @@ public class BatchMessageHandlerOptionsResolverTests
         public override Task Handle(IBatchMessageContext<SomeMessage> messageContext) => Task.CompletedTask;
     }
 
-    private class HandlerWithConstructorDependency(string required) : BatchMessageHandlerBase<SomeMessage>
+    private class HandlerWithConstructorDependency(string required) : BatchMessageHandler<SomeMessage>
     {
         public string Required { get; } = required;
 

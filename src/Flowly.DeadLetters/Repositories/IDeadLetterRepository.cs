@@ -1,5 +1,5 @@
 using Flowly.DeadLetters.DatabaseModel;
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 
 namespace Flowly.DeadLetters.Repositories;
 

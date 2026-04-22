@@ -1,5 +1,5 @@
 using Azure.Messaging.ServiceBus;
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 
 namespace Flowly.AzureServiceBus;
 
@@ -15,8 +15,12 @@ internal class BatchReceivedMessage<TMessage>(ServiceBusReceiver receiver, Servi
         RetryCount: message.ApplicationProperties.TryGetValue(FlowlyMessageProperties.RetryCount, out var rc) ? Convert.ToInt32(rc) : 0);
 
     public Task Complete(CancellationToken cancellationToken = default)
-        => receiver.CompleteMessageAsync(message, cancellationToken);
+    {
+        return receiver.CompleteMessageAsync(message, cancellationToken);
+    }
 
     public Task DeadLetter(string? reason = null, CancellationToken cancellationToken = default)
-        => receiver.DeadLetterMessageAsync(message, deadLetterReason: reason, cancellationToken: cancellationToken);
+    {
+        return receiver.DeadLetterMessageAsync(message, reason, cancellationToken: cancellationToken);
+    }
 }

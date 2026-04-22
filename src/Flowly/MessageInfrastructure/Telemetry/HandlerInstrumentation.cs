@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
-using Flowly.MessagingAbstractions;
 
 namespace Flowly.MessageInfrastructure.Telemetry;
 

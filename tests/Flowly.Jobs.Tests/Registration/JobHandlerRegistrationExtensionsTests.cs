@@ -1,13 +1,13 @@
-using Flowly.Jobs.BackgroundServices;
+using Flowly;
 using Flowly.Jobs.Model;
 using Flowly.Jobs.Receivers;
-using Flowly.Jobs.Registration;
 using Flowly.Jobs.Tests.Fakes;
 using Flowly.MessageInfrastructure.Model;
-using Flowly.MessageInfrastructure.Receivers;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.Registration;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 namespace Flowly.Jobs.Tests.Registration;
 
@@ -48,8 +48,8 @@ public class JobHandlerRegistrationExtensionsTests
             builder.AddJobHandler<SomeJobMessage, SomeJobHandler>();
 
             var settings = builder.Services
-                .Where(s => s.ServiceType == typeof(HandlerSettings<SomeJobMessage>))
-                .Select(s => (HandlerSettings<SomeJobMessage>)s.ImplementationInstance!)
+                .Where(s => s.ServiceType == typeof(IHandlerSettings<SomeJobMessage>))
+                .Select(s => (IHandlerSettings<SomeJobMessage>)s.ImplementationInstance!)
                 .Single();
 
             Assert.True(settings.ReadAndDelete);
@@ -57,15 +57,14 @@ public class JobHandlerRegistrationExtensionsTests
         }
 
         [Fact]
-        public void RegistersBackgroundServiceOfCorrectType()
+        public void RegistersBackgroundService()
         {
             var builder = BuildBuilder();
 
             builder.AddJobHandler<SomeJobMessage, SomeJobHandler>();
 
             var descriptor = builder.Services.FirstOrDefault(s =>
-                s.ImplementationType?.IsGenericType == true
-                && s.ImplementationType.GetGenericTypeDefinition() == typeof(JobHandlerBackgroundService<>));
+                s.ServiceType == typeof(IHostedService) && s.ImplementationFactory != null);
             Assert.NotNull(descriptor);
         }
 
@@ -100,6 +99,8 @@ public class JobHandlerRegistrationExtensionsTests
         services.AddSingleton<IMessageBusClientRegistry>(registry);
         var manifest = new ProviderQueueManifest(providerName, isPrimary: true, "Fake");
         services.AddSingleton(manifest);
+        services.AddSingleton<IHandlerSettingsFactory, HandlerSettingsFactory>();
+        services.AddSingleton<IQueueRegistrar, QueueRegistrar>();
         var builder = new StubFlowlyBuilder(services);
         return (builder, manifest);
     }

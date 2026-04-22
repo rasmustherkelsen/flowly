@@ -1,7 +1,7 @@
 using System.Text;
 using System.Text.Json;
-using Flowly.MessagingAbstractions;
 using Flowly.RabbitMQ.Tests.Fakes;
+using Flowly.Transport;
 using RabbitMQ.Client;
 
 namespace Flowly.RabbitMQ.Tests;
@@ -14,7 +14,7 @@ public class RabbitMqEventPublisherTests
         public async Task SerializesBodyAsJsonAndPublishesToExchange()
         {
             var recordingChannel = new RecordingChannel();
-            var rabbitMqEventPublisher = new RabbitMqEventPublisher("orders-exchange", recordingChannel, maxMessageSizeBytes: null);
+            var rabbitMqEventPublisher = new RabbitMqEventPublisher("orders-exchange", recordingChannel, null);
 
             await rabbitMqEventPublisher.SendMessage(new OrderPlaced("order-42"), MessageProperties.Empty);
 
@@ -29,11 +29,11 @@ public class RabbitMqEventPublisherTests
         public async Task WhenMessagePropertiesHasMessageId_PropagatesMessageId()
         {
             var recordingChannel = new RecordingChannel();
-            var rabbitMqEventPublisher = new RabbitMqEventPublisher("orders-exchange", recordingChannel, maxMessageSizeBytes: null);
+            var rabbitMqEventPublisher = new RabbitMqEventPublisher("orders-exchange", recordingChannel, null);
 
             await rabbitMqEventPublisher.SendMessage(
                 new OrderPlaced("order-1"),
-                new MessageProperties(MessageId: "my-message-id", CorrelationId: string.Empty));
+                new MessageProperties("my-message-id", string.Empty));
 
             Assert.Equal("my-message-id", recordingChannel.LastBasicProperties!.MessageId);
         }
@@ -42,7 +42,7 @@ public class RabbitMqEventPublisherTests
         public async Task WhenMessageIdIsEmpty_GeneratesMessageId()
         {
             var recordingChannel = new RecordingChannel();
-            var rabbitMqEventPublisher = new RabbitMqEventPublisher("orders-exchange", recordingChannel, maxMessageSizeBytes: null);
+            var rabbitMqEventPublisher = new RabbitMqEventPublisher("orders-exchange", recordingChannel, null);
 
             await rabbitMqEventPublisher.SendMessage(new OrderPlaced("order-1"), MessageProperties.Empty);
 
@@ -55,11 +55,11 @@ public class RabbitMqEventPublisherTests
         public async Task WhenRetryCountIsPositive_AddsRetryCountHeader()
         {
             var recordingChannel = new RecordingChannel();
-            var rabbitMqEventPublisher = new RabbitMqEventPublisher("orders-exchange", recordingChannel, maxMessageSizeBytes: null);
+            var rabbitMqEventPublisher = new RabbitMqEventPublisher("orders-exchange", recordingChannel, null);
 
             await rabbitMqEventPublisher.SendMessage(
                 new OrderPlaced("order-1"),
-                new MessageProperties(MessageId: "m", CorrelationId: "", RetryCount: 3));
+                new MessageProperties("m", "", RetryCount: 3));
 
             var headers = recordingChannel.LastBasicProperties!.Headers!;
             Assert.True(headers.ContainsKey(FlowlyMessageProperties.RetryCount));
@@ -70,7 +70,7 @@ public class RabbitMqEventPublisherTests
         public async Task WhenRetryCountIsZero_DoesNotAddRetryCountHeader()
         {
             var recordingChannel = new RecordingChannel();
-            var rabbitMqEventPublisher = new RabbitMqEventPublisher("orders-exchange", recordingChannel, maxMessageSizeBytes: null);
+            var rabbitMqEventPublisher = new RabbitMqEventPublisher("orders-exchange", recordingChannel, null);
 
             await rabbitMqEventPublisher.SendMessage(new OrderPlaced("order-1"), MessageProperties.Empty);
 
@@ -82,10 +82,9 @@ public class RabbitMqEventPublisherTests
         public async Task WhenMessageExceedsLimit_ThrowsMessageTooLargeException()
         {
             var recordingChannel = new RecordingChannel();
-            var rabbitMqEventPublisher = new RabbitMqEventPublisher("orders-exchange", recordingChannel, maxMessageSizeBytes: 1);
+            var rabbitMqEventPublisher = new RabbitMqEventPublisher("orders-exchange", recordingChannel, 1);
 
-            var messageTooLargeException = await Assert.ThrowsAsync<MessageTooLargeException>(
-                () => rabbitMqEventPublisher.SendMessage(new OrderPlaced("order-1"), MessageProperties.Empty));
+            var messageTooLargeException = await Assert.ThrowsAsync<MessageTooLargeException>(() => rabbitMqEventPublisher.SendMessage(new OrderPlaced("order-1"), MessageProperties.Empty));
 
             Assert.Equal("orders-exchange", messageTooLargeException.QueueName);
             Assert.Equal(1, messageTooLargeException.MaxSizeBytes);
@@ -98,9 +97,9 @@ public class RabbitMqEventPublisherTests
         public async Task PublishesEmptyBody()
         {
             var recordingChannel = new RecordingChannel();
-            var rabbitMqEventPublisher = new RabbitMqEventPublisher("orders-exchange", recordingChannel, maxMessageSizeBytes: null);
+            var rabbitMqEventPublisher = new RabbitMqEventPublisher("orders-exchange", recordingChannel, null);
 
-            await rabbitMqEventPublisher.SendEmptyMessage(new MessageProperties(MessageId: "mid", CorrelationId: "cid"));
+            await rabbitMqEventPublisher.SendEmptyMessage(new MessageProperties("mid", "cid"));
 
             Assert.Equal(0, recordingChannel.LastBody.Length);
             Assert.Equal("mid", recordingChannel.LastBasicProperties!.MessageId);
@@ -113,7 +112,7 @@ public class RabbitMqEventPublisherTests
         public async Task PublishesRawBytesAndPassesApplicationPropertiesAsHeaders()
         {
             var recordingChannel = new RecordingChannel();
-            var rabbitMqEventPublisher = new RabbitMqEventPublisher("orders-exchange", recordingChannel, maxMessageSizeBytes: null);
+            var rabbitMqEventPublisher = new RabbitMqEventPublisher("orders-exchange", recordingChannel, null);
             var applicationProperties = new Dictionary<string, object>
             {
                 ["flowly-target-subscription"] = "warehouse",
@@ -132,11 +131,10 @@ public class RabbitMqEventPublisherTests
         public async Task WhenBodyExceedsLimit_ThrowsMessageTooLargeException()
         {
             var recordingChannel = new RecordingChannel();
-            var rabbitMqEventPublisher = new RabbitMqEventPublisher("orders-exchange", recordingChannel, maxMessageSizeBytes: 2);
+            var rabbitMqEventPublisher = new RabbitMqEventPublisher("orders-exchange", recordingChannel, 2);
             var body = "hello-world-this-is-long";
 
-            var messageTooLargeException = await Assert.ThrowsAsync<MessageTooLargeException>(
-                () => rabbitMqEventPublisher.SendRawMessage(body, new Dictionary<string, object>()));
+            var messageTooLargeException = await Assert.ThrowsAsync<MessageTooLargeException>(() => rabbitMqEventPublisher.SendRawMessage(body, new Dictionary<string, object>()));
 
             Assert.Equal("orders-exchange", messageTooLargeException.QueueName);
             Assert.Equal(2, messageTooLargeException.MaxSizeBytes);

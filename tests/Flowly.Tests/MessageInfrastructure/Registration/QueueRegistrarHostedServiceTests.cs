@@ -1,5 +1,5 @@
 using Flowly.MessageInfrastructure.Registration;
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Flowly.Tests.MessageInfrastructure.Registration;
@@ -36,9 +36,9 @@ public class QueueRegistrarHostedServiceTests
             var manifest = ManifestWith("asb", "AzureServiceBus", "order-placed");
             var validator = new ThrowingConflictValidator();
             var service = Build(
-                manifests: [manifest],
-                topologyCreators: [("asb", topologyCreator)],
-                validator: validator);
+                [manifest],
+                [("asb", topologyCreator)],
+                validator);
 
             await Assert.ThrowsAsync<InvalidOperationException>(() => service.StartAsync(CancellationToken.None));
 
@@ -56,8 +56,8 @@ public class QueueRegistrarHostedServiceTests
                 ManifestWith("rabbit", "RabbitMQ", "invoice-created")
             };
             var service = Build(
-                manifests: manifests,
-                topologyCreators: [("asb", creatorA), ("rabbit", creatorB)],
+                manifests,
+                [("asb", creatorA), ("rabbit", creatorB)],
                 createTopology: true);
 
             await service.StartAsync(CancellationToken.None);
@@ -72,8 +72,8 @@ public class QueueRegistrarHostedServiceTests
             var topologyCreator = new SpyTopologyCreator();
             var manifest = ManifestWith("asb", "AzureServiceBus", "order-placed");
             var service = Build(
-                manifests: [manifest],
-                topologyCreators: [("asb", topologyCreator)],
+                [manifest],
+                [("asb", topologyCreator)],
                 createTopology: false);
 
             await service.StartAsync(CancellationToken.None);
@@ -87,8 +87,8 @@ public class QueueRegistrarHostedServiceTests
             var topologyCreator = new SpyTopologyCreator();
             var manifest = ManifestWith("asb", "AzureServiceBus", "order-placed");
             var service = Build(
-                manifests: [manifest],
-                topologyCreators: [("asb", topologyCreator)],
+                [manifest],
+                [("asb", topologyCreator)],
                 createTopology: true,
                 transportOverrides: [("asb", false)]);
 
@@ -103,8 +103,8 @@ public class QueueRegistrarHostedServiceTests
             var topologyCreator = new SpyTopologyCreator();
             var manifest = ManifestWith("asb", "AzureServiceBus", "order-placed");
             var service = Build(
-                manifests: [manifest],
-                topologyCreators: [("asb", topologyCreator)],
+                [manifest],
+                [("asb", topologyCreator)],
                 createTopology: false,
                 transportOverrides: [("asb", true)]);
 
@@ -119,8 +119,8 @@ public class QueueRegistrarHostedServiceTests
             var topologyCreator = new SpyTopologyCreator();
             var manifest = ManifestWith("asb", "AzureServiceBus", "order-placed");
             var service = Build(
-                manifests: [manifest],
-                topologyCreators: [("asb", topologyCreator)]);
+                [manifest],
+                [("asb", topologyCreator)]);
 
             await service.StartAsync(CancellationToken.None);
 
@@ -137,15 +137,15 @@ public class QueueRegistrarHostedServiceTests
             var ttl = TimeSpan.FromDays(7);
             var lockDuration = TimeSpan.FromMinutes(10);
             var topologyCreator = new SpyTopologyCreator();
-            var manifest = new ProviderQueueManifest("asb", isPrimary: true, "AzureServiceBus");
+            var manifest = new ProviderQueueManifest("asb", true, "AzureServiceBus");
             manifest.Add(new DeferredQueueRegistration(
                 "order-placed",
                 DefaultMessageTimeToLive: ttl,
                 DeadLetterOnMessageExpiration: false,
                 LockDuration: lockDuration));
             var service = Build(
-                manifests: [manifest],
-                topologyCreators: [("asb", topologyCreator)]);
+                [manifest],
+                [("asb", topologyCreator)]);
 
             await service.StartAsync(CancellationToken.None);
 
@@ -161,8 +161,8 @@ public class QueueRegistrarHostedServiceTests
             var topologyCreator = new SpyTopologyCreator();
             var manifest = ManifestWith("asb", "AzureServiceBus", "order-placed", "invoice-created", "payment-processed");
             var service = Build(
-                manifests: [manifest],
-                topologyCreators: [("asb", topologyCreator)]);
+                [manifest],
+                [("asb", topologyCreator)]);
 
             await service.StartAsync(CancellationToken.None);
 
@@ -176,8 +176,8 @@ public class QueueRegistrarHostedServiceTests
             var topologyCreator = new SpyTopologyCreator();
             var manifest = ManifestWith("asb", "AzureServiceBus", "order-placed");
             var service = Build(
-                manifests: [manifest],
-                topologyCreators: [("asb", topologyCreator)]);
+                [manifest],
+                [("asb", topologyCreator)]);
 
             await service.StartAsync(cts.Token);
 
@@ -191,8 +191,8 @@ public class QueueRegistrarHostedServiceTests
             var topologyValidator = new SpyTopologyValidator("asb");
             var manifest = ManifestWith("asb", "AzureServiceBus", "order-placed");
             var service = Build(
-                manifests: [manifest],
-                topologyCreators: [("asb", new SpyTopologyCreator())],
+                [manifest],
+                [("asb", new SpyTopologyCreator())],
                 topologyValidators: [topologyValidator],
                 createTopology: false);
 
@@ -238,7 +238,7 @@ public class QueueRegistrarHostedServiceTests
 
         private static ProviderQueueManifest ManifestWith(string providerName, string transportType, params string[] queueNames)
         {
-            var manifest = new ProviderQueueManifest(providerName, isPrimary: true, transportType);
+            var manifest = new ProviderQueueManifest(providerName, true, transportType);
 
             foreach (var queueName in queueNames)
                 manifest.Add(new DeferredQueueRegistration(queueName));
@@ -258,8 +258,10 @@ public class QueueRegistrarHostedServiceTests
 
         private sealed class ThrowingConflictValidator : ICrossProviderConflictValidator
         {
-            public void Validate(IEnumerable<ProviderQueueManifest> manifests) =>
+            public void Validate(IEnumerable<ProviderQueueManifest> manifests)
+            {
                 throw new InvalidOperationException("Simulated conflict.");
+            }
         }
 
         private sealed class SpyTopologyCreator : IMessagingTopologyCreator
@@ -279,8 +281,8 @@ public class QueueRegistrarHostedServiceTests
 
         private sealed class SpyTopologyValidator(string providerName) : IMessagingTopologyValidator
         {
-            public string ProviderName => providerName;
             public CancellationToken ReceivedCancellationToken { get; private set; }
+            public string ProviderName => providerName;
 
             public Task Validate(IReadOnlyCollection<IQueueDescription> queueDescriptions, CancellationToken cancellationToken)
             {
@@ -292,12 +294,36 @@ public class QueueRegistrarHostedServiceTests
         private sealed class StubMessageBusClient : IMessageBusClient
         {
             public string MessagingSystem => "stub";
-            public Task<IMessageBusReceiver> CreateReceiver(string queueName) => throw new NotImplementedException();
-            public Task<IMessageBusProcessor<TMessage>> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options) => throw new NotImplementedException();
-            public Task<IExecutionLaneProcessor> CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options) => throw new NotImplementedException();
-            public Task<IMessageBusSender> CreateMessageBusSender(string queueName) => throw new NotImplementedException();
-            public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName) => throw new NotImplementedException();
-            public Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+
+            public Task<IMessageBusReceiver> CreateReceiver(string queueName)
+            {
+                throw new NotImplementedException();
+            }
+
+            public Task<IMessageBusProcessor<TMessage>> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options)
+            {
+                throw new NotImplementedException();
+            }
+
+            public Task<IExecutionLaneProcessor> CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options)
+            {
+                throw new NotImplementedException();
+            }
+
+            public Task<IMessageBusSender> CreateMessageBusSender(string queueName)
+            {
+                throw new NotImplementedException();
+            }
+
+            public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName)
+            {
+                throw new NotImplementedException();
+            }
+
+            public Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default)
+            {
+                throw new NotImplementedException();
+            }
         }
     }
 }

@@ -1,20 +1,37 @@
 using Flowly.MessageInfrastructure.BackgroundServices;
 using Flowly.MessageInfrastructure.Model;
-using Flowly.MessageInfrastructure.Receivers;
 using Flowly.MessageInfrastructure.Telemetry;
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Flowly.Tests.MessageInfrastructure.BackgroundServices;
 
 public class ServiceBusMessageBatchHandlerBackgroundServiceTests
 {
+    private static (ServiceBusMessageBatchHandlerBackgroundService<TestMessage> serviceBusMessageBatchHandlerBackgroundService, FakeMessageBusClient client, FakeMessageBusReceiver receiver) Build(
+        string queueName = "batch-queue",
+        int maxMessages = 10,
+        TimeSpan maxWaitTime = default,
+        FakeReceivedMessage<TestMessage>[]? messages = null,
+        BatchMessageHandler<TestMessage>? handler = null)
+    {
+        var receiver = new FakeMessageBusReceiver(messages ?? [], messages is { Length: > 0 });
+        var client = new FakeMessageBusClient(receiver);
+        var clientRegistry = new FakeMessageBusClientRegistry(client);
+        var settings = new ServiceBusMessageBatchHandlerBackgroundService<TestMessage>.BatchQueueSettings(
+            queueName, "azure-service-bus", maxMessages, maxWaitTime == default ? TimeSpan.FromSeconds(1) : maxWaitTime);
+        var scopeFactory = new FakeServiceScopeFactory<BatchMessageHandler<TestMessage>>(handler ?? new RecordingBatchHandler());
+        var serviceBusMessageBatchHandlerBackgroundService = new ServiceBusMessageBatchHandlerBackgroundService<TestMessage>(
+            clientRegistry, settings, scopeFactory, NullLogger<ServiceBusMessageBatchHandlerBackgroundService<TestMessage>>.Instance, new NullHandlerInstrumentation());
+        return (serviceBusMessageBatchHandlerBackgroundService, client, receiver);
+    }
+
     public class Execute
     {
         [Fact]
         public async Task CreatesReceiverWithQueueNameFromSettings()
         {
-            var (serviceBusMessageBatchHandlerBackgroundService, client, receiver) = Build("batch-queue");
+            var (serviceBusMessageBatchHandlerBackgroundService, client, receiver) = Build();
 
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             await serviceBusMessageBatchHandlerBackgroundService.StartAsync(CancellationToken.None);
@@ -27,7 +44,7 @@ public class ServiceBusMessageBatchHandlerBackgroundServiceTests
         [Fact]
         public async Task ReceivesMessagesWithSettingsFromBatchQueueSettings()
         {
-            var (serviceBusMessageBatchHandlerBackgroundService, _, receiver) = Build("batch-queue", maxMessages: 25, maxWaitTime: TimeSpan.FromSeconds(10));
+            var (serviceBusMessageBatchHandlerBackgroundService, _, receiver) = Build("batch-queue", 25, TimeSpan.FromSeconds(10));
 
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             await serviceBusMessageBatchHandlerBackgroundService.StartAsync(CancellationToken.None);
@@ -97,27 +114,9 @@ public class ServiceBusMessageBatchHandlerBackgroundServiceTests
         }
     }
 
-    private static (ServiceBusMessageBatchHandlerBackgroundService<TestMessage> serviceBusMessageBatchHandlerBackgroundService, FakeMessageBusClient client, FakeMessageBusReceiver receiver) Build(
-        string queueName = "batch-queue",
-        int maxMessages = 10,
-        TimeSpan maxWaitTime = default,
-        FakeReceivedMessage<TestMessage>[]? messages = null,
-        BatchMessageHandlerBase<TestMessage>? handler = null)
-    {
-        var receiver = new FakeMessageBusReceiver(messages ?? [], stopAfterFirstBatch: messages is { Length: > 0 });
-        var client = new FakeMessageBusClient(receiver);
-        var clientRegistry = new FakeMessageBusClientRegistry(client);
-        var settings = new ServiceBusMessageBatchHandlerBackgroundService<TestMessage>.BatchQueueSettings(
-            queueName, "azure-service-bus", maxMessages, maxWaitTime == default ? TimeSpan.FromSeconds(1) : maxWaitTime);
-        var scopeFactory = new FakeServiceScopeFactory<BatchMessageHandlerBase<TestMessage>>(handler ?? new RecordingBatchHandler());
-        var serviceBusMessageBatchHandlerBackgroundService = new ServiceBusMessageBatchHandlerBackgroundService<TestMessage>(
-            clientRegistry, settings, scopeFactory, NullLogger<ServiceBusMessageBatchHandlerBackgroundService<TestMessage>>.Instance, new NullHandlerInstrumentation());
-        return (serviceBusMessageBatchHandlerBackgroundService, client, receiver);
-    }
-
     private record TestMessage(string Value);
 
-    private class RecordingBatchHandler : BatchMessageHandlerBase<TestMessage>
+    private class RecordingBatchHandler : BatchMessageHandler<TestMessage>
     {
         public int HandleCallCount { get; private set; }
         public List<TestMessage> ReceivedMessages { get; } = [];
@@ -130,17 +129,18 @@ public class ServiceBusMessageBatchHandlerBackgroundServiceTests
         }
     }
 
-    private class ThrowingBatchHandler : BatchMessageHandlerBase<TestMessage>
+    private class ThrowingBatchHandler : BatchMessageHandler<TestMessage>
     {
-        public override Task Handle(IBatchMessageContext<TestMessage> ctx) =>
+        public override Task Handle(IBatchMessageContext<TestMessage> ctx)
+        {
             throw new InvalidOperationException("handler error");
+        }
     }
 
     private class FakeMessageBusClient(FakeMessageBusReceiver receiver) : IMessageBusClient
     {
-        public string MessagingSystem => "fake";
-
         public string? CreatedReceiverQueueName { get; private set; }
+        public string MessagingSystem => "fake";
 
         public Task<IMessageBusReceiver> CreateReceiver(string queueName)
         {
@@ -148,25 +148,43 @@ public class ServiceBusMessageBatchHandlerBackgroundServiceTests
             return Task.FromResult<IMessageBusReceiver>(receiver);
         }
 
-        public Task<IMessageBusProcessor<TMessage>> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options) => throw new NotImplementedException();
-        public Task<IExecutionLaneProcessor> CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options) => throw new NotImplementedException();
-        public Task<IMessageBusSender> CreateMessageBusSender(string queueName) => throw new NotImplementedException();
-        public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName) => throw new NotImplementedException();
-        public Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<IMessageBusProcessor<TMessage>> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<IExecutionLaneProcessor> CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<IMessageBusSender> CreateMessageBusSender(string queueName)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default)
+        {
+            throw new NotImplementedException();
+        }
     }
 
     private class FakeMessageBusReceiver(
         IReadOnlyCollection<IReceivedMessage<TestMessage>> messages,
         bool stopAfterFirstBatch = false) : IMessageBusReceiver
     {
+        private bool _batchServed;
         public int LastMaxMessages { get; private set; }
         public TimeSpan LastMaxWaitTime { get; private set; }
         public bool CompleteWasCalled { get; private set; }
         public SemaphoreSlim BatchCompleted { get; } = new(0, 1);
         public SemaphoreSlim BatchServed { get; } = new(0, 1);
         public SemaphoreSlim ReceiveCalled { get; } = new(0, 1);
-
-        private bool _batchServed;
 
         public Task<IReadOnlyCollection<IReceivedMessage<TMessage>>> ReceiveMessages<TMessage>(
             int maxMessagesBeforeProcessing, TimeSpan maxWaitTime, CancellationToken cancellationToken = default)
@@ -193,6 +211,9 @@ public class ServiceBusMessageBatchHandlerBackgroundServiceTests
             return Task.CompletedTask;
         }
 
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        public ValueTask DisposeAsync()
+        {
+            return ValueTask.CompletedTask;
+        }
     }
 }

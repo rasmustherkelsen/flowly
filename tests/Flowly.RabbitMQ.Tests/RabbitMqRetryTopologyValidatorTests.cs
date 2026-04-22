@@ -1,5 +1,5 @@
-using Flowly.MessagingAbstractions;
 using Flowly.RabbitMQ.Tests.Fakes;
+using Flowly.Transport;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using RabbitMQ.Client.Exceptions;
@@ -25,8 +25,7 @@ public class RabbitMqRetryTopologyValidatorTests
             var pool = new FakeConnectionPool(new FailingChannel());
             var validator = new RabbitMqRetryTopologyValidator("rabbitmq", pool);
 
-            var exception = await Assert.ThrowsAsync<InvalidOperationException>(
-                () => validator.Validate([new FakeQueueDescription("order-created")], CancellationToken.None));
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => validator.Validate([new FakeQueueDescription("order-created")], CancellationToken.None));
 
             Assert.Contains("order-created.retry", exception.Message);
         }
@@ -37,10 +36,9 @@ public class RabbitMqRetryTopologyValidatorTests
             var pool = new FakeConnectionPool(new SucceedingChannel(), new FailingChannel());
             var validator = new RabbitMqRetryTopologyValidator("rabbitmq", pool);
 
-            var exception = await Assert.ThrowsAsync<InvalidOperationException>(
-                () => validator.Validate(
-                    [new FakeQueueDescription("order-created"), new FakeQueueDescription("invoice-generated")],
-                    CancellationToken.None));
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => validator.Validate(
+                [new FakeQueueDescription("order-created"), new FakeQueueDescription("invoice-generated")],
+                CancellationToken.None));
 
             Assert.Contains("invoice-generated.retry", exception.Message);
         }
@@ -60,8 +58,7 @@ public class RabbitMqRetryTopologyValidatorTests
             var pool = new FakeConnectionPool(new FailingChannel());
             var validator = new RabbitMqRetryTopologyValidator("rabbitmq", pool);
 
-            var exception = await Assert.ThrowsAsync<InvalidOperationException>(
-                () => validator.Validate([new FakeQueueDescription("order-created")], CancellationToken.None));
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => validator.Validate([new FakeQueueDescription("order-created")], CancellationToken.None));
 
             Assert.Contains("x-dead-letter-exchange", exception.Message);
             Assert.Contains("x-dead-letter-routing-key", exception.Message);
@@ -103,10 +100,14 @@ public class RabbitMqRetryTopologyValidatorTests
     private class FakeConnectionPool(params IChannel[] channels) : IRabbitMqConnectionPool
     {
         public Task<IConnection> GetPublisherConnection(CancellationToken cancellationToken = default)
-            => throw new NotImplementedException();
+        {
+            throw new NotImplementedException();
+        }
 
         public Task<IConnection> GetConsumerConnection(CancellationToken cancellationToken = default)
-            => Task.FromResult<IConnection>(new SequencedConnection(channels));
+        {
+            return Task.FromResult<IConnection>(new SequencedConnection(channels));
+        }
     }
 
     private class SequencedConnection(IChannel[] channels) : IConnection
@@ -114,7 +115,9 @@ public class RabbitMqRetryTopologyValidatorTests
         private int _index;
 
         public Task<IChannel> CreateChannelAsync(CreateChannelOptions? options = null, CancellationToken cancellationToken = default)
-            => Task.FromResult(channels[_index++]);
+        {
+            return Task.FromResult(channels[_index++]);
+        }
 
         public bool IsOpen => true;
         public int LocalPort => 0;
@@ -130,34 +133,94 @@ public class RabbitMqRetryTopologyValidatorTests
         public IEnumerable<ShutdownReportEntry> ShutdownReport => [];
         public string ClientProvidedName => string.Empty;
 
-        public Task UpdateSecretAsync(string newSecret, string reason, CancellationToken cancellationToken = default) => throw new NotImplementedException();
-        public Task CloseAsync(ushort reasonCode, string reasonText, TimeSpan timeout, bool abort, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task UpdateSecretAsync(string newSecret, string reason, CancellationToken cancellationToken = default)
+        {
+            throw new NotImplementedException();
+        }
 
-        public event AsyncEventHandler<CallbackExceptionEventArgs>? CallbackExceptionAsync { add { } remove { } }
-        public event AsyncEventHandler<ShutdownEventArgs>? ConnectionShutdownAsync { add { } remove { } }
-        public event AsyncEventHandler<AsyncEventArgs>? RecoverySucceededAsync { add { } remove { } }
-        public event AsyncEventHandler<ConnectionRecoveryErrorEventArgs>? ConnectionRecoveryErrorAsync { add { } remove { } }
-        public event AsyncEventHandler<ConsumerTagChangedAfterRecoveryEventArgs>? ConsumerTagChangeAfterRecoveryAsync { add { } remove { } }
-        public event AsyncEventHandler<QueueNameChangedAfterRecoveryEventArgs>? QueueNameChangedAfterRecoveryAsync { add { } remove { } }
-        public event AsyncEventHandler<RecoveringConsumerEventArgs>? RecoveringConsumerAsync { add { } remove { } }
-        public event AsyncEventHandler<ConnectionBlockedEventArgs>? ConnectionBlockedAsync { add { } remove { } }
-        public event AsyncEventHandler<AsyncEventArgs>? ConnectionUnblockedAsync { add { } remove { } }
+        public Task CloseAsync(ushort reasonCode, string reasonText, TimeSpan timeout, bool abort, CancellationToken cancellationToken = default)
+        {
+            return Task.CompletedTask;
+        }
 
-        public void Dispose() { }
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        public event AsyncEventHandler<CallbackExceptionEventArgs>? CallbackExceptionAsync
+        {
+            add { }
+            remove { }
+        }
+
+        public event AsyncEventHandler<ShutdownEventArgs>? ConnectionShutdownAsync
+        {
+            add { }
+            remove { }
+        }
+
+        public event AsyncEventHandler<AsyncEventArgs>? RecoverySucceededAsync
+        {
+            add { }
+            remove { }
+        }
+
+        public event AsyncEventHandler<ConnectionRecoveryErrorEventArgs>? ConnectionRecoveryErrorAsync
+        {
+            add { }
+            remove { }
+        }
+
+        public event AsyncEventHandler<ConsumerTagChangedAfterRecoveryEventArgs>? ConsumerTagChangeAfterRecoveryAsync
+        {
+            add { }
+            remove { }
+        }
+
+        public event AsyncEventHandler<QueueNameChangedAfterRecoveryEventArgs>? QueueNameChangedAfterRecoveryAsync
+        {
+            add { }
+            remove { }
+        }
+
+        public event AsyncEventHandler<RecoveringConsumerEventArgs>? RecoveringConsumerAsync
+        {
+            add { }
+            remove { }
+        }
+
+        public event AsyncEventHandler<ConnectionBlockedEventArgs>? ConnectionBlockedAsync
+        {
+            add { }
+            remove { }
+        }
+
+        public event AsyncEventHandler<AsyncEventArgs>? ConnectionUnblockedAsync
+        {
+            add { }
+            remove { }
+        }
+
+        public void Dispose()
+        {
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            return ValueTask.CompletedTask;
+        }
     }
 
     private class SucceedingChannel : ChannelStub
     {
         public override Task<QueueDeclareOk> QueueDeclarePassiveAsync(string queue, CancellationToken cancellationToken = default)
-            => Task.FromResult(new QueueDeclareOk(queue, 0, 0));
+        {
+            return Task.FromResult(new QueueDeclareOk(queue, 0, 0));
+        }
     }
 
     private class FailingChannel : ChannelStub
     {
         public override Task<QueueDeclareOk> QueueDeclarePassiveAsync(string queue, CancellationToken cancellationToken = default)
-            => throw new OperationInterruptedException(
+        {
+            throw new OperationInterruptedException(
                 new ShutdownEventArgs(ShutdownInitiator.Peer, 404, $"NOT_FOUND - no queue '{queue}'"));
+        }
     }
-
 }

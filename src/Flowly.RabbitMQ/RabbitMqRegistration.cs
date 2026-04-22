@@ -1,23 +1,49 @@
 using Flowly.MessageInfrastructure.Registration;
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Flowly.RabbitMQ;
 
+/// <summary>
+///     Provides extension methods for registering RabbitMQ message bus clients and related services with the Flowly
+///     message infrastructure.
+/// </summary>
 public static class RabbitMqRegistration
 {
-    public const string TransportType = "RabbitMQ";
+    private const string TransportType = "RabbitMQ";
     private const string DefaultProviderName = "rabbitmq";
 
+    /// <summary>
+    ///     Registers a RabbitMQ message bus client with the default connection string (amqp://guest:guest@localhost:5672/).
+    /// </summary>
+    /// <param name="flowlyBuilder"></param>
+    /// <param name="name"></param>
+    /// <param name="createTopology"></param>
+    /// <param name="enableHealthCheck"></param>
+    /// <param name="maxMessageSizeBytes"></param>
+    /// <returns></returns>
     public static IFlowlyBuilder UseRabbitMq(
         this IFlowlyBuilder flowlyBuilder,
         string? name = null,
         bool? createTopology = null,
         bool enableHealthCheck = false,
         long? maxMessageSizeBytes = null)
-        => flowlyBuilder.RegisterRabbitMq("amqp://guest:guest@localhost:5672/", name, createTopology, enableHealthCheck, maxMessageSizeBytes);
+    {
+        return flowlyBuilder.RegisterRabbitMq("amqp://guest:guest@localhost:5672/", name, createTopology, enableHealthCheck, maxMessageSizeBytes);
+    }
 
+    /// <summary>
+    ///     Registers a RabbitMQ message bus client with the specified connection string. The connection string can be provided
+    ///     directly or via configuration (e.g. appsettings.json or environment variables).
+    /// </summary>
+    /// <param name="flowlyBuilder"></param>
+    /// <param name="connection">The actual connection string or connection string name</param>
+    /// <param name="name"></param>
+    /// <param name="createTopology"></param>
+    /// <param name="enableHealthCheck"></param>
+    /// <param name="maxMessageSizeBytes"></param>
+    /// <returns></returns>
     public static IFlowlyBuilder UseRabbitMq(
         this IFlowlyBuilder flowlyBuilder,
         string connection,
@@ -50,11 +76,9 @@ public static class RabbitMqRegistration
         clientRegistry.Register(effectiveName, messageBusClient, createTopology);
 
         if (enableHealthCheck)
-        {
             services
                 .AddHealthChecks()
                 .AddCheck(HealthCheckName(effectiveName), new RabbitMqHealthCheck(connectionPool), tags: ["rabbitmq"]);
-        }
 
         var topologyRegistry = services
             .Where(s => s.ServiceType == typeof(IMessagingTopologyCreatorRegistry))
@@ -82,7 +106,9 @@ public static class RabbitMqRegistration
     }
 
     private static string HealthCheckName(string effectiveName)
-        => effectiveName == DefaultProviderName ? DefaultProviderName : $"{DefaultProviderName}-{effectiveName}";
+    {
+        return effectiveName == DefaultProviderName ? DefaultProviderName : $"{DefaultProviderName}-{effectiveName}";
+    }
 
     private static string ResolveProviderName(IMessageBusClientRegistry registry, string? name)
     {

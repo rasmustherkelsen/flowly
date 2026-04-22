@@ -1,40 +1,14 @@
 using Azure.Messaging.ServiceBus;
 using Azure.Messaging.ServiceBus.Administration;
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 
 namespace Flowly.AzureServiceBus;
 
 internal class MessagingTopologyCreator(ServiceBusClient serviceBusClient, ServiceBusAdministrationClient adminClient) : IMessagingTopologyCreator, IEventTopologyCreator
 {
-    public async Task CreateTopology(IReadOnlyCollection<IQueueDescription> queueDescriptions, CancellationToken cancellationToken)
-    {
-        if (IsEmulator())
-        {
-            throw new InvalidOperationException("Creating messaging topology is not supported when using the Azure Service Bus emulator.");
-        }
-
-        foreach (var queue in queueDescriptions)
-        {
-            var exists = await adminClient.QueueExistsAsync(queue.Name, cancellationToken);
-            if (!exists.Value)
-            {
-                await adminClient.CreateQueueAsync(new CreateQueueOptions(queue.Name)
-                {
-                    DefaultMessageTimeToLive = queue.DefaultMessageTimeToLive,
-                    DeadLetteringOnMessageExpiration = queue.DeadLetterOnMessageExpiration,
-                    LockDuration = queue.LockDuration,
-                    RequiresSession = queue.RequiresSession,
-                }, cancellationToken);
-            }
-        }
-    }
-
     public async Task CreateEventTopology(IReadOnlyCollection<IEventDescription> eventDescriptions, CancellationToken cancellationToken)
     {
-        if (IsEmulator())
-        {
-            throw new InvalidOperationException("Creating event topology is not supported when using the Azure Service Bus emulator.");
-        }
+        if (IsEmulator()) throw new InvalidOperationException("Creating event topology is not supported when using the Azure Service Bus emulator.");
 
         foreach (var eventDescription in eventDescriptions)
         {
@@ -43,12 +17,30 @@ internal class MessagingTopologyCreator(ServiceBusClient serviceBusClient, Servi
         }
     }
 
+    public async Task CreateTopology(IReadOnlyCollection<IQueueDescription> queueDescriptions, CancellationToken cancellationToken)
+    {
+        if (IsEmulator()) throw new InvalidOperationException("Creating messaging topology is not supported when using the Azure Service Bus emulator.");
+
+        foreach (var queue in queueDescriptions)
+        {
+            var exists = await adminClient.QueueExistsAsync(queue.Name, cancellationToken);
+            if (!exists.Value)
+                await adminClient.CreateQueueAsync(new CreateQueueOptions(queue.Name)
+                {
+                    DefaultMessageTimeToLive = queue.DefaultMessageTimeToLive,
+                    DeadLetteringOnMessageExpiration = queue.DeadLetterOnMessageExpiration,
+                    LockDuration = queue.LockDuration,
+                    RequiresSession = queue.RequiresSession
+                }, cancellationToken);
+        }
+    }
+
     private async Task EnsureTopicExists(IEventDescription eventDescription, CancellationToken cancellationToken)
     {
-        var topicExists = await adminClient.TopicExistsAsync(eventDescription.TopicOrExchangeName, cancellationToken);
+        var topicExists = await adminClient.TopicExistsAsync(eventDescription.TopicName, cancellationToken);
         if (!topicExists.Value)
         {
-            var topicOptions = new CreateTopicOptions(eventDescription.TopicOrExchangeName);
+            var topicOptions = new CreateTopicOptions(eventDescription.TopicName);
 
             if (eventDescription.DefaultMessageTimeToLive.HasValue)
                 topicOptions.DefaultMessageTimeToLive = eventDescription.DefaultMessageTimeToLive.Value;
@@ -60,7 +52,7 @@ internal class MessagingTopologyCreator(ServiceBusClient serviceBusClient, Servi
     private async Task EnsureSubscriptionExists(IEventDescription eventDescription, CancellationToken cancellationToken)
     {
         var subscriptionExists = await adminClient.SubscriptionExistsAsync(
-            eventDescription.TopicOrExchangeName,
+            eventDescription.TopicName,
             eventDescription.SubscriptionName,
             cancellationToken);
 
@@ -69,12 +61,12 @@ internal class MessagingTopologyCreator(ServiceBusClient serviceBusClient, Servi
         if (!subscriptionExists.Value)
         {
             var subscriptionOptions = new CreateSubscriptionOptions(
-                eventDescription.TopicOrExchangeName,
+                eventDescription.TopicName,
                 eventDescription.SubscriptionName)
             {
                 DeadLetteringOnMessageExpiration = eventDescription.DeadLetterOnMessageExpiration ?? true,
                 LockDuration = TimeSpan.FromMinutes(5),
-                MaxDeliveryCount = 10,
+                MaxDeliveryCount = 10
             };
 
             if (eventDescription.DefaultMessageTimeToLive.HasValue)
@@ -86,7 +78,7 @@ internal class MessagingTopologyCreator(ServiceBusClient serviceBusClient, Servi
         else
         {
             await EnsureSubscriptionFilterRule(
-                eventDescription.TopicOrExchangeName,
+                eventDescription.TopicName,
                 eventDescription.SubscriptionName,
                 targetedFilter,
                 cancellationToken);
@@ -120,8 +112,10 @@ internal class MessagingTopologyCreator(ServiceBusClient serviceBusClient, Servi
         }
     }
 
-    private static SqlRuleFilter BuildTargetedFilter(string subscriptionName) =>
-        new($"(NOT EXISTS([{FlowlyMessageProperties.TargetSubscription}])) OR [{FlowlyMessageProperties.TargetSubscription}] = '{subscriptionName}'");
+    private static SqlRuleFilter BuildTargetedFilter(string subscriptionName)
+    {
+        return new SqlRuleFilter($"(NOT EXISTS([{FlowlyMessageProperties.TargetSubscription}])) OR [{FlowlyMessageProperties.TargetSubscription}] = '{subscriptionName}'");
+    }
 
     private bool IsEmulator()
     {

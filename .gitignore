@@ -8,6 +8,9 @@
 *.rsuser
 *.suo
 *.user
+
+# Claude Code local settings (machine-specific allowed commands)
+.claude/settings.local.json
 *.userosscache
 *.sln.docstates
 

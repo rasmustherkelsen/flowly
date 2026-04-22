@@ -34,9 +34,9 @@ public static class BatchMessageHandlerOptionsResolver
 
     private static void ApplyConfigure(Type handlerType, BatchMessageHandlerOptions options)
     {
-        var configureMethod = handlerType.GetMethod(nameof(BatchMessageHandlerBase<object>.Configure), [typeof(BatchMessageHandlerOptions)]);
+        var configureMethod = handlerType.GetMethod(nameof(BatchMessageHandler<object>.Configure), [typeof(BatchMessageHandlerOptions)]);
 
-        if (configureMethod is null || configureMethod.DeclaringType == typeof(BatchMessageHandlerBase<>))
+        if (configureMethod is null || configureMethod.DeclaringType == typeof(BatchMessageHandler<>))
         {
             return;
         }

@@ -1,5 +1,5 @@
 using Flowly.MessageInfrastructure.Registration;
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 
 namespace Flowly.DeadLetters.Tests.Fakes;
 
@@ -7,12 +7,22 @@ internal class FakeMessageBusClientRegistry(IMessageBusClient client) : IMessage
 {
     public string PrimaryProviderName => "azure-service-bus";
 
-    public IMessageBusClient GetClient(string providerName) => client;
+    public IMessageBusClient GetClient(string providerName)
+    {
+        return client;
+    }
 
-    public bool IsRegistered(string providerName) => true;
+    public bool IsRegistered(string providerName)
+    {
+        return true;
+    }
 
-    public IReadOnlyList<RegisteredTransport> GetAll() =>
-        [new RegisteredTransport("azure-service-bus", IsPrimary: true, CreateTopologyOverride: null)];
+    public IReadOnlyList<RegisteredTransport> GetAll()
+    {
+        return [new RegisteredTransport("azure-service-bus", true, null)];
+    }
 
-    public void Register(string providerName, IMessageBusClient messageBusClient, bool? createTopologyOverride) { }
+    public void Register(string providerName, IMessageBusClient messageBusClient, bool? createTopologyOverride)
+    {
+    }
 }

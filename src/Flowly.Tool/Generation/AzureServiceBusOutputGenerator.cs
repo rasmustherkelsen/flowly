@@ -1,13 +1,16 @@
 using System.Text;
 using System.Text.Json;
 using System.Xml;
-using Flowly.MessagingAbstractions;
 using Flowly.Tool.QueueDiscovery;
+using Flowly.Transport;
 
 namespace Flowly.Tool.Generation;
 
 internal static class AzureServiceBusOutputGenerator
 {
+    private static readonly TimeSpan EmulatorMaxMessageTimeToLive = TimeSpan.FromHours(1);
+    private static readonly TimeSpan EmulatorMaxDuplicateDetectionHistoryTimeWindow = TimeSpan.FromMinutes(5);
+
     public static string CreateEmulatorConfigJson(string @namespace, IReadOnlyList<QueueDiscoveryQueue> queueDefinitions, IReadOnlyList<QueueDiscoveryEvent> eventDefinitions)
     {
         var topicGroups = eventDefinitions
@@ -49,7 +52,7 @@ internal static class AzureServiceBusOutputGenerator
         sb.AppendLine($"param serviceBusNamespaceName string = '{serviceBusNamespaceName}'");
         sb.AppendLine();
         sb.AppendLine("resource serviceBusNamespace 'Microsoft.ServiceBus/namespaces@2024-01-01' = {");
-        sb.AppendLine($"  name: serviceBusNamespaceName");
+        sb.AppendLine("  name: serviceBusNamespaceName");
         sb.AppendLine("  location: resourceGroup().location");
         sb.AppendLine("  sku: {");
         sb.AppendLine("    name: 'Standard'");
@@ -124,10 +127,7 @@ internal static class AzureServiceBusOutputGenerator
         sb.AppendLine($"var {namespaceVariableName} = {builderVariableName}.AddAzureServiceBus(\"{connectionName}\");");
         sb.AppendLine();
 
-        foreach (var queueName in queueNames)
-        {
-            sb.AppendLine($"var {ToQueueVariableName(queueName)} = {namespaceVariableName}.AddServiceBusQueue(\"{queueName}\");");
-        }
+        foreach (var queueName in queueNames) sb.AppendLine($"var {ToQueueVariableName(queueName)} = {namespaceVariableName}.AddServiceBusQueue(\"{queueName}\");");
 
         foreach (var topicGroup in eventDefinitions.GroupBy(e => e.TopicOrExchangeName, StringComparer.OrdinalIgnoreCase))
         {
@@ -135,23 +135,17 @@ internal static class AzureServiceBusOutputGenerator
             var topicName = topicGroup.Key;
             var topicVariable = ToQueueVariableName(topicName).Replace("Queue", "Topic");
             sb.AppendLine($"var {topicVariable} = {namespaceVariableName}.AddServiceBusTopic(\"{topicName}\");");
-            foreach (var sub in topicGroup)
-            {
-                sb.AppendLine($"{topicVariable}.AddServiceBusSubscription(\"{sub.SubscriptionName}\");");
-            }
+            foreach (var sub in topicGroup) sb.AppendLine($"{topicVariable}.AddServiceBusSubscription(\"{sub.SubscriptionName}\");");
         }
 
         return sb.ToString();
     }
 
-    private static readonly TimeSpan EmulatorMaxMessageTimeToLive = TimeSpan.FromHours(1);
-    private static readonly TimeSpan EmulatorMaxDuplicateDetectionHistoryTimeWindow = TimeSpan.FromMinutes(5);
-
     private static object CreateEmulatorQueue(QueueDiscoveryQueue queueDefinition)
     {
         return new
         {
-            Name = queueDefinition.Name,
+            queueDefinition.Name,
             Properties = new
             {
                 DeadLetteringOnMessageExpiration = queueDefinition.DeadLetterOnMessageExpiration,
@@ -165,7 +159,7 @@ internal static class AzureServiceBusOutputGenerator
                 LockDuration = ToIso8601Duration(queueDefinition.LockDuration),
                 MaxDeliveryCount = 10,
                 RequiresDuplicateDetection = false,
-                RequiresSession = queueDefinition.RequiresSession
+                queueDefinition.RequiresSession
             }
         };
     }
@@ -218,15 +212,9 @@ internal static class AzureServiceBusOutputGenerator
     private static string ToIdentifier(string value)
     {
         var sanitized = new string(value.Select(ch => char.IsLetterOrDigit(ch) ? ch : '_').ToArray());
-        if (string.IsNullOrWhiteSpace(sanitized))
-        {
-            return "queue";
-        }
+        if (string.IsNullOrWhiteSpace(sanitized)) return "queue";
 
-        if (char.IsDigit(sanitized[0]))
-        {
-            return $"q_{sanitized}";
-        }
+        if (char.IsDigit(sanitized[0])) return $"q_{sanitized}";
 
         return sanitized;
     }
@@ -242,10 +230,7 @@ internal static class AzureServiceBusOutputGenerator
             ? "queue"
             : parts[0] + string.Concat(parts.Skip(1).Select(Capitalize));
 
-        if (char.IsDigit(baseName[0]))
-        {
-            baseName = $"q{Capitalize(baseName)}";
-        }
+        if (char.IsDigit(baseName[0])) baseName = $"q{Capitalize(baseName)}";
 
         return baseName.EndsWith("Queue", StringComparison.Ordinal)
             ? baseName
@@ -254,10 +239,7 @@ internal static class AzureServiceBusOutputGenerator
 
     private static string Capitalize(string value)
     {
-        if (string.IsNullOrEmpty(value))
-        {
-            return value;
-        }
+        if (string.IsNullOrEmpty(value)) return value;
 
         return char.ToUpperInvariant(value[0]) + value[1..];
     }

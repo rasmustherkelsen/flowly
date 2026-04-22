@@ -2,7 +2,7 @@ using System.Diagnostics;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.MessageInfrastructure.Senders;
 using Flowly.MessageInfrastructure.Telemetry;
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 
 namespace Flowly.Tests.MessageInfrastructure.Senders;
 
@@ -117,19 +117,30 @@ public class MessageSubmitterTests
     {
         public string PrimaryProviderName { get; } = primary;
 
-        public IMessageBusClient GetClient(string providerName) => client;
+        public IMessageBusClient GetClient(string providerName)
+        {
+            return client;
+        }
 
-        public bool IsRegistered(string providerName) => true;
+        public bool IsRegistered(string providerName)
+        {
+            return true;
+        }
 
-        public IReadOnlyList<RegisteredTransport> GetAll() => [new RegisteredTransport(PrimaryProviderName, true, null)];
+        public IReadOnlyList<RegisteredTransport> GetAll()
+        {
+            return [new RegisteredTransport(PrimaryProviderName, true, null)];
+        }
 
-        public void Register(string providerName, IMessageBusClient client, bool? createTopologyOverride) { }
+        public void Register(string providerName, IMessageBusClient client, bool? createTopologyOverride)
+        {
+        }
     }
 
     private sealed class FakeMessageBusClient(IMessageBusSender sender) : IMessageBusClient
     {
-        public string MessagingSystem { get; set; } = "fake";
         public string? CreatedSenderForQueue { get; private set; }
+        public string MessagingSystem { get; set; } = "fake";
 
         public Task<IMessageBusSender> CreateMessageBusSender(string queueName)
         {
@@ -137,11 +148,30 @@ public class MessageSubmitterTests
             return Task.FromResult(sender);
         }
 
-        public Task<IMessageBusReceiver> CreateReceiver(string queueName) => throw new NotSupportedException();
-        public Task<IMessageBusProcessor<TMessage>> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options) => throw new NotSupportedException();
-        public Task<IExecutionLaneProcessor> CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options) => throw new NotSupportedException();
-        public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName) => throw new NotSupportedException();
-        public Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<IMessageBusReceiver> CreateReceiver(string queueName)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<IMessageBusProcessor<TMessage>> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<IExecutionLaneProcessor> CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
     }
 
     private sealed class CapturingSender : IMessageBusSender
@@ -156,18 +186,33 @@ public class MessageSubmitterTests
             return Task.CompletedTask;
         }
 
-        public Task SendEmptyMessage(MessageProperties messageProperties, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task SendEmptyMessage(MessageProperties messageProperties, CancellationToken cancellationToken = default)
+        {
+            return Task.CompletedTask;
+        }
 
-        public Task SendRawMessage(string rawBody, IReadOnlyDictionary<string, object> applicationProperties, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task SendRawMessage(string rawBody, IReadOnlyDictionary<string, object> applicationProperties, CancellationToken cancellationToken = default)
+        {
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class ThrowingSender(Exception exception) : IMessageBusSender
     {
         public Task SendMessage<TMessage>(TMessage message, MessageProperties messageProperties, CancellationToken cancellationToken = default)
-            => Task.FromException(exception);
+        {
+            return Task.FromException(exception);
+        }
 
-        public Task SendEmptyMessage(MessageProperties messageProperties, CancellationToken cancellationToken = default) => Task.CompletedTask;
-        public Task SendRawMessage(string rawBody, IReadOnlyDictionary<string, object> applicationProperties, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task SendEmptyMessage(MessageProperties messageProperties, CancellationToken cancellationToken = default)
+        {
+            return Task.CompletedTask;
+        }
+
+        public Task SendRawMessage(string rawBody, IReadOnlyDictionary<string, object> applicationProperties, CancellationToken cancellationToken = default)
+        {
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class StubSubmitterInstrumentation : ISubmitterInstrumentation
@@ -184,8 +229,14 @@ public class MessageSubmitterTests
             return null;
         }
 
-        public void RecordSent(string queueName, double durationMs) => Sent.Add((queueName, durationMs));
+        public void RecordSent(string queueName, double durationMs)
+        {
+            Sent.Add((queueName, durationMs));
+        }
 
-        public void RecordFailed(string queueName) => Failed.Add(queueName);
+        public void RecordFailed(string queueName)
+        {
+            Failed.Add(queueName);
+        }
     }
 }

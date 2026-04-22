@@ -1,19 +1,10 @@
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 using RabbitMQ.Client;
 
 namespace Flowly.RabbitMQ;
 
 internal class RabbitMqMessagingTopologyCreator(IRabbitMqConnectionPool connectionPool) : IMessagingTopologyCreator, IEventTopologyCreator
 {
-    public async Task CreateTopology(IReadOnlyCollection<IQueueDescription> queueDescriptions, CancellationToken cancellationToken)
-    {
-        var connection = await connectionPool.GetConsumerConnection(cancellationToken);
-        await using var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
-
-        foreach (var queue in queueDescriptions)
-            await DeclareQueueTopology(channel, queue, cancellationToken);
-    }
-
     public async Task CreateEventTopology(IReadOnlyCollection<IEventDescription> eventDescriptions, CancellationToken cancellationToken)
     {
         var connection = await connectionPool.GetConsumerConnection(cancellationToken);
@@ -23,36 +14,45 @@ internal class RabbitMqMessagingTopologyCreator(IRabbitMqConnectionPool connecti
             await DeclareEventTopology(channel, eventDescription, cancellationToken);
     }
 
+    public async Task CreateTopology(IReadOnlyCollection<IQueueDescription> queueDescriptions, CancellationToken cancellationToken)
+    {
+        var connection = await connectionPool.GetConsumerConnection(cancellationToken);
+        await using var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
+
+        foreach (var queue in queueDescriptions)
+            await DeclareQueueTopology(channel, queue, cancellationToken);
+    }
+
     private static async Task DeclareQueueTopology(IChannel channel, IQueueDescription queue, CancellationToken cancellationToken)
     {
         var dlxName = $"{queue.Name}.dlx";
 
         await channel.ExchangeDeclareAsync(
-            exchange: dlxName,
-            type: ExchangeType.Direct,
-            durable: true,
-            autoDelete: false,
+            dlxName,
+            ExchangeType.Direct,
+            true,
+            false,
             cancellationToken: cancellationToken);
 
         await channel.QueueDeclareAsync(
-            queue: $"{queue.Name}.dead-letter",
-            durable: true,
-            exclusive: false,
-            autoDelete: false,
+            $"{queue.Name}.dead-letter",
+            true,
+            false,
+            false,
             cancellationToken: cancellationToken);
 
         await channel.QueueBindAsync(
-            queue: $"{queue.Name}.dead-letter",
-            exchange: dlxName,
-            routingKey: queue.Name,
+            $"{queue.Name}.dead-letter",
+            dlxName,
+            queue.Name,
             cancellationToken: cancellationToken);
 
         await channel.QueueDeclareAsync(
-            queue: $"{queue.Name}.retry",
-            durable: true,
-            exclusive: false,
-            autoDelete: false,
-            arguments: new Dictionary<string, object?>
+            $"{queue.Name}.retry",
+            true,
+            false,
+            false,
+            new Dictionary<string, object?>
             {
                 ["x-dead-letter-exchange"] = "",
                 ["x-dead-letter-routing-key"] = queue.Name
@@ -69,53 +69,57 @@ internal class RabbitMqMessagingTopologyCreator(IRabbitMqConnectionPool connecti
             mainQueueArgs["x-message-ttl"] = (long)queue.DefaultMessageTimeToLive.TotalMilliseconds;
 
         await channel.QueueDeclareAsync(
-            queue: queue.Name,
-            durable: true,
-            exclusive: false,
-            autoDelete: false,
-            arguments: mainQueueArgs,
+            queue.Name,
+            true,
+            false,
+            false,
+            mainQueueArgs,
             cancellationToken: cancellationToken);
     }
 
     private static async Task DeclareEventTopology(IChannel channel, IEventDescription eventDescription, CancellationToken cancellationToken)
     {
-        var exchangeName = eventDescription.TopicOrExchangeName;
+        var exchangeName = eventDescription.TopicName;
+
+        await channel.ExchangeDeclareAsync(
+            exchangeName,
+            ExchangeType.Fanout,
+            true,
+            false,
+            cancellationToken: cancellationToken);
+
+        if (eventDescription.SubscriptionName is null)
+            return;
+
         var perHandlerQueueName = $"{exchangeName}.{eventDescription.SubscriptionName}";
         var dlxName = $"{perHandlerQueueName}.dlx";
 
         await channel.ExchangeDeclareAsync(
-            exchange: exchangeName,
-            type: ExchangeType.Fanout,
-            durable: true,
-            autoDelete: false,
-            cancellationToken: cancellationToken);
-
-        await channel.ExchangeDeclareAsync(
-            exchange: dlxName,
-            type: ExchangeType.Direct,
-            durable: true,
-            autoDelete: false,
+            dlxName,
+            ExchangeType.Direct,
+            true,
+            false,
             cancellationToken: cancellationToken);
 
         await channel.QueueDeclareAsync(
-            queue: $"{perHandlerQueueName}.dead-letter",
-            durable: true,
-            exclusive: false,
-            autoDelete: false,
+            $"{perHandlerQueueName}.dead-letter",
+            true,
+            false,
+            false,
             cancellationToken: cancellationToken);
 
         await channel.QueueBindAsync(
-            queue: $"{perHandlerQueueName}.dead-letter",
-            exchange: dlxName,
-            routingKey: perHandlerQueueName,
+            $"{perHandlerQueueName}.dead-letter",
+            dlxName,
+            perHandlerQueueName,
             cancellationToken: cancellationToken);
 
         await channel.QueueDeclareAsync(
-            queue: $"{perHandlerQueueName}.retry",
-            durable: true,
-            exclusive: false,
-            autoDelete: false,
-            arguments: new Dictionary<string, object?>
+            $"{perHandlerQueueName}.retry",
+            true,
+            false,
+            false,
+            new Dictionary<string, object?>
             {
                 ["x-dead-letter-exchange"] = "",
                 ["x-dead-letter-routing-key"] = perHandlerQueueName
@@ -129,17 +133,17 @@ internal class RabbitMqMessagingTopologyCreator(IRabbitMqConnectionPool connecti
         };
 
         await channel.QueueDeclareAsync(
-            queue: perHandlerQueueName,
-            durable: true,
-            exclusive: false,
-            autoDelete: false,
-            arguments: perHandlerQueueArgs,
+            perHandlerQueueName,
+            true,
+            false,
+            false,
+            perHandlerQueueArgs,
             cancellationToken: cancellationToken);
 
         await channel.QueueBindAsync(
-            queue: perHandlerQueueName,
-            exchange: exchangeName,
-            routingKey: "",
+            perHandlerQueueName,
+            exchangeName,
+            "",
             cancellationToken: cancellationToken);
     }
 }

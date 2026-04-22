@@ -1,5 +1,5 @@
 using Azure.Messaging.ServiceBus;
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 
 namespace Flowly.AzureServiceBus;
 
@@ -18,15 +18,22 @@ internal class ReceivedMessage<TMessage>(ProcessMessageEventArgs args) : IReceiv
         Tracestate: args.Message.ApplicationProperties.TryGetValue("tracestate", out var ts) ? ts as string : null);
 
     public Task Complete(CancellationToken cancellationToken = default)
-        => args.CompleteMessageAsync(args.Message, cancellationToken);
+    {
+        return args.CompleteMessageAsync(args.Message, cancellationToken);
+    }
 
     public Task DeadLetter(string? reason = null, CancellationToken cancellationToken = default)
-        => args.DeadLetterMessageAsync(args.Message, deadLetterReason: reason, cancellationToken: cancellationToken);
+    {
+        return args.DeadLetterMessageAsync(args.Message, reason, cancellationToken: cancellationToken);
+    }
 }
 
 internal class ReceivedMessage(ServiceBusReceivedMessage serviceBusReceivedMessage) : IReceivedMessage
 {
-    public TBody GetBody<TBody>() => serviceBusReceivedMessage.Body.ToObjectFromJson<TBody>()!;
+    public TBody GetBody<TBody>()
+    {
+        return serviceBusReceivedMessage.Body.ToObjectFromJson<TBody>()!;
+    }
 
     public MessageProperties Properties { get; } = new(serviceBusReceivedMessage.MessageId, serviceBusReceivedMessage.CorrelationId);
 }

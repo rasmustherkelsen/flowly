@@ -1,7 +1,6 @@
 using Flowly.Jobs.MessageHandlers;
 using Flowly.Jobs.Messages;
 using Flowly.Jobs.Tests.Fakes;
-using Flowly.MessageInfrastructure.Receivers;
 
 namespace Flowly.Jobs.Tests.MessageHandlers;
 

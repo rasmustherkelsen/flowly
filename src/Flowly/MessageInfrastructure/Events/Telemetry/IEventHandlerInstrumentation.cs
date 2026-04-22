@@ -1,9 +1,8 @@
 using System.Diagnostics;
-using Flowly.MessagingAbstractions;
 
 namespace Flowly.MessageInfrastructure.Events.Telemetry;
 
-public interface IEventHandlerInstrumentation
+internal interface IEventHandlerInstrumentation
 {
     bool IsEnabled { get; }
 

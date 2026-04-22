@@ -1,15 +1,33 @@
 using Flowly.DeadLetters.BackgroundServices;
-using Flowly.DeadLetters.Registration;
-using Flowly.MessageInfrastructure.Events.Registration;
-using Flowly.MessageInfrastructure.Registration;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 
 namespace Flowly.DeadLetters.Tests.Registration;
 
 public class DeadLetterTrackingRegistrationExtensionsTests
 {
+    private static IEventHandlerBuilder<OrderPlaced> BuildEventHandlerBuilder(
+        string topicName,
+        string subscriptionName,
+        string providerName,
+        ServiceCollection? services = null)
+    {
+        services ??= new ServiceCollection();
+        return new StubEventHandlerBuilder<OrderPlaced>(services, topicName, subscriptionName, providerName);
+    }
+
+    private static IEventHandlerBuilder<OrderPlaced> BuildEventHandlerBuilderWithDeadLetterTracking(
+        string topicName,
+        string subscriptionName,
+        string providerName,
+        ServiceCollection? services = null)
+    {
+        services ??= new ServiceCollection();
+        var flowlyBuilder = new StubFlowlyBuilder(services);
+        flowlyBuilder.AddDeadLetterTracking(_ => { });
+        return new StubEventHandlerBuilder<OrderPlaced>(services, topicName, subscriptionName, providerName);
+    }
+
     public class WithDeadLetterTrackingForEventHandler
     {
         [Fact]
@@ -84,28 +102,6 @@ public class DeadLetterTrackingRegistrationExtensionsTests
         }
     }
 
-    private static IEventHandlerBuilder<OrderPlaced> BuildEventHandlerBuilder(
-        string topicName,
-        string subscriptionName,
-        string providerName,
-        ServiceCollection? services = null)
-    {
-        services ??= new ServiceCollection();
-        return new StubEventHandlerBuilder<OrderPlaced>(services, topicName, subscriptionName, providerName);
-    }
-
-    private static IEventHandlerBuilder<OrderPlaced> BuildEventHandlerBuilderWithDeadLetterTracking(
-        string topicName,
-        string subscriptionName,
-        string providerName,
-        ServiceCollection? services = null)
-    {
-        services ??= new ServiceCollection();
-        var flowlyBuilder = new StubFlowlyBuilder(services);
-        flowlyBuilder.AddDeadLetterTracking(_ => { });
-        return new StubEventHandlerBuilder<OrderPlaced>(services, topicName, subscriptionName, providerName);
-    }
-
     private sealed class StubFlowlyBuilder(IServiceCollection services) : IFlowlyBuilder
     {
         public IServiceCollection Services => services;
@@ -121,7 +117,7 @@ public class DeadLetterTrackingRegistrationExtensionsTests
     {
         public IServiceCollection Services => services;
         public IConfiguration Configuration => new ConfigurationBuilder().Build();
-        public string TopicOrExchangeName => topicOrExchangeName;
+        public string TopicName => topicOrExchangeName;
         public string SubscriptionName => subscriptionName;
         public string ProviderName => providerName;
     }

@@ -1,5 +1,6 @@
 using Flowly.MessageInfrastructure.Registration;
-using Flowly.MessagingAbstractions;
+using Flowly.Registration;
+using Flowly.Transport;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -7,6 +8,26 @@ namespace Flowly.Tests.MessageInfrastructure.Registration;
 
 public class QueueRegistrationExtensionsTests
 {
+    private static (IFlowlyBuilder Builder, ProviderQueueManifest PrimaryManifest) CreateBuilder(string primary, string? secondary = null)
+    {
+        var services = new ServiceCollection();
+        var registry = new MessageBusClientRegistry();
+        registry.Register(primary, new StubMessageBusClient(), null);
+
+        if (secondary is not null)
+            registry.Register(secondary, new StubMessageBusClient(), null);
+
+        services.AddSingleton<IMessageBusClientRegistry>(registry);
+
+        var primaryManifest = new ProviderQueueManifest(primary, true, "Stub");
+        services.AddSingleton(primaryManifest);
+
+        if (secondary is not null)
+            services.AddSingleton(new ProviderQueueManifest(secondary, false, "Stub"));
+
+        return (new StubFlowlyBuilder(services), primaryManifest);
+    }
+
     public class AddQueueRegistration
     {
         [Fact]
@@ -45,7 +66,7 @@ public class QueueRegistrationExtensionsTests
         {
             var (flowlyBuilder, manifest) = CreateBuilder("primary");
 
-            flowlyBuilder.AddQueueRegistration("orders", requiresSession: true);
+            flowlyBuilder.AddQueueRegistration("orders", true);
 
             Assert.Single(manifest.Queues);
             Assert.Equal("orders", manifest.Queues[0].QueueName);
@@ -55,9 +76,9 @@ public class QueueRegistrationExtensionsTests
         [Fact]
         public void WithExplicitProviderName_AddsToNamedProviderManifest()
         {
-            var (flowlyBuilder, manifest) = CreateBuilder("primary", secondary: "secondary");
+            var (flowlyBuilder, manifest) = CreateBuilder("primary", "secondary");
 
-            flowlyBuilder.AddQueueRegistration(new DeferredQueueRegistration("orders"), providerName: "secondary");
+            flowlyBuilder.AddQueueRegistration(new DeferredQueueRegistration("orders"), "secondary");
 
             Assert.Empty(manifest.Queues);
         }
@@ -68,7 +89,7 @@ public class QueueRegistrationExtensionsTests
             var (flowlyBuilder, _) = CreateBuilder("primary");
 
             Assert.Throws<InvalidOperationException>(() =>
-                flowlyBuilder.AddQueueRegistration(new DeferredQueueRegistration("orders"), providerName: "ghost"));
+                flowlyBuilder.AddQueueRegistration(new DeferredQueueRegistration("orders"), "ghost"));
         }
 
         [Fact]
@@ -82,26 +103,6 @@ public class QueueRegistrationExtensionsTests
         }
     }
 
-    private static (IFlowlyBuilder Builder, ProviderQueueManifest PrimaryManifest) CreateBuilder(string primary, string? secondary = null)
-    {
-        var services = new ServiceCollection();
-        var registry = new MessageBusClientRegistry();
-        registry.Register(primary, new StubMessageBusClient(), null);
-
-        if (secondary is not null)
-            registry.Register(secondary, new StubMessageBusClient(), null);
-
-        services.AddSingleton<IMessageBusClientRegistry>(registry);
-
-        var primaryManifest = new ProviderQueueManifest(primary, isPrimary: true, "Stub");
-        services.AddSingleton(primaryManifest);
-
-        if (secondary is not null)
-            services.AddSingleton(new ProviderQueueManifest(secondary, isPrimary: false, "Stub"));
-
-        return (new StubFlowlyBuilder(services), primaryManifest);
-    }
-
     private sealed class StubFlowlyBuilder(IServiceCollection services) : IFlowlyBuilder
     {
         public IServiceCollection Services => services;
@@ -112,11 +113,34 @@ public class QueueRegistrationExtensionsTests
     {
         public string MessagingSystem => "Stub";
 
-        public Task<IMessageBusReceiver> CreateReceiver(string queueName) => throw new NotImplementedException();
-        public Task<IMessageBusProcessor<TMessage>> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options) => throw new NotImplementedException();
-        public Task<IExecutionLaneProcessor> CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options) => throw new NotImplementedException();
-        public Task<IMessageBusSender> CreateMessageBusSender(string queueName) => throw new NotImplementedException();
-        public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName) => throw new NotImplementedException();
-        public Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<IMessageBusReceiver> CreateReceiver(string queueName)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<IMessageBusProcessor<TMessage>> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<IExecutionLaneProcessor> CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<IMessageBusSender> CreateMessageBusSender(string queueName)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

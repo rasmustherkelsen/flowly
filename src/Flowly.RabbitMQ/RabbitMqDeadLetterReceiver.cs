@@ -1,4 +1,4 @@
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 using RabbitMQ.Client;
 
 namespace Flowly.RabbitMQ;
@@ -15,7 +15,7 @@ internal class RabbitMqDeadLetterReceiver(IChannel channel, string deadLetterQue
 
         while (messages.Count < maxMessages && DateTimeOffset.UtcNow < deadline && !cancellationToken.IsCancellationRequested)
         {
-            var result = await channel.BasicGetAsync(deadLetterQueueName, autoAck: false, cancellationToken);
+            var result = await channel.BasicGetAsync(deadLetterQueueName, false, cancellationToken);
             if (result is null)
             {
                 var remaining = deadline - DateTimeOffset.UtcNow;
@@ -31,10 +31,14 @@ internal class RabbitMqDeadLetterReceiver(IChannel channel, string deadLetterQue
     }
 
     public Task CompleteMessage(IDeadLetterMessage message, CancellationToken cancellationToken = default)
-        => channel.BasicAckAsync(((RabbitMqDeadLetterReceivedMessage)message).DeliveryTag, multiple: false, cancellationToken).AsTask();
+    {
+        return channel.BasicAckAsync(((RabbitMqDeadLetterReceivedMessage)message).DeliveryTag, false, cancellationToken).AsTask();
+    }
 
     public Task AbandonMessage(IDeadLetterMessage message, CancellationToken cancellationToken = default)
-        => channel.BasicNackAsync(((RabbitMqDeadLetterReceivedMessage)message).DeliveryTag, multiple: false, requeue: true, cancellationToken).AsTask();
+    {
+        return channel.BasicNackAsync(((RabbitMqDeadLetterReceivedMessage)message).DeliveryTag, false, true, cancellationToken).AsTask();
+    }
 
     public async ValueTask DisposeAsync()
     {

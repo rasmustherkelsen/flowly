@@ -2,7 +2,7 @@ using System.Diagnostics;
 using Flowly.MessageInfrastructure.Events;
 using Flowly.MessageInfrastructure.Events.Telemetry;
 using Flowly.MessageInfrastructure.Registration;
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 
 namespace Flowly.Tests.MessageInfrastructure.Events;
 
@@ -130,10 +130,10 @@ public class EventSubmitterTests
             var secondaryPublisher = new CapturingEventPublisher();
             var secondaryClient = new FakeEventCapableClient(secondaryPublisher);
             var registry = new TwoClientRegistry(
-                primaryName: "primary",
-                primaryClient: new FakeEventCapableClient(new CapturingEventPublisher()),
-                secondaryName: "secondary",
-                secondaryClient: secondaryClient);
+                "primary",
+                new FakeEventCapableClient(new CapturingEventPublisher()),
+                "secondary",
+                secondaryClient);
             var instrumentation = new StubPublisherInstrumentation();
             var topicSettings = new EventSubmitter<OrderPlaced>.TopicSettings("order-placed", "secondary");
             var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, topicSettings, instrumentation);
@@ -150,14 +150,24 @@ public class EventSubmitterTests
     {
         public string PrimaryProviderName { get; } = primaryProviderName;
 
-        public IMessageBusClient GetClient(string providerName) => client;
+        public IMessageBusClient GetClient(string providerName)
+        {
+            return client;
+        }
 
-        public bool IsRegistered(string providerName) => true;
+        public bool IsRegistered(string providerName)
+        {
+            return true;
+        }
 
-        public IReadOnlyList<RegisteredTransport> GetAll() =>
-            [new RegisteredTransport(PrimaryProviderName, IsPrimary: true, CreateTopologyOverride: null)];
+        public IReadOnlyList<RegisteredTransport> GetAll()
+        {
+            return [new RegisteredTransport(PrimaryProviderName, true, null)];
+        }
 
-        public void Register(string providerName, IMessageBusClient messageBusClient, bool? createTopologyOverride) { }
+        public void Register(string providerName, IMessageBusClient messageBusClient, bool? createTopologyOverride)
+        {
+        }
     }
 
     private class TwoClientRegistry(
@@ -168,23 +178,32 @@ public class EventSubmitterTests
     {
         public string PrimaryProviderName => primaryName;
 
-        public IMessageBusClient GetClient(string providerName) =>
-            providerName == primaryName ? primaryClient : secondaryClient;
+        public IMessageBusClient GetClient(string providerName)
+        {
+            return providerName == primaryName ? primaryClient : secondaryClient;
+        }
 
-        public bool IsRegistered(string providerName) => providerName == primaryName || providerName == secondaryName;
+        public bool IsRegistered(string providerName)
+        {
+            return providerName == primaryName || providerName == secondaryName;
+        }
 
-        public IReadOnlyList<RegisteredTransport> GetAll() =>
-        [
-            new RegisteredTransport(primaryName, IsPrimary: true, CreateTopologyOverride: null),
-            new RegisteredTransport(secondaryName, IsPrimary: false, CreateTopologyOverride: null)
-        ];
+        public IReadOnlyList<RegisteredTransport> GetAll()
+        {
+            return
+            [
+                new RegisteredTransport(primaryName, true, null),
+                new RegisteredTransport(secondaryName, false, null)
+            ];
+        }
 
-        public void Register(string providerName, IMessageBusClient messageBusClient, bool? createTopologyOverride) { }
+        public void Register(string providerName, IMessageBusClient messageBusClient, bool? createTopologyOverride)
+        {
+        }
     }
 
     private class FakeEventCapableClient(IMessageBusSender publisher) : IMessageBusClient, IEventCapableMessageBusClient
     {
-        public string MessagingSystem { get; set; } = "fake";
         public string? CreatedPublisherForTopic { get; private set; }
 
         public Task<IMessageBusSender> CreateEventPublisher(string topicOrExchangeName)
@@ -194,35 +213,91 @@ public class EventSubmitterTests
         }
 
         public Task<IMessageBusProcessor<TEvent>> CreateEventProcessor<TEvent>(string topicOrExchangeName, string subscriptionName, MessageBusProcessorOptions options)
-            => throw new NotSupportedException();
+        {
+            throw new NotSupportedException();
+        }
 
         public Task<IMessageBusSender> CreateEventRetrySender(string topicOrExchangeName, string subscriptionName)
-            => throw new NotSupportedException();
+        {
+            throw new NotSupportedException();
+        }
 
         public Task<IDeadLetterReceiver> CreateEventSubscriptionDeadLetterReceiver(string topicOrExchangeName, string subscriptionName)
-            => throw new NotSupportedException();
+        {
+            throw new NotSupportedException();
+        }
 
         public Task<long> GetEventSubscriptionDeadLetterMessageCount(string topicOrExchangeName, string subscriptionName, CancellationToken cancellationToken = default)
-            => throw new NotSupportedException();
+        {
+            throw new NotSupportedException();
+        }
 
-        public Task<IMessageBusReceiver> CreateReceiver(string queueName) => throw new NotSupportedException();
-        public Task<IMessageBusProcessor<TMessage>> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options) => throw new NotSupportedException();
-        public Task<IExecutionLaneProcessor> CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options) => throw new NotSupportedException();
-        public Task<IMessageBusSender> CreateMessageBusSender(string queueName) => throw new NotSupportedException();
-        public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName) => throw new NotSupportedException();
-        public Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public string MessagingSystem { get; set; } = "fake";
+
+        public Task<IMessageBusReceiver> CreateReceiver(string queueName)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<IMessageBusProcessor<TMessage>> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<IExecutionLaneProcessor> CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<IMessageBusSender> CreateMessageBusSender(string queueName)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
     }
 
     private class NonEventCapableClient : IMessageBusClient
     {
         public string MessagingSystem => "fake";
 
-        public Task<IMessageBusReceiver> CreateReceiver(string queueName) => throw new NotSupportedException();
-        public Task<IMessageBusProcessor<TMessage>> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options) => throw new NotSupportedException();
-        public Task<IExecutionLaneProcessor> CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options) => throw new NotSupportedException();
-        public Task<IMessageBusSender> CreateMessageBusSender(string queueName) => throw new NotSupportedException();
-        public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName) => throw new NotSupportedException();
-        public Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<IMessageBusReceiver> CreateReceiver(string queueName)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<IMessageBusProcessor<TMessage>> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<IExecutionLaneProcessor> CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<IMessageBusSender> CreateMessageBusSender(string queueName)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
     }
 
     private class CapturingEventPublisher : IMessageBusSender
@@ -238,22 +313,32 @@ public class EventSubmitterTests
         }
 
         public Task SendEmptyMessage(MessageProperties messageProperties, CancellationToken cancellationToken = default)
-            => throw new NotSupportedException();
+        {
+            throw new NotSupportedException();
+        }
 
         public Task SendRawMessage(string rawBody, IReadOnlyDictionary<string, object> applicationProperties, CancellationToken cancellationToken = default)
-            => throw new NotSupportedException();
+        {
+            throw new NotSupportedException();
+        }
     }
 
     private class ThrowingEventPublisher(Exception exception) : IMessageBusSender
     {
         public Task SendMessage<TMessage>(TMessage message, MessageProperties messageProperties, CancellationToken cancellationToken = default)
-            => Task.FromException(exception);
+        {
+            return Task.FromException(exception);
+        }
 
         public Task SendEmptyMessage(MessageProperties messageProperties, CancellationToken cancellationToken = default)
-            => throw new NotSupportedException();
+        {
+            throw new NotSupportedException();
+        }
 
         public Task SendRawMessage(string rawBody, IReadOnlyDictionary<string, object> applicationProperties, CancellationToken cancellationToken = default)
-            => throw new NotSupportedException();
+        {
+            throw new NotSupportedException();
+        }
     }
 
     private class StubPublisherInstrumentation : IEventPublisherInstrumentation
@@ -270,8 +355,14 @@ public class EventSubmitterTests
             return null;
         }
 
-        public void RecordRaised(string topicOrExchangeName, double durationMs) => Raised.Add((topicOrExchangeName, durationMs));
+        public void RecordRaised(string topicOrExchangeName, double durationMs)
+        {
+            Raised.Add((topicOrExchangeName, durationMs));
+        }
 
-        public void RecordFailed(string topicOrExchangeName) => Failed.Add(topicOrExchangeName);
+        public void RecordFailed(string topicOrExchangeName)
+        {
+            Failed.Add(topicOrExchangeName);
+        }
     }
 }

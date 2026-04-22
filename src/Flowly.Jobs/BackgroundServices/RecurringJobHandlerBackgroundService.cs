@@ -2,12 +2,10 @@ using System.Diagnostics;
 using Cronos;
 using Flowly.Jobs.Messages;
 using Flowly.Jobs.Model;
-using Flowly.MessageInfrastructure;
 using Flowly.MessageInfrastructure.RecurringJobs;
 using Flowly.MessageInfrastructure.Registration;
-using Flowly.MessageInfrastructure.Senders;
 using Flowly.MessageInfrastructure.Telemetry;
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -17,34 +15,13 @@ namespace Flowly.Jobs.BackgroundServices;
 internal class RecurringJobHandlerBackgroundService<TRecurringJobHandler> : BackgroundService where TRecurringJobHandler : IRecurringJobHandler
 {
     private readonly IMessageBusClientRegistry _clientRegistry;
-    private readonly IServiceScopeFactory _serviceScopeFactory;
-    private readonly RecurringJobSettings _settings;
-    private readonly ILogger<RecurringJobHandlerBackgroundService<TRecurringJobHandler>> _logger;
-    private IExecutionLaneProcessor? _executionLaneProcessor;
     private readonly IHandlerInstrumentation _handlerInstrumentation;
     private readonly string _handlerName = typeof(TRecurringJobHandler).Name;
+    private readonly ILogger<RecurringJobHandlerBackgroundService<TRecurringJobHandler>> _logger;
+    private readonly IServiceScopeFactory _serviceScopeFactory;
+    private readonly RecurringJobSettings _settings;
+    private IExecutionLaneProcessor? _executionLaneProcessor;
     private string _messagingSystem = string.Empty;
-
-    public class RecurringJobSettings
-    {
-        public RecurringJobSettings(string jobDescription, string sessionName, string cronExpression)
-        {
-            JobDescription = jobDescription;
-            SessionName = sessionName;
-            CronExpression = cronExpression;
-
-            if (!Cronos.CronExpression.TryParse(CronExpression, cronExpression.Split(' ').Length == 6 ? CronFormat.IncludeSeconds : CronFormat.Standard, out _))
-            {
-                throw new ArgumentException("Invalid Cron expression", nameof(cronExpression));
-            }
-        }
-
-        public string JobDescription { get; }
-
-        public string SessionName { get; }
-
-        public string CronExpression { get; }
-    }
 
     public RecurringJobHandlerBackgroundService(
         IMessageBusClientRegistry clientRegistry,
@@ -132,6 +109,25 @@ internal class RecurringJobHandlerBackgroundService<TRecurringJobHandler> : Back
             await _executionLaneProcessor.StopProcessing(cancellationToken);
             await _executionLaneProcessor.DisposeAsync();
         }
+
         await base.StopAsync(cancellationToken);
+    }
+
+    public class RecurringJobSettings
+    {
+        public RecurringJobSettings(string jobDescription, string sessionName, string cronExpression)
+        {
+            JobDescription = jobDescription;
+            SessionName = sessionName;
+            CronExpression = cronExpression;
+
+            if (!Cronos.CronExpression.TryParse(CronExpression, cronExpression.Split(' ').Length == 6 ? CronFormat.IncludeSeconds : CronFormat.Standard, out _)) throw new ArgumentException("Invalid Cron expression", nameof(cronExpression));
+        }
+
+        public string JobDescription { get; }
+
+        public string SessionName { get; }
+
+        public string CronExpression { get; }
     }
 }

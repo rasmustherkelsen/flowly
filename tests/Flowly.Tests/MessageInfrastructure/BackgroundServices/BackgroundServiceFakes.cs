@@ -1,5 +1,5 @@
 using Flowly.MessageInfrastructure.Registration;
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Flowly.Tests.MessageInfrastructure.BackgroundServices;
@@ -8,22 +8,33 @@ internal class FakeMessageBusClientRegistry(IMessageBusClient client) : IMessage
 {
     public string PrimaryProviderName => "azure-service-bus";
 
-    public IMessageBusClient GetClient(string providerName) => client;
+    public IMessageBusClient GetClient(string providerName)
+    {
+        return client;
+    }
 
-    public bool IsRegistered(string providerName) => true;
+    public bool IsRegistered(string providerName)
+    {
+        return true;
+    }
 
-    public IReadOnlyList<RegisteredTransport> GetAll() => [new RegisteredTransport("azure-service-bus", IsPrimary: true, CreateTopologyOverride: null)];
+    public IReadOnlyList<RegisteredTransport> GetAll()
+    {
+        return [new RegisteredTransport("azure-service-bus", true, null)];
+    }
 
-    public void Register(string providerName, IMessageBusClient messageBusClient, bool? createTopologyOverride) { }
+    public void Register(string providerName, IMessageBusClient messageBusClient, bool? createTopologyOverride)
+    {
+    }
 }
 
 internal class FakeReceivedMessage<TMessage>(TMessage body, MessageProperties? properties = null) : IReceivedMessage<TMessage>
 {
-    public TMessage Body { get; } = body;
-    public MessageProperties Properties { get; } = properties ?? MessageProperties.Empty;
     public bool Completed { get; private set; }
     public bool DeadLettered { get; private set; }
     public string? DeadLetterReason { get; private set; }
+    public TMessage Body { get; } = body;
+    public MessageProperties Properties { get; } = properties ?? MessageProperties.Empty;
 
     public Task Complete(CancellationToken cancellationToken = default)
     {
@@ -41,12 +52,15 @@ internal class FakeReceivedMessage<TMessage>(TMessage body, MessageProperties? p
 
 internal class ThrowingReceivedMessage<TMessage> : IReceivedMessage<TMessage>
 {
-    public TMessage Body => throw new InvalidOperationException($"Deserialized message body is null for type {typeof(TMessage).FullName}.");
-    public MessageProperties Properties { get; } = MessageProperties.Empty;
     public bool DeadLettered { get; private set; }
     public string? DeadLetterReason { get; private set; }
+    public TMessage Body => throw new InvalidOperationException($"Deserialized message body is null for type {typeof(TMessage).FullName}.");
+    public MessageProperties Properties { get; } = MessageProperties.Empty;
 
-    public Task Complete(CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task Complete(CancellationToken cancellationToken = default)
+    {
+        return Task.CompletedTask;
+    }
 
     public Task DeadLetter(string? reason = null, CancellationToken cancellationToken = default)
     {
@@ -68,13 +82,23 @@ internal class FakeServiceScopeFactory<TService>(TService service) : IServiceSco
 
     private class FakeScope(TService service) : IServiceScope, IAsyncDisposable
     {
+        public ValueTask DisposeAsync()
+        {
+            return ValueTask.CompletedTask;
+        }
+
         public IServiceProvider ServiceProvider { get; } = new FakeProvider(service);
-        public void Dispose() { }
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+        public void Dispose()
+        {
+        }
 
         private class FakeProvider(TService service) : IServiceProvider
         {
-            public object? GetService(Type serviceType) => serviceType == typeof(TService) ? service : null;
+            public object? GetService(Type serviceType)
+            {
+                return serviceType == typeof(TService) ? service : null;
+            }
         }
     }
 }

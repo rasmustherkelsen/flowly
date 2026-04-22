@@ -1,4 +1,3 @@
-using Flowly.MessageInfrastructure.Model;
 using Flowly.MessageInfrastructure.Receivers;
 
 namespace Flowly.Tests.MessageInfrastructure.Receivers;

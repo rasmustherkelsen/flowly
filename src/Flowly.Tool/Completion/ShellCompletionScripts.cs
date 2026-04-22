@@ -9,6 +9,7 @@ internal static class ShellCompletionScripts
           local -a commands
           commands=(
             'azure-service-bus:Azure Service Bus specific commands'
+            'docker-compose:Generate a docker-compose.yml with local development dependencies'
             'completion:Generate shell completion script'
             'install-completion:Install shell completion script to a default location'
             'remove-completion:Remove shell completion script from default location'
@@ -73,6 +74,23 @@ internal static class ShellCompletionScripts
               esac
               ;;
 
+            docker-compose)
+              local -a dc_opts
+              dc_opts=(
+                '--assembly[Path to compiled assembly]:assembly file:_files'
+                '--project[Path to .csproj or folder]:project:_files -/'
+                '--configuration[Build configuration]:configuration:(Debug Release)'
+                '--framework[Target framework]:framework:'
+                '--no-build[Do not build project]'
+                '--configuration-type[Flowly configuration type]:type:'
+                '--working-directory[Working directory]:directory:_files -/'
+                '--output[Output file for docker-compose.yml]:output file:_files'
+                '--namespace[Service Bus namespace name]:namespace:'
+                '--sbconfig-output[Output path for sbconfig.json]:output file:_files'
+              )
+              _arguments "${dc_opts[@]}"
+              ;;
+
             completion|install-completion|remove-completion)
               _arguments '--shell[Shell type]:shell:(zsh bash powershell)'
               ;;
@@ -91,7 +109,7 @@ internal static class ShellCompletionScripts
             prev="${COMP_WORDS[COMP_CWORD-1]}"
 
             if [[ ${COMP_CWORD} -eq 1 ]]; then
-                COMPREPLY=( $(compgen -W "azure-service-bus completion install-completion remove-completion" -- "$cur") )
+                COMPREPLY=( $(compgen -W "azure-service-bus docker-compose completion install-completion remove-completion" -- "$cur") )
                 return 0
             fi
 
@@ -122,6 +140,12 @@ internal static class ShellCompletionScripts
                 return 0
             fi
 
+            if [[ ${COMP_WORDS[1]} == "docker-compose" ]]; then
+                local dc_common="--assembly --project --configuration --framework --no-build --configuration-type --working-directory --output --namespace --sbconfig-output"
+                COMPREPLY=( $(compgen -W "$dc_common" -- "$cur") )
+                return 0
+            fi
+
             if [[ ${COMP_WORDS[1]} == "completion" ]]; then
                 COMPREPLY=( $(compgen -W "--shell zsh bash powershell" -- "$cur") )
                 return 0
@@ -147,7 +171,7 @@ internal static class ShellCompletionScripts
 
             $tokens = @($commandAst.CommandElements | Select-Object -Skip 1 | ForEach-Object { $_.Value })
 
-            $rootCommands = @('azure-service-bus', 'completion', 'install-completion', 'remove-completion')
+            $rootCommands = @('azure-service-bus', 'docker-compose', 'completion', 'install-completion', 'remove-completion')
             $asbCommands = @('queues', 'emulator-config', 'bicep', 'aspire-code')
 
             if ($tokens.Count -eq 0) {
@@ -178,6 +202,14 @@ internal static class ShellCompletionScripts
                 }
 
                 $options | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+                    [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterName', $_)
+                }
+                return
+            }
+
+            if ($tokens[0] -eq 'docker-compose') {
+                $dcOptions = @('--assembly', '--project', '--configuration', '--framework', '--no-build', '--configuration-type', '--working-directory', '--output', '--namespace', '--sbconfig-output')
+                $dcOptions | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
                     [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterName', $_)
                 }
                 return

@@ -138,6 +138,7 @@ public static class FlowlyAzureServiceBusExtensions
 
             var events = selectedManifests
                 .SelectMany(m => m.Events)
+                .Where(e => e.SubscriptionName is not null)
                 .GroupBy(e => (e.TopicOrExchangeName, e.SubscriptionName), new TopicSubscriptionComparer())
                 .Select(g => g.First())
                 .ToList();

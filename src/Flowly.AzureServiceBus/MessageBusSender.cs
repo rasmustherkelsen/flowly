@@ -1,26 +1,27 @@
 using System.Diagnostics;
 using System.Text.Json;
 using Azure.Messaging.ServiceBus;
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 
 namespace Flowly.AzureServiceBus;
 
 internal class MessageBusSender(ServiceBusSender serviceBusSender, long? maxMessageSizeBytes) : IMessageBusSender
 {
     public async Task SendMessage<TMessage>(TMessage message, MessageProperties messageProperties, CancellationToken cancellationToken = default)
-        => await CommonSend(new ServiceBusMessage(JsonSerializer.Serialize(message)), messageProperties, cancellationToken);
+    {
+        await CommonSend(new ServiceBusMessage(JsonSerializer.Serialize(message)), messageProperties, cancellationToken);
+    }
 
     public async Task SendEmptyMessage(MessageProperties messageProperties, CancellationToken cancellationToken = default)
-        => await CommonSend(new ServiceBusMessage(), messageProperties, cancellationToken);
+    {
+        await CommonSend(new ServiceBusMessage(), messageProperties, cancellationToken);
+    }
 
     public async Task SendRawMessage(string rawBody, IReadOnlyDictionary<string, object> applicationProperties, CancellationToken cancellationToken = default)
     {
         var message = new ServiceBusMessage(BinaryData.FromString(rawBody));
 
-        foreach (var (key, value) in applicationProperties)
-        {
-            message.ApplicationProperties[key] = value;
-        }
+        foreach (var (key, value) in applicationProperties) message.ApplicationProperties[key] = value;
 
         ValidateMessageSize(message);
 

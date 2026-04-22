@@ -98,13 +98,20 @@ public class EventNameResolverTests
     private record OrderPlacedEvent;
 
     private record RefreshedEvent;
+
     private record InvoiceCreatedEvent;
+
     private record ProductCatalogUpdatedEvent;
+
     private record OrderShipped;
+
     private record Event;
+
     private record Shipped;
 
     private class NotifyHandler;
+
     private class EmailNotificationHandler;
+
     private class SendWelcomeEmailNotificationHandler;
 }

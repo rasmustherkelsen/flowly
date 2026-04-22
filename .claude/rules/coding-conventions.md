@@ -41,3 +41,8 @@ This clearly communicates the business logic without writing comments
 ## Private methods
 
 - When writing a private method strongly consider if the method should actually be placed on a different class as a public method instead. Sometimes a private method means the code is not correctly structured or there is some undiscovered concept. This of course does not go for small helper methods that makes the code clean and easy to read.
+
+## Primary Constructors
+
+- If parameters are just passed in through the constructor and used without modification use primary constructor but **only** if the class is internal.
+

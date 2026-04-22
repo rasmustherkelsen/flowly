@@ -1,5 +1,4 @@
 using Flowly.MessageInfrastructure.Events.Registration;
-using Flowly.MessageInfrastructure.Registration;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -7,6 +6,11 @@ namespace Flowly.Tests.MessageInfrastructure.Events.Registration;
 
 public class EventHandlerBuilderTests
 {
+    private static StubFlowlyBuilder CreateInnerBuilder()
+    {
+        return new StubFlowlyBuilder(new ServiceCollection(), new ConfigurationBuilder().Build());
+    }
+
     public class Constructor
     {
         [Fact]
@@ -18,7 +22,7 @@ public class EventHandlerBuilderTests
                 "notification-subscriber",
                 "primary");
 
-            Assert.Equal("order-placed", eventHandlerBuilder.TopicOrExchangeName);
+            Assert.Equal("order-placed", eventHandlerBuilder.TopicName);
         }
 
         [Fact]
@@ -65,9 +69,6 @@ public class EventHandlerBuilderTests
             Assert.Same(innerBuilder.Configuration, eventHandlerBuilder.Configuration);
         }
     }
-
-    private static StubFlowlyBuilder CreateInnerBuilder() =>
-        new(new ServiceCollection(), new ConfigurationBuilder().Build());
 
     private sealed class StubFlowlyBuilder(IServiceCollection services, IConfiguration configuration) : IFlowlyBuilder
     {

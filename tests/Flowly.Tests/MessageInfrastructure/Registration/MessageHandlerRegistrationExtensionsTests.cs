@@ -1,16 +1,29 @@
-using Flowly.MessageInfrastructure;
 using Flowly.MessageInfrastructure.BackgroundServices;
 using Flowly.MessageInfrastructure.Model;
 using Flowly.MessageInfrastructure.Receivers;
 using Flowly.MessageInfrastructure.Registration;
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 namespace Flowly.Tests.MessageInfrastructure.Registration;
 
 public class MessageHandlerRegistrationExtensionsTests
 {
+    private static (IFlowlyBuilder FlowlyBuilder, ProviderQueueManifest Manifest) CreateBuilder(string providerName)
+    {
+        var services = new ServiceCollection();
+        var registry = new MessageBusClientRegistry();
+        registry.Register(providerName, new StubMessageBusClient(), null);
+        services.AddSingleton<IMessageBusClientRegistry>(registry);
+
+        var manifest = new ProviderQueueManifest(providerName, true, "Stub");
+        services.AddSingleton(manifest);
+
+        return (new StubFlowlyBuilder(services), manifest);
+    }
+
     public class AddMessageHandler
     {
         [Fact]
@@ -64,8 +77,7 @@ public class MessageHandlerRegistrationExtensionsTests
             flowlyBuilder.AddMessageHandler<OrderPlaced, OrderPlacedHandler>();
 
             var descriptor = flowlyBuilder.Services.FirstOrDefault(s =>
-                s.ImplementationType?.IsGenericType == true &&
-                s.ImplementationType.GetGenericTypeDefinition() == typeof(ServiceBusMessageHandlerBackgroundService<>));
+                s.ServiceType == typeof(IHostedService) && s.ImplementationFactory != null);
 
             Assert.NotNull(descriptor);
         }
@@ -142,7 +154,7 @@ public class MessageHandlerRegistrationExtensionsTests
             flowlyBuilder.AddBatchMessageHandler<OrderPlaced, OrderPlacedBatchHandler>();
 
             var descriptor = flowlyBuilder.Services.Single(s =>
-                s.ServiceType == typeof(BatchMessageHandlerBase<OrderPlaced>));
+                s.ServiceType == typeof(BatchMessageHandler<OrderPlaced>));
 
             Assert.Equal(typeof(OrderPlacedBatchHandler), descriptor.ImplementationType);
         }
@@ -200,19 +212,6 @@ public class MessageHandlerRegistrationExtensionsTests
         }
     }
 
-    private static (IFlowlyBuilder FlowlyBuilder, ProviderQueueManifest Manifest) CreateBuilder(string providerName)
-    {
-        var services = new ServiceCollection();
-        var registry = new MessageBusClientRegistry();
-        registry.Register(providerName, new StubMessageBusClient(), createTopologyOverride: null);
-        services.AddSingleton<IMessageBusClientRegistry>(registry);
-
-        var manifest = new ProviderQueueManifest(providerName, isPrimary: true, "Stub");
-        services.AddSingleton(manifest);
-
-        return (new StubFlowlyBuilder(services), manifest);
-    }
-
     private sealed class StubFlowlyBuilder(IServiceCollection services) : IFlowlyBuilder
     {
         public IServiceCollection Services => services;
@@ -223,12 +222,35 @@ public class MessageHandlerRegistrationExtensionsTests
     {
         public string MessagingSystem => "Stub";
 
-        public Task<IMessageBusReceiver> CreateReceiver(string queueName) => throw new NotSupportedException();
-        public Task<IMessageBusProcessor<TMessage>> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options) => throw new NotSupportedException();
-        public Task<IExecutionLaneProcessor> CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options) => throw new NotSupportedException();
-        public Task<IMessageBusSender> CreateMessageBusSender(string queueName) => throw new NotSupportedException();
-        public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName) => throw new NotSupportedException();
-        public Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<IMessageBusReceiver> CreateReceiver(string queueName)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<IMessageBusProcessor<TMessage>> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<IExecutionLaneProcessor> CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<IMessageBusSender> CreateMessageBusSender(string queueName)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
     }
 
     private record OrderPlaced;
@@ -238,22 +260,34 @@ public class MessageHandlerRegistrationExtensionsTests
 
     private class OrderPlacedHandler : MessageHandler<OrderPlaced>
     {
-        public override Task Handle(IMessageContext<OrderPlaced> messageContext) => Task.CompletedTask;
+        public override Task Handle(IMessageContext<OrderPlaced> messageContext)
+        {
+            return Task.CompletedTask;
+        }
     }
 
     private class NamedMessageHandler : MessageHandler<NamedMessage>
     {
-        public override Task Handle(IMessageContext<NamedMessage> messageContext) => Task.CompletedTask;
+        public override Task Handle(IMessageContext<NamedMessage> messageContext)
+        {
+            return Task.CompletedTask;
+        }
     }
 
     [RetryPolicy(3, 5)]
     private class RetryingHandler : MessageHandler<OrderPlaced>
     {
-        public override Task Handle(IMessageContext<OrderPlaced> messageContext) => Task.CompletedTask;
+        public override Task Handle(IMessageContext<OrderPlaced> messageContext)
+        {
+            return Task.CompletedTask;
+        }
     }
 
-    private class OrderPlacedBatchHandler : BatchMessageHandlerBase<OrderPlaced>
+    private class OrderPlacedBatchHandler : BatchMessageHandler<OrderPlaced>
     {
-        public override Task Handle(IBatchMessageContext<OrderPlaced> messageContext) => Task.CompletedTask;
+        public override Task Handle(IBatchMessageContext<OrderPlaced> messageContext)
+        {
+            return Task.CompletedTask;
+        }
     }
 }

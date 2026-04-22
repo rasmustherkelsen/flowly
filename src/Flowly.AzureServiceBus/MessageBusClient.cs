@@ -1,13 +1,59 @@
 using System.Collections.Concurrent;
 using Azure.Messaging.ServiceBus;
 using Azure.Messaging.ServiceBus.Administration;
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 
 namespace Flowly.AzureServiceBus;
 
 internal class MessageBusClient(ServiceBusClient serviceBusClient, ServiceBusAdministrationClient administrationClient, long? maxMessageSizeBytes) : IMessageBusClient, IEventCapableMessageBusClient
 {
     private readonly ConcurrentDictionary<string, IMessageBusSender> _serviceBusSenders = new();
+
+    public Task<IMessageBusSender> CreateEventPublisher(string topicOrExchangeName)
+    {
+        return Task.FromResult(_serviceBusSenders.GetOrAdd(
+            $"topic:{topicOrExchangeName}",
+            _ => new MessageBusSender(serviceBusClient.CreateSender(topicOrExchangeName), maxMessageSizeBytes)));
+    }
+
+    public Task<IMessageBusProcessor<TEvent>> CreateEventProcessor<TEvent>(
+        string topicOrExchangeName,
+        string subscriptionName,
+        MessageBusProcessorOptions options)
+    {
+        var processorOptions = new ServiceBusProcessorOptions
+        {
+            MaxConcurrentCalls = options.MaxConcurrentCalls,
+            MaxAutoLockRenewalDuration = TimeSpan.FromHours(6),
+            AutoCompleteMessages = false,
+            ReceiveMode = ServiceBusReceiveMode.PeekLock
+        };
+
+        return Task.FromResult<IMessageBusProcessor<TEvent>>(
+            new AzureServiceBusEventProcessor<TEvent>(
+                serviceBusClient.CreateProcessor(topicOrExchangeName, subscriptionName, processorOptions)));
+    }
+
+    public Task<IMessageBusSender> CreateEventRetrySender(string topicOrExchangeName, string subscriptionName)
+    {
+        return CreateEventPublisher(topicOrExchangeName);
+    }
+
+    public Task<IDeadLetterReceiver> CreateEventSubscriptionDeadLetterReceiver(string topicOrExchangeName, string subscriptionName)
+    {
+        var receiver = serviceBusClient.CreateReceiver(topicOrExchangeName, subscriptionName, new ServiceBusReceiverOptions
+        {
+            SubQueue = SubQueue.DeadLetter
+        });
+
+        return Task.FromResult<IDeadLetterReceiver>(new ServiceBusDeadLetterReceiver(receiver));
+    }
+
+    public async Task<long> GetEventSubscriptionDeadLetterMessageCount(string topicOrExchangeName, string subscriptionName, CancellationToken cancellationToken = default)
+    {
+        var properties = await administrationClient.GetSubscriptionRuntimePropertiesAsync(topicOrExchangeName, subscriptionName, cancellationToken);
+        return properties.Value.DeadLetterMessageCount;
+    }
 
     public string MessagingSystem => "azure_service_bus";
 
@@ -44,7 +90,9 @@ internal class MessageBusClient(ServiceBusClient serviceBusClient, ServiceBusAdm
     }
 
     public Task<IMessageBusSender> CreateMessageBusSender(string queueName)
-        => Task.FromResult(_serviceBusSenders.GetOrAdd(queueName, q => new MessageBusSender(serviceBusClient.CreateSender(q), maxMessageSizeBytes)));
+    {
+        return Task.FromResult(_serviceBusSenders.GetOrAdd(queueName, q => new MessageBusSender(serviceBusClient.CreateSender(q), maxMessageSizeBytes)));
+    }
 
     public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName)
     {
@@ -59,48 +107,6 @@ internal class MessageBusClient(ServiceBusClient serviceBusClient, ServiceBusAdm
     public async Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default)
     {
         var properties = await administrationClient.GetQueueRuntimePropertiesAsync(queueName, cancellationToken);
-        return properties.Value.DeadLetterMessageCount;
-    }
-
-    public Task<IMessageBusSender> CreateEventPublisher(string topicOrExchangeName)
-        => Task.FromResult(_serviceBusSenders.GetOrAdd(
-            $"topic:{topicOrExchangeName}",
-            _ => new MessageBusSender(serviceBusClient.CreateSender(topicOrExchangeName), maxMessageSizeBytes)));
-
-    public Task<IMessageBusProcessor<TEvent>> CreateEventProcessor<TEvent>(
-        string topicOrExchangeName,
-        string subscriptionName,
-        MessageBusProcessorOptions options)
-    {
-        var processorOptions = new ServiceBusProcessorOptions
-        {
-            MaxConcurrentCalls = options.MaxConcurrentCalls,
-            MaxAutoLockRenewalDuration = TimeSpan.FromHours(6),
-            AutoCompleteMessages = false,
-            ReceiveMode = ServiceBusReceiveMode.PeekLock
-        };
-
-        return Task.FromResult<IMessageBusProcessor<TEvent>>(
-            new AzureServiceBusEventProcessor<TEvent>(
-                serviceBusClient.CreateProcessor(topicOrExchangeName, subscriptionName, processorOptions)));
-    }
-
-    public Task<IMessageBusSender> CreateEventRetrySender(string topicOrExchangeName, string subscriptionName)
-        => CreateEventPublisher(topicOrExchangeName);
-
-    public Task<IDeadLetterReceiver> CreateEventSubscriptionDeadLetterReceiver(string topicOrExchangeName, string subscriptionName)
-    {
-        var receiver = serviceBusClient.CreateReceiver(topicOrExchangeName, subscriptionName, new ServiceBusReceiverOptions
-        {
-            SubQueue = SubQueue.DeadLetter
-        });
-
-        return Task.FromResult<IDeadLetterReceiver>(new ServiceBusDeadLetterReceiver(receiver));
-    }
-
-    public async Task<long> GetEventSubscriptionDeadLetterMessageCount(string topicOrExchangeName, string subscriptionName, CancellationToken cancellationToken = default)
-    {
-        var properties = await administrationClient.GetSubscriptionRuntimePropertiesAsync(topicOrExchangeName, subscriptionName, cancellationToken);
         return properties.Value.DeadLetterMessageCount;
     }
 }

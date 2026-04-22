@@ -1,5 +1,4 @@
 using Flowly.MessageInfrastructure.Events.Telemetry;
-using Flowly.MessagingAbstractions;
 
 namespace Flowly.Tests.MessageInfrastructure.Events.Telemetry;
 

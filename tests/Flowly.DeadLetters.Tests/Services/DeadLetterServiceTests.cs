@@ -2,12 +2,46 @@ using Flowly.DeadLetters.BackgroundServices;
 using Flowly.DeadLetters.DatabaseModel;
 using Flowly.DeadLetters.Services;
 using Flowly.DeadLetters.Tests.Fakes;
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 
 namespace Flowly.DeadLetters.Tests.Services;
 
 public class DeadLetterServiceTests
 {
+    private static DeadLetterService BuildService(FakeDeadLetterRepository repository, FakeMessageBusClient client)
+    {
+        return new DeadLetterService(repository, new FakeMessageBusClientRegistry(client), [new DeadLetterIngestionSettings("test-queue", "azure-service-bus")], []);
+    }
+
+    private static DeadLetterService BuildServiceWithEventSubscription(
+        FakeDeadLetterRepository repository,
+        FakeMessageBusClient client,
+        string topicName,
+        string subscriptionName)
+    {
+        return new DeadLetterService(repository, new FakeMessageBusClientRegistry(client), [], [new EventSubscriptionDeadLetterIngestionSettings(topicName, subscriptionName, "azure-service-bus")]);
+    }
+
+    private static DeadLetter BuildDeadLetter(
+        string messageId,
+        DeadLetterStatus status = DeadLetterStatus.Pending,
+        string queueName = "test-queue",
+        string? subscriptionName = null,
+        string body = "{}",
+        string properties = "{}")
+    {
+        return new DeadLetter
+        {
+            MessageId = messageId,
+            QueueName = queueName,
+            SubscriptionName = subscriptionName,
+            MessageBody = body,
+            MessageProperties = properties,
+            DeadLetteredAt = DateTimeOffset.UtcNow,
+            Status = status
+        };
+    }
+
     public class Requeue
     {
         [Fact]
@@ -33,7 +67,7 @@ public class DeadLetterServiceTests
         public async Task SendsRawMessageToOriginalQueue()
         {
             var repository = new FakeDeadLetterRepository();
-            repository.Add(BuildDeadLetter("msg-1", DeadLetterStatus.Pending, queueName: "my-queue", body: "hello"));
+            repository.Add(BuildDeadLetter("msg-1", DeadLetterStatus.Pending, "my-queue", body: "hello"));
             var messageBusClient = new FakeMessageBusClient();
             var deadLetterService = BuildService(repository, messageBusClient);
 
@@ -48,7 +82,7 @@ public class DeadLetterServiceTests
         public async Task SendsApplicationPropertiesWithMessage()
         {
             var repository = new FakeDeadLetterRepository();
-            repository.Add(BuildDeadLetter("msg-1", DeadLetterStatus.Pending, properties: """{"source":"test"}"""));
+            repository.Add(BuildDeadLetter("msg-1", properties: """{"source":"test"}"""));
             var messageBusClient = new FakeMessageBusClient();
             var deadLetterService = BuildService(repository, messageBusClient);
 
@@ -63,7 +97,7 @@ public class DeadLetterServiceTests
         public async Task StripsRetryCount_FromSentMessage()
         {
             var repository = new FakeDeadLetterRepository();
-            repository.Add(BuildDeadLetter("msg-1", DeadLetterStatus.Pending, properties: """{"flowly-retry-count":3,"source":"test"}"""));
+            repository.Add(BuildDeadLetter("msg-1", properties: """{"flowly-retry-count":3,"source":"test"}"""));
             var messageBusClient = new FakeMessageBusClient();
             var deadLetterService = BuildService(repository, messageBusClient);
 
@@ -78,7 +112,7 @@ public class DeadLetterServiceTests
         public async Task DoesNotIncludeTargetSubscriptionProperty_ForQueueDeadLetter()
         {
             var repository = new FakeDeadLetterRepository();
-            repository.Add(BuildDeadLetter("msg-1", DeadLetterStatus.Pending));
+            repository.Add(BuildDeadLetter("msg-1"));
             var messageBusClient = new FakeMessageBusClient();
             var deadLetterService = BuildService(repository, messageBusClient);
 
@@ -92,10 +126,10 @@ public class DeadLetterServiceTests
         public async Task MarksMessageAsRequeued()
         {
             var repository = new FakeDeadLetterRepository();
-            repository.Add(BuildDeadLetter("msg-1", DeadLetterStatus.Pending));
+            repository.Add(BuildDeadLetter("msg-1"));
             var deadLetterService = BuildService(repository, new FakeMessageBusClient());
 
-            await deadLetterService.Requeue("msg-1", requeuedBy: "admin");
+            await deadLetterService.Requeue("msg-1", "admin");
 
             Assert.Equal("msg-1", repository.RequeuedMessageId);
             Assert.Equal("admin", repository.RequeuedBy);
@@ -127,7 +161,7 @@ public class DeadLetterServiceTests
         public async Task DeletesRecord()
         {
             var repository = new FakeDeadLetterRepository();
-            repository.Add(BuildDeadLetter("msg-1", DeadLetterStatus.Pending));
+            repository.Add(BuildDeadLetter("msg-1"));
             var deadLetterService = BuildService(repository, new FakeMessageBusClient());
 
             await deadLetterService.Discard("msg-1");
@@ -139,7 +173,7 @@ public class DeadLetterServiceTests
         public async Task DoesNotSendAnyMessages()
         {
             var repository = new FakeDeadLetterRepository();
-            repository.Add(BuildDeadLetter("msg-1", DeadLetterStatus.Pending));
+            repository.Add(BuildDeadLetter("msg-1"));
             var messageBusClient = new FakeMessageBusClient();
             var deadLetterService = BuildService(repository, messageBusClient);
 
@@ -155,7 +189,7 @@ public class DeadLetterServiceTests
         public async Task UsesEventRetrySender_WithTopicAndSubscriptionName()
         {
             var repository = new FakeDeadLetterRepository();
-            repository.Add(BuildDeadLetter("msg-1", DeadLetterStatus.Pending, queueName: "order-placed", subscriptionName: "notification-handler", body: "hello"));
+            repository.Add(BuildDeadLetter("msg-1", DeadLetterStatus.Pending, "order-placed", "notification-handler", "hello"));
             var messageBusClient = new FakeMessageBusClient();
             var deadLetterService = BuildServiceWithEventSubscription(repository, messageBusClient, "order-placed", "notification-handler");
 
@@ -171,7 +205,7 @@ public class DeadLetterServiceTests
         public async Task DoesNotUseRegularMessageBusSender()
         {
             var repository = new FakeDeadLetterRepository();
-            repository.Add(BuildDeadLetter("msg-1", DeadLetterStatus.Pending, queueName: "order-placed", subscriptionName: "notification-handler"));
+            repository.Add(BuildDeadLetter("msg-1", DeadLetterStatus.Pending, "order-placed", "notification-handler"));
             var messageBusClient = new FakeMessageBusClient();
             var deadLetterService = BuildServiceWithEventSubscription(repository, messageBusClient, "order-placed", "notification-handler");
 
@@ -184,10 +218,10 @@ public class DeadLetterServiceTests
         public async Task MarksMessageAsRequeued()
         {
             var repository = new FakeDeadLetterRepository();
-            repository.Add(BuildDeadLetter("msg-1", DeadLetterStatus.Pending, queueName: "order-placed", subscriptionName: "notification-handler"));
+            repository.Add(BuildDeadLetter("msg-1", DeadLetterStatus.Pending, "order-placed", "notification-handler"));
             var deadLetterService = BuildServiceWithEventSubscription(repository, new FakeMessageBusClient(), "order-placed", "notification-handler");
 
-            await deadLetterService.Requeue("msg-1", requeuedBy: "admin");
+            await deadLetterService.Requeue("msg-1", "admin");
 
             Assert.Equal("msg-1", repository.RequeuedMessageId);
             Assert.Equal("admin", repository.RequeuedBy);
@@ -197,7 +231,7 @@ public class DeadLetterServiceTests
         public async Task IncludesTargetSubscriptionProperty_InSentMessage()
         {
             var repository = new FakeDeadLetterRepository();
-            repository.Add(BuildDeadLetter("msg-1", DeadLetterStatus.Pending, queueName: "order-placed", subscriptionName: "notification-handler"));
+            repository.Add(BuildDeadLetter("msg-1", DeadLetterStatus.Pending, "order-placed", "notification-handler"));
             var messageBusClient = new FakeMessageBusClient();
             var deadLetterService = BuildServiceWithEventSubscription(repository, messageBusClient, "order-placed", "notification-handler");
 
@@ -212,7 +246,7 @@ public class DeadLetterServiceTests
         public async Task WithSubscriptionOnNonEventCapableClient_ThrowsInvalidOperationException()
         {
             var repository = new FakeDeadLetterRepository();
-            repository.Add(BuildDeadLetter("msg-1", DeadLetterStatus.Pending, queueName: "order-placed", subscriptionName: "notification-handler"));
+            repository.Add(BuildDeadLetter("msg-1", DeadLetterStatus.Pending, "order-placed", "notification-handler"));
             var nonEventCapableClient = new NonEventCapableFakeMessageBusClient();
             var deadLetterService = new DeadLetterService(
                 repository,
@@ -271,7 +305,7 @@ public class DeadLetterServiceTests
         public async Task PreservesStringProperties()
         {
             var repository = new FakeDeadLetterRepository();
-            repository.Add(BuildDeadLetter("msg-1", DeadLetterStatus.Pending, properties: """{"source":"orders-api"}"""));
+            repository.Add(BuildDeadLetter("msg-1", properties: """{"source":"orders-api"}"""));
             var messageBusClient = new FakeMessageBusClient();
             var deadLetterService = BuildService(repository, messageBusClient);
 
@@ -285,7 +319,7 @@ public class DeadLetterServiceTests
         public async Task PreservesIntegerProperties()
         {
             var repository = new FakeDeadLetterRepository();
-            repository.Add(BuildDeadLetter("msg-1", DeadLetterStatus.Pending, properties: """{"priority":42}"""));
+            repository.Add(BuildDeadLetter("msg-1", properties: """{"priority":42}"""));
             var messageBusClient = new FakeMessageBusClient();
             var deadLetterService = BuildService(repository, messageBusClient);
 
@@ -299,7 +333,7 @@ public class DeadLetterServiceTests
         public async Task PreservesBooleanTrueProperty()
         {
             var repository = new FakeDeadLetterRepository();
-            repository.Add(BuildDeadLetter("msg-1", DeadLetterStatus.Pending, properties: """{"is-urgent":true}"""));
+            repository.Add(BuildDeadLetter("msg-1", properties: """{"is-urgent":true}"""));
             var messageBusClient = new FakeMessageBusClient();
             var deadLetterService = BuildService(repository, messageBusClient);
 
@@ -313,7 +347,7 @@ public class DeadLetterServiceTests
         public async Task PreservesBooleanFalseProperty()
         {
             var repository = new FakeDeadLetterRepository();
-            repository.Add(BuildDeadLetter("msg-1", DeadLetterStatus.Pending, properties: """{"is-urgent":false}"""));
+            repository.Add(BuildDeadLetter("msg-1", properties: """{"is-urgent":false}"""));
             var messageBusClient = new FakeMessageBusClient();
             var deadLetterService = BuildService(repository, messageBusClient);
 
@@ -327,7 +361,7 @@ public class DeadLetterServiceTests
         public async Task WithEmptyPropertiesJson_SendsNoExtraProperties()
         {
             var repository = new FakeDeadLetterRepository();
-            repository.Add(BuildDeadLetter("msg-1", DeadLetterStatus.Pending, properties: "{}"));
+            repository.Add(BuildDeadLetter("msg-1"));
             var messageBusClient = new FakeMessageBusClient();
             var deadLetterService = BuildService(repository, messageBusClient);
 
@@ -342,39 +376,34 @@ public class DeadLetterServiceTests
     {
         public string MessagingSystem => "fake-non-event";
 
-        public Task<IMessageBusReceiver> CreateReceiver(string queueName) => throw new NotImplementedException();
-        public Task<IMessageBusProcessor<TMessage>> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options) => throw new NotImplementedException();
-        public Task<IExecutionLaneProcessor> CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options) => throw new NotImplementedException();
-        public Task<IMessageBusSender> CreateMessageBusSender(string queueName) => throw new NotImplementedException();
-        public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName) => throw new NotImplementedException();
-        public Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default) => throw new NotImplementedException();
-    }
-
-    private static DeadLetterService BuildService(FakeDeadLetterRepository repository, FakeMessageBusClient client) =>
-        new(repository, new FakeMessageBusClientRegistry(client), [new DeadLetterIngestionSettings("test-queue", "azure-service-bus")], []);
-
-    private static DeadLetterService BuildServiceWithEventSubscription(
-        FakeDeadLetterRepository repository,
-        FakeMessageBusClient client,
-        string topicName,
-        string subscriptionName)
-        => new(repository, new FakeMessageBusClientRegistry(client), [], [new EventSubscriptionDeadLetterIngestionSettings(topicName, subscriptionName, "azure-service-bus")]);
-
-    private static DeadLetter BuildDeadLetter(
-        string messageId,
-        DeadLetterStatus status = DeadLetterStatus.Pending,
-        string queueName = "test-queue",
-        string? subscriptionName = null,
-        string body = "{}",
-        string properties = "{}")
-        => new()
+        public Task<IMessageBusReceiver> CreateReceiver(string queueName)
         {
-            MessageId = messageId,
-            QueueName = queueName,
-            SubscriptionName = subscriptionName,
-            MessageBody = body,
-            MessageProperties = properties,
-            DeadLetteredAt = DateTimeOffset.UtcNow,
-            Status = status
-        };
+            throw new NotImplementedException();
+        }
+
+        public Task<IMessageBusProcessor<TMessage>> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<IExecutionLaneProcessor> CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<IMessageBusSender> CreateMessageBusSender(string queueName)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default)
+        {
+            throw new NotImplementedException();
+        }
+    }
 }

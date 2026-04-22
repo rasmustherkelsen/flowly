@@ -1,5 +1,5 @@
 using Flowly.MessageInfrastructure.Registration;
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 
 namespace Flowly.Tests.MessageInfrastructure.Registration;
 
@@ -12,7 +12,7 @@ public class MessageBusClientRegistryTests
         {
             var registry = new MessageBusClientRegistry();
 
-            registry.Register("primary", new StubMessageBusClient(), createTopologyOverride: null);
+            registry.Register("primary", new StubMessageBusClient(), null);
 
             Assert.Equal("primary", registry.PrimaryProviderName);
         }
@@ -21,8 +21,8 @@ public class MessageBusClientRegistryTests
         public void SecondRegistered_IsNotPrimary()
         {
             var registry = new MessageBusClientRegistry();
-            registry.Register("first", new StubMessageBusClient(), createTopologyOverride: null);
-            registry.Register("second", new StubMessageBusClient(), createTopologyOverride: null);
+            registry.Register("first", new StubMessageBusClient(), null);
+            registry.Register("second", new StubMessageBusClient(), null);
 
             var all = registry.GetAll();
             Assert.False(all.Single(t => t.Name == "second").IsPrimary);
@@ -32,10 +32,10 @@ public class MessageBusClientRegistryTests
         public void DuplicateName_ThrowsInvalidOperationException()
         {
             var registry = new MessageBusClientRegistry();
-            registry.Register("provider", new StubMessageBusClient(), createTopologyOverride: null);
+            registry.Register("provider", new StubMessageBusClient(), null);
 
             var exception = Assert.Throws<InvalidOperationException>(() =>
-                registry.Register("provider", new StubMessageBusClient(), createTopologyOverride: null));
+                registry.Register("provider", new StubMessageBusClient(), null));
 
             Assert.Contains("provider", exception.Message);
         }
@@ -45,7 +45,7 @@ public class MessageBusClientRegistryTests
         {
             var registry = new MessageBusClientRegistry();
 
-            registry.Register("provider", new StubMessageBusClient(), createTopologyOverride: false);
+            registry.Register("provider", new StubMessageBusClient(), false);
 
             var transport = registry.GetAll().Single();
             Assert.False(transport.CreateTopologyOverride);
@@ -59,7 +59,7 @@ public class MessageBusClientRegistryTests
         {
             var registry = new MessageBusClientRegistry();
             var client = new StubMessageBusClient();
-            registry.Register("provider", client, createTopologyOverride: null);
+            registry.Register("provider", client, null);
 
             var resolved = registry.GetClient("provider");
 
@@ -70,7 +70,7 @@ public class MessageBusClientRegistryTests
         public void UnknownProvider_ThrowsInvalidOperationException()
         {
             var registry = new MessageBusClientRegistry();
-            registry.Register("known", new StubMessageBusClient(), createTopologyOverride: null);
+            registry.Register("known", new StubMessageBusClient(), null);
 
             var exception = Assert.Throws<InvalidOperationException>(() =>
                 registry.GetClient("unknown"));
@@ -84,7 +84,7 @@ public class MessageBusClientRegistryTests
         {
             var registry = new MessageBusClientRegistry();
             var client = new StubMessageBusClient();
-            registry.Register("MyProvider", client, createTopologyOverride: null);
+            registry.Register("MyProvider", client, null);
 
             var resolved = registry.GetClient("myprovider");
 
@@ -98,7 +98,7 @@ public class MessageBusClientRegistryTests
         public void KnownProvider_ReturnsTrue()
         {
             var registry = new MessageBusClientRegistry();
-            registry.Register("provider", new StubMessageBusClient(), createTopologyOverride: null);
+            registry.Register("provider", new StubMessageBusClient(), null);
 
             Assert.True(registry.IsRegistered("provider"));
         }
@@ -115,7 +115,7 @@ public class MessageBusClientRegistryTests
         public void Check_IsCaseInsensitive()
         {
             var registry = new MessageBusClientRegistry();
-            registry.Register("MyProvider", new StubMessageBusClient(), createTopologyOverride: null);
+            registry.Register("MyProvider", new StubMessageBusClient(), null);
 
             Assert.True(registry.IsRegistered("myprovider"));
         }
@@ -135,11 +135,35 @@ public class MessageBusClientRegistryTests
     private sealed class StubMessageBusClient : IMessageBusClient
     {
         public string MessagingSystem => "stub";
-        public Task<IMessageBusReceiver> CreateReceiver(string queueName) => throw new NotImplementedException();
-        public Task<IMessageBusProcessor<TMessage>> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options) => throw new NotImplementedException();
-        public Task<IExecutionLaneProcessor> CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options) => throw new NotImplementedException();
-        public Task<IMessageBusSender> CreateMessageBusSender(string queueName) => throw new NotImplementedException();
-        public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName) => throw new NotImplementedException();
-        public Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+
+        public Task<IMessageBusReceiver> CreateReceiver(string queueName)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<IMessageBusProcessor<TMessage>> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<IExecutionLaneProcessor> CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<IMessageBusSender> CreateMessageBusSender(string queueName)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

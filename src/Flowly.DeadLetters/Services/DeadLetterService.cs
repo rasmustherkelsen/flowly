@@ -3,7 +3,7 @@ using Flowly.DeadLetters.BackgroundServices;
 using Flowly.DeadLetters.DatabaseModel;
 using Flowly.DeadLetters.Repositories;
 using Flowly.MessageInfrastructure.Registration;
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 
 namespace Flowly.DeadLetters.Services;
 
@@ -14,12 +14,14 @@ internal class DeadLetterService(
     IEnumerable<EventSubscriptionDeadLetterIngestionSettings> eventSubscriptionIngestionSettings) : IDeadLetterService
 {
     public async Task<IReadOnlyCollection<DeadLetter>> GetDeadLetters(CancellationToken cancellationToken = default)
-        => await repository.GetAll(cancellationToken);
+    {
+        return await repository.GetAll(cancellationToken);
+    }
 
     public async Task Requeue(string messageId, string? requeuedBy = null, CancellationToken cancellationToken = default)
     {
         var deadLetter = await repository.Get(messageId, cancellationToken)
-            ?? throw new KeyNotFoundException($"Dead letter with ID '{messageId}' was not found.");
+                         ?? throw new KeyNotFoundException($"Dead letter with ID '{messageId}' was not found.");
 
         if (deadLetter.Status != DeadLetterStatus.Pending)
             throw new InvalidOperationException(
@@ -46,7 +48,7 @@ internal class DeadLetterService(
     public async Task Discard(string messageId, CancellationToken cancellationToken = default)
     {
         var deadLetter = await repository.Get(messageId, cancellationToken)
-            ?? throw new KeyNotFoundException($"Dead letter with ID '{messageId}' was not found.");
+                         ?? throw new KeyNotFoundException($"Dead letter with ID '{messageId}' was not found.");
 
         if (deadLetter.Status == DeadLetterStatus.Requeued)
             throw new InvalidOperationException(
@@ -61,7 +63,7 @@ internal class DeadLetterService(
         {
             if (client is not IEventCapableMessageBusClient eventCapableClient)
                 throw new InvalidOperationException(
-                    $"The message bus client does not support events and cannot requeue event subscription dead letters.");
+                    "The message bus client does not support events and cannot requeue event subscription dead letters.");
 
             return eventCapableClient.CreateEventRetrySender(deadLetter.QueueName, deadLetter.SubscriptionName);
         }

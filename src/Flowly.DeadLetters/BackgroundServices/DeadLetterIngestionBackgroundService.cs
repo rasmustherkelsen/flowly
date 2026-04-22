@@ -1,6 +1,6 @@
 using Flowly.DeadLetters.Repositories;
 using Flowly.MessageInfrastructure.Registration;
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -20,7 +20,6 @@ internal class DeadLetterIngestionBackgroundService(
         logger.LogInformation("Dead letter ingestion started for queue '{QueueName}'", settings.QueueName);
 
         while (!stoppingToken.IsCancellationRequested)
-        {
             try
             {
                 var client = clientRegistry.GetClient(settings.ProviderName);
@@ -41,10 +40,15 @@ internal class DeadLetterIngestionBackgroundService(
             catch (Exception ex)
             {
                 logger.LogError(ex, "Dead letter ingestion error for queue '{QueueName}', restarting receiver", settings.QueueName);
-                try { await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken); }
-                catch (OperationCanceledException) { break; }
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
             }
-        }
     }
 
     private async Task ProcessBatch(IDeadLetterReceiver receiver, IReadOnlyCollection<IDeadLetterMessage> messages, CancellationToken cancellationToken)
@@ -55,10 +59,7 @@ internal class DeadLetterIngestionBackgroundService(
             var repository = scope.ServiceProvider.GetRequiredService<IDeadLetterRepository>();
             await repository.SaveBatch(messages, settings.QueueName, cancellationToken);
 
-            foreach (var message in messages)
-            {
-                await receiver.CompleteMessage(message, cancellationToken);
-            }
+            foreach (var message in messages) await receiver.CompleteMessage(message, cancellationToken);
 
             logger.LogInformation("Dead letter ingestion persisted {Count} messages from queue '{QueueName}'", messages.Count, settings.QueueName);
         }
@@ -66,10 +67,7 @@ internal class DeadLetterIngestionBackgroundService(
         {
             logger.LogError(ex, "Failed to persist dead letter batch from queue '{QueueName}', abandoning {Count} messages", settings.QueueName, messages.Count);
 
-            foreach (var message in messages)
-            {
-                await receiver.AbandonMessage(message, cancellationToken);
-            }
+            foreach (var message in messages) await receiver.AbandonMessage(message, cancellationToken);
         }
     }
 }

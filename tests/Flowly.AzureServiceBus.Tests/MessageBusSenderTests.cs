@@ -1,5 +1,5 @@
 using Azure.Messaging.ServiceBus;
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 
 namespace Flowly.AzureServiceBus.Tests;
 
@@ -10,7 +10,7 @@ public class MessageBusSenderTests
         [Fact]
         public async Task WhenNoLimitConfigured_DoesNotThrow()
         {
-            var sender = new MessageBusSender(new FakeServiceBusSender(), maxMessageSizeBytes: null);
+            var sender = new MessageBusSender(new FakeServiceBusSender(), null);
 
             await sender.SendMessage(new TestMessage("hello"), MessageProperties.Empty);
         }
@@ -18,7 +18,7 @@ public class MessageBusSenderTests
         [Fact]
         public async Task WhenMessageIsWithinLimit_DoesNotThrow()
         {
-            var sender = new MessageBusSender(new FakeServiceBusSender(), maxMessageSizeBytes: 1024);
+            var sender = new MessageBusSender(new FakeServiceBusSender(), 1024);
 
             await sender.SendMessage(new TestMessage("hello"), MessageProperties.Empty);
         }
@@ -26,10 +26,9 @@ public class MessageBusSenderTests
         [Fact]
         public async Task WhenMessageExceedsLimit_ThrowsMessageTooLargeException()
         {
-            var sender = new MessageBusSender(new FakeServiceBusSender(), maxMessageSizeBytes: 1);
+            var sender = new MessageBusSender(new FakeServiceBusSender(), 1);
 
-            var exception = await Assert.ThrowsAsync<MessageTooLargeException>(
-                () => sender.SendMessage(new TestMessage("hello"), MessageProperties.Empty));
+            var exception = await Assert.ThrowsAsync<MessageTooLargeException>(() => sender.SendMessage(new TestMessage("hello"), MessageProperties.Empty));
 
             Assert.Equal(FakeServiceBusSender.QueueName, exception.QueueName);
             Assert.Equal(1, exception.MaxSizeBytes);
@@ -42,7 +41,7 @@ public class MessageBusSenderTests
         [Fact]
         public async Task WhenNoLimitConfigured_DoesNotThrow()
         {
-            var sender = new MessageBusSender(new FakeServiceBusSender(), maxMessageSizeBytes: null);
+            var sender = new MessageBusSender(new FakeServiceBusSender(), null);
 
             await sender.SendRawMessage("hello", new Dictionary<string, object>());
         }
@@ -50,7 +49,7 @@ public class MessageBusSenderTests
         [Fact]
         public async Task WhenMessageIsWithinLimit_DoesNotThrow()
         {
-            var sender = new MessageBusSender(new FakeServiceBusSender(), maxMessageSizeBytes: 1024);
+            var sender = new MessageBusSender(new FakeServiceBusSender(), 1024);
 
             await sender.SendRawMessage("hello", new Dictionary<string, object>());
         }
@@ -58,10 +57,9 @@ public class MessageBusSenderTests
         [Fact]
         public async Task WhenMessageExceedsLimit_ThrowsMessageTooLargeException()
         {
-            var sender = new MessageBusSender(new FakeServiceBusSender(), maxMessageSizeBytes: 1);
+            var sender = new MessageBusSender(new FakeServiceBusSender(), 1);
 
-            var exception = await Assert.ThrowsAsync<MessageTooLargeException>(
-                () => sender.SendRawMessage("hello", new Dictionary<string, object>()));
+            var exception = await Assert.ThrowsAsync<MessageTooLargeException>(() => sender.SendRawMessage("hello", new Dictionary<string, object>()));
 
             Assert.Equal(FakeServiceBusSender.QueueName, exception.QueueName);
             Assert.Equal(1, exception.MaxSizeBytes);
@@ -78,6 +76,8 @@ public class MessageBusSenderTests
         public override string EntityPath => QueueName;
 
         public override Task SendMessageAsync(ServiceBusMessage message, CancellationToken cancellationToken = default)
-            => Task.CompletedTask;
+        {
+            return Task.CompletedTask;
+        }
     }
 }

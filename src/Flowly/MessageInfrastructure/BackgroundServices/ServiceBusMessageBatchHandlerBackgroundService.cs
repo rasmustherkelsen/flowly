@@ -1,9 +1,7 @@
 using System.Diagnostics;
 using Flowly.MessageInfrastructure.Model;
-using Flowly.MessageInfrastructure.Receivers;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.MessageInfrastructure.Telemetry;
-using Flowly.MessagingAbstractions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -23,7 +21,7 @@ internal class ServiceBusMessageBatchHandlerBackgroundService<TMessage>(
     {
         {
             await using var scope = serviceScopeFactory.CreateAsyncScope();
-            var messageHandlerForLog = scope.ServiceProvider.GetRequiredService<BatchMessageHandlerBase<TMessage>>();
+            var messageHandlerForLog = scope.ServiceProvider.GetRequiredService<BatchMessageHandler<TMessage>>();
             logger.LogInformation("{MessageHandlerName} batch waiting for messages on queue '{QueueName}'", messageHandlerForLog.GetType().Name, batchQueueSettings.QueueName);
         }
 
@@ -43,7 +41,7 @@ internal class ServiceBusMessageBatchHandlerBackgroundService<TMessage>(
                 }
 
                 await using var scope = serviceScopeFactory.CreateAsyncScope();
-                var messageHandler = scope.ServiceProvider.GetRequiredService<BatchMessageHandlerBase<TMessage>>();
+                var messageHandler = scope.ServiceProvider.GetRequiredService<BatchMessageHandler<TMessage>>();
                 var handlerName = messageHandler.GetType().Name;
 
                 handlerInstrumentation.RecordReceived(handlerName, batchQueueSettings.QueueName, receivedMessages.Count);

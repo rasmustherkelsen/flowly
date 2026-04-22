@@ -1,4 +1,4 @@
-using Flowly.MessagingAbstractions;
+using Flowly.Transport;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -63,10 +63,14 @@ internal class QueueRegistrarHostedService(
         }
     }
 
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task StopAsync(CancellationToken cancellationToken)
+    {
+        return Task.CompletedTask;
+    }
 
-    private static IReadOnlyList<IQueueDescription> ResolveQueueDescriptions(ProviderQueueManifest manifest) =>
-        manifest.Queues
+    private static IReadOnlyList<IQueueDescription> ResolveQueueDescriptions(ProviderQueueManifest manifest)
+    {
+        return manifest.Queues
             .Select(r => (IQueueDescription)new QueueDescription(
                 r.QueueName,
                 r.DefaultMessageTimeToLive ?? TimeSpan.FromDays(1),
@@ -74,13 +78,16 @@ internal class QueueRegistrarHostedService(
                 r.LockDuration ?? TimeSpan.FromMinutes(5),
                 r.RequiresSession))
             .ToList();
+    }
 
-    private static IReadOnlyList<IEventDescription> ResolveEventDescriptions(ProviderQueueManifest manifest) =>
-        manifest.Events
+    private static IReadOnlyList<IEventDescription> ResolveEventDescriptions(ProviderQueueManifest manifest)
+    {
+        return manifest.Events
             .Select(e => (IEventDescription)new EventDescription(
                 e.TopicOrExchangeName,
                 e.SubscriptionName,
                 e.DefaultMessageTimeToLive ?? TimeSpan.FromDays(1),
                 e.DeadLetterOnMessageExpiration ?? true))
             .ToList();
+    }
 }
