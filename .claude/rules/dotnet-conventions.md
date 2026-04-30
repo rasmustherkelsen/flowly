@@ -135,3 +135,8 @@
 ## Primary Constructors
  
  - Prefer primary constructors for internal classes. Public classes shared with consumers should ensure that fields intended to be private stays private by **not** using primary constructors.
+
+
+## Order of methods
+
+- Properties always goes after the constructor.

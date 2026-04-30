@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+
+        <PackAsTool>true</PackAsTool>
+        <ToolCommandName>flowly</ToolCommandName>
+        <PackageId>Flowly.Tool</PackageId>
+        <Description>CLI tool for Flowly queue discovery and provider-specific infrastructure generation.</Description>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>Flowly.Tool.Tests</_Parameter1>
+        </AssemblyAttribute>
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="System.CommandLine" Version="2.0.7"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Flowly\Flowly.csproj"/>
+    </ItemGroup>
+
+</Project>

@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <PackageId>Flowly.DeadLetters</PackageId>
+        <Description>Dead letter tracking core for Flowly. Deadletter tracking requires an underlying database so take your dependency on Flowly.DeadLetters.X where X is your database abstraction.</Description>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.7"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Flowly\Flowly.csproj"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="Flowly.DeadLetters.Tests"/>
+        <InternalsVisibleTo Include="Flowly.DeadLetters.SqlServer"/>
+        <InternalsVisibleTo Include="Flowly.DeadLetters.Postgres"/>
+    </ItemGroup>
+
+</Project>

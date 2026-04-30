@@ -1,3 +1,0 @@
-namespace Flowly.MessageInfrastructure.Receivers;
-
-public sealed record ResolvedBatchMessageHandlerOptions(int MaxMessagesBeforeProcessing, TimeSpan MaxWaitTime);

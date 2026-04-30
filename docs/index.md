@@ -1,6 +1,32 @@
-# Flowly
+<img src="assets/flowly-logo.svg" alt="Flowly" height="56">
 
 Flowly is a queue-based messaging abstraction for .NET. It sits between your application code and the underlying message broker, giving you a clean, convention-driven API for message handling, job tracking, retries, dead letter management, and recurring scheduled work.
+
+---
+
+## Quick Navigation
+
+- [RabbitMQ Quickstart](quickstart-rabbitmq.md)
+- [Azure Service Bus Quickstart](quickstart-azure-service-bus.md)
+- [Why Flowly?](#why-flowly)
+- [Packages](#packages)
+- [Getting Started](#getting-started)
+- [Defining Messages](#defining-messages)
+- [Message Handlers](#message-handlers)
+- [Sending Messages](#sending-messages)
+- [Events (Fan-Out)](#events-fan-out)
+- [Retry Policy](#retry-policy)
+- [Dead Letter Tracking](#dead-letter-tracking)
+- [Job Tracking](#job-tracking)
+- [Recurring Jobs](#recurring-jobs)
+- [Local Development](#local-development)
+- [Flowly.Tool CLI](#flowlytool-cli)
+- [Full Configuration Example](#full-configuration-example)
+- [Multi-Provider](#multi-provider)
+- [Azure Service Bus Transport](#azure-service-bus-transport)
+- [RabbitMQ Transport](#rabbitmq-transport)
+- [OpenTelemetry](#opentelemetry)
+- [Status](#status)
 
 ---
 
@@ -21,13 +47,15 @@ Flowly is a queue-based messaging abstraction for .NET. It sits between your app
 |---|---|
 | `Flowly` | Core abstractions: handlers, senders, queue topology, retry engine |
 | `Flowly.AzureServiceBus` | Azure Service Bus transport |
+| `Flowly.RabbitMQ` | RabbitMQ transport |
 | `Flowly.Jobs` | Job state tracking and CRON scheduling core |
 | `Flowly.Jobs.SqlServer` | SQL Server backend for job state tracking |
 | `Flowly.Jobs.Postgres` | PostgreSQL backend for job state tracking |
 | `Flowly.DeadLetters` | Dead letter tracking core |
 | `Flowly.DeadLetters.SqlServer` | SQL Server backend for dead letter tracking |
 | `Flowly.DeadLetters.Postgres` | PostgreSQL backend for dead letter tracking |
-| `Flowly.Tool` | `dotnet flowly` CLI for queue discovery and code generation |
+| `Flowly.OpenTelemetry` | OpenTelemetry metrics and traces for handlers and submitters |
+| `Flowly.Tool` | `flowly` CLI for queue discovery and code generation |
 
 ---
 
@@ -188,6 +216,86 @@ public class OrderService(IMessageSender sender)
 
 ---
 
+## Events (Fan-Out)
+
+Events let multiple independent services each receive a copy of the same occurrence. Use events when several consumers need to react to the same thing — as opposed to a regular message, where only one handler processes each message.
+
+### Publishing an event
+
+Register a submitter and inject `IEventSender`:
+
+```csharp
+builder.AddEventSubmitter<OrderProcessed>();
+```
+
+```csharp
+public class OrderService(IEventSender eventSender)
+{
+    public async Task CompleteOrder(Order order, CancellationToken ct)
+    {
+        await eventSender.RaiseEvent(new OrderProcessed(order.Id), ct);
+    }
+}
+```
+
+### Subscribing to an event
+
+Inherit `EventHandlerBase<TEvent>` and register the handler:
+
+```csharp
+public class OrderProcessedEventHandler : EventHandlerBase<OrderProcessed>
+{
+    public override Task Handle(IEventContext<OrderProcessed> ctx, CancellationToken ct)
+    {
+        // runs in every service that registers this handler
+        return Task.CompletedTask;
+    }
+}
+```
+
+```csharp
+builder.AddEventHandler<OrderProcessed, OrderProcessedEventHandler>();
+```
+
+### Event and subscription naming
+
+| What | Rule |
+|---|---|
+| Topic / exchange name | Derived from event type: PascalCase → kebab-case, strip trailing `Event` (`OrderProcessedEvent` → `order-processed`) |
+| Subscription / queue name | Derived from handler class name: PascalCase → kebab-case (`OrderProcessedEventHandler` → `order-processed-event-handler`) |
+| Override topic name | `[EventName("custom-name")]` on the event type |
+
+### Subscription name uniqueness across services
+
+The subscription name is derived from the **handler class name**. Two services that both define a class called `OrderProcessedEventHandler` will derive the same subscription name (`order-processed-event-handler`) and end up sharing a single subscription — meaning only one of them receives each event instead of both.
+
+**Each subscriber service must use a distinct handler class name.** Prefix the class name with the service or domain context:
+
+```csharp
+// BackendProcessor — subscription: "order-processed-event-handler"
+public class OrderProcessedEventHandler : EventHandlerBase<OrderProcessed> { ... }
+
+// BackendFinanceProcessor — subscription: "finance-order-processed-event-handler"
+public class FinanceOrderProcessedEventHandler : EventHandlerBase<OrderProcessed> { ... }
+```
+
+Flowly cannot detect name collisions across separately deployed services, so uniqueness must be maintained by convention.
+
+### Dead letter tracking for events
+
+Event handlers support `.WithDeadLetterTracking()` the same way regular handlers do:
+
+```csharp
+builder
+    .AddSqlServerDeadLetterTracking(connectionString)
+    .AddEventHandler<OrderProcessed, OrderProcessedEventHandler>()
+    .WithDeadLetterTracking();
+```
+
+When a dead-lettered event is requeued, Flowly re-publishes it to the topic with a `flowly-target-subscription` header. Only the originating subscriber's filter accepts the message, so only that subscriber receives the requeued event.
+
+---
+
 ## Retry Policy
 
 When a handler throws, Flowly can retry the message automatically before giving up.
@@ -252,7 +360,9 @@ The raw body is stored without deserialization — this ensures malformed messag
 
 ### Supported handler types
 
-Dead letter tracking is supported only on `MessageHandlerBase<T>` handlers. Job handlers use the job database as the failure record. Recurring jobs re-trigger via the CRON scheduler.
+Dead letter tracking is supported on `MessageHandlerBase<T>` and `EventHandlerBase<TEvent>` handlers. Job handlers use the job database as the failure record. Recurring jobs re-trigger via the CRON scheduler.
+
+For event handlers, the `SubscriptionName` field in the `DeadLetters` table identifies which subscriber dead-lettered the event. Requeuing re-publishes to the topic with a `flowly-target-subscription` header so only the originating subscriber receives the requeued event.
 
 ---
 
@@ -395,12 +505,29 @@ var azureServiceBus = builder
 
 var backendProcessor = builder.AddProject<Projects.BackendProcessor>("BackendProcessor");
 
-azureServiceBus.AddFlowly(backendProcessor);   // auto-discovers queues
+// Auto-discovers queues and events from the project's FlowlyDesignTimeFactory
+azureServiceBus.AddFlowly(backendProcessor);
 
 backendProcessor
     .WithReference(azureServiceBus)
     .WaitFor(azureServiceBus);
 ```
+
+When a service uses inline Flowly configuration (no `FlowlyDesignTimeFactory` class), there is no design-time class to discover — declare the topology explicitly instead:
+
+```csharp
+var backendFinanceProcessor = builder.AddProject<Projects.BackendFinanceProcessor>("BackendFinanceProcessor");
+
+// Explicit topology for services that use inline AddFlowly() configuration
+azureServiceBus.AddFlowly(backendFinanceProcessor, topology =>
+    topology.AddEventSubscription<OrderProcessedEvent>("finance-order-processed-event-handler"));
+
+backendFinanceProcessor
+    .WithReference(azureServiceBus)
+    .WaitFor(azureServiceBus);
+```
+
+`IFlowlyAspireTopologyBuilder` supports `.AddQueue(name)` and `.AddEventSubscription<TEvent>(subscriptionName)`. The topic name for `AddEventSubscription` is derived from the event type the same way as at runtime.
 
 Reference `Flowly.AzureServiceBus.Aspire` in the AppHost `.csproj` with `IsAspireProjectResource="false"`:
 
@@ -411,56 +538,100 @@ Reference `Flowly.AzureServiceBus.Aspire` in the AppHost `.csproj` with `IsAspir
 
 ### Docker Compose
 
-Generate the Azure Service Bus emulator configuration file using `Flowly.Tool`:
+Use `flowly docker-compose` to generate a `docker-compose.yml` that includes the right local infrastructure for your project — RabbitMQ, the Azure Service Bus emulator, or both, depending on which transport packages are referenced:
 
 ```bash
-dotnet flowly azure-service-bus emulator-config \
+flowly docker-compose --project ./Sender --project ./Receiver --output docker-compose.yml
+```
+
+For multi-service solutions, pass multiple `--project` flags. The tool detects all transports and database providers across every project and generates a single composed file. Then start everything with:
+
+```bash
+docker compose up -d
+```
+
+When Azure Service Bus is detected, the tool automatically generates `sbconfig.json` alongside `docker-compose.yml` and configures the emulator to mount it. You can also write to stdout and pipe it yourself:
+
+```bash
+flowly docker-compose --project ./Sender --project ./Receiver > docker-compose.yml
+```
+
+For the Azure Service Bus emulator specifically, you can also generate the queue configuration file independently:
+
+```bash
+flowly azure-service-bus emulator-config \
   --project ./MyService \
   --namespace EmulatorNamespace \
   --output ./servicebus-config.json
 ```
-
-Mount this file into the emulator container. Queues are created at emulator startup from the config JSON.
 
 ---
 
 ## Flowly.Tool CLI
 
-The `dotnet flowly` CLI tool operates on your service project at design time. It loads your `IFlowlyConfiguration` class from the built assembly to discover queue topology.
+The `flowly` CLI tool operates on your service project at design time. It loads your `IFlowlyConfiguration` class from the built assembly to discover queue topology.
 
 ### Install
 
 ```bash
-dotnet pack Flowly.Tool/Flowly.Tool.csproj -c Release
-dotnet tool install --global --add-source ./Flowly.Tool/bin/Release Flowly.Tool
+dotnet tool install --global Flowly.Tool
+```
+
+To update to a newer version:
+
+```bash
+dotnet tool update --global Flowly.Tool
+```
+
+To uninstall:
+
+```bash
+dotnet tool uninstall --global Flowly.Tool
 ```
 
 ### Commands
 
 ```bash
+# Generate docker-compose.yml with all local development dependencies
+flowly docker-compose --project ./Sender --project ./Receiver --output docker-compose.yml
+
+# Or pipe to stdout
+flowly docker-compose --project ./Sender --project ./Receiver > docker-compose.yml
+
 # List all queues a project registers
-dotnet flowly azure-service-bus queues --project ./MyService
+flowly azure-service-bus queues --project ./MyService
 
 # Generate Azure Service Bus emulator config JSON
-dotnet flowly azure-service-bus emulator-config \
+flowly azure-service-bus emulator-config \
   --project ./MyService \
   --namespace EmulatorNamespace \
   --output ./servicebus-config.json
 
 # Generate Bicep IaC for queue provisioning
-dotnet flowly azure-service-bus bicep \
+flowly azure-service-bus bicep \
   --project ./MyService \
   --service-bus-namespace-name sb-myapp \
   --output ./queues.bicep
 
 # Generate Aspire AppHost bootstrap code
-dotnet flowly azure-service-bus aspire-code \
+flowly azure-service-bus aspire-code \
   --project ./MyService \
   --connection-name EmulatorNamespace \
   --output ./aspire-bootstrap.cs
 ```
 
 Pass multiple `--project` flags to aggregate queues across several services into a single output file.
+
+#### `docker-compose` options
+
+| Option | Description |
+|---|---|
+| `--project` / `-p` | Path to a `.csproj` or folder. Repeat for multiple projects. |
+| `--output` / `-o` | Write `docker-compose.yml` to this path. Defaults to stdout. |
+| `--namespace` | ASB emulator namespace name (default: `sbemulatorns`). |
+| `--sbconfig-output` | Override the path for the generated `sbconfig.json` (ASB only). |
+
+The tool detects transports from package references (`Flowly.AzureServiceBus.dll`, `Flowly.RabbitMQ.dll`) and database providers from (`Flowly.Jobs.SqlServer.dll`, `Flowly.DeadLetters.Postgres.dll`, etc.) in the build output. No configuration class is required — it works with both inline `AddFlowly()` and `FlowlyDesignTimeFactory` setups.
 
 ---
 
@@ -502,7 +673,11 @@ public class MyServiceConfiguration : FlowlyDesignTimeFactory, IFlowlyConfigurat
 
             // Submitters
             .AddMessageSubmitter<OrderCreated>()
-            .AddJobSubmitter<ProcessReportJob>();
+            .AddJobSubmitter<ProcessReportJob>()
+
+            // Events (fan-out)
+            .AddEventHandler<OrderCompleted, OrderCompletedEventHandler>()
+            .AddEventSubmitter<OrderCompleted>();
     }
 }
 ```
@@ -528,6 +703,137 @@ public class OrderCreatedHandler : MessageHandlerBase<OrderCreated>
 
 ---
 
+## Multi-Provider
+
+Flowly supports running multiple message brokers in the same service. A second provider is registered by calling `UseAzureServiceBus` or `UseRabbitMq` a second time with a distinct name:
+
+```csharp
+builder
+    .UseAzureServiceBus("AzureServiceBus")   // primary — receives messages with no explicit affinity
+    .AddMessageHandler<OrderCreated, OrderCreatedHandler>()
+
+    .UseRabbitMq("Rabbit")                   // secondary
+    .AddMessageHandler<AnalyticsEvent, AnalyticsEventHandler>();
+```
+
+Pin a message type to a specific provider by annotating its message class:
+
+```csharp
+[ProviderAffinity("Rabbit")]
+public record AnalyticsEvent(Guid UserId, string EventName);
+```
+
+At startup, Flowly validates cross-provider topology consistency:
+
+- **Same transport type + same queue name + conflicting settings** → throws `InvalidOperationException`
+- **Different transport types + same queue name** → logs a warning and continues
+- **Same queue name + identical settings** → allowed silently
+
+See **[Multi-Provider Configuration](multi-provider.md)** for routing rules, all supported scenarios, and the full startup validation reference.
+
+---
+
+## Azure Service Bus Transport
+
+Pass `enableHealthCheck: true` to register a health check under the tag `"azure-service-bus"`:
+
+```csharp
+builder.UseAzureServiceBus("AzureServiceBus", enableHealthCheck: true);
+```
+
+Managed identity is supported by passing a `TokenCredential` instead of a connection string:
+
+```csharp
+builder.UseAzureServiceBus("sb-myapp.servicebus.windows.net", new DefaultAzureCredential());
+```
+
+---
+
+## RabbitMQ Transport
+
+### Registration
+
+```csharp
+builder.UseRabbitMq("RabbitMQ")   // connection string name in appsettings
+    .AddMessageHandler<OrderCreated, OrderCreatedHandler>();
+```
+
+The default connection string is `amqp://guest:guest@localhost:5672/`. Pass a configuration key or a literal AMQP URI.
+
+Pass `enableHealthCheck: true` to register a health check under the tag `"rabbitmq"`:
+
+```csharp
+builder.UseRabbitMq("RabbitMQ", enableHealthCheck: true);
+```
+
+### Retry topology and `createTopology`
+
+Flowly's retry mechanism for RabbitMQ works by publishing the retried message to a `{queue}.retry` queue with a per-message TTL. When the TTL expires, RabbitMQ's Dead Letter Exchange (DLX) routes the message back to the main queue. This requires the retry queue to be declared with specific arguments:
+
+| Argument | Value |
+|---|---|
+| `x-dead-letter-exchange` | `""` (default exchange) |
+| `x-dead-letter-routing-key` | `{queue}` (the main queue name) |
+
+By default (`createTopology: true`), Flowly creates the full queue topology — including the `.retry` queue, `.dlx` exchange, and `.dead-letter` queue — at startup. No manual configuration is required.
+
+When `createTopology: false`, you are responsible for provisioning this topology before starting the application. **Flowly validates the retry queues at startup** and throws `InvalidOperationException` if any `{queue}.retry` queue is missing:
+
+```
+RabbitMQ retry queue 'order-created.retry' does not exist.
+When createTopology is false, the retry queue must be pre-declared with
+x-dead-letter-exchange="" and x-dead-letter-routing-key="order-created".
+Either set createTopology: true or ensure the queue topology is provisioned before startup.
+```
+
+> **Important:** The startup check confirms that the retry queue *exists*, but cannot verify that the DLX arguments are set correctly. If the queue was declared without the correct `x-dead-letter-exchange` and `x-dead-letter-routing-key` arguments, retried messages will expire silently without being re-routed. Always use the exact arguments listed above.
+
+---
+
+## OpenTelemetry
+
+The `Flowly.OpenTelemetry` package wires Flowly's metrics and traces into the OpenTelemetry SDK.
+
+### Setup
+
+```csharp
+builder.Services.AddOpenTelemetry()
+    .WithMetrics(metrics => metrics.AddFlowlyInstrumentation())
+    .WithTracing(tracing => tracing.AddFlowlyInstrumentation());
+```
+
+### Metrics
+
+All metrics use the meter name `"Flowly"` and follow the `messaging.*` semantic conventions for their attributes (`messaging.destination.name`, `messaging.system`, etc.).
+
+| Metric | Type | Description |
+|---|---|---|
+| `flowly.message.handler.received` | Counter | Messages received by regular handlers |
+| `flowly.message.handler.succeeded` | Counter | Messages processed successfully |
+| `flowly.message.handler.failed` | Counter | Messages that failed processing |
+| `flowly.message.handler.retried` | Counter | Messages scheduled for retry |
+| `flowly.message.handler.duration` | Histogram (ms) | Processing time per message |
+| `flowly.message.submitter.sent` | Counter | Messages sent by submitters |
+| `flowly.message.submitter.failed` | Counter | Send failures |
+| `flowly.message.submitter.duration` | Histogram (ms) | Send duration |
+| `flowly.event.handler.received` | Counter | Events received by event handlers |
+| `flowly.event.handler.succeeded` | Counter | Events processed successfully |
+| `flowly.event.handler.failed` | Counter | Events that failed processing |
+| `flowly.event.handler.retried` | Counter | Events scheduled for retry |
+| `flowly.event.handler.duration` | Histogram (ms) | Processing time per event |
+| `flowly.event.publisher.raised` | Counter | Events raised |
+| `flowly.event.publisher.failed` | Counter | Event publish failures |
+| `flowly.event.publisher.duration` | Histogram (ms) | Event publish duration |
+| `flowly.deadletter.pending` | Gauge | Pending dead-lettered messages |
+| `flowly.job.failed` | Gauge | Jobs in the Failed state |
+| `flowly.job.running` | Gauge | Jobs in the Started state |
+
+### Traces
+
+Each message or event handled creates a span named `flowly.handle {queueName}` with kind `Consumer`. The span includes `handler`, `messaging.system`, `messaging.destination.name`, `messaging.message.id`, and `messaging.message.conversation_id` attributes.
+
+---
+
 ## Status
 
-Flowly is under active development. Azure Service Bus is the primary transport. RabbitMQ support is planned.
+Flowly is under active development. Azure Service Bus and RabbitMQ transports are supported.

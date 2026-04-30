@@ -33,7 +33,7 @@ dotnet test --filter "FullyQualifiedName~MessageQueueNameResolverTests+Resolve"
 - `Flowly.DeadLetters/` — dead letter tracking core (ingestion background service, EF Core model)
 - `Flowly.DeadLetters.SqlServer/` — SQL Server backend for dead letter tracking
 - `Flowly.DeadLetters.Postgres/` — PostgreSQL backend for dead letter tracking
-- `Flowly.Tool/` — `dotnet flowly` CLI tool
+- `Flowly.Tool/` — `flowly` CLI tool
 - `Samples/AzureServiceBus/Aspire/` — reference Aspire sample
 
 ## Architecture Overview
@@ -68,6 +68,7 @@ Registered in `Program.cs` via `services.AddFlowly<MyConfig>(configuration)` or 
 | `BatchMessageHandlerBase<T>` | Multiple messages together | No | No | `.AddBatchMessageHandler<T, TH>()` |
 | `JobMessageHandlerBase<T>` | Job with state tracking (`T : IJobMessage`) | Yes | No | `.AddJobHandler<T, TH>()` |
 | `RecurringJobHandlerBase` | CRON-scheduled background job | No | No | `.AddRecurringJob<TH>()` |
+| `EventHandlerBase<TEvent>` | Fan-out event (all subscribers receive) | Yes | Yes — requeue re-publishes to the topic/exchange with `flowly-target-subscription` set; only the originating subscriber receives the requeued message. | `.AddEventHandler<TEvent, TH>()` |
 
 ### Queue Names
 
@@ -77,6 +78,7 @@ Owned by the **message contract**, not the handler. Auto-generated: PascalCase �
 
 - `IMessageSender.Send(msg)` — fire and forget (requires `.AddMessageSubmitter<T>()`)
 - `IJobMessageSender.QueueJob(msg)` — returns `Guid` job ID (requires `.AddJobSubmitter<T>()`)
+- `IEventSender.RaiseEvent<TEvent>(event)` — fan-out event publish (requires `.AddEventSubmitter<TEvent>()`)
 
 ### Retry Policy
 
@@ -88,7 +90,11 @@ SQL Server or PostgreSQL via EF Core. Tables: `Job`, `JobAliveStatus`, `CustomJo
 
 ### Dead Letter Tracking (`Flowly.DeadLetters/`)
 
-Opt-in per handler. The framework registers a background service per opted-in queue that reads from the broker's dead letter sub-queue and persists records to a DB table (`DeadLetters`). Fields stored: raw message body, raw application properties (JSON), broker-provided reason and error description, timestamps, and status (`Pending / Requeued / Discarded`). Only `MessageHandlerBase<T>` handlers support this. Requires `.AddSqlServerDeadLetterTracking()` or `.AddPostgresDeadLetterTracking()`.
+Opt-in per handler. The framework registers a background service per opted-in queue/subscription that reads from the broker's dead letter sub-queue and persists records to a DB table (`DeadLetters`). Fields stored: raw message body, raw application properties (JSON), broker-provided reason and error description, timestamps, status (`Pending / Requeued / Discarded`), and an optional `SubscriptionName` for event subscription dead letters.
+
+Supported on `MessageHandlerBase<T>` and `EventHandlerBase<TEvent>` handlers. Requires `.AddSqlServerDeadLetterTracking()` or `.AddPostgresDeadLetterTracking()`.
+
+For event subscribers: `QueueName` in the DB holds the topic/exchange name; `SubscriptionName` identifies which subscriber dead-lettered the event. Requeuing re-publishes to the topic/exchange with a `flowly-target-subscription` property — only the originating subscriber's subscription filter accepts the message, so only that subscriber receives the requeued event.
 
 ### Recurring Jobs
 
@@ -122,10 +128,10 @@ public class MessageQueueNameResolverTests
 dotnet pack Flowly.Tool/Flowly.Tool.csproj -c Release
 dotnet tool install --global --add-source ./Flowly.Tool/bin/Release Flowly.Tool
 
-dotnet flowly azure-service-bus queues --project ./MyProcessor
-dotnet flowly azure-service-bus emulator-config --project ./MyProcessor --namespace EmulatorNamespace --output ./servicebus-config.json
-dotnet flowly azure-service-bus bicep --project ./MyProcessor --service-bus-namespace-name sb-flowly --output ./queues.bicep
-dotnet flowly azure-service-bus aspire-code --project ./MyProcessor --connection-name EmulatorNamespace --output ./aspire-bootstrap.cs
+flowly azure-service-bus queues --project ./MyProcessor
+flowly azure-service-bus emulator-config --project ./MyProcessor --namespace EmulatorNamespace --output ./servicebus-config.json
+flowly azure-service-bus bicep --project ./MyProcessor --service-bus-namespace-name sb-flowly --output ./queues.bicep
+flowly azure-service-bus aspire-code --project ./MyProcessor --connection-name EmulatorNamespace --output ./aspire-bootstrap.cs
 ```
 
 ## Aspire AppHost Integration (`Flowly.AzureServiceBus.Aspire`)
@@ -146,4 +152,4 @@ backendProcessor
 
 Reference the package with `IsAspireProjectResource="false"` in the AppHost `.csproj`. See `Samples/AzureServiceBus/Aspire/Flowly.AppHost/` for a complete example.
 
-For plain Docker Compose, use `dotnet flowly azure-service-bus emulator-config` instead.
+For plain Docker Compose, use `flowly azure-service-bus emulator-config` instead.

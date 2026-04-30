@@ -12,19 +12,19 @@ dotnet test
 
 ## Flowly.Tool (.NET tool)
 
-`Flowly.Tool` is packaged as a .NET CLI tool and exposes the command `dotnet flowly`.
+`Flowly.Tool` is packaged as a .NET CLI tool and exposes the command `flowly`.
 
-### Pack and install locally
+### Install from NuGet
 
 ```bash
-dotnet pack Flowly.Tool/Flowly.Tool.csproj -c Release
-dotnet tool install --global --add-source ./Flowly.Tool/bin/Release Flowly.Tool
+dotnet tool install --global Flowly.Tool
 ```
 
-For updating an existing install:
+To update or uninstall:
 
 ```bash
-dotnet tool update --global --add-source ./Flowly.Tool/bin/Release Flowly.Tool
+dotnet tool update --global Flowly.Tool
+dotnet tool uninstall --global Flowly.Tool
 ```
 
 ### Command structure
@@ -32,7 +32,7 @@ dotnet tool update --global --add-source ./Flowly.Tool/bin/Release Flowly.Tool
 The tool is provider-scoped to keep room for future providers:
 
 ```bash
-dotnet flowly azure-service-bus <command> [options]
+flowly azure-service-bus <command> [options]
 ```
 
 You can now provide either a compiled assembly OR a project path/folder:
@@ -47,7 +47,7 @@ You can now provide either a compiled assembly OR a project path/folder:
 Discover queues from a `FlowlyDesignTimeFactory` + `IFlowlyConfiguration` implementation in an assembly:
 
 ```bash
-dotnet flowly azure-service-bus queues \
+flowly azure-service-bus queues \
 	--assembly BackendProcessor/bin/Debug/net10.0/BackendProcessor.dll \
 	--working-directory BackendProcessor
 ```
@@ -55,7 +55,7 @@ dotnet flowly azure-service-bus queues \
 Discover queues by pointing to project folder (no dll path needed):
 
 ```bash
-dotnet flowly azure-service-bus queues \
+flowly azure-service-bus queues \
 	--project ./BackendProcessor \
 	--configuration Debug \
 	--framework net10.0 \
@@ -65,7 +65,7 @@ dotnet flowly azure-service-bus queues \
 Discover queues by combining multiple projects:
 
 ```bash
-dotnet flowly azure-service-bus queues \
+flowly azure-service-bus queues \
 	--project ./BackendProcessor \
 	--project ./SomeOtherProcessor \
 	--framework net10.0
@@ -76,7 +76,7 @@ When multiple inputs are used, each `--project` uses its own project folder as w
 Generate Azure Service Bus Emulator config JSON:
 
 ```bash
-dotnet flowly azure-service-bus emulator-config \
+flowly azure-service-bus emulator-config \
 	--assembly BackendProcessor/bin/Debug/net10.0/BackendProcessor.dll \
 	--working-directory BackendProcessor \
 	--namespace EmulatorNamespace \
@@ -86,7 +86,7 @@ dotnet flowly azure-service-bus emulator-config \
 Generate Bicep for Service Bus queues:
 
 ```bash
-dotnet flowly azure-service-bus bicep \
+flowly azure-service-bus bicep \
 	--assembly BackendProcessor/bin/Debug/net10.0/BackendProcessor.dll \
 	--working-directory BackendProcessor \
 	--service-bus-namespace-name sb-flowly \
@@ -96,7 +96,7 @@ dotnet flowly azure-service-bus bicep \
 Generate Aspire bootstrap C# for queue setup:
 
 ```bash
-dotnet flowly azure-service-bus aspire-code \
+flowly azure-service-bus aspire-code \
 	--assembly BackendProcessor/bin/Debug/net10.0/BackendProcessor.dll \
 	--working-directory BackendProcessor \
 	--connection-name EmulatorNamespace \
@@ -120,13 +120,13 @@ Shared options:
 Generate and install zsh completion:
 
 ```bash
-dotnet flowly completion --shell zsh > ~/.zfunc/_flowly
+flowly completion --shell zsh > ~/.zfunc/_flowly
 ```
 
 Or let the tool install it directly:
 
 ```bash
-dotnet flowly install-completion --shell zsh
+flowly install-completion --shell zsh
 ```
 
 Running `install-completion` again updates the existing completion file.
@@ -134,19 +134,19 @@ Running `install-completion` again updates the existing completion file.
 Remove it again:
 
 ```bash
-dotnet flowly remove-completion --shell zsh
+flowly remove-completion --shell zsh
 ```
 
 Generate and install bash completion:
 
 ```bash
-dotnet flowly completion --shell bash > ~/.flowly-completion.bash
+flowly completion --shell bash > ~/.flowly-completion.bash
 ```
 
 Or let the tool install it directly:
 
 ```bash
-dotnet flowly install-completion --shell bash
+flowly install-completion --shell bash
 ```
 
 Running `install-completion` again updates the existing completion file.
@@ -154,14 +154,14 @@ Running `install-completion` again updates the existing completion file.
 Remove it again:
 
 ```bash
-dotnet flowly remove-completion --shell bash
+flowly remove-completion --shell bash
 ```
 
 PowerShell (Windows/macOS/Linux):
 
 ```powershell
-dotnet flowly install-completion --shell powershell
-dotnet flowly remove-completion --shell powershell
+flowly install-completion --shell powershell
+flowly remove-completion --shell powershell
 ```
 
 Running `install-completion` again updates the existing completion file.
