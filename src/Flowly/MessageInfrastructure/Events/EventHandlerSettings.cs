@@ -1,7 +1,7 @@
 namespace Flowly.MessageInfrastructure.Events;
 
 internal record EventHandlerSettings<TEvent, THandler>(
-    string TopicOrExchangeName,
+    string TopicName,
     string SubscriptionName,
     string ProviderName,
     string HandlerName,

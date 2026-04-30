@@ -88,10 +88,10 @@ internal class RabbitMqMessagingTopologyCreator(IRabbitMqConnectionPool connecti
             false,
             cancellationToken: cancellationToken);
 
-        if (eventDescription.SubscriptionName is null)
+        if (eventDescription is not IEventSubscriptionDescription subscriptionDescription)
             return;
 
-        var perHandlerQueueName = $"{exchangeName}.{eventDescription.SubscriptionName}";
+        var perHandlerQueueName = $"{exchangeName}.{subscriptionDescription.SubscriptionName}";
         var dlxName = $"{perHandlerQueueName}.dlx";
 
         await channel.ExchangeDeclareAsync(

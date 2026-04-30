@@ -116,7 +116,7 @@ public class ProviderQueueManifestTests
             manifest.AddEvent(registration);
 
             Assert.Single(manifest.Events);
-            Assert.Equal("order-placed", manifest.Events[0].TopicOrExchangeName);
+            Assert.Equal("order-placed", manifest.Events[0].TopicName);
             Assert.Equal("email-notification-handler", manifest.Events[0].SubscriptionName);
         }
 

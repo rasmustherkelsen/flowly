@@ -1,9 +1,8 @@
-using Flowly.DeadLetters.DatabaseModel;
 using Flowly.Transport;
 
 namespace Flowly.DeadLetters.Repositories;
 
-public interface IDeadLetterRepository
+internal interface IDeadLetterRepository
 {
     Task SaveBatch(IReadOnlyCollection<IDeadLetterMessage> messages, string queueName, CancellationToken cancellationToken = default);
 
@@ -13,9 +12,9 @@ public interface IDeadLetterRepository
 
     Task<DateTimeOffset?> GetLastIngestionTimeForSubscription(string topicName, string subscriptionName, CancellationToken cancellationToken = default);
 
-    Task<IReadOnlyCollection<DeadLetter>> GetAll(CancellationToken cancellationToken = default);
+    Task<IReadOnlyCollection<IDeadLetter>> GetAll(CancellationToken cancellationToken = default);
 
-    Task<DeadLetter?> Get(string messageId, CancellationToken cancellationToken = default);
+    Task<IDeadLetter?> Get(string messageId, CancellationToken cancellationToken = default);
 
     Task MarkAsRequeued(string messageId, string? requeuedBy, CancellationToken cancellationToken = default);
 

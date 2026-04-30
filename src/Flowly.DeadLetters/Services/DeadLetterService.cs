@@ -1,6 +1,5 @@
 using System.Text.Json;
 using Flowly.DeadLetters.BackgroundServices;
-using Flowly.DeadLetters.DatabaseModel;
 using Flowly.DeadLetters.Repositories;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.Transport;
@@ -13,7 +12,7 @@ internal class DeadLetterService(
     IEnumerable<DeadLetterIngestionSettings> ingestionSettings,
     IEnumerable<EventSubscriptionDeadLetterIngestionSettings> eventSubscriptionIngestionSettings) : IDeadLetterService
 {
-    public async Task<IReadOnlyCollection<DeadLetter>> GetDeadLetters(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyCollection<IDeadLetter>> GetDeadLetters(CancellationToken cancellationToken = default)
     {
         return await repository.GetAll(cancellationToken);
     }
@@ -57,7 +56,7 @@ internal class DeadLetterService(
         await repository.Delete(messageId, cancellationToken);
     }
 
-    private static Task<IMessageBusSender> ResolveSender(IMessageBusClient client, DeadLetter deadLetter, CancellationToken cancellationToken)
+    private static Task<IMessageBusSender> ResolveSender(IMessageBusClient client, IDeadLetter deadLetter, CancellationToken cancellationToken)
     {
         if (deadLetter.SubscriptionName is not null)
         {
@@ -80,7 +79,7 @@ internal class DeadLetterService(
             return queueSettings.ProviderName;
 
         var subscriptionSettings = eventSubscriptionIngestionSettings
-            .FirstOrDefault(s => string.Equals(s.TopicOrExchangeName, queueOrTopicName, StringComparison.OrdinalIgnoreCase));
+            .FirstOrDefault(s => string.Equals(s.TopicName, queueOrTopicName, StringComparison.OrdinalIgnoreCase));
 
         return subscriptionSettings?.ProviderName ?? clientRegistry.PrimaryProviderName;
     }

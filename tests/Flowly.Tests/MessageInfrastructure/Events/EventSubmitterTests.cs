@@ -69,7 +69,7 @@ public class EventSubmitterTests
             await eventSubmitter.Raise(new OrderPlaced("x"));
 
             Assert.Single(instrumentation.Raised);
-            Assert.Equal("order-placed", instrumentation.Raised[0].TopicOrExchangeName);
+            Assert.Equal("order-placed", instrumentation.Raised[0].TopicName);
             Assert.Empty(instrumentation.Failed);
         }
 
@@ -104,7 +104,7 @@ public class EventSubmitterTests
 
             var startedMessageId = publisher.SentMessages[0].Properties.MessageId;
             Assert.Single(instrumentation.Started);
-            Assert.Equal("order-placed", instrumentation.Started[0].TopicOrExchangeName);
+            Assert.Equal("order-placed", instrumentation.Started[0].TopicName);
             Assert.Equal("fake-bus", instrumentation.Started[0].MessagingSystem);
             Assert.Equal(startedMessageId, instrumentation.Started[0].MessageId);
         }
@@ -206,28 +206,28 @@ public class EventSubmitterTests
     {
         public string? CreatedPublisherForTopic { get; private set; }
 
-        public Task<IMessageBusSender> CreateEventPublisher(string topicOrExchangeName)
+        public Task<IMessageBusSender> CreateEventPublisher(string topicName)
         {
-            CreatedPublisherForTopic = topicOrExchangeName;
+            CreatedPublisherForTopic = topicName;
             return Task.FromResult(publisher);
         }
 
-        public Task<IMessageBusProcessor<TEvent>> CreateEventProcessor<TEvent>(string topicOrExchangeName, string subscriptionName, MessageBusProcessorOptions options)
+        public Task<IMessageBusProcessor<TEvent>> CreateEventProcessor<TEvent>(string topicName, string subscriptionName, MessageBusProcessorOptions options)
         {
             throw new NotSupportedException();
         }
 
-        public Task<IMessageBusSender> CreateEventRetrySender(string topicOrExchangeName, string subscriptionName)
+        public Task<IMessageBusSender> CreateEventRetrySender(string topicName, string subscriptionName)
         {
             throw new NotSupportedException();
         }
 
-        public Task<IDeadLetterReceiver> CreateEventSubscriptionDeadLetterReceiver(string topicOrExchangeName, string subscriptionName)
+        public Task<IDeadLetterReceiver> CreateEventSubscriptionDeadLetterReceiver(string topicName, string subscriptionName)
         {
             throw new NotSupportedException();
         }
 
-        public Task<long> GetEventSubscriptionDeadLetterMessageCount(string topicOrExchangeName, string subscriptionName, CancellationToken cancellationToken = default)
+        public Task<long> GetEventSubscriptionDeadLetterMessageCount(string topicName, string subscriptionName, CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
         }
@@ -343,26 +343,26 @@ public class EventSubmitterTests
 
     private class StubPublisherInstrumentation : IEventPublisherInstrumentation
     {
-        public List<(string TopicOrExchangeName, string MessagingSystem, string MessageId)> Started { get; } = [];
-        public List<(string TopicOrExchangeName, double DurationMs)> Raised { get; } = [];
+        public List<(string TopicName, string MessagingSystem, string MessageId)> Started { get; } = [];
+        public List<(string TopicName, double DurationMs)> Raised { get; } = [];
         public List<string> Failed { get; } = [];
 
         public bool IsEnabled => true;
 
-        public Activity? StartRaising(string topicOrExchangeName, string messagingSystem, string messageId)
+        public Activity? StartRaising(string topicName, string messagingSystem, string messageId)
         {
-            Started.Add((topicOrExchangeName, messagingSystem, messageId));
+            Started.Add((topicName, messagingSystem, messageId));
             return null;
         }
 
-        public void RecordRaised(string topicOrExchangeName, double durationMs)
+        public void RecordRaised(string topicName, double durationMs)
         {
-            Raised.Add((topicOrExchangeName, durationMs));
+            Raised.Add((topicName, durationMs));
         }
 
-        public void RecordFailed(string topicOrExchangeName)
+        public void RecordFailed(string topicName)
         {
-            Failed.Add(topicOrExchangeName);
+            Failed.Add(topicName);
         }
     }
 }

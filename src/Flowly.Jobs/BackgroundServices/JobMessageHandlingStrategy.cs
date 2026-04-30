@@ -1,7 +1,5 @@
 using Flowly.Jobs.Messages;
 using Flowly.Jobs.Model;
-using Flowly.Jobs.Receivers;
-using Flowly.MessageInfrastructure.BackgroundServices;
 using Flowly.Transport;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -14,7 +12,7 @@ internal class JobMessageHandlingStrategy<TMessage>(IServiceScopeFactory service
     public async Task HandleMessage(IReceivedMessage<TMessage> receivedMessage, IServiceProvider serviceProvider, CancellationToken cancellationToken)
     {
         var jobId = new JobId(Guid.Parse(receivedMessage.Properties.MessageId));
-        var jobHandlerBase = serviceProvider.GetRequiredService<JobMessageHandlerBase<TMessage>>();
+        var jobHandlerBase = serviceProvider.GetRequiredService<JobHandler<TMessage>>();
         var messageSender = serviceProvider.GetRequiredService<IMessageSender>();
 
         await messageSender.Send(new UpdateJobState(jobId, JobState.Started, DateTime.UtcNow, receivedMessage.Properties.RetryCount), cancellationToken);
@@ -52,6 +50,7 @@ internal class JobMessageHandlingStrategy<TMessage>(IServiceScopeFactory service
 
         var messageSender = serviceProvider.GetRequiredService<IMessageSender>();
         await messageSender.Send(new JobFailed(jobId, reason, DateTime.UtcNow), cancellationToken);
+        await receivedMessage.Complete(cancellationToken);
     }
 
     public Task OnMessageHandlingError(ILogger logger, IServiceProvider serviceProvider, ErrorDetails errorDetails)

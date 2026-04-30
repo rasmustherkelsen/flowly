@@ -82,13 +82,13 @@ public class FlowlyQueueDiscoveryResultTests
         public void PopulatesAllProperties()
         {
             var queueDiscoveryEvent = new QueueDiscoveryEvent(
-                TopicOrExchangeName: "order-events",
+                TopicName: "order-events",
                 SubscriptionName: "warehouse",
                 ProviderName: "azure-service-bus",
                 DefaultMessageTimeToLive: TimeSpan.FromDays(1),
                 DeadLetterOnMessageExpiration: false);
 
-            Assert.Equal("order-events", queueDiscoveryEvent.TopicOrExchangeName);
+            Assert.Equal("order-events", queueDiscoveryEvent.TopicName);
             Assert.Equal("warehouse", queueDiscoveryEvent.SubscriptionName);
             Assert.Equal("azure-service-bus", queueDiscoveryEvent.ProviderName);
             Assert.Equal(TimeSpan.FromDays(1), queueDiscoveryEvent.DefaultMessageTimeToLive);

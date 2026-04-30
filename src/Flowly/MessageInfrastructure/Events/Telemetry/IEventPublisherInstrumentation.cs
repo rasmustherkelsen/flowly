@@ -6,9 +6,9 @@ internal interface IEventPublisherInstrumentation
 {
     bool IsEnabled { get; }
 
-    Activity? StartRaising(string topicOrExchangeName, string messagingSystem, string messageId);
+    Activity? StartRaising(string topicName, string messagingSystem, string messageId);
 
-    void RecordRaised(string topicOrExchangeName, double durationMs);
+    void RecordRaised(string topicName, double durationMs);
 
-    void RecordFailed(string topicOrExchangeName);
+    void RecordFailed(string topicName);
 }

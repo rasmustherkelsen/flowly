@@ -35,7 +35,7 @@ internal class DeadLetterRepository(IDbContextFactory<DeadLetterDataContext> con
             .MaxAsync(d => (DateTimeOffset?)d.DeadLetteredAt, cancellationToken);
     }
 
-    public async Task<IReadOnlyCollection<DeadLetter>> GetAll(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyCollection<IDeadLetter>> GetAll(CancellationToken cancellationToken = default)
     {
         await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
 
@@ -45,7 +45,7 @@ internal class DeadLetterRepository(IDbContextFactory<DeadLetterDataContext> con
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<DeadLetter?> Get(string messageId, CancellationToken cancellationToken = default)
+    public async Task<IDeadLetter?> Get(string messageId, CancellationToken cancellationToken = default)
     {
         await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
 

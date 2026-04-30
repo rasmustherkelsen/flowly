@@ -9,7 +9,7 @@ internal sealed record QueueDiscoveryQueue(
     TimeSpan LockDuration);
 
 internal sealed record QueueDiscoveryEvent(
-    string TopicOrExchangeName,
+    string TopicName,
     string SubscriptionName,
     string ProviderName,
     TimeSpan DefaultMessageTimeToLive,

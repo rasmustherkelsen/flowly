@@ -13,7 +13,9 @@ internal class MessagingTopologyCreator(ServiceBusClient serviceBusClient, Servi
         foreach (var eventDescription in eventDescriptions)
         {
             await EnsureTopicExists(eventDescription, cancellationToken);
-            await EnsureSubscriptionExists(eventDescription, cancellationToken);
+
+            if (eventDescription is IEventSubscriptionDescription subscriptionDescription)
+                await EnsureSubscriptionExists(subscriptionDescription, cancellationToken);
         }
     }
 
@@ -49,28 +51,28 @@ internal class MessagingTopologyCreator(ServiceBusClient serviceBusClient, Servi
         }
     }
 
-    private async Task EnsureSubscriptionExists(IEventDescription eventDescription, CancellationToken cancellationToken)
+    private async Task EnsureSubscriptionExists(IEventSubscriptionDescription subscriptionDescription, CancellationToken cancellationToken)
     {
         var subscriptionExists = await adminClient.SubscriptionExistsAsync(
-            eventDescription.TopicName,
-            eventDescription.SubscriptionName,
+            subscriptionDescription.TopicName,
+            subscriptionDescription.SubscriptionName,
             cancellationToken);
 
-        var targetedFilter = BuildTargetedFilter(eventDescription.SubscriptionName);
+        var targetedFilter = BuildTargetedFilter(subscriptionDescription.SubscriptionName);
 
         if (!subscriptionExists.Value)
         {
             var subscriptionOptions = new CreateSubscriptionOptions(
-                eventDescription.TopicName,
-                eventDescription.SubscriptionName)
+                subscriptionDescription.TopicName,
+                subscriptionDescription.SubscriptionName)
             {
-                DeadLetteringOnMessageExpiration = eventDescription.DeadLetterOnMessageExpiration ?? true,
+                DeadLetteringOnMessageExpiration = subscriptionDescription.DeadLetterOnMessageExpiration ?? true,
                 LockDuration = TimeSpan.FromMinutes(5),
                 MaxDeliveryCount = 10
             };
 
-            if (eventDescription.DefaultMessageTimeToLive.HasValue)
-                subscriptionOptions.DefaultMessageTimeToLive = eventDescription.DefaultMessageTimeToLive.Value;
+            if (subscriptionDescription.DefaultMessageTimeToLive.HasValue)
+                subscriptionOptions.DefaultMessageTimeToLive = subscriptionDescription.DefaultMessageTimeToLive.Value;
 
             var ruleOptions = new CreateRuleOptions("flowly-targeted", targetedFilter);
             await adminClient.CreateSubscriptionAsync(subscriptionOptions, ruleOptions, cancellationToken);
@@ -78,8 +80,8 @@ internal class MessagingTopologyCreator(ServiceBusClient serviceBusClient, Servi
         else
         {
             await EnsureSubscriptionFilterRule(
-                eventDescription.TopicName,
-                eventDescription.SubscriptionName,
+                subscriptionDescription.TopicName,
+                subscriptionDescription.SubscriptionName,
                 targetedFilter,
                 cancellationToken);
         }

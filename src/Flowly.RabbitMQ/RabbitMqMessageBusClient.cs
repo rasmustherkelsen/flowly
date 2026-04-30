@@ -9,9 +9,9 @@ internal class RabbitMqMessageBusClient(IRabbitMqConnectionPool connectionPool, 
     private readonly SemaphoreSlim _senderLock = new(1, 1);
     private readonly ConcurrentDictionary<string, IMessageBusSender> _senders = new();
 
-    public async Task<IMessageBusSender> CreateEventPublisher(string topicOrExchangeName)
+    public async Task<IMessageBusSender> CreateEventPublisher(string topicName)
     {
-        var key = $"exchange:{topicOrExchangeName}";
+        var key = $"exchange:{topicName}";
 
         if (_senders.TryGetValue(key, out var existing))
             return existing;
@@ -25,7 +25,7 @@ internal class RabbitMqMessageBusClient(IRabbitMqConnectionPool connectionPool, 
 
             var connection = await connectionPool.GetPublisherConnection();
             var channel = await connection.CreateChannelAsync();
-            var publisher = new RabbitMqEventPublisher(topicOrExchangeName, channel, maxMessageSizeBytes);
+            var publisher = new RabbitMqEventPublisher(topicName, channel, maxMessageSizeBytes);
             _senders[key] = publisher;
             return publisher;
         }
@@ -36,11 +36,11 @@ internal class RabbitMqMessageBusClient(IRabbitMqConnectionPool connectionPool, 
     }
 
     public async Task<IMessageBusProcessor<TEvent>> CreateEventProcessor<TEvent>(
-        string topicOrExchangeName,
+        string topicName,
         string subscriptionName,
         MessageBusProcessorOptions options)
     {
-        var perHandlerQueueName = $"{topicOrExchangeName}.{subscriptionName}";
+        var perHandlerQueueName = $"{topicName}.{subscriptionName}";
         var connection = await connectionPool.GetConsumerConnection();
         var channelOptions = new CreateChannelOptions(
             false,
@@ -52,23 +52,23 @@ internal class RabbitMqMessageBusClient(IRabbitMqConnectionPool connectionPool, 
         return new RabbitMqEventProcessor<TEvent>(channel, perHandlerQueueName, options);
     }
 
-    public Task<IMessageBusSender> CreateEventRetrySender(string topicOrExchangeName, string subscriptionName)
+    public Task<IMessageBusSender> CreateEventRetrySender(string topicName, string subscriptionName)
     {
-        var perHandlerQueueName = $"{topicOrExchangeName}.{subscriptionName}";
+        var perHandlerQueueName = $"{topicName}.{subscriptionName}";
         return CreateMessageBusSender(perHandlerQueueName);
     }
 
-    public async Task<IDeadLetterReceiver> CreateEventSubscriptionDeadLetterReceiver(string topicOrExchangeName, string subscriptionName)
+    public async Task<IDeadLetterReceiver> CreateEventSubscriptionDeadLetterReceiver(string topicName, string subscriptionName)
     {
-        var deadLetterQueueName = $"{topicOrExchangeName}.{subscriptionName}.dead-letter";
+        var deadLetterQueueName = $"{topicName}.{subscriptionName}.dead-letter";
         var connection = await connectionPool.GetConsumerConnection();
         var channel = await connection.CreateChannelAsync();
         return new RabbitMqDeadLetterReceiver(channel, deadLetterQueueName);
     }
 
-    public async Task<long> GetEventSubscriptionDeadLetterMessageCount(string topicOrExchangeName, string subscriptionName, CancellationToken cancellationToken = default)
+    public async Task<long> GetEventSubscriptionDeadLetterMessageCount(string topicName, string subscriptionName, CancellationToken cancellationToken = default)
     {
-        var deadLetterQueueName = $"{topicOrExchangeName}.{subscriptionName}.dead-letter";
+        var deadLetterQueueName = $"{topicName}.{subscriptionName}.dead-letter";
         var connection = await connectionPool.GetConsumerConnection(cancellationToken);
         await using var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
 

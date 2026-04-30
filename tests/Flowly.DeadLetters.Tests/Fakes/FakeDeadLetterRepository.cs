@@ -1,4 +1,3 @@
-using Flowly.DeadLetters.DatabaseModel;
 using Flowly.DeadLetters.Repositories;
 using Flowly.Transport;
 
@@ -6,7 +5,7 @@ namespace Flowly.DeadLetters.Tests.Fakes;
 
 internal class FakeDeadLetterRepository : IDeadLetterRepository
 {
-    private readonly Dictionary<string, DeadLetter> _store = [];
+    private readonly Dictionary<string, IDeadLetter> _store = [];
 
     public string? RequeuedMessageId { get; private set; }
     public string? RequeuedBy { get; private set; }
@@ -32,7 +31,7 @@ internal class FakeDeadLetterRepository : IDeadLetterRepository
         return Task.FromResult<DateTimeOffset?>(null);
     }
 
-    public Task<DeadLetter?> Get(string messageId, CancellationToken cancellationToken = default)
+    public Task<IDeadLetter?> Get(string messageId, CancellationToken cancellationToken = default)
     {
         return Task.FromResult(_store.GetValueOrDefault(messageId));
     }
@@ -50,11 +49,6 @@ internal class FakeDeadLetterRepository : IDeadLetterRepository
         return Task.CompletedTask;
     }
 
-    public Task<IReadOnlyCollection<DeadLetter>> GetAll(CancellationToken cancellationToken = default)
-    {
-        return Task.FromResult<IReadOnlyCollection<DeadLetter>>(_store.Values.ToList());
-    }
-
     public Task DeleteRequeuedOlderThan(TimeSpan age, CancellationToken cancellationToken = default)
     {
         return Task.CompletedTask;
@@ -65,7 +59,12 @@ internal class FakeDeadLetterRepository : IDeadLetterRepository
         return Task.CompletedTask;
     }
 
-    public void Add(DeadLetter deadLetter)
+    public Task<IReadOnlyCollection<IDeadLetter>> GetAll(CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult<IReadOnlyCollection<IDeadLetter>>(_store.Values.ToList());
+    }
+
+    public void Add(IDeadLetter deadLetter)
     {
         _store[deadLetter.MessageId] = deadLetter;
     }

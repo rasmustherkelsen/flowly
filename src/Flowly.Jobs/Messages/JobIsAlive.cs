@@ -4,4 +4,4 @@ using Flowly.MessageInfrastructure.Receivers;
 namespace Flowly.Jobs.Messages;
 
 [QueueName(JobQueuesNames.JobIsAlive)]
-public record JobIsAlive(JobId JobId, DateTimeOffset TimeStamp);
+internal record JobIsAlive(JobId JobId, DateTimeOffset TimeStamp);

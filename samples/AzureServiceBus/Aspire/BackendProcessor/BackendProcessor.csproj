@@ -1,25 +1,25 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
-  <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <UserSecretsId>4b0c22a8-aa02-46f7-8a01-a199e4ed1ced</UserSecretsId>
-    <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
-  </PropertyGroup>
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <UserSecretsId>4b0c22a8-aa02-46f7-8a01-a199e4ed1ced</UserSecretsId>
+        <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+    </PropertyGroup>
 
-  <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.5" />
-    <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.22.1" />
-  </ItemGroup>
+    <ItemGroup>
+        <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.7"/>
+        <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.23.0"/>
+    </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\..\..\..\src\Flowly.OpenTelemetry\Flowly.OpenTelemetry.csproj" />
-    <ProjectReference Include="..\MessageContracts\MessageContracts.csproj" />
-    <ProjectReference Include="..\AzureServiceBusAspire.ServiceDefaults\AzureServiceBusAspire.ServiceDefaults.csproj" />
-    <ProjectReference Include="..\..\..\..\src\Flowly.AzureServiceBus\Flowly.AzureServiceBus.csproj" />
-    <ProjectReference Include="..\..\..\..\src\Flowly.Jobs.SqlServer\Flowly.Jobs.SqlServer.csproj" />
-    <ProjectReference Include="..\..\..\..\src\Flowly.DeadLetters.SqlServer\Flowly.DeadLetters.SqlServer.csproj" />
-  </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="..\..\..\..\src\Flowly.OpenTelemetry\Flowly.OpenTelemetry.csproj"/>
+        <ProjectReference Include="..\MessageContracts\MessageContracts.csproj"/>
+        <ProjectReference Include="..\AzureServiceBusAspire.ServiceDefaults\AzureServiceBusAspire.ServiceDefaults.csproj"/>
+        <ProjectReference Include="..\..\..\..\src\Flowly.AzureServiceBus\Flowly.AzureServiceBus.csproj"/>
+        <ProjectReference Include="..\..\..\..\src\Flowly.Jobs.SqlServer\Flowly.Jobs.SqlServer.csproj"/>
+        <ProjectReference Include="..\..\..\..\src\Flowly.DeadLetters.SqlServer\Flowly.DeadLetters.SqlServer.csproj"/>
+    </ItemGroup>
 
 </Project>

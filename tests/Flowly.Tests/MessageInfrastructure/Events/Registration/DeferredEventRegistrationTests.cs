@@ -11,7 +11,7 @@ public class DeferredEventRegistrationTests
         {
             var deferredEventRegistration = new DeferredEventRegistration("order-placed", "audit");
 
-            Assert.Equal("order-placed", deferredEventRegistration.TopicOrExchangeName);
+            Assert.Equal("order-placed", deferredEventRegistration.TopicName);
             Assert.Equal("audit", deferredEventRegistration.SubscriptionName);
             Assert.Null(deferredEventRegistration.DefaultMessageTimeToLive);
             Assert.Null(deferredEventRegistration.DeadLetterOnMessageExpiration);
@@ -21,7 +21,7 @@ public class DeferredEventRegistrationTests
         public void WithAllArguments_StoresEachValue()
         {
             var deferredEventRegistration = new DeferredEventRegistration(
-                TopicOrExchangeName: "order-placed",
+                TopicName: "order-placed",
                 SubscriptionName: "audit",
                 DefaultMessageTimeToLive: TimeSpan.FromDays(1),
                 DeadLetterOnMessageExpiration: true);

@@ -83,11 +83,16 @@ internal class QueueRegistrarHostedService(
     private static IReadOnlyList<IEventDescription> ResolveEventDescriptions(ProviderQueueManifest manifest)
     {
         return manifest.Events
-            .Select(e => (IEventDescription)new EventDescription(
-                e.TopicOrExchangeName,
-                e.SubscriptionName,
-                e.DefaultMessageTimeToLive ?? TimeSpan.FromDays(1),
-                e.DeadLetterOnMessageExpiration ?? true))
+            .Select<Events.Registration.DeferredEventRegistration, IEventDescription>(e => e.SubscriptionName is not null
+                ? new EventDescription(
+                    e.TopicName,
+                    e.SubscriptionName,
+                    e.DefaultMessageTimeToLive ?? TimeSpan.FromDays(1),
+                    e.DeadLetterOnMessageExpiration ?? true)
+                : new EventTopicDescription(
+                    e.TopicName,
+                    e.DefaultMessageTimeToLive ?? TimeSpan.FromDays(1),
+                    e.DeadLetterOnMessageExpiration ?? true))
             .ToList();
     }
 }

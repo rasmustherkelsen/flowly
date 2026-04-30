@@ -1,8 +1,6 @@
 ﻿using Flowly.Jobs.Messages;
 using Flowly.Jobs.Model;
 using Flowly.Jobs.Repositories;
-using Flowly.MessageInfrastructure.Model;
-using Flowly.MessageInfrastructure.Receivers;
 
 namespace Flowly.Jobs.MessageHandlers;
 
@@ -21,5 +19,4 @@ internal class CreateRecurringJobStateHandler(IJobStateRepository jobStateReposi
             jobStateRepository.CreateRecurringJobState(messageContext.Message, newJobId),
             customJobStateRepository.CreateCustomJobState(newJobId));
     }
-        
 }

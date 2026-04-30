@@ -1,7 +1,5 @@
-using Flowly;
-using Flowly.Jobs.Model;
-using Flowly.Jobs.Receivers;
 using Flowly.Jobs.Tests.Fakes;
+using Flowly.MessageInfrastructure.BackgroundServices;
 using Flowly.MessageInfrastructure.Model;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.Registration;
@@ -13,6 +11,24 @@ namespace Flowly.Jobs.Tests.Registration;
 
 public class JobHandlerRegistrationExtensionsTests
 {
+    private static IFlowlyBuilder BuildBuilder()
+    {
+        return BuildBuilderWithManifest().Builder;
+    }
+
+    private static (IFlowlyBuilder Builder, ProviderQueueManifest Manifest) BuildBuilderWithManifest(string providerName = "primary")
+    {
+        var services = new ServiceCollection();
+        var registry = new FakeMessageBusClientRegistry(new FakeMessageBusClient(), providerName);
+        services.AddSingleton<IMessageBusClientRegistry>(registry);
+        var manifest = new ProviderQueueManifest(providerName, true, "Fake");
+        services.AddSingleton(manifest);
+        services.AddSingleton<IHandlerSettingsFactory, HandlerSettingsFactory>();
+        services.AddSingleton<IQueueRegistrar, QueueRegistrar>();
+        var builder = new StubFlowlyBuilder(services);
+        return (builder, manifest);
+    }
+
     public class AddJobHandler
     {
         [Fact]
@@ -22,8 +38,7 @@ public class JobHandlerRegistrationExtensionsTests
 
             builder.AddJobHandler<SomeJobMessage, SomeJobHandler>();
 
-            var descriptor = builder.Services.FirstOrDefault(s => s.ServiceType == typeof(SomeJobHandler));
-            Assert.NotNull(descriptor);
+            var descriptor = builder.Services.Single(s => s.ServiceType == typeof(JobHandler<SomeJobMessage>));
             Assert.Equal(ServiceLifetime.Scoped, descriptor.Lifetime);
         }
 
@@ -34,14 +49,14 @@ public class JobHandlerRegistrationExtensionsTests
 
             builder.AddJobHandler<SomeJobMessage, SomeJobHandler>();
 
-            var descriptor = builder.Services.FirstOrDefault(s => s.ServiceType == typeof(JobMessageHandlerBase<SomeJobMessage>));
+            var descriptor = builder.Services.FirstOrDefault(s => s.ServiceType == typeof(JobHandler<SomeJobMessage>));
             Assert.NotNull(descriptor);
             Assert.Equal(typeof(SomeJobHandler), descriptor.ImplementationType);
             Assert.Equal(ServiceLifetime.Scoped, descriptor.Lifetime);
         }
 
         [Fact]
-        public void RegistersHandlerSettingsWithReadAndDeleteTrue()
+        public void RegistersHandlerSettingsWithReadAndDeleteFalse()
         {
             var builder = BuildBuilder();
 
@@ -52,7 +67,7 @@ public class JobHandlerRegistrationExtensionsTests
                 .Select(s => (IHandlerSettings<SomeJobMessage>)s.ImplementationInstance!)
                 .Single();
 
-            Assert.True(settings.ReadAndDelete);
+            Assert.False(settings.ReadAndDelete);
             Assert.Equal(nameof(SomeJobHandler), settings.HandlerName);
         }
 
@@ -64,7 +79,8 @@ public class JobHandlerRegistrationExtensionsTests
             builder.AddJobHandler<SomeJobMessage, SomeJobHandler>();
 
             var descriptor = builder.Services.FirstOrDefault(s =>
-                s.ServiceType == typeof(IHostedService) && s.ImplementationFactory != null);
+                s.ServiceType == typeof(IHostedService) &&
+                s.ImplementationType == typeof(MessageProcessingBackgroundService<SomeJobMessage>));
             Assert.NotNull(descriptor);
         }
 
@@ -90,21 +106,6 @@ public class JobHandlerRegistrationExtensionsTests
         }
     }
 
-    private static IFlowlyBuilder BuildBuilder() => BuildBuilderWithManifest().Builder;
-
-    private static (IFlowlyBuilder Builder, ProviderQueueManifest Manifest) BuildBuilderWithManifest(string providerName = "primary")
-    {
-        var services = new ServiceCollection();
-        var registry = new FakeMessageBusClientRegistry(new FakeMessageBusClient(), providerName);
-        services.AddSingleton<IMessageBusClientRegistry>(registry);
-        var manifest = new ProviderQueueManifest(providerName, isPrimary: true, "Fake");
-        services.AddSingleton(manifest);
-        services.AddSingleton<IHandlerSettingsFactory, HandlerSettingsFactory>();
-        services.AddSingleton<IQueueRegistrar, QueueRegistrar>();
-        var builder = new StubFlowlyBuilder(services);
-        return (builder, manifest);
-    }
-
     private sealed class StubFlowlyBuilder(IServiceCollection services) : IFlowlyBuilder
     {
         public IServiceCollection Services => services;
@@ -117,8 +118,11 @@ public class JobHandlerRegistrationExtensionsTests
         public string JobTypeName => "SomeJob";
     }
 
-    private class SomeJobHandler : JobMessageHandlerBase<SomeJobMessage>
+    private class SomeJobHandler : JobHandler<SomeJobMessage>
     {
-        public override Task Handle(Flowly.Jobs.Model.IJobMessageContext<SomeJobMessage> messageContext) => Task.CompletedTask;
+        public override Task Handle(IJobMessageContext<SomeJobMessage> messageContext)
+        {
+            return Task.CompletedTask;
+        }
     }
 }

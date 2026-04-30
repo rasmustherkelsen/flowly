@@ -1,4 +1,5 @@
 using Flowly.MessageInfrastructure.BackgroundServices;
+using Flowly.MessageInfrastructure.MessageHandlingStrategies;
 using Flowly.MessageInfrastructure.Model;
 using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.Transport;
@@ -17,7 +18,7 @@ public class MessageProcessingBackgroundServiceTests
     {
         var client = new FakeMessageBusClient();
         var clientRegistry = new FakeMessageBusClientRegistry(client);
-        var settings = new HandlerSettings<TestMessage>(queueName, "azure-service-bus", "TestHandler", readAndDelete, maxConcurrentCalls);
+        var settings = new HandlerSettings<TestMessage>(queueName, "azure-service-bus", "TestHandler", readAndDelete, maxConcurrentCalls, 0, 0, 0, TimeSpan.Zero);
         var factory = scopeFactory ?? new FakeServiceScopeFactory<MessageHandler<TestMessage>>(handler ?? new RecordingMessageHandler());
         var messageProcessingBackgroundService = new MessageProcessingBackgroundService<TestMessage>(
             clientRegistry,

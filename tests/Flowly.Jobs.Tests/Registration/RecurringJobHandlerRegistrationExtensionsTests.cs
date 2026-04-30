@@ -1,6 +1,5 @@
 using Flowly.Jobs.BackgroundServices;
 using Flowly.Jobs.Tests.Fakes;
-using Flowly.MessageInfrastructure.RecurringJobs;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.Registration;
 using Microsoft.Extensions.Configuration;
@@ -89,7 +88,7 @@ public class RecurringJobHandlerRegistrationExtensionsTests
     }
 
     [RecurringJob("Runs every minute", "* * * * *")]
-    private class SomeRecurringJob : RecurringJobHandlerBase
+    private class SomeRecurringJob : RecurringJobHandler
     {
         public override Task Handle(CancellationToken cancellationToken)
         {

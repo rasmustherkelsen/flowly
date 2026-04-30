@@ -1,12 +1,10 @@
 using FastEndpoints;
-using Flowly.Jobs.Senders;
+using Flowly.Jobs;
 
 namespace Api.Endpoints;
 
-class RunRecurringJobEndpoint(IJobMessageSender jobMessageSender) : Endpoint<RunRecurringJobEndpoint.RunRecurringJobRequest>
+internal class RunRecurringJobEndpoint(IJobMessageSender jobMessageSender) : Endpoint<RunRecurringJobEndpoint.RunRecurringJobRequest>
 {
-    internal sealed record RunRecurringJobRequest(Guid JobId);
-
     public override void Configure()
     {
         Get("/run-recurring-job");
@@ -18,4 +16,6 @@ class RunRecurringJobEndpoint(IJobMessageSender jobMessageSender) : Endpoint<Run
         await jobMessageSender.StartRecurringJob(req.JobId);
         await Send.OkAsync(cancellation: ct);
     }
+
+    internal sealed record RunRecurringJobRequest(Guid JobId);
 }

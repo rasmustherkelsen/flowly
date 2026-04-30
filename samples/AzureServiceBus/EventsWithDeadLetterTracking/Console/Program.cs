@@ -1,7 +1,6 @@
 using Flowly;
 using Flowly.AzureServiceBus;
-using Flowly.DeadLetters.DatabaseModel;
-using Flowly.DeadLetters.Services;
+using Flowly.DeadLetters;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -14,14 +13,14 @@ builder.AddFlowly(
         .UseAzureServiceBus()
         .AddSqlServerDeadLetterTracking(
             builder.Configuration.GetConnectionString("FlowlyDeadLetters")!,
-            enableMigrations: false));
+            false));
 
 var host = builder.Build();
 
 await using var scope = host.Services.CreateAsyncScope();
 var deadLetterService = scope.ServiceProvider.GetRequiredService<IDeadLetterService>();
 
-List<DeadLetter>? currentList = null;
+List<IDeadLetter>? currentList = null;
 
 PrintHelp();
 
@@ -105,7 +104,7 @@ static void PrintHelp()
     Console.WriteLine("  quit (q)         — exit");
 }
 
-static void PrintTable(List<DeadLetter> deadLetters)
+static void PrintTable(List<IDeadLetter> deadLetters)
 {
     if (deadLetters.Count == 0)
     {
@@ -150,4 +149,6 @@ static void PrintTable(List<DeadLetter> deadLetters)
 }
 
 static string Truncate(string value, int maxLength)
-    => value.Length <= maxLength ? value : value[..(maxLength - 2)] + "..";
+{
+    return value.Length <= maxLength ? value : value[..(maxLength - 2)] + "..";
+}

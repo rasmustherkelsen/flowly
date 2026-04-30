@@ -24,7 +24,7 @@ public class NullEventHandlerInstrumentationTests
 
             var activity = nullEventHandlerInstrumentation.StartHandling(
                 handlerName: "MyHandler",
-                topicOrExchangeName: "orders",
+                topicName: "orders",
                 messagingSystem: "azure-service-bus",
                 messageProperties: new MessageProperties(MessageId: "id", CorrelationId: "cid"));
 

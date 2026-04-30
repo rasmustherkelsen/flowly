@@ -70,7 +70,7 @@ internal class DeadLetterIngestionHealthBackgroundService(
             return;
 
         var messageCount = await eventCapableClient.GetEventSubscriptionDeadLetterMessageCount(
-            settings.TopicOrExchangeName,
+            settings.TopicName,
             settings.SubscriptionName,
             cancellationToken);
 
@@ -78,7 +78,7 @@ internal class DeadLetterIngestionHealthBackgroundService(
             return;
 
         var lastIngestion = await repository.GetLastIngestionTimeForSubscription(
-            settings.TopicOrExchangeName,
+            settings.TopicName,
             settings.SubscriptionName,
             cancellationToken);
 

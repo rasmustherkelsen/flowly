@@ -7,6 +7,12 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Flowly;
 
+/// <summary>
+///     Provides extension methods for registering event submitters in the Flowly framework. An event submitter is
+///     responsible for sending events of a specific type to the configured message broker. By registering an event
+///     submitter for a given event type, you can easily submit events of that type from anywhere in your application using
+///     dependency injection to resolve IEventSender.
+/// </summary>
 public static class EventSubmitterRegistrationExtensions
 {
     /// <summary>
@@ -21,13 +27,13 @@ public static class EventSubmitterRegistrationExtensions
         if (flowlyBuilder.Services.Any(s => s.ImplementationType == typeof(EventSubmitter<TEvent>)))
             return flowlyBuilder;
 
-        var topicOrExchangeName = EventNameResolver.Resolve<TEvent>();
+        var topicName = EventNameResolver.Resolve<TEvent>();
         var providerName = ProviderNameResolver.Resolve(flowlyBuilder.Services, typeof(TEvent));
 
-        flowlyBuilder.AddEventRegistration(new DeferredEventRegistration(topicOrExchangeName, null), providerName);
+        flowlyBuilder.AddEventRegistration(new DeferredEventRegistration(topicName, null), providerName);
 
         flowlyBuilder.Services
-            .AddSingleton(new EventSubmitter<TEvent>.TopicSettings(topicOrExchangeName, providerName))
+            .AddSingleton(new EventSubmitter<TEvent>.TopicSettings(topicName, providerName))
             .AddSingleton<IEventSubmitter<TEvent>, EventSubmitter<TEvent>>();
 
         flowlyBuilder.Services.TryAddSingleton<IEventSender, EventSender>();

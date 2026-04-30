@@ -10,12 +10,12 @@ public class EventHandlerSettingsTests
         public void WithRequiredArguments_OptionalValuesHaveDefaults()
         {
             var eventHandlerSettings = new EventHandlerSettings<OrderPlaced, SomeHandler>(
-                TopicOrExchangeName: "order-placed",
+                TopicName: "order-placed",
                 SubscriptionName: "sub",
                 ProviderName: "primary",
                 HandlerName: "SomeHandler");
 
-            Assert.Equal("order-placed", eventHandlerSettings.TopicOrExchangeName);
+            Assert.Equal("order-placed", eventHandlerSettings.TopicName);
             Assert.Equal("sub", eventHandlerSettings.SubscriptionName);
             Assert.Equal("primary", eventHandlerSettings.ProviderName);
             Assert.Equal("SomeHandler", eventHandlerSettings.HandlerName);
@@ -28,7 +28,7 @@ public class EventHandlerSettingsTests
         public void WithAllArguments_StoresEachValue()
         {
             var eventHandlerSettings = new EventHandlerSettings<OrderPlaced, SomeHandler>(
-                TopicOrExchangeName: "order-placed",
+                TopicName: "order-placed",
                 SubscriptionName: "sub",
                 ProviderName: "primary",
                 HandlerName: "SomeHandler",

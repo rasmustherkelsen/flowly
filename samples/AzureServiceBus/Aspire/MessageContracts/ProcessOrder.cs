@@ -1,4 +1,4 @@
-﻿using Flowly.Jobs.Model;
+﻿using Flowly.Jobs;
 
 namespace MessageContracts;
 

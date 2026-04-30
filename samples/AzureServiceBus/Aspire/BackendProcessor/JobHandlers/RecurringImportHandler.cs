@@ -1,8 +1,8 @@
-using Flowly.MessageInfrastructure.RecurringJobs;
+using Flowly.Jobs;
 
 namespace BackendProcessor.JobHandlers;
 
-class RecurringImportHandler(ILogger<RecurringImportHandler> logger) : RecurringJobHandlerBase
+internal class RecurringImportHandler(ILogger<RecurringImportHandler> logger) : RecurringJobHandler
 {
     public override void Configure(RecurringJobHandlerOptions options)
     {

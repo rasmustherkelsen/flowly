@@ -1,18 +1,9 @@
-using BackendFinanceProcessor.EventHandlers;
+using BackendFinanceProcessor;
 using Flowly;
-using Flowly.AzureServiceBus;
-using MessageContracts;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.AddFlowly(
-    options => options.CreateTopology = false,
-    configure =>
-    {
-        configure
-            .UseAzureServiceBus("EmulatorNamespace")
-            .AddEventHandler<OrderProcessedEvent, FinanceOrderProcessedEventHandler>();
-    });
+builder.AddFlowly<BackendFinanceProcessorFlowlyConfiguration>(options => options.CreateTopology = false);
 
 var app = builder.Build();
 

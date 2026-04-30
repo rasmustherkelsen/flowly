@@ -5,7 +5,7 @@ namespace Flowly.MessageInfrastructure.Events.Registration;
 
 internal class EventHandlerBuilder<TEvent>(
     IFlowlyBuilder inner,
-    string topicOrExchangeName,
+    string topicName,
     string subscriptionName,
     string providerName) : IEventHandlerBuilder<TEvent>
     where TEvent : class
@@ -14,7 +14,7 @@ internal class EventHandlerBuilder<TEvent>(
 
     public IConfiguration Configuration => inner.Configuration;
 
-    public string TopicName { get; } = topicOrExchangeName;
+    public string TopicName { get; } = topicName;
 
     public string SubscriptionName { get; } = subscriptionName;
 

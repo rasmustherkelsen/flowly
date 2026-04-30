@@ -2,12 +2,13 @@ using BackendProcessor.EventHandlers;
 using BackendProcessor.JobHandlers;
 using Flowly;
 using Flowly.AzureServiceBus;
+using Flowly.Jobs;
 using Flowly.OpenTelemetry;
 using MessageContracts;
 
 namespace BackendProcessor;
 
-public class BackendProcessorFlowlyConfiguration : FlowlyDesignTimeFactory, IFlowlyConfiguration
+internal class BackendProcessorFlowlyConfiguration : FlowlyDesignTimeFactory, IFlowlyConfiguration
 {
     public void Configure(IFlowlyBuilder builder)
     {

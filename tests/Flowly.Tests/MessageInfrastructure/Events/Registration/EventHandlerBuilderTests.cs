@@ -14,7 +14,7 @@ public class EventHandlerBuilderTests
     public class Constructor
     {
         [Fact]
-        public void TopicOrExchangeNameIsExposed()
+        public void TopicNameIsExposed()
         {
             var eventHandlerBuilder = new EventHandlerBuilder<OrderPlaced>(
                 CreateInnerBuilder(),

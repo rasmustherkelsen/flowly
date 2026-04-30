@@ -1,23 +1,34 @@
+using Flowly.DeadLetters;
 using Flowly.DeadLetters.BackgroundServices;
 using Flowly.DeadLetters.DatabaseModel;
 using Flowly.DeadLetters.Repositories;
 using Flowly.DeadLetters.Services;
 using Flowly.DeadLetters.Telemetry;
-using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessageInfrastructure.Model;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Flowly;
 
+/// <summary>
+///     Extension methods for <see cref="IFlowlyBuilder"/> that configure dead letter tracking.
+///     Call <c>AddSqlServerDeadLetterTracking</c> or <c>AddPostgresDeadLetterTracking</c> once on the builder to
+///     enable the persistence layer, then chain <c>.WithDeadLetterTracking()</c> on individual handler or event
+///     handler registrations to opt specific queues or subscriptions into dead letter ingestion.
+/// </summary>
 public static class DeadLetterTrackingRegistrationExtensions
 {
     private static readonly Type SentinelType = typeof(DeadLetterTrackingSentinel);
 
     /// <summary>
-    ///     Enables the dead letter persistence layer. Call this before using .WithDeadLetterTracking() on handlers.
-    ///     Typically called via a provider-specific extension (AddSqlServerDeadLetterTracking /
-    ///     AddPostgresDeadLetterTracking).
+    ///     Enables the dead letter persistence layer by registering the EF Core data context, repository, service,
+    ///     and supporting background services. This method is idempotent — calling it more than once has no effect.
+    ///     Prefer the provider-specific overloads (<c>AddSqlServerDeadLetterTracking</c> /
+    ///     <c>AddPostgresDeadLetterTracking</c>) over calling this directly.
     /// </summary>
+    /// <param name="flowlyBuilder">The <see cref="IFlowlyBuilder"/> to configure.</param>
+    /// <param name="dbContextOptions">A delegate that configures the <see cref="DbContextOptionsBuilder"/> for the dead letter data context.</param>
+    /// <returns>The same <see cref="IFlowlyBuilder"/> for chaining.</returns>
     public static IFlowlyBuilder AddDeadLetterTracking(this IFlowlyBuilder flowlyBuilder, Action<DbContextOptionsBuilder> dbContextOptions)
     {
         if (flowlyBuilder.Services.Any(s => s.ServiceType == SentinelType))
@@ -39,17 +50,23 @@ public static class DeadLetterTrackingRegistrationExtensions
     }
 
     /// <summary>
-    ///     Opts this handler's queue into dead letter tracking. Messages that are dead-lettered will be
-    ///     read from the broker DLQ and persisted to the dead letter store.
-    ///     Requires AddSqlServerDeadLetterTracking or AddPostgresDeadLetterTracking to have been called.
+    ///     Opts this handler's queue into dead letter tracking. Messages that are dead-lettered will be read from the
+    ///     broker dead letter queue and persisted to the tracking store.
+    ///     Requires <c>AddSqlServerDeadLetterTracking</c> or <c>AddPostgresDeadLetterTracking</c> to have been called first.
+    ///     Throws <see cref="InvalidOperationException"/> if the dead letter tracking infrastructure has not been registered.
     /// </summary>
+    /// <typeparam name="TMessage">The message type handled by the handler being registered.</typeparam>
+    /// <param name="builder">The <see cref="IMessageHandlerBuilder{TMessage}"/> for the handler to opt in.</param>
+    /// <returns>The parent <see cref="IFlowlyBuilder"/> for chaining.</returns>
     public static IFlowlyBuilder WithDeadLetterTracking<TMessage>(this IMessageHandlerBuilder<TMessage> builder)
     {
         if (builder.Services.All(s => s.ServiceType != SentinelType))
             throw new InvalidOperationException("Dead letter tracking is not configured. Call AddSqlServerDeadLetterTracking() or AddPostgresDeadLetterTracking() before using WithDeadLetterTracking().");
 
-        var queueName = builder.QueueName;
-        var providerName = builder.ProviderName;
+        var handlerSettings = builder.Services.BuildServiceProvider().GetRequiredService<IHandlerSettings<TMessage>>();
+
+        var queueName = handlerSettings.QueueName;
+        var providerName = handlerSettings.ProviderName;
 
         if (builder.Services.Any(s => s.ServiceType == typeof(DeadLetterIngestionSettings) && s.ImplementationInstance is DeadLetterIngestionSettings ds && ds.QueueName == queueName))
             return builder;
@@ -61,30 +78,35 @@ public static class DeadLetterTrackingRegistrationExtensions
     }
 
     /// <summary>
-    ///     Opts this event subscription into dead letter tracking. Events that are dead-lettered by this subscriber
-    ///     will be read from the broker subscription DLQ and persisted to the dead letter store.
-    ///     Requeuing a dead-lettered event republishes it to the topic, so all subscribers will receive it again —
-    ///     ensure handlers are idempotent before using requeue.
-    ///     Requires AddSqlServerDeadLetterTracking or AddPostgresDeadLetterTracking to have been called.
+    ///     Opts this event subscription into dead letter tracking. Events that are dead-lettered by this subscriber will
+    ///     be read from the broker subscription dead letter queue and persisted to the tracking store.
+    ///     When a dead-lettered event is requeued it is republished to the topic with a <c>flowly-target-subscription</c>
+    ///     property so that only the originating subscription receives the requeued message — ensure your handler is
+    ///     idempotent before using requeue.
+    ///     Requires <c>AddSqlServerDeadLetterTracking</c> or <c>AddPostgresDeadLetterTracking</c> to have been called first.
+    ///     Throws <see cref="InvalidOperationException"/> if the dead letter tracking infrastructure has not been registered.
     /// </summary>
+    /// <typeparam name="TEvent">The event type handled by the event handler being registered.</typeparam>
+    /// <param name="builder">The <see cref="IEventHandlerBuilder{TEvent}"/> for the event handler to opt in.</param>
+    /// <returns>The parent <see cref="IFlowlyBuilder"/> for chaining.</returns>
     public static IFlowlyBuilder WithDeadLetterTracking<TEvent>(this IEventHandlerBuilder<TEvent> builder)
         where TEvent : class
     {
         if (builder.Services.All(s => s.ServiceType != SentinelType))
             throw new InvalidOperationException("Dead letter tracking is not configured. Call AddSqlServerDeadLetterTracking() or AddPostgresDeadLetterTracking() before using WithDeadLetterTracking().");
 
-        var topicOrExchangeName = builder.TopicName;
+        var topicName = builder.TopicName;
         var subscriptionName = builder.SubscriptionName;
         var providerName = builder.ProviderName;
 
         if (builder.Services.Any(s =>
                 s.ServiceType == typeof(EventSubscriptionDeadLetterIngestionSettings) &&
                 s.ImplementationInstance is EventSubscriptionDeadLetterIngestionSettings existing &&
-                existing.TopicOrExchangeName == topicOrExchangeName &&
+                existing.TopicName == topicName &&
                 existing.SubscriptionName == subscriptionName))
             return builder;
 
-        builder.Services.AddSingleton(new EventSubscriptionDeadLetterIngestionSettings(topicOrExchangeName, subscriptionName, providerName));
+        builder.Services.AddSingleton(new EventSubscriptionDeadLetterIngestionSettings(topicName, subscriptionName, providerName));
         builder.Services.AddHostedService<EventSubscriptionDeadLetterIngestionBackgroundService>();
 
         return builder;

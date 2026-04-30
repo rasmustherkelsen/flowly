@@ -25,46 +25,46 @@ internal sealed class EventHandlerInstrumentation : IEventHandlerInstrumentation
 
     public bool IsEnabled => true;
 
-    public Activity? StartHandling(string handlerName, string topicOrExchangeName, string messagingSystem, MessageProperties messageProperties, ActivityContext parentContext = default)
+    public Activity? StartHandling(string handlerName, string topicName, string messagingSystem, MessageProperties messageProperties, ActivityContext parentContext = default)
         => FlowlyInstrumentationConstants.ActivitySource.StartActivity(
-            $"flowly.event.handle {topicOrExchangeName}",
+            $"flowly.event.handle {topicName}",
             ActivityKind.Consumer,
             parentContext,
             [
                 new KeyValuePair<string, object?>("handler", handlerName),
                 new KeyValuePair<string, object?>(FlowlyInstrumentationConstants.MessagingSystem, messagingSystem),
-                new KeyValuePair<string, object?>(FlowlyInstrumentationConstants.MessagingDestinationName, topicOrExchangeName),
+                new KeyValuePair<string, object?>(FlowlyInstrumentationConstants.MessagingDestinationName, topicName),
                 new KeyValuePair<string, object?>(FlowlyInstrumentationConstants.MessagingOperationType, "process"),
                 new KeyValuePair<string, object?>(FlowlyInstrumentationConstants.MessagingMessageId, messageProperties.MessageId),
                 new KeyValuePair<string, object?>(FlowlyInstrumentationConstants.MessagingMessageConversationId, messageProperties.CorrelationId),
             ]);
 
-    public void RecordReceived(string handlerName, string topicOrExchangeName, long count = 1)
-        => _received.Add(count, new TagList { { "handler", handlerName }, { FlowlyInstrumentationConstants.MessagingDestinationName, topicOrExchangeName } });
+    public void RecordReceived(string handlerName, string topicName, long count = 1)
+        => _received.Add(count, new TagList { { "handler", handlerName }, { FlowlyInstrumentationConstants.MessagingDestinationName, topicName } });
 
-    public void RecordSucceeded(string handlerName, string topicOrExchangeName, double durationMs, long count = 1)
+    public void RecordSucceeded(string handlerName, string topicName, double durationMs, long count = 1)
     {
         Activity.Current?.SetTag("outcome", "success");
 
-        var tags = new TagList { { "handler", handlerName }, { FlowlyInstrumentationConstants.MessagingDestinationName, topicOrExchangeName } };
+        var tags = new TagList { { "handler", handlerName }, { FlowlyInstrumentationConstants.MessagingDestinationName, topicName } };
 
         _succeeded.Add(count, tags);
         _duration.Record(durationMs, tags);
     }
 
-    public void RecordFailed(string handlerName, string topicOrExchangeName, long count = 1)
+    public void RecordFailed(string handlerName, string topicName, long count = 1)
     {
         Activity.Current?.SetStatus(ActivityStatusCode.Error);
         Activity.Current?.SetTag("outcome", "failed");
 
-        _failed.Add(count, new TagList { { "handler", handlerName }, { FlowlyInstrumentationConstants.MessagingDestinationName, topicOrExchangeName } });
+        _failed.Add(count, new TagList { { "handler", handlerName }, { FlowlyInstrumentationConstants.MessagingDestinationName, topicName } });
     }
 
-    public void RecordRetried(string handlerName, string topicOrExchangeName)
+    public void RecordRetried(string handlerName, string topicName)
     {
         Activity.Current?.SetTag("outcome", "retry");
 
-        _retried.Add(1, new TagList { { "handler", handlerName }, { FlowlyInstrumentationConstants.MessagingDestinationName, topicOrExchangeName } });
+        _retried.Add(1, new TagList { { "handler", handlerName }, { FlowlyInstrumentationConstants.MessagingDestinationName, topicName } });
     }
 
     public void Dispose() => _meter.Dispose();

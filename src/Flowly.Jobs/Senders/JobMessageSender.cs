@@ -1,6 +1,5 @@
 ﻿using Flowly.Jobs.Messages;
 using Flowly.Jobs.Model;
-using Flowly.MessageInfrastructure.Senders;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Flowly.Jobs.Senders;
@@ -14,5 +13,7 @@ internal class JobMessageSender(IServiceProvider serviceProvider, IMessageSender
     }
 
     public async Task StartRecurringJob(Guid jobId)
-        => await messageSender.Send(new StartRecurringJobMessage(jobId));
+    {
+        await messageSender.Send(new StartRecurringJobMessage(jobId));
+    }
 }

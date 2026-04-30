@@ -3,6 +3,12 @@ using System.Diagnostics.Metrics;
 
 namespace Flowly.MessageInfrastructure.Telemetry;
 
+/// <summary>
+///     Active implementation of <see cref="IHandlerInstrumentation" /> that emits OTel metrics via
+///     <see cref="FlowlyInstrumentationConstants.MeterName" /> and traces via
+///     <see cref="FlowlyInstrumentationConstants.ActivitySourceName" />. Registered when
+///     <see cref="FlowlyOptions.EnableTelemetry" /> is <see langword="true" />.
+/// </summary>
 public sealed class HandlerInstrumentation : IHandlerInstrumentation, IDisposable
 {
     private readonly Meter _meter;
@@ -12,6 +18,9 @@ public sealed class HandlerInstrumentation : IHandlerInstrumentation, IDisposabl
     private readonly Counter<long> _retried;
     private readonly Histogram<double> _duration;
 
+    /// <summary>
+    ///     Initialises the OTel meter and creates all metric instruments.
+    /// </summary>
     public HandlerInstrumentation()
     {
         _meter = new Meter(FlowlyInstrumentationConstants.MeterName);
@@ -22,8 +31,10 @@ public sealed class HandlerInstrumentation : IHandlerInstrumentation, IDisposabl
         _duration = _meter.CreateHistogram<double>(FlowlyInstrumentationConstants.HandlerProcessingDuration, "ms");
     }
 
+    /// <inheritdoc />
     public bool IsEnabled => true;
 
+    /// <inheritdoc />
     public Activity? StartHandling(string handlerName, string queueName, string messagingSystem, MessageProperties messageProperties, ActivityContext parentContext = default)
         => FlowlyInstrumentationConstants.ActivitySource.StartActivity(
             $"flowly.handle {queueName}",
@@ -38,9 +49,11 @@ public sealed class HandlerInstrumentation : IHandlerInstrumentation, IDisposabl
                 new KeyValuePair<string, object?>(FlowlyInstrumentationConstants.MessagingMessageConversationId, messageProperties.CorrelationId),
             ]);
 
+    /// <inheritdoc />
     public void RecordReceived(string handlerName, string queueName, long count = 1)
         => _received.Add(count, new TagList { { "handler", handlerName }, { FlowlyInstrumentationConstants.MessagingDestinationName, queueName } });
 
+    /// <inheritdoc />
     public void RecordSucceeded(string handlerName, string queueName, double durationMs, long count = 1)
     {
         Activity.Current?.SetTag("outcome", "success");
@@ -51,6 +64,7 @@ public sealed class HandlerInstrumentation : IHandlerInstrumentation, IDisposabl
         _duration.Record(durationMs, tags);
     }
 
+    /// <inheritdoc />
     public void RecordFailed(string handlerName, string queueName, long count = 1)
     {
         Activity.Current?.SetStatus(ActivityStatusCode.Error);
@@ -59,6 +73,7 @@ public sealed class HandlerInstrumentation : IHandlerInstrumentation, IDisposabl
         _failed.Add(count, new TagList { { "handler", handlerName }, { FlowlyInstrumentationConstants.MessagingDestinationName, queueName } });
     }
 
+    /// <inheritdoc />
     public void RecordRetried(string handlerName, string queueName)
     {
         Activity.Current?.SetTag("outcome", "retry");
@@ -66,5 +81,6 @@ public sealed class HandlerInstrumentation : IHandlerInstrumentation, IDisposabl
         _retried.Add(1, new TagList { { "handler", handlerName }, { FlowlyInstrumentationConstants.MessagingDestinationName, queueName } });
     }
 
+    /// <summary>Disposes the underlying OTel <see cref="Meter" />.</summary>
     public void Dispose() => _meter.Dispose();
 }

@@ -77,7 +77,7 @@ internal static class QueueDiscoveryRunner
 
             foreach (var eventDefinition in result.EventDefinitions)
             {
-                var key = $"{eventDefinition.TopicOrExchangeName.ToLowerInvariant()}|{eventDefinition.SubscriptionName.ToLowerInvariant()}";
+                var key = $"{eventDefinition.TopicName.ToLowerInvariant()}|{eventDefinition.SubscriptionName.ToLowerInvariant()}";
                 eventDefinitions.TryAdd(key, eventDefinition);
             }
         }
@@ -110,7 +110,7 @@ internal static class QueueDiscoveryRunner
 
         var orderedEventDefinitions = eventDefinitions
             .Values
-            .OrderBy(e => e.TopicOrExchangeName, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(e => e.TopicName, StringComparer.OrdinalIgnoreCase)
             .ThenBy(e => e.SubscriptionName, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 

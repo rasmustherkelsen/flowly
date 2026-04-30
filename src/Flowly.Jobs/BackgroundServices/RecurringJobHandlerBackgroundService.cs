@@ -2,7 +2,6 @@ using System.Diagnostics;
 using Cronos;
 using Flowly.Jobs.Messages;
 using Flowly.Jobs.Model;
-using Flowly.MessageInfrastructure.RecurringJobs;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.Transport;
@@ -12,7 +11,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Flowly.Jobs.BackgroundServices;
 
-internal class RecurringJobHandlerBackgroundService<TRecurringJobHandler> : BackgroundService where TRecurringJobHandler : IRecurringJobHandler
+internal class RecurringJobHandlerBackgroundService<TRecurringJobHandler> : BackgroundService where TRecurringJobHandler : RecurringJobHandler
 {
     private readonly IMessageBusClientRegistry _clientRegistry;
     private readonly IHandlerInstrumentation _handlerInstrumentation;

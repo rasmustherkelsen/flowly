@@ -11,7 +11,7 @@ public class EventSubscriptionDeadLetterIngestionSettingsTests
         {
             var settings = new EventSubscriptionDeadLetterIngestionSettings("orders-topic", "sub-a", "provider");
 
-            Assert.Equal("orders-topic", settings.TopicOrExchangeName);
+            Assert.Equal("orders-topic", settings.TopicName);
         }
 
         [Fact]

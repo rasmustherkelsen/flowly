@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Flowly.Jobs.DatabaseModel;
 
 [Index(nameof(Name), IsUnique = true)]
-public class JobType
+internal class JobType
 {
     public long Id { get; set; }
 

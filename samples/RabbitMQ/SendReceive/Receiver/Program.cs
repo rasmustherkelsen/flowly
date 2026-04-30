@@ -1,5 +1,4 @@
 using Flowly;
-using Flowly.MessageInfrastructure.Model;
 using Flowly.RabbitMQ;
 using Messages;
 

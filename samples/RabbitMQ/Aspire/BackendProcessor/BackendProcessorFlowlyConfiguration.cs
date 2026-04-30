@@ -1,13 +1,14 @@
 using BackendProcessor.EventHandlers;
 using BackendProcessor.JobHandlers;
 using Flowly;
+using Flowly.Jobs;
 using Flowly.OpenTelemetry;
 using Flowly.RabbitMQ;
 using MessageContracts;
 
 namespace BackendProcessor;
 
-public class BackendProcessorFlowlyConfiguration : FlowlyDesignTimeFactory, IFlowlyConfiguration
+internal class BackendProcessorFlowlyConfiguration : FlowlyDesignTimeFactory, IFlowlyConfiguration
 {
     public void Configure(IFlowlyBuilder builder)
     {

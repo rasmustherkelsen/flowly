@@ -1,26 +1,11 @@
 using FastEndpoints;
-using Flowly.Jobs.Model;
+using Flowly.Jobs;
 using Flowly.Jobs.Services;
 
 namespace Api.Endpoints;
 
-class GetJobsEndpoint(IJobTrackingService jobTrackingService) : Endpoint<GetJobsEndpoint.GetJobsRequest, PagedResult<GetJobsEndpoint.JobDto>>
+internal class GetJobsEndpoint(IJobTrackingService jobTrackingService) : Endpoint<GetJobsEndpoint.GetJobsRequest, PagedResult<GetJobsEndpoint.JobDto>>
 {
-    internal record JobDto(
-        Guid JobIdentifier,
-        string JobTypeName,
-        string Description,
-        string CurrentState,
-        DateTimeOffset Created,
-        DateTimeOffset? Started,
-        DateTimeOffset? Completed,
-        string? FaultReason,
-        int RetryAttempt,
-        bool IsRecurringJob,
-        string? CronExpression);
-    
-    internal record GetJobsRequest(int Page = 1, int PageSize = 20, string? Status = null, bool? IsRecurringJob = null);
-
     public override void Configure()
     {
         Get("/api/jobs");
@@ -57,13 +42,13 @@ class GetJobsEndpoint(IJobTrackingService jobTrackingService) : Endpoint<GetJobs
 
         var query = jobs.AsEnumerable();
 
-        if (req.Status is not null && Enum.TryParse<JobState>(req.Status, ignoreCase: true, out var parsedState))
+        if (req.Status is not null && Enum.TryParse<JobState>(req.Status, true, out var parsedState))
             query = query.Where(j => j.CurrentState == parsedState);
 
         var totalCount = query.Count();
 
-        int page = req.Page > 0 ? req.Page : 1;
-        int pageSize = req.PageSize > 0 ? req.PageSize : 20;
+        var page = req.Page > 0 ? req.Page : 1;
+        var pageSize = req.PageSize > 0 ? req.PageSize : 20;
 
         var pageItems = query
             .OrderByDescending(j => j.Created)
@@ -85,4 +70,19 @@ class GetJobsEndpoint(IJobTrackingService jobTrackingService) : Endpoint<GetJobs
 
         await Send.OkAsync(new PagedResult<JobDto>(pageItems, totalCount, page, pageSize), ct);
     }
+
+    internal record JobDto(
+        Guid JobIdentifier,
+        string JobTypeName,
+        string Description,
+        string CurrentState,
+        DateTimeOffset Created,
+        DateTimeOffset? Started,
+        DateTimeOffset? Completed,
+        string? FaultReason,
+        int RetryAttempt,
+        bool IsRecurringJob,
+        string? CronExpression);
+
+    internal record GetJobsRequest(int Page = 1, int PageSize = 20, string? Status = null, bool? IsRecurringJob = null);
 }

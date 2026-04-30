@@ -1,5 +1,4 @@
 using Flowly.AzureServiceBus.Aspire;
-using MessageContracts;
 
 var builder = DistributedApplication.CreateBuilder(args);
 
@@ -20,8 +19,7 @@ var backendProcessor = builder.AddProject<Projects.BackendProcessor>("BackendPro
 azureServiceBus.AddFlowly(backendProcessor);
 
 var backendFinanceProcessor = builder.AddProject<Projects.BackendFinanceProcessor>("BackendFinanceProcessor");
-azureServiceBus.AddFlowly(backendFinanceProcessor, topology =>
-    topology.AddEventSubscription<OrderProcessedEvent>("finance-order-processed-event-handler"));
+azureServiceBus.AddFlowly(backendFinanceProcessor);
 
 backendProcessor
     .WaitFor(azureServiceBus)

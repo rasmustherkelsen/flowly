@@ -1,5 +1,4 @@
 using Flowly.Jobs.Repositories;
-using Flowly.Jobs.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;

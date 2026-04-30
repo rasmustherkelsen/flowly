@@ -3,7 +3,7 @@
 namespace Flowly.Jobs.DatabaseModel;
 
 [PrimaryKey(nameof(JobIdentifier))]
-public class CustomJobState
+internal class CustomJobState
 {
     public required Guid JobIdentifier { get; set; }
 

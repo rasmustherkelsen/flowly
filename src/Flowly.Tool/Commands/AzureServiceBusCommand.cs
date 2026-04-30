@@ -65,7 +65,7 @@ internal static class AzureServiceBusCommand
 
             foreach (var @event in eventDefinitions)
             {
-                Console.WriteLine($"[topic] {@event.TopicOrExchangeName} / {@event.SubscriptionName}");
+                Console.WriteLine($"[topic] {@event.TopicName} / {@event.SubscriptionName}");
             }
         }));
 

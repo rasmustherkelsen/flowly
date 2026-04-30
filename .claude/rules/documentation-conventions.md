@@ -17,3 +17,7 @@ When implementing a change, ask: *does this affect what an operator or developer
 - Changed behaviour of existing options (e.g. constraints, defaults, failure modes)
 - Startup validation errors a user might encounter
 - Any prerequisite infrastructure a user must provision manually
+
+## Code Comments
+
+- All public and protected methods, field and properties in public classes or interfaces must be documented using XML documentation. Including parameters and return type preferably with a ref to the type being referenced. Be thourough so that the documentation is precise. The user should have a good experience using intellisense with the library. If existing information is provided please check if it still seems to convey the precise information or if it is not good enough or the underlying code has changed so it is plain wrong.

@@ -3,7 +3,7 @@ using MessageContracts;
 
 namespace BackendFinanceProcessor.EventHandlers;
 
-public class FinanceOrderProcessedEventHandler(ILogger<FinanceOrderProcessedEventHandler> logger) : EventHandlerBase<OrderProcessedEvent>
+internal class FinanceOrderProcessedEventHandler(ILogger<FinanceOrderProcessedEventHandler> logger) : EventHandlerBase<OrderProcessedEvent>
 {
     public override Task Handle(IEventContext<OrderProcessedEvent> eventContext, CancellationToken cancellationToken)
     {

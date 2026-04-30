@@ -52,7 +52,7 @@ public class DeadLetterTrackingRegistrationExtensionsTests
                 .FirstOrDefault();
 
             Assert.NotNull(settings);
-            Assert.Equal("order-placed", settings.TopicOrExchangeName);
+            Assert.Equal("order-placed", settings.TopicName);
             Assert.Equal("notification-handler", settings.SubscriptionName);
             Assert.Equal("primary", settings.ProviderName);
         }
@@ -110,14 +110,14 @@ public class DeadLetterTrackingRegistrationExtensionsTests
 
     private sealed class StubEventHandlerBuilder<TEvent>(
         IServiceCollection services,
-        string topicOrExchangeName,
+        string topicName,
         string subscriptionName,
         string providerName) : IEventHandlerBuilder<TEvent>
         where TEvent : class
     {
         public IServiceCollection Services => services;
         public IConfiguration Configuration => new ConfigurationBuilder().Build();
-        public string TopicName => topicOrExchangeName;
+        public string TopicName => topicName;
         public string SubscriptionName => subscriptionName;
         public string ProviderName => providerName;
     }

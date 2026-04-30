@@ -1,25 +1,10 @@
 using FastEndpoints;
-using Flowly.DeadLetters.DatabaseModel;
-using Flowly.DeadLetters.Services;
+using Flowly.DeadLetters;
 
 namespace Api.Endpoints;
 
-class GetDeadLettersEndpoint(IDeadLetterService deadLetterService) : Endpoint<GetDeadLettersEndpoint.GetDeadLettersRequest, PagedResult<GetDeadLettersEndpoint.DeadLetterDto>>
+internal class GetDeadLettersEndpoint(IDeadLetterService deadLetterService) : Endpoint<GetDeadLettersEndpoint.GetDeadLettersRequest, PagedResult<GetDeadLettersEndpoint.DeadLetterDto>>
 {
-    internal record DeadLetterDto(
-        string MessageId,
-        string QueueName,
-        string MessageBody,
-        string MessageProperties,
-        DateTimeOffset DeadLetteredAt,
-        string? DeadLetterReason,
-        string? DeadLetterErrorDescription,
-        string Status,
-        DateTimeOffset? RequeuedAt,
-        string? RequeuedBy);
-    
-    internal record GetDeadLettersRequest(int Page = 1, int PageSize = 20, string? Status = null);
-
     public override void Configure()
     {
         Get("/api/dead-letters");
@@ -32,13 +17,13 @@ class GetDeadLettersEndpoint(IDeadLetterService deadLetterService) : Endpoint<Ge
 
         var query = allDeadLetters.AsEnumerable();
 
-        if (req.Status is not null && Enum.TryParse<DeadLetterStatus>(req.Status, ignoreCase: true, out var parsedStatus))
+        if (req.Status is not null && Enum.TryParse<DeadLetterStatus>(req.Status, true, out var parsedStatus))
             query = query.Where(d => d.Status == parsedStatus);
 
         var totalCount = query.Count();
 
-        int page = req.Page > 0 ? req.Page : 1;
-        int pageSize = req.PageSize > 0 ? req.PageSize : 20;
+        var page = req.Page > 0 ? req.Page : 1;
+        var pageSize = req.PageSize > 0 ? req.PageSize : 20;
 
         var items = query
             .OrderByDescending(d => d.DeadLetteredAt)
@@ -59,4 +44,18 @@ class GetDeadLettersEndpoint(IDeadLetterService deadLetterService) : Endpoint<Ge
 
         await Send.OkAsync(new PagedResult<DeadLetterDto>(items, totalCount, page, pageSize), ct);
     }
+
+    internal record DeadLetterDto(
+        string MessageId,
+        string QueueName,
+        string MessageBody,
+        string MessageProperties,
+        DateTimeOffset DeadLetteredAt,
+        string? DeadLetterReason,
+        string? DeadLetterErrorDescription,
+        string Status,
+        DateTimeOffset? RequeuedAt,
+        string? RequeuedBy);
+
+    internal record GetDeadLettersRequest(int Page = 1, int PageSize = 20, string? Status = null);
 }

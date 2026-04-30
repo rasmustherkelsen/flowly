@@ -1,6 +1,5 @@
 using Flowly.DeadLetters.DatabaseModel;
 using Flowly.DeadLetters.Telemetry;
-using Flowly.MessageInfrastructure.Registration;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 

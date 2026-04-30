@@ -1,26 +1,26 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <PackageId>Flowly.RabbitMQ</PackageId>
-    <Description>RabbitMQ transport for Flowly.</Description>
-  </PropertyGroup>
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <PackageId>Flowly.RabbitMQ</PackageId>
+        <Description>RabbitMQ transport for Flowly.</Description>
+    </PropertyGroup>
 
-  <ItemGroup>
-    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
-      <_Parameter1>Flowly.RabbitMQ.Tests</_Parameter1>
-    </AssemblyAttribute>
-  </ItemGroup>
+    <ItemGroup>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>Flowly.RabbitMQ.Tests</_Parameter1>
+        </AssemblyAttribute>
+    </ItemGroup>
 
-  <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="10.0.5" />
-    <PackageReference Include="RabbitMQ.Client" Version="7.2.1" />
-  </ItemGroup>
+    <ItemGroup>
+        <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="10.0.7"/>
+        <PackageReference Include="RabbitMQ.Client" Version="7.2.1"/>
+    </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\Flowly\Flowly.csproj" />
-  </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="..\Flowly\Flowly.csproj"/>
+    </ItemGroup>
 
 </Project>

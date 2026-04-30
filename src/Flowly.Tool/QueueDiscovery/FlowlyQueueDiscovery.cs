@@ -9,12 +9,9 @@ internal sealed class FlowlyQueueDiscovery
     public FlowlyQueueDiscoveryResult DiscoverQueues(string assemblyPath, string? configurationType, string? workingDirectory, string? providerName = null)
     {
         var fullAssemblyPath = Path.GetFullPath(assemblyPath);
-        if (!File.Exists(fullAssemblyPath))
-        {
-            throw new FileNotFoundException($"Assembly was not found: {fullAssemblyPath}");
-        }
+        if (!File.Exists(fullAssemblyPath)) throw new FileNotFoundException($"Assembly was not found: {fullAssemblyPath}");
 
-        var loadContext = new AssemblyLoadContext($"flowly-discovery-{Guid.NewGuid():N}", isCollectible: true);
+        var loadContext = new AssemblyLoadContext($"flowly-discovery-{Guid.NewGuid():N}", true);
         loadContext.Resolving += (_, assemblyName) =>
         {
             var candidatePath = Path.Combine(Path.GetDirectoryName(fullAssemblyPath)!, $"{assemblyName.Name}.dll");
@@ -35,13 +32,22 @@ internal sealed class FlowlyQueueDiscovery
                 if (!IsFlowlyReferenced(fullAssemblyPath))
                     throw;
 
-                var effectiveWorkingDirectory = workingDirectory ?? Path.GetDirectoryName(fullAssemblyPath)!;
-                var (queues, events) = HostBasedQueueDiscovery.Discover(fullAssemblyPath, effectiveWorkingDirectory);
+                var (queues, events) = HostBasedQueueDiscovery.Discover(fullAssemblyPath, workingDirectory ?? Path.GetDirectoryName(fullAssemblyPath)!);
                 return new FlowlyQueueDiscoveryResult("(inline configuration)", queues, events);
             }
 
-            var (queueDefinitions, eventDefinitions) = BuildAndExtractQueues(configuration, workingDirectory ?? Path.GetDirectoryName(fullAssemblyPath)!, providerName);
-            return new FlowlyQueueDiscoveryResult(configuration.FullName ?? configuration.Name, queueDefinitions, eventDefinitions);
+            var effectiveWorkingDirectory = workingDirectory ?? Path.GetDirectoryName(fullAssemblyPath)!;
+
+            try
+            {
+                var (queueDefinitions, eventDefinitions) = BuildAndExtractQueues(configuration, effectiveWorkingDirectory, providerName);
+                return new FlowlyQueueDiscoveryResult(configuration.FullName ?? configuration.Name, queueDefinitions, eventDefinitions);
+            }
+            catch (Exception ex) when (IsAssemblyResolutionFailure(ex))
+            {
+                var (queues, events) = HostBasedQueueDiscovery.Discover(fullAssemblyPath, effectiveWorkingDirectory, providerName);
+                return new FlowlyQueueDiscoveryResult(configuration.FullName ?? configuration.Name, queues, events);
+            }
         }
         finally
         {
@@ -57,10 +63,8 @@ internal sealed class FlowlyQueueDiscovery
             .ToArray();
 
         if (candidates.Length == 0)
-        {
             throw new FlowlyConfigurationNotFoundException(
                 "No concrete type implementing IFlowlyConfiguration and deriving from FlowlyDesignTimeFactory was found in the assembly.");
-        }
 
         if (!string.IsNullOrWhiteSpace(configurationType))
         {
@@ -74,11 +78,9 @@ internal sealed class FlowlyQueueDiscovery
         }
 
         if (candidates.Length > 1)
-        {
             throw new InvalidOperationException(
                 "Multiple Flowly configuration types were found. Specify one using --configuration-type. " +
                 $"Available types: {string.Join(", ", candidates.Select(t => t.FullName ?? t.Name))}");
-        }
 
         return candidates[0];
     }
@@ -96,10 +98,7 @@ internal sealed class FlowlyQueueDiscovery
                 .Cast<Type>()
                 .ToArray();
 
-            if (loadableTypes.Length > 0)
-            {
-                return loadableTypes;
-            }
+            if (loadableTypes.Length > 0) return loadableTypes;
 
             var missingDependencies = ex.LoaderExceptions
                 .OfType<FileNotFoundException>()
@@ -132,21 +131,7 @@ internal sealed class FlowlyQueueDiscovery
         {
             Directory.SetCurrentDirectory(workingDirectory);
 
-            var instance = Activator.CreateInstance(configurationType)
-                ?? throw new InvalidOperationException($"Could not create an instance of '{configurationType.FullName}'.");
-
-            var createBuilderMethod = typeof(FlowlyDesignTimeFactory)
-                .GetMethods(BindingFlags.Instance | BindingFlags.NonPublic)
-                .Single(m => m.Name == "CreateBuilder" && m.IsGenericMethodDefinition && m.GetParameters().Length == 0)
-                .MakeGenericMethod(configurationType);
-
-            var builder = createBuilderMethod.Invoke(instance, null) as IFlowlyBuilder
-                ?? throw new InvalidOperationException("Flowly builder creation failed.");
-
-            var manifests = builder.Services
-                .Where(sd => sd.ImplementationInstance is ProviderQueueManifest)
-                .Select(sd => (ProviderQueueManifest)sd.ImplementationInstance!)
-                .ToArray();
+            var manifests = FlowlyDesignTimeFactory.DiscoverQueues(configurationType).ToArray();
 
             var selectedManifests = providerNameFilter is null
                 ? manifests.Where(m => m.IsPrimary).ToArray()
@@ -174,14 +159,14 @@ internal sealed class FlowlyQueueDiscovery
 
             var events = selectedManifests
                 .SelectMany(m => m.Events.Select(e => new QueueDiscoveryEvent(
-                    e.TopicOrExchangeName,
-                    e.SubscriptionName,
+                    e.TopicName,
+                    e.SubscriptionName!,
                     m.ProviderName,
                     e.DefaultMessageTimeToLive ?? TimeSpan.FromDays(1),
                     e.DeadLetterOnMessageExpiration ?? true)))
-                .GroupBy(e => $"{e.TopicOrExchangeName.ToLowerInvariant()}|{e.SubscriptionName.ToLowerInvariant()}")
+                .GroupBy(e => $"{e.TopicName.ToLowerInvariant()}|{e.SubscriptionName.ToLowerInvariant()}")
                 .Select(g => g.First())
-                .OrderBy(e => e.TopicOrExchangeName, StringComparer.OrdinalIgnoreCase)
+                .OrderBy(e => e.TopicName, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(e => e.SubscriptionName, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
@@ -195,4 +180,8 @@ internal sealed class FlowlyQueueDiscovery
 
     private static bool IsFlowlyReferenced(string assemblyPath) =>
         File.Exists(Path.Combine(Path.GetDirectoryName(assemblyPath)!, "Flowly.dll"));
+
+    private static bool IsAssemblyResolutionFailure(Exception ex) =>
+        ex is FileNotFoundException or FileLoadException or BadImageFormatException ||
+        (ex.InnerException is FileNotFoundException or FileLoadException or BadImageFormatException);
 }

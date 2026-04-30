@@ -1,10 +1,9 @@
 using System.Diagnostics.Metrics;
-using Flowly.MessageInfrastructure.Registration;
 using Flowly.MessageInfrastructure.Telemetry;
 
 namespace Flowly.Jobs.Telemetry;
 
-public sealed class JobStateGaugeMetrics : IDisposable
+internal sealed class JobStateGaugeMetrics : IDisposable
 {
     private readonly Meter? _meter;
     private long _failedCount;

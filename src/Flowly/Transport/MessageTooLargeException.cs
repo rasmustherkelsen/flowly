@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace Flowly.Transport;
 
 /// <summary>
@@ -8,11 +10,11 @@ public class MessageTooLargeException : Exception
     /// <summary>
     ///     Exception thrown when a message exceeds the configured maximum size for a queue.
     /// </summary>
-    /// <param name="queueName"></param>
-    /// <param name="actualSizeBytes"></param>
-    /// <param name="maxSizeBytes"></param>
+    /// <param name="queueName">The name of the queue for which the message was too large.</param>
+    /// <param name="actualSizeBytes">The actual size of the message in bytes.</param>
+    /// <param name="maxSizeBytes">The configured maximum size for messages on the queue, in bytes.</param>
     public MessageTooLargeException(string queueName, long actualSizeBytes, long maxSizeBytes)
-        : base($"Message for queue '{queueName}' is {actualSizeBytes:N0} bytes, which exceeds the configured limit of {maxSizeBytes:N0} bytes.")
+        : base(FormattableString.Invariant($"Message for queue '{queueName}' is {actualSizeBytes:N0} bytes, which exceeds the configured limit of {maxSizeBytes:N0} bytes."))
     {
         QueueName = queueName;
         ActualSizeBytes = actualSizeBytes;

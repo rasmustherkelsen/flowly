@@ -1,4 +1,4 @@
-using Flowly.MessageInfrastructure.Receivers;
+using Flowly;
 
 namespace Messages;
 

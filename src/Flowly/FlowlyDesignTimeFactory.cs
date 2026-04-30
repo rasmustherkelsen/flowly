@@ -7,36 +7,28 @@ using Microsoft.Extensions.Primitives;
 
 namespace Flowly;
 
+/// <summary>
+///     Provides a base class for design-time discovery of queues and events defined in a Flowly configuration. This is
+///     used by the command-line tool to discover queues and events without needing to run the full application.
+///     Implementations should inherit from this class and provide a parameterless constructor, as well as implement
+///     IFlowlyConfiguration to define the Flowly setup. The DiscoverQueues method can then be used to retrieve the list of
+///     queues and events defined in the configuration for use in tooling scenarios.
+/// </summary>
 public abstract class FlowlyDesignTimeFactory
 {
-    private IFlowlyBuilder CreateBuilder()
-    {
-        var configuration = new ConfigurationBuilder()
-            .SetBasePath(Directory.GetCurrentDirectory())
-            .AddJsonFile("appsettings.json", true)
-            .AddJsonFile($"appsettings.{Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Development"}.json", true)
-            .AddEnvironmentVariables()
-            .Build();
-
-        var services = new ServiceCollection();
-        services.AddSingleton<IConfiguration>(configuration);
-
-        return new FlowlyBuilder(services, configuration);
-    }
-
-    protected IFlowlyBuilder CreateBuilder<TFlowlyConfiguration>() where TFlowlyConfiguration : IFlowlyConfiguration, new()
-    {
-        var builder = CreateBuilder();
-        var module = new TFlowlyConfiguration();
-        module.Configure(builder);
-        return builder;
-    }
-
-    public static IReadOnlyList<ProviderQueueManifest> DiscoverQueues<TConfig>() where TConfig : FlowlyDesignTimeFactory, IFlowlyConfiguration, new()
-    {
-        return DiscoverQueues(typeof(TConfig));
-    }
-
+    /// <summary>
+    ///     Discovers queues and events defined in the specified Flowly configuration type. This method creates a temporary
+    ///     service collection, registers the necessary Flowly services, and invokes the Configure method of the provided
+    ///     configuration type to populate the service collection with queue and event definitions. It then extracts and
+    ///     returns the list of ProviderQueueManifest instances registered in the service collection, which represent the
+    ///     discovered queues and events. This method is intended for design-time use by tooling to discover topology without
+    ///     running the full application.
+    /// </summary>
+    /// <param name="configType">
+    ///     The type of the Flowly configuration class that implements IFlowlyConfiguration and has a
+    ///     parameterless constructor.
+    /// </param>
+    /// <returns>List of ProviderQueueManifest instances</returns>
     public static IReadOnlyList<ProviderQueueManifest> DiscoverQueues(Type configType)
     {
         var services = new ServiceCollection();

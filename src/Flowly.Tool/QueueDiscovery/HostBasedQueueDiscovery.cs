@@ -138,7 +138,7 @@ internal static class HostBasedQueueDiscovery
 
         return filtered
             .GroupBy(
-                e => $"{e.TopicOrExchangeName.ToLowerInvariant()}|{e.SubscriptionName.ToLowerInvariant()}",
+                e => $"{e.TopicName.ToLowerInvariant()}|{e.SubscriptionName.ToLowerInvariant()}",
                 StringComparer.OrdinalIgnoreCase)
             .Select(group =>
             {
@@ -147,23 +147,23 @@ internal static class HostBasedQueueDiscovery
                 var defaultMessageTimeToLive = ResolveConsistentValue(
                     group.Select(e => e.DefaultMessageTimeToLive is not null ? TimeSpan.Parse(e.DefaultMessageTimeToLive) : (TimeSpan?)null),
                     DefaultMessageTimeToLive,
-                    first.TopicOrExchangeName,
+                    first.TopicName,
                     nameof(HostDiscoveredEvent.DefaultMessageTimeToLive));
 
                 var deadLetterOnMessageExpiration = ResolveConsistentValue(
                     group.Select(e => e.DeadLetterOnMessageExpiration),
                     DefaultDeadLetterOnMessageExpiration,
-                    first.TopicOrExchangeName,
+                    first.TopicName,
                     nameof(HostDiscoveredEvent.DeadLetterOnMessageExpiration));
 
                 return new QueueDiscoveryEvent(
-                    first.TopicOrExchangeName,
+                    first.TopicName,
                     first.SubscriptionName,
                     first.ProviderName,
                     defaultMessageTimeToLive,
                     deadLetterOnMessageExpiration);
             })
-            .OrderBy(e => e.TopicOrExchangeName, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(e => e.TopicName, StringComparer.OrdinalIgnoreCase)
             .ThenBy(e => e.SubscriptionName, StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
@@ -200,7 +200,7 @@ internal static class HostBasedQueueDiscovery
         string? LockDuration);
 
     private sealed record HostDiscoveredEvent(
-        string TopicOrExchangeName,
+        string TopicName,
         string SubscriptionName,
         string ProviderName,
         bool IsPrimary,

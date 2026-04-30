@@ -14,7 +14,7 @@ internal static class AzureServiceBusOutputGenerator
     public static string CreateEmulatorConfigJson(string @namespace, IReadOnlyList<QueueDiscoveryQueue> queueDefinitions, IReadOnlyList<QueueDiscoveryEvent> eventDefinitions)
     {
         var topicGroups = eventDefinitions
-            .GroupBy(e => e.TopicOrExchangeName, StringComparer.OrdinalIgnoreCase)
+            .GroupBy(e => e.TopicName, StringComparer.OrdinalIgnoreCase)
             .Select(g => CreateEmulatorTopic(g.Key, g.ToList()))
             .ToArray();
 
@@ -78,7 +78,7 @@ internal static class AzureServiceBusOutputGenerator
             sb.AppendLine();
         }
 
-        foreach (var topicGroup in eventDefinitions.GroupBy(e => e.TopicOrExchangeName, StringComparer.OrdinalIgnoreCase))
+        foreach (var topicGroup in eventDefinitions.GroupBy(e => e.TopicName, StringComparer.OrdinalIgnoreCase))
         {
             var topicName = topicGroup.Key;
             var firstEvent = topicGroup.First();
@@ -129,7 +129,7 @@ internal static class AzureServiceBusOutputGenerator
 
         foreach (var queueName in queueNames) sb.AppendLine($"var {ToQueueVariableName(queueName)} = {namespaceVariableName}.AddServiceBusQueue(\"{queueName}\");");
 
-        foreach (var topicGroup in eventDefinitions.GroupBy(e => e.TopicOrExchangeName, StringComparer.OrdinalIgnoreCase))
+        foreach (var topicGroup in eventDefinitions.GroupBy(e => e.TopicName, StringComparer.OrdinalIgnoreCase))
         {
             sb.AppendLine();
             var topicName = topicGroup.Key;

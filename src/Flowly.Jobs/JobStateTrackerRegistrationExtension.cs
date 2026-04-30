@@ -6,18 +6,26 @@ using Flowly.Jobs.Repositories;
 using Flowly.Jobs.Senders;
 using Flowly.Jobs.Services;
 using Flowly.Jobs.Telemetry;
-using Flowly.MessageInfrastructure.Registration;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Flowly;
+namespace Flowly.Jobs;
 
+/// <summary>
+///     Provides extension methods for registering the job state tracking infrastructure in the Flowly framework.
+/// </summary>
 public static class JobStateTrackerRegistrationExtension
 {
     /// <summary>
-    /// Add job state tracking to the application instance.
-    /// Call this before registering a database provider (e.g., AddSqlServerJobStateTracking).
+    ///     Registers the core job state tracking services, background services, and internal message handlers. Must be
+    ///     called before registering a database-specific provider (e.g. <c>AddSqlServerJobStateTracking</c> or
+    ///     <c>AddPostgresJobStateTracking</c>), which supplies the EF Core context and repository implementations
+    ///     required by the tracking infrastructure. Calling this method also registers the recurring job scheduler
+    ///     background service and the job maintenance service that cleans up completed and failed jobs according to
+    ///     <see cref="JobStateTrackingOptions" />.
     /// </summary>
+    /// <param name="flowlyBuilder">The Flowly builder to register job state tracking with.</param>
+    /// <returns>The same <see cref="IFlowlyBuilder" /> instance for further configuration.</returns>
     public static IFlowlyBuilder AddJobStateTracking(this IFlowlyBuilder flowlyBuilder)
     {
         flowlyBuilder.Services.AddOptions<JobStateTrackingOptions>();
@@ -33,7 +41,7 @@ public static class JobStateTrackerRegistrationExtension
     }
 
     /// <summary>
-    /// This is the main infrastructure for handling the jobs in Flowly.
+    ///     This is the main infrastructure for handling the jobs in Flowly.
     /// </summary>
     private static IFlowlyBuilder RegisterJobStateQueueProcessor(this IFlowlyBuilder flowlyBuilder)
     {

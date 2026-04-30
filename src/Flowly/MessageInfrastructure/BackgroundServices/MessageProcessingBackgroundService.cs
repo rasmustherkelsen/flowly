@@ -9,19 +9,34 @@ using Microsoft.Extensions.Logging;
 
 namespace Flowly.MessageInfrastructure.BackgroundServices;
 
-internal sealed class MessageProcessingBackgroundService<TMessage>(
+/// <summary>
+///     Hosted service that drives the message processing pipeline for a single queue and message type. At startup it
+///     creates an <see cref="IMessageBusProcessor{TMessage}" /> via
+///     <see cref="IMessageBusClient.CreateProcessor{TMessage}" />,
+///     subscribes to its events, and starts processing. On shutdown it gracefully stops and disposes the processor.
+///     One instance is registered per <see cref="MessageHandler{TMessage}" /> registration.
+/// </summary>
+/// <typeparam name="TMessage">The message type this service processes.</typeparam>
+public sealed class MessageProcessingBackgroundService<TMessage>(
     IMessageBusClientRegistry clientRegistry,
     IServiceScopeFactory serviceScopeFactory,
     IHandlerSettings<TMessage> handlerSettings,
     ILogger<MessageProcessingBackgroundService<TMessage>> logger,
     IHandlerInstrumentation handlerInstrumentation,
-    IMessageHandlingStrategy<TMessage> strategy) : BackgroundService
+    IMessageHandlingStrategy<TMessage> strategy) : MessageProcessingBackgroundServiceBase<TMessage>
     where TMessage : class
 {
     private readonly ILogger _logger = logger;
     private IMessageBusProcessor<TMessage>? _messageBusProcessor;
     private string _messagingSystem = string.Empty;
 
+    /// <summary>
+    ///     Creates the <see cref="IMessageBusProcessor{TMessage}" /> for the registered queue, wires up the
+    ///     <see cref="IMessageBusProcessor{TMessage}.ProcessMessage" /> and
+    ///     <see cref="IMessageBusProcessor{TMessage}.ProcessError" /> events, and starts processing. Runs until
+    ///     <paramref name="stoppingToken" /> is cancelled.
+    /// </summary>
+    /// <param name="stoppingToken">Triggered when the hosted service is stopping.</param>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var client = clientRegistry.GetClient(handlerSettings.ProviderName);
@@ -111,6 +126,11 @@ internal sealed class MessageProcessingBackgroundService<TMessage>(
         await strategy.OnMessageHandlingError(_logger, scope.ServiceProvider, errorDetails);
     }
 
+    /// <summary>
+    ///     Gracefully stops and disposes the underlying <see cref="IMessageBusProcessor{TMessage}" /> before
+    ///     delegating to the base <see cref="BackgroundService.StopAsync" />.
+    /// </summary>
+    /// <param name="cancellationToken">A cancellation token that limits the time allowed for graceful shutdown.</param>
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
         if (_messageBusProcessor != null)

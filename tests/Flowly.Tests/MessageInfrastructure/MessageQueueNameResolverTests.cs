@@ -1,7 +1,7 @@
 using Flowly.MessageInfrastructure;
 using Flowly.MessageInfrastructure.Receivers;
 
-namespace Flowly.Tests;
+namespace Flowly.Tests.MessageInfrastructure;
 
 public class MessageQueueNameResolverTests
 {

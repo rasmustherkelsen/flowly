@@ -1,7 +1,6 @@
 using Flowly.Jobs.DatabaseModel;
 using Flowly.Jobs.Model;
 using Flowly.Jobs.Telemetry;
-using Flowly.MessageInfrastructure.Registration;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 

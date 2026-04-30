@@ -21,24 +21,24 @@ internal class EventSubmitter<TEvent>(
                 $"The client must implement {nameof(IEventCapableMessageBusClient)}.");
 
         var messageId = Guid.NewGuid().ToString();
-        using var activity = publisherInstrumentation.StartRaising(topicSettings.TopicOrExchangeName, client.MessagingSystem, messageId);
+        using var activity = publisherInstrumentation.StartRaising(topicSettings.TopicName, client.MessagingSystem, messageId);
 
         try
         {
-            var publisher = await eventCapableClient.CreateEventPublisher(topicSettings.TopicOrExchangeName);
+            var publisher = await eventCapableClient.CreateEventPublisher(topicSettings.TopicName);
             await publisher.SendMessage(@event, new MessageProperties(messageId, string.Empty), cancellationToken);
-            publisherInstrumentation.RecordRaised(topicSettings.TopicOrExchangeName, sw.Elapsed.TotalMilliseconds);
+            publisherInstrumentation.RecordRaised(topicSettings.TopicName, sw.Elapsed.TotalMilliseconds);
         }
         catch
         {
-            publisherInstrumentation.RecordFailed(topicSettings.TopicOrExchangeName);
+            publisherInstrumentation.RecordFailed(topicSettings.TopicName);
             throw;
         }
     }
 
-    internal class TopicSettings(string topicOrExchangeName, string providerName)
+    internal class TopicSettings(string topicName, string providerName)
     {
-        public string TopicOrExchangeName { get; } = topicOrExchangeName;
+        public string TopicName { get; } = topicName;
         public string ProviderName { get; } = providerName;
     }
 }

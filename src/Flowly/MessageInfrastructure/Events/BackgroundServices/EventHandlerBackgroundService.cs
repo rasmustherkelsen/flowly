@@ -33,7 +33,7 @@ internal class EventHandlerBackgroundService<TEvent, THandler>(
         _messagingSystem = client.MessagingSystem;
 
         _processor = await eventCapableClient.CreateEventProcessor<TEvent>(
-            settings.TopicOrExchangeName,
+            settings.TopicName,
             settings.SubscriptionName,
             new MessageBusProcessorOptions(settings.MaxConcurrentCalls, MessageBusReceiveMode.PeekLock));
 
@@ -44,19 +44,19 @@ internal class EventHandlerBackgroundService<TEvent, THandler>(
 
         logger.LogInformation(
             "{HandlerName} waiting for events on '{Topic}' (subscription: '{Subscription}')",
-            settings.HandlerName, settings.TopicOrExchangeName, settings.SubscriptionName);
+            settings.HandlerName, settings.TopicName, settings.SubscriptionName);
     }
 
     private async Task OnProcessMessage(IReceivedMessage<TEvent> receivedMessage, CancellationToken cancellationToken)
     {
-        instrumentation.RecordReceived(settings.HandlerName, settings.TopicOrExchangeName);
+        instrumentation.RecordReceived(settings.HandlerName, settings.TopicName);
         var sw = Stopwatch.StartNew();
         var parentContext = ParseParentContext(receivedMessage.Properties);
-        using var activity = instrumentation.StartHandling(settings.HandlerName, settings.TopicOrExchangeName, _messagingSystem, receivedMessage.Properties, parentContext);
+        using var activity = instrumentation.StartHandling(settings.HandlerName, settings.TopicName, _messagingSystem, receivedMessage.Properties, parentContext);
 
         if (IsBodyCorrupt(receivedMessage, out var deserializationException))
         {
-            instrumentation.RecordFailed(settings.HandlerName, settings.TopicOrExchangeName);
+            instrumentation.RecordFailed(settings.HandlerName, settings.TopicName);
             logger.LogError(deserializationException, "{HandlerName} event body deserialization failed, dead-lettering poison message", settings.HandlerName);
             await receivedMessage.DeadLetter($"Deserialization failed: {deserializationException!.Message}", cancellationToken);
             return;
@@ -83,7 +83,7 @@ internal class EventHandlerBackgroundService<TEvent, THandler>(
 
         if (handlingException == null)
         {
-            instrumentation.RecordSucceeded(settings.HandlerName, settings.TopicOrExchangeName, sw.Elapsed.TotalMilliseconds);
+            instrumentation.RecordSucceeded(settings.HandlerName, settings.TopicName, sw.Elapsed.TotalMilliseconds);
             logger.LogInformation("{HandlerName} handled event", settings.HandlerName);
             await receivedMessage.Complete(cancellationToken);
             return;
@@ -93,13 +93,13 @@ internal class EventHandlerBackgroundService<TEvent, THandler>(
         if (currentRetry < settings.MaxRetries)
         {
             await RepublishForRetry(receivedMessage, currentRetry + 1, cancellationToken);
-            instrumentation.RecordRetried(settings.HandlerName, settings.TopicOrExchangeName);
+            instrumentation.RecordRetried(settings.HandlerName, settings.TopicName);
             logger.LogWarning("{HandlerName} event handling failed, retrying (attempt {Next}/{Max})", settings.HandlerName, currentRetry + 1, settings.MaxRetries);
             await receivedMessage.Complete(cancellationToken);
             return;
         }
 
-        instrumentation.RecordFailed(settings.HandlerName, settings.TopicOrExchangeName);
+        instrumentation.RecordFailed(settings.HandlerName, settings.TopicName);
         await receivedMessage.DeadLetter(handlingException.Message, cancellationToken);
         logger.LogError(handlingException, "{HandlerName} event handling failed after {MaxRetries} retries, dead-lettered", settings.HandlerName, settings.MaxRetries);
     }
@@ -110,7 +110,7 @@ internal class EventHandlerBackgroundService<TEvent, THandler>(
         var eventCapableClient = (IEventCapableMessageBusClient)client;
         var scheduledTime = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(settings.RetryDelaySeconds);
         var props = receivedMessage.Properties with { RetryCount = retryCount, ScheduledEnqueueTime = scheduledTime };
-        var sender = await eventCapableClient.CreateEventRetrySender(settings.TopicOrExchangeName, settings.SubscriptionName);
+        var sender = await eventCapableClient.CreateEventRetrySender(settings.TopicName, settings.SubscriptionName);
         await sender.SendMessage(receivedMessage.Body, props, cancellationToken);
     }
 

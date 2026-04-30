@@ -1,12 +1,10 @@
 using FastEndpoints;
-using Flowly.DeadLetters.Services;
+using Flowly.DeadLetters;
 
 namespace Api.Endpoints;
 
-class DeleteDeadLetterEndpoint(IDeadLetterService deadLetterService) : Endpoint<DeleteDeadLetterEndpoint.DeleteDeadLetterRequest>
+internal class DeleteDeadLetterEndpoint(IDeadLetterService deadLetterService) : Endpoint<DeleteDeadLetterEndpoint.DeleteDeadLetterRequest>
 {
-    internal record DeleteDeadLetterRequest(string MessageId);
-
     public override void Configure()
     {
         Delete("/api/dead-letters/{messageId}/discard");
@@ -29,4 +27,6 @@ class DeleteDeadLetterEndpoint(IDeadLetterService deadLetterService) : Endpoint<
             await HttpContext.Response.SendAsync(new { error = ex.Message }, 409, cancellation: ct);
         }
     }
+
+    internal record DeleteDeadLetterRequest(string MessageId);
 }

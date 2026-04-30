@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 
 namespace Flowly.MessageInfrastructure.Events;
 
-public static class EventNameResolver
+internal static class EventNameResolver
 {
     public static string Resolve<TEvent>()
     {

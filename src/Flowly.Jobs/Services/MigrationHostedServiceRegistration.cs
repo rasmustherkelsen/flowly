@@ -5,7 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Flowly.Jobs.Services;
 
 [ExcludeFromCodeCoverage]
-public static class MigrationHostedServiceRegistration
+internal static class MigrationHostedServiceRegistration
 {
     public static IServiceCollection AddJobHandlerStateDatabaseMigrations(this IServiceCollection services)
     {

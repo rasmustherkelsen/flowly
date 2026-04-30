@@ -4,8 +4,19 @@ using Microsoft.Extensions.Hosting;
 
 namespace Flowly.Services;
 
+/// <summary>
+///     Exposes constants used by the design-time queue discovery mechanism. When the
+///     <see cref="OutputFileEnvVar" /> environment variable is set, the Flowly CLI tool starts the application in a
+///     headless mode that writes a JSON discovery manifest to the specified path and immediately exits — without
+///     connecting to any message broker.
+/// </summary>
 public static class CommandLineParserHostedServiceDefinitions
 {
+    /// <summary>
+    ///     The name of the environment variable (<c>FLOWLY_DISCOVER_QUEUES_OUTPUT</c>) that, when set to a file path,
+    ///     causes the application to write a queue discovery manifest to that path and exit. Used exclusively by the
+    ///     <c>flowly</c> CLI tool.
+    /// </summary>
     public const string OutputFileEnvVar = "FLOWLY_DISCOVER_QUEUES_OUTPUT";
 }
 
@@ -29,8 +40,8 @@ internal class CommandLineParserHostedService(IEnumerable<ProviderQueueManifest>
 
         var eventEntries = manifests
             .SelectMany(m => m.Events.Select(e => new EventDiscoveryEntry(
-                e.TopicOrExchangeName,
-                e.SubscriptionName,
+                e.TopicName,
+                e.SubscriptionName!,
                 m.ProviderName,
                 m.IsPrimary,
                 e.DefaultMessageTimeToLive?.ToString("c"),
@@ -69,7 +80,7 @@ internal class CommandLineParserHostedService(IEnumerable<ProviderQueueManifest>
         string? LockDuration);
 
     private sealed record EventDiscoveryEntry(
-        string TopicOrExchangeName,
+        string TopicName,
         string SubscriptionName,
         string ProviderName,
         bool IsPrimary,

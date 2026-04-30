@@ -12,14 +12,31 @@ using Microsoft.Extensions.Hosting;
 
 namespace Flowly;
 
+/// <summary>
+/// Provides extension methods for registering Flowly services and configurations in the dependency injection container.
+/// </summary>
 public static class AddFlowlyExtension
 {
+    /// <summary>
+    /// Adds Flowly services and configurations to the dependency injection container. Requires an external configuration class.
+    /// </summary>
+    /// <param name="builder">A valid IHostApplicationBuilder instance</param>
+    /// <param name="configureOptions">Additional configuration options for Flowly</param>
+    /// <typeparam name="TFlowlyConfiguration">The type of the Flowly configuration</typeparam>
+    /// <returns>A IHostApplicationBuilder instance for further configuration</returns>
     public static IHostApplicationBuilder AddFlowly<TFlowlyConfiguration>(this IHostApplicationBuilder builder, Action<FlowlyOptions>? configureOptions = null) where TFlowlyConfiguration : IFlowlyConfiguration, new()
     {
         Register(builder.Services, builder.Configuration, new TFlowlyConfiguration(), configureOptions);
         return builder;
     }
 
+    /// <summary>
+    /// Adds Flowly services and configurations to the dependency injection container using an inline configuration.
+    /// </summary>
+    /// <param name="builder">A valid IHostApplicationBuilder instance</param>
+    /// <param name="configureOptions">Additional configuration options for Flowly</param>
+    /// <param name="configure">Inline configuration action for Flowly</param>
+    /// <returns>A IHostApplicationBuilder instance for further configuration</returns>
     public static IHostApplicationBuilder AddFlowly(
         this IHostApplicationBuilder builder,
         Action<FlowlyOptions>? configureOptions,
@@ -29,6 +46,13 @@ public static class AddFlowlyExtension
         return builder;
     }
 
+    /// <summary>
+    /// Adds Flowly services and configurations to the dependency injection container by scanning for an implementation of IFlowlyConfiguration in the entry assembly. Throws an exception if multiple or no implementations are found.
+    /// </summary>
+    /// <param name="builder">A valid IHostApplicationBuilder instance</param>
+    /// <param name="configureOptions">Additional configuration options for Flowly</param>
+    /// <returns>A IHostApplicationBuilder instance for further configuration</returns>
+    /// <exception cref="InvalidOperationException">Thrown if no or multiple IFlowlyConfiguration implementations are found in the entry assembly</exception>
     public static IHostApplicationBuilder AddFlowly(this IHostApplicationBuilder builder, Action<FlowlyOptions>? configureOptions = null)
     {
         var assembly = Assembly.GetEntryAssembly() ?? throw new InvalidOperationException("Could not determine the entry assembly.");

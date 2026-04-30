@@ -31,7 +31,7 @@ internal class EventSubscriptionDeadLetterIngestionBackgroundService(
                         $"The message bus client for provider '{settings.ProviderName}' does not support events.");
 
                 await using var receiver = await eventCapableClient.CreateEventSubscriptionDeadLetterReceiver(
-                    settings.TopicOrExchangeName,
+                    settings.TopicName,
                     settings.SubscriptionName);
 
                 while (!stoppingToken.IsCancellationRequested)
@@ -73,7 +73,7 @@ internal class EventSubscriptionDeadLetterIngestionBackgroundService(
 
             await repository.SaveBatchForSubscription(
                 messages,
-                settings.TopicOrExchangeName,
+                settings.TopicName,
                 settings.SubscriptionName,
                 cancellationToken);
 

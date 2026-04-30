@@ -542,6 +542,8 @@ The `Flowly.AzureServiceBus.Aspire` NuGet package provides AppHost extension met
 <ProjectReference Include="..." IsAspireProjectResource="false" />
 ```
 
+> **Important:** Every service project that calls `AddFlowly` in its AppHost must use the class-based configuration pattern — a class that inherits `FlowlyDesignTimeFactory` **and** implements `IFlowlyConfiguration`. Inline `AddFlowly(options, configure => ...)` configurations are not supported; `AddFlowly` on the AppHost side discovers topology by scanning the project assembly via reflection, and a lambda has no discoverable identity. Attempting to call `azureServiceBus.AddFlowly(project)` for a project without a design-time factory class throws `InvalidOperationException` at AppHost startup.
+
 Usage in `Program.cs`:
 
 ```csharp
@@ -549,29 +551,15 @@ using Flowly.AzureServiceBus.Aspire;
 
 var azureServiceBus = builder.AddAzureServiceBus("EmulatorNamespace").RunAsEmulator(...);
 
-// Project with class-based configuration (FlowlyDesignTimeFactory) — auto-discovery
 var backendProcessor = builder.AddProject<Projects.BackendProcessor>("BackendProcessor");
-azureServiceBus.AddFlowly(backendProcessor);  // discovers queues and events from the project
+azureServiceBus.AddFlowly(backendProcessor);  // discovers queues and events via FlowlyDesignTimeFactory
 
 backendProcessor
     .WithReference(azureServiceBus)
     .WaitFor(azureServiceBus);
-
-// Project with inline AddFlowly() configuration — no FlowlyDesignTimeFactory to discover
-var backendFinanceProcessor = builder.AddProject<Projects.BackendFinanceProcessor>("BackendFinanceProcessor");
-azureServiceBus.AddFlowly(backendFinanceProcessor, topology =>
-    topology.AddEventSubscription<OrderProcessedEvent>("finance-order-processed-event-handler"));
-
-backendFinanceProcessor
-    .WithReference(azureServiceBus)
-    .WaitFor(azureServiceBus);
 ```
 
-Two overloads of `AddFlowly`:
-- `AddFlowly(project)` — loads the assembly via isolated `AssemblyLoadContext`, finds `FlowlyDesignTimeFactory` + `IFlowlyConfiguration`, and collects `DeferredQueueRegistration` and `DeferredEventRegistration` instances automatically.
-- `AddFlowly(project, topology => ...)` — explicit topology via `IFlowlyAspireTopologyBuilder`. Use when the project configures Flowly inline (no design-time factory). Supports `.AddQueue(name)` and `.AddEventSubscription<TEvent>(subscriptionName)`.
-
-Queue properties (lock duration, TTL, dead-lettering, session) are set on the emulator resources via `WithProperties`.
+`AddFlowly(project)` loads the project assembly via an isolated `AssemblyLoadContext`, finds the `FlowlyDesignTimeFactory` + `IFlowlyConfiguration` class, and collects `DeferredQueueRegistration` and `DeferredEventRegistration` instances automatically. Queue properties (lock duration, TTL, dead-lettering, session) are set on the emulator resources via `WithProperties`.
 
 For plain Docker Compose, use `Flowly.Tool` to generate `emulator-config.json` for the Azure Service Bus emulator container.
 

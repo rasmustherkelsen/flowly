@@ -1,12 +1,10 @@
 using FastEndpoints;
-using Flowly.DeadLetters.Services;
+using Flowly.DeadLetters;
 
 namespace Api.Endpoints;
 
-class RequeueDeadLetterEndpoint(IDeadLetterService deadLetterService) : Endpoint<RequeueDeadLetterEndpoint.RequeueDeadLetterRequest>
+internal class RequeueDeadLetterEndpoint(IDeadLetterService deadLetterService) : Endpoint<RequeueDeadLetterEndpoint.RequeueDeadLetterRequest>
 {
-    internal record RequeueDeadLetterRequest(string MessageId);
-
     public override void Configure()
     {
         Post("/api/dead-letters/{messageId}/requeue");
@@ -29,4 +27,6 @@ class RequeueDeadLetterEndpoint(IDeadLetterService deadLetterService) : Endpoint
             await HttpContext.Response.SendAsync(new { error = ex.Message }, 409, cancellation: ct);
         }
     }
+
+    internal record RequeueDeadLetterRequest(string MessageId);
 }

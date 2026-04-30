@@ -3,6 +3,12 @@ using System.Diagnostics.Metrics;
 
 namespace Flowly.MessageInfrastructure.Telemetry;
 
+/// <summary>
+///     Active implementation of <see cref="ISubmitterInstrumentation" /> that emits OTel metrics via
+///     <see cref="FlowlyInstrumentationConstants.MeterName" /> and traces via
+///     <see cref="FlowlyInstrumentationConstants.ActivitySourceName" />. Registered when
+///     <see cref="FlowlyOptions.EnableTelemetry" /> is <see langword="true" />.
+/// </summary>
 public sealed class SubmitterInstrumentation : ISubmitterInstrumentation, IDisposable
 {
     private readonly Meter _meter;
@@ -10,6 +16,9 @@ public sealed class SubmitterInstrumentation : ISubmitterInstrumentation, IDispo
     private readonly Counter<long> _failed;
     private readonly Histogram<double> _duration;
 
+    /// <summary>
+    ///     Initialises the OTel meter and creates all metric instruments.
+    /// </summary>
     public SubmitterInstrumentation()
     {
         _meter = new Meter(FlowlyInstrumentationConstants.MeterName);
@@ -18,8 +27,10 @@ public sealed class SubmitterInstrumentation : ISubmitterInstrumentation, IDispo
         _duration = _meter.CreateHistogram<double>(FlowlyInstrumentationConstants.SubmitterSendDuration, "ms");
     }
 
+    /// <inheritdoc />
     public bool IsEnabled => true;
 
+    /// <inheritdoc />
     public Activity? StartSending(string queueName, string messagingSystem, string messageId)
         => FlowlyInstrumentationConstants.ActivitySource.StartActivity(
             $"flowly.send {queueName}",
@@ -32,6 +43,7 @@ public sealed class SubmitterInstrumentation : ISubmitterInstrumentation, IDispo
                 new KeyValuePair<string, object?>(FlowlyInstrumentationConstants.MessagingMessageId, messageId),
             ]);
 
+    /// <inheritdoc />
     public void RecordSent(string queueName, double durationMs)
     {
         Activity.Current?.SetTag("outcome", "success");
@@ -42,6 +54,7 @@ public sealed class SubmitterInstrumentation : ISubmitterInstrumentation, IDispo
         _duration.Record(durationMs, tags);
     }
 
+    /// <inheritdoc />
     public void RecordFailed(string queueName)
     {
         Activity.Current?.SetStatus(ActivityStatusCode.Error);
@@ -50,5 +63,6 @@ public sealed class SubmitterInstrumentation : ISubmitterInstrumentation, IDispo
         _failed.Add(1, new TagList { { FlowlyInstrumentationConstants.MessagingDestinationName, queueName } });
     }
 
+    /// <summary>Disposes the underlying OTel <see cref="Meter" />.</summary>
     public void Dispose() => _meter.Dispose();
 }

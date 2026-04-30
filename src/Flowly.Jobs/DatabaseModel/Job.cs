@@ -5,14 +5,14 @@ using Microsoft.EntityFrameworkCore;
 namespace Flowly.Jobs.DatabaseModel;
 
 [PrimaryKey(nameof(JobIdentifier))]
-public class Job
+internal class Job
 {
     public required Guid JobIdentifier { get; init; }
 
     public long JobTypeId { get; set; }
 
     public JobType? JobType { get; set; }
-    
+
     [MaxLength(200)]
     public required string JobTypeName { get; init; }
 
@@ -29,7 +29,7 @@ public class Job
 
     [MaxLength(1024)]
     public string? FaultReason { get; set; }
-    
+
     public bool IsRecurringJob { get; set; }
 
     [MaxLength(100)]

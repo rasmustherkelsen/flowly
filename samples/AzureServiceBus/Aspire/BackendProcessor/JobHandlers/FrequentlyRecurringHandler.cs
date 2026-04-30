@@ -1,9 +1,9 @@
-﻿using Flowly.MessageInfrastructure.RecurringJobs;
+﻿using Flowly.Jobs;
 
 namespace BackendProcessor.JobHandlers;
 
 [RecurringJob("Import Frequent Data", "*/10 * * * * *")]
-class FrequentlyRecurringHandler(ILogger<FrequentlyRecurringHandler> logger) : RecurringJobHandlerBase
+internal class FrequentlyRecurringHandler(ILogger<FrequentlyRecurringHandler> logger) : RecurringJobHandler
 {
     public override async Task Handle(CancellationToken cancellationToken)
     {

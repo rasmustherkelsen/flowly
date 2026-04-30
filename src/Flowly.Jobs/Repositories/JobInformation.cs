@@ -1,8 +1,6 @@
-﻿using Flowly.Jobs.Model;
+﻿namespace Flowly.Jobs.Repositories;
 
-namespace Flowly.Jobs.Repositories;
-
-public record JobInformation(
+internal record JobInformation(
     Guid JobId,
     string JobTypeName,
     JobState CurrentState,
