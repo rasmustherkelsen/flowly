@@ -32,37 +32,37 @@ public static class FlowlyInstrumentationConstants
     public const string MessagingMessageConversationId = "messaging.message.conversation_id";
 
     /// <summary>Counter: number of messages received by handlers.</summary>
-    public const string HandlerMessagesReceived = "flowly.handler.messages.received";
+    public const string HandlerMessagesReceived = "flowly.message.handler.received";
 
     /// <summary>Counter: number of messages successfully processed by handlers.</summary>
-    public const string HandlerMessagesSucceeded = "flowly.handler.messages.succeeded";
+    public const string HandlerMessagesSucceeded = "flowly.message.handler.succeeded";
 
     /// <summary>Counter: number of messages that permanently failed (dead-lettered or discarded) in handlers.</summary>
-    public const string HandlerMessagesFailed = "flowly.handler.messages.failed";
+    public const string HandlerMessagesFailed = "flowly.message.handler.failed";
 
     /// <summary>Counter: number of messages re-published for a retry attempt by handlers.</summary>
-    public const string HandlerMessagesRetried = "flowly.handler.messages.retried";
+    public const string HandlerMessagesRetried = "flowly.message.handler.retried";
 
     /// <summary>Histogram: message processing duration in milliseconds for handlers.</summary>
-    public const string HandlerProcessingDuration = "flowly.handler.processing.duration";
+    public const string HandlerProcessingDuration = "flowly.message.handler.duration";
 
     /// <summary>Counter: number of messages successfully sent by submitters.</summary>
-    public const string SubmitterMessagesSent = "flowly.submitter.messages.sent";
+    public const string SubmitterMessagesSent = "flowly.message.submitter.sent";
 
     /// <summary>Counter: number of send failures by submitters.</summary>
-    public const string SubmitterMessagesFailed = "flowly.submitter.messages.failed";
+    public const string SubmitterMessagesFailed = "flowly.message.submitter.failed";
 
     /// <summary>Histogram: message send duration in milliseconds for submitters.</summary>
-    public const string SubmitterSendDuration = "flowly.submitter.send.duration";
+    public const string SubmitterSendDuration = "flowly.message.submitter.duration";
 
     /// <summary>Gauge: current number of pending dead-lettered messages across all tracked queues.</summary>
-    public const string DeadLettersPending = "flowly.deadletters.pending";
+    public const string DeadLettersPending = "flowly.deadletter.pending";
 
     /// <summary>Gauge: current number of jobs in the <c>Failed</c> state.</summary>
-    public const string JobsFailed = "flowly.jobs.failed";
+    public const string JobsFailed = "flowly.job.failed";
 
     /// <summary>Gauge: current number of jobs in the <c>Started</c> state.</summary>
-    public const string JobsRunning = "flowly.jobs.running";
+    public const string JobsRunning = "flowly.job.running";
 
     /// <summary>Counter: number of events received by event handlers.</summary>
     public const string EventHandlerMessagesReceived = "flowly.event.handler.received";
@@ -77,7 +77,7 @@ public static class FlowlyInstrumentationConstants
     public const string EventHandlerMessagesRetried = "flowly.event.handler.retried";
 
     /// <summary>Histogram: event processing duration in milliseconds for event handlers.</summary>
-    public const string EventHandlerProcessingDuration = "flowly.event.handler.processing.duration";
+    public const string EventHandlerProcessingDuration = "flowly.event.handler.duration";
 
     /// <summary>Counter: number of events successfully raised by event publishers.</summary>
     public const string EventPublisherEventsRaised = "flowly.event.publisher.raised";
@@ -86,7 +86,7 @@ public static class FlowlyInstrumentationConstants
     public const string EventPublisherEventsFailed = "flowly.event.publisher.failed";
 
     /// <summary>Histogram: event publish duration in milliseconds.</summary>
-    public const string EventPublisherRaiseDuration = "flowly.event.publisher.raise.duration";
+    public const string EventPublisherRaiseDuration = "flowly.event.publisher.duration";
 
     internal static readonly ActivitySource ActivitySource = new(ActivitySourceName);
 }

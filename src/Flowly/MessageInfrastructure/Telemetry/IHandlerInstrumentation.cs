@@ -35,7 +35,7 @@ public interface IHandlerInstrumentation
         ActivityContext parentContext = default);
 
     /// <summary>
-    ///     Increments the <c>flowly.handler.messages.received</c> counter. Called immediately when a message arrives.
+    ///     Increments the <c>flowly.message.handler.received</c> counter. Called immediately when a message arrives.
     /// </summary>
     /// <param name="handlerName">The name of the handler class.</param>
     /// <param name="queueName">The queue the message was received from.</param>
@@ -43,7 +43,7 @@ public interface IHandlerInstrumentation
     void RecordReceived(string handlerName, string queueName, long count = 1);
 
     /// <summary>
-    ///     Increments the <c>flowly.handler.messages.succeeded</c> counter and records the processing duration.
+    ///     Increments the <c>flowly.message.handler.succeeded</c> counter and records the processing duration.
     ///     Called after the handler completes without throwing.
     /// </summary>
     /// <param name="handlerName">The name of the handler class.</param>
@@ -53,7 +53,7 @@ public interface IHandlerInstrumentation
     void RecordSucceeded(string handlerName, string queueName, double durationMs, long count = 1);
 
     /// <summary>
-    ///     Increments the <c>flowly.handler.messages.failed</c> counter. Called when all retries are exhausted or when
+    ///     Increments the <c>flowly.message.handler.failed</c> counter. Called when all retries are exhausted or when
     ///     a poison message is dead-lettered.
     /// </summary>
     /// <param name="handlerName">The name of the handler class.</param>
@@ -62,7 +62,7 @@ public interface IHandlerInstrumentation
     void RecordFailed(string handlerName, string queueName, long count = 1);
 
     /// <summary>
-    ///     Increments the <c>flowly.handler.messages.retried</c> counter. Called when a message is re-published for a
+    ///     Increments the <c>flowly.message.handler.retried</c> counter. Called when a message is re-published for a
     ///     retry attempt.
     /// </summary>
     /// <param name="handlerName">The name of the handler class.</param>

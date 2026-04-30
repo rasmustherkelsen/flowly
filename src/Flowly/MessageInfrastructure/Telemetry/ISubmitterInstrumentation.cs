@@ -28,7 +28,7 @@ public interface ISubmitterInstrumentation
     Activity? StartSending(string queueName, string messagingSystem, string messageId);
 
     /// <summary>
-    ///     Increments the <c>flowly.submitter.messages.sent</c> counter and records send duration. Called after the
+    ///     Increments the <c>flowly.message.submitter.sent</c> counter and records send duration. Called after the
     ///     message is successfully handed off to the broker.
     /// </summary>
     /// <param name="queueName">The target queue or topic name.</param>
@@ -36,7 +36,7 @@ public interface ISubmitterInstrumentation
     void RecordSent(string queueName, double durationMs);
 
     /// <summary>
-    ///     Increments the <c>flowly.submitter.messages.failed</c> counter. Called when the send operation throws.
+    ///     Increments the <c>flowly.message.submitter.failed</c> counter. Called when the send operation throws.
     /// </summary>
     /// <param name="queueName">The target queue or topic name.</param>
     void RecordFailed(string queueName);

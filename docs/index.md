@@ -808,25 +808,25 @@ All metrics use the meter name `"Flowly"` and follow the `messaging.*` semantic 
 
 | Metric | Type | Description |
 |---|---|---|
-| `flowly.handler.messages.received` | Counter | Messages received by regular handlers |
-| `flowly.handler.messages.succeeded` | Counter | Messages processed successfully |
-| `flowly.handler.messages.failed` | Counter | Messages that failed processing |
-| `flowly.handler.messages.retried` | Counter | Messages scheduled for retry |
-| `flowly.handler.processing.duration` | Histogram (ms) | Processing time per message |
+| `flowly.message.handler.received` | Counter | Messages received by regular handlers |
+| `flowly.message.handler.succeeded` | Counter | Messages processed successfully |
+| `flowly.message.handler.failed` | Counter | Messages that failed processing |
+| `flowly.message.handler.retried` | Counter | Messages scheduled for retry |
+| `flowly.message.handler.duration` | Histogram (ms) | Processing time per message |
+| `flowly.message.submitter.sent` | Counter | Messages sent by submitters |
+| `flowly.message.submitter.failed` | Counter | Send failures |
+| `flowly.message.submitter.duration` | Histogram (ms) | Send duration |
 | `flowly.event.handler.received` | Counter | Events received by event handlers |
 | `flowly.event.handler.succeeded` | Counter | Events processed successfully |
 | `flowly.event.handler.failed` | Counter | Events that failed processing |
 | `flowly.event.handler.retried` | Counter | Events scheduled for retry |
-| `flowly.event.handler.processing.duration` | Histogram (ms) | Processing time per event |
-| `flowly.submitter.messages.sent` | Counter | Messages sent by submitters |
-| `flowly.submitter.messages.failed` | Counter | Send failures |
-| `flowly.submitter.send.duration` | Histogram (ms) | Send duration |
+| `flowly.event.handler.duration` | Histogram (ms) | Processing time per event |
 | `flowly.event.publisher.raised` | Counter | Events raised |
 | `flowly.event.publisher.failed` | Counter | Event publish failures |
-| `flowly.event.publisher.raise.duration` | Histogram (ms) | Event publish duration |
-| `flowly.deadletters.pending` | Counter | Dead letters ingested |
-| `flowly.jobs.failed` | Counter | Jobs transitioned to Failed |
-| `flowly.jobs.running` | Counter | Jobs currently running |
+| `flowly.event.publisher.duration` | Histogram (ms) | Event publish duration |
+| `flowly.deadletter.pending` | Gauge | Pending dead-lettered messages |
+| `flowly.job.failed` | Gauge | Jobs in the Failed state |
+| `flowly.job.running` | Gauge | Jobs in the Started state |
 
 ### Traces
 
