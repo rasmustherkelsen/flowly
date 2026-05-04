@@ -1,3 +1,4 @@
+using Flowly.MessageInfrastructure;
 using Flowly.MessageInfrastructure.Events.Registration;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -74,6 +75,7 @@ public class EventHandlerBuilderTests
     {
         public IServiceCollection Services => services;
         public IConfiguration Configuration => configuration;
+        public ITopologyNameResolver TopologyNameResolver => new KebabCaseTopologyNameResolver();
     }
 
     private record OrderPlaced;

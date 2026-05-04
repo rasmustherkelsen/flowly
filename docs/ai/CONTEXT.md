@@ -400,7 +400,7 @@ When `SubscriptionName` is set, the record is an event subscription dead letter.
 
 #### Queue name resolution
 
-The queue name is owned by the **message contract**, not the handler. `MessageQueueNameResolver` resolves it in this order:
+The queue name is owned by the **message contract**, not the handler. Resolution goes through `ITopologyNameResolver`, with `KebabCaseTopologyNameResolver` as the built-in default. It resolves in this order:
 
 1. `[QueueName("explicit-name")]` attribute on the message type
 2. Auto-generated from the message type name: split PascalCase on capital letters, join with `-`, lowercase, strip a trailing `Message` suffix
@@ -412,6 +412,8 @@ Examples of auto-generation:
 | `ProcessOrder` | `process-order` |
 | `SomeQueryMessage` | `some-query` |
 | `RebuildSearchIndexMessage` | `rebuild-search-index` |
+
+`KebabCaseTopologyNameResolver` also resolves event topic names (`ResolveEventName<TEvent>()`) and subscription names (`ResolveSubscriptionName<THandler>()`). A custom resolver can be registered via `FlowlyOptions.WithTopologyNameResolver<TResolver>()`. The resolver is available via `IFlowlyBuilder.TopologyNameResolver`. **Resolvers must have a public parameterless constructor** — resolution happens at registration time, before the DI container exists, so constructor injection is not available.
 
 #### Handler-level queue attributes
 
@@ -625,16 +627,16 @@ The validator uses `QueueDeclarePassiveAsync` to confirm existence. It cannot ve
 Tests live in `Flowly.Tests/`, which mirrors the source tree structure:
 
 ```
-Flowly/MessageInfrastructure/MessageQueueNameResolver.cs
-Flowly.Tests/MessageInfrastructure/MessageQueueNameResolverTests.cs
+Flowly/MessageInfrastructure/KebabCaseTopologyNameResolver.cs
+Flowly.Tests/MessageInfrastructure/KebabCaseTopologyNameResolverTests.cs
 ```
 
 Each test file contains one outer class named `{ClassName}Tests`. Each method under test gets a nested `public class` named after that method. All `[Fact]` tests for a method live inside it:
 
 ```csharp
-public class MessageQueueNameResolverTests
+public class KebabCaseTopologyNameResolverTests
 {
-    public class Resolve
+    public class ResolveQueueName
     {
         [Fact]
         public void WithQueueNameAttribute_ReturnsAttributeValue() { ... }
@@ -667,7 +669,8 @@ Rules:
 | Event handler base class | `Flowly/MessageInfrastructure/Events/EventHandlerBase.cs` |
 | Event registration extensions | `Flowly/MessageInfrastructure/Events/Registration/` |
 | Event background service | `Flowly/MessageInfrastructure/Events/BackgroundServices/EventHandlerBackgroundService.cs` |
-| Event name resolver | `Flowly/MessageInfrastructure/Events/EventNameResolver.cs` |
+| Topology name resolver interface | `Flowly/ITopologyNameResolver.cs` |
+| Default topology name resolver | `Flowly/MessageInfrastructure/KebabCaseTopologyNameResolver.cs` |
 | Event topology interfaces | `Flowly/MessagingAbstractions/IEventTopologyCreator.cs`, `IEventCapableMessageBusClient.cs` |
 | Recurring job infra | `Flowly/MessageInfrastructure/RecurringJobs/` |
 | Handler attributes | `Flowly/MessageInfrastructure/Receivers/` (e.g. `RetryPolicyAttribute.cs`) |

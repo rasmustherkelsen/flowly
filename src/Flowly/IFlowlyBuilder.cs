@@ -23,4 +23,11 @@ public interface IFlowlyBuilder
     ///     bind settings to Flowly components or to make decisions during setup.
     /// </summary>
     IConfiguration Configuration { get; }
+
+    /// <summary>
+    ///     Gets the <see cref="ITopologyNameResolver" /> used to derive broker-level names for queues, event topics, and
+    ///     event subscriptions. Configured via <see cref="FlowlyOptions.WithTopologyNameResolver{TResolver}" />; defaults to
+    ///     <see cref="KebabCaseTopologyNameResolver" />.
+    /// </summary>
+    ITopologyNameResolver TopologyNameResolver { get; }
 }

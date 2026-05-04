@@ -1,3 +1,4 @@
+using Flowly.MessageInfrastructure;
 using Flowly.MessageInfrastructure.Model;
 using Flowly.MessageInfrastructure.Registration;
 using Microsoft.Extensions.Configuration;
@@ -59,6 +60,7 @@ public class MessageHandlerBuilderTests
     {
         public IServiceCollection Services => services;
         public IConfiguration Configuration => configuration;
+        public ITopologyNameResolver TopologyNameResolver => new KebabCaseTopologyNameResolver();
     }
 
     private record SomeMessage;

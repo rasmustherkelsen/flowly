@@ -94,6 +94,9 @@ public static class AddFlowlyExtension
         configureOptions?.Invoke(options);
         services.TryAddSingleton(options);
 
+        var topologyNameResolver = (ITopologyNameResolver)Activator.CreateInstance(options.TopologyNameResolverType)!;
+        services.TryAddSingleton(topologyNameResolver);
+
         IHandlerInstrumentation handlerInstrumentation = options.EnableTelemetry
             ? new HandlerInstrumentation()
             : new NullHandlerInstrumentation();
@@ -116,7 +119,7 @@ public static class AddFlowlyExtension
 
         services.AddHostedService<CommandLineParserHostedService>();
 
-        module.Configure(new FlowlyBuilder(services, configuration));
+        module.Configure(new FlowlyBuilder(services, configuration, topologyNameResolver));
     }
 
     private sealed class InlineFlowlyConfiguration(Action<IFlowlyBuilder> configure) : FlowlyDesignTimeFactory, IFlowlyConfiguration

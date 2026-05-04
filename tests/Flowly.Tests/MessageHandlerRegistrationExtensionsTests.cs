@@ -1,3 +1,4 @@
+using Flowly.MessageInfrastructure;
 using Flowly.MessageInfrastructure.BackgroundServices;
 using Flowly.MessageInfrastructure.Model;
 using Flowly.MessageInfrastructure.Registration;
@@ -20,6 +21,7 @@ public class MessageHandlerRegistrationExtensionsTests
 
         var manifest = new ProviderQueueManifest(providerName, true, "Stub");
         services.AddSingleton(manifest);
+        services.AddSingleton<ITopologyNameResolver, KebabCaseTopologyNameResolver>();
         services.AddSingleton<IHandlerSettingsFactory, HandlerSettingsFactory>();
         services.AddSingleton<IQueueRegistrar, QueueRegistrar>();
 
@@ -202,6 +204,7 @@ public class MessageHandlerRegistrationExtensionsTests
     {
         public IServiceCollection Services => services;
         public IConfiguration Configuration => new ConfigurationBuilder().Build();
+        public ITopologyNameResolver TopologyNameResolver => new KebabCaseTopologyNameResolver();
     }
 
     private sealed class StubMessageBusClient : IMessageBusClient

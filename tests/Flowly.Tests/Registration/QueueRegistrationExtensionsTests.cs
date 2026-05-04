@@ -1,3 +1,4 @@
+using Flowly.MessageInfrastructure;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.Registration;
 using Flowly.Transport;
@@ -107,6 +108,7 @@ public class QueueRegistrationExtensionsTests
     {
         public IServiceCollection Services => services;
         public IConfiguration Configuration => new ConfigurationBuilder().Build();
+        public ITopologyNameResolver TopologyNameResolver => new KebabCaseTopologyNameResolver();
     }
 
     private sealed class StubMessageBusClient : IMessageBusClient

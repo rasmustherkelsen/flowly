@@ -27,7 +27,7 @@ public static class EventSubmitterRegistrationExtensions
         if (flowlyBuilder.Services.Any(s => s.ImplementationType == typeof(EventSubmitter<TEvent>)))
             return flowlyBuilder;
 
-        var topicName = EventNameResolver.Resolve<TEvent>();
+        var topicName = flowlyBuilder.TopologyNameResolver.ResolveEventName<TEvent>();
         var providerName = ProviderNameResolver.Resolve(flowlyBuilder.Services, typeof(TEvent));
 
         flowlyBuilder.AddEventRegistration(new DeferredEventRegistration(topicName, null), providerName);

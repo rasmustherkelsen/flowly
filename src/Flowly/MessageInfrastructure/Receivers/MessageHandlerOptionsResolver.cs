@@ -15,12 +15,12 @@ internal static class MessageHandlerOptionsResolver
     private static readonly TimeSpan DefaultMessageTimeToLive = TimeSpan.FromDays(1);
     private static readonly TimeSpan DefaultMaxWaitTime = TimeSpan.FromSeconds(30);
 
-    public static ResolvedMessageHandlerOptions Resolve<THandler, TMessage>() where THandler : class
+    public static ResolvedMessageHandlerOptions Resolve<THandler, TMessage>(ITopologyNameResolver topologyNameResolver) where THandler : class
     {
         var handlerType = typeof(THandler);
         var options = new BatchMessageHandlerOptions
         {
-            QueueName = MessageQueueNameResolver.Resolve<TMessage>()
+            QueueName = topologyNameResolver.ResolveQueueName<TMessage>()
         };
 
         ApplyAttributes(handlerType, options);

@@ -10,5 +10,7 @@ internal class MessageHandlerBuilder<TMessage>(IFlowlyBuilder flowlyBuilder, IHa
 
     public IConfiguration Configuration => flowlyBuilder.Configuration;
 
+    public ITopologyNameResolver TopologyNameResolver => flowlyBuilder.TopologyNameResolver;
+
     public IHandlerSettings<TMessage> HandlerSettings => handlerSettings;
 }

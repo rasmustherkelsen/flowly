@@ -1,4 +1,5 @@
 using Flowly.Jobs.BackgroundServices;
+using Flowly.MessageInfrastructure;
 using Flowly.Jobs.Tests.Fakes;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.Registration;
@@ -85,6 +86,7 @@ public class RecurringJobHandlerRegistrationExtensionsTests
     {
         public IServiceCollection Services => services;
         public IConfiguration Configuration => new ConfigurationBuilder().Build();
+        public ITopologyNameResolver TopologyNameResolver => new KebabCaseTopologyNameResolver();
     }
 
     [RecurringJob("Runs every minute", "* * * * *")]

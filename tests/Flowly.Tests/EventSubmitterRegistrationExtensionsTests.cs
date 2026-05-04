@@ -1,3 +1,4 @@
+using Flowly.MessageInfrastructure;
 using Flowly.MessageInfrastructure.Events;
 using Flowly.MessageInfrastructure.Events.Registration;
 using Flowly.MessageInfrastructure.Receivers;
@@ -130,6 +131,7 @@ public class EventSubmitterRegistrationExtensionsTests
     {
         public IServiceCollection Services => services;
         public IConfiguration Configuration => new ConfigurationBuilder().Build();
+        public ITopologyNameResolver TopologyNameResolver => new KebabCaseTopologyNameResolver();
     }
 
     private record OrderPlaced;

@@ -1,3 +1,4 @@
+using Flowly.MessageInfrastructure;
 using Flowly.MessageInfrastructure.Model;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.Registration;
@@ -36,10 +37,12 @@ public abstract class FlowlyDesignTimeFactory
         services.AddSingleton<IMessageBusClientRegistry>(new MessageBusClientRegistry());
         services.AddSingleton<IMessagingTopologyCreatorRegistry>(new MessagingTopologyCreatorRegistry());
         services.AddSingleton<IEventTopologyCreatorRegistry>(new EventTopologyCreatorRegistry());
+        var topologyNameResolver = new KebabCaseTopologyNameResolver();
+        services.AddSingleton<ITopologyNameResolver>(topologyNameResolver);
         services.AddSingleton<IHandlerSettingsFactory, HandlerSettingsFactory>();
         services.AddSingleton<IQueueRegistrar, QueueRegistrar>();
 
-        var builder = new FlowlyBuilder(services, new DiscoveryConfiguration());
+        var builder = new FlowlyBuilder(services, new DiscoveryConfiguration(), topologyNameResolver);
         var instance = (IFlowlyConfiguration)Activator.CreateInstance(configType)!;
         instance.Configure(builder);
 

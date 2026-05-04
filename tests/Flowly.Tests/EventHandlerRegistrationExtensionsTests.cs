@@ -1,3 +1,4 @@
+using Flowly.MessageInfrastructure;
 using Flowly.MessageInfrastructure.Events;
 using Flowly.MessageInfrastructure.Events.BackgroundServices;
 using Flowly.MessageInfrastructure.Receivers;
@@ -158,6 +159,7 @@ public class EventHandlerRegistrationExtensionsTests
     {
         public IServiceCollection Services => services;
         public IConfiguration Configuration => new ConfigurationBuilder().Build();
+        public ITopologyNameResolver TopologyNameResolver => new KebabCaseTopologyNameResolver();
     }
 
     private sealed class StubMessageBusClient : IMessageBusClient
