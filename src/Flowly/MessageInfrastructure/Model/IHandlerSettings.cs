@@ -6,7 +6,7 @@ namespace Flowly.MessageInfrastructure.Model;
 ///     for a specific handler and message type.
 /// </summary>
 /// <typeparam name="TMesssage"></typeparam>
-public interface IHandlerSettings<TMesssage>
+internal interface IHandlerSettings<TMesssage>
 {
     /// <summary>
     ///     Gets the name of the queue that the handler listens to. This is used to route messages of the specified type to the

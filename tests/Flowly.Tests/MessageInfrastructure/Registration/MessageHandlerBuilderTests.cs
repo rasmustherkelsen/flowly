@@ -1,5 +1,4 @@
 using Flowly.MessageInfrastructure;
-using Flowly.MessageInfrastructure.Model;
 using Flowly.MessageInfrastructure.Registration;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -11,32 +10,11 @@ public class MessageHandlerBuilderTests
     public class Constructor
     {
         [Fact]
-        public void QueueNameIsExposedViaHandlerSettings()
-        {
-            var handlerSettings = new HandlerSettings<SomeMessage>("order-placed", "primary", "SomeHandler", false, 1, 0, 0, 0, default);
-
-            var messageHandlerBuilder = new MessageHandlerBuilder<SomeMessage>(CreateInnerBuilder(), handlerSettings);
-
-            Assert.Equal("order-placed", messageHandlerBuilder.HandlerSettings.QueueName);
-        }
-
-        [Fact]
-        public void ProviderNameIsExposedViaHandlerSettings()
-        {
-            var handlerSettings = new HandlerSettings<SomeMessage>("order-placed", "primary", "SomeHandler", false, 1, 0, 0, 0, default);
-
-            var messageHandlerBuilder = new MessageHandlerBuilder<SomeMessage>(CreateInnerBuilder(), handlerSettings);
-
-            Assert.Equal("primary", messageHandlerBuilder.HandlerSettings.ProviderName);
-        }
-
-        [Fact]
         public void ServicesAreDelegatedToInnerBuilder()
         {
             var innerBuilder = CreateInnerBuilder();
-            var handlerSettings = new HandlerSettings<SomeMessage>("order-placed", "primary", "SomeHandler", false, 1, 0, 0, 0, default);
 
-            var messageHandlerBuilder = new MessageHandlerBuilder<SomeMessage>(innerBuilder, handlerSettings);
+            var messageHandlerBuilder = new MessageHandlerBuilder<SomeMessage>(innerBuilder);
 
             Assert.Same(innerBuilder.Services, messageHandlerBuilder.Services);
         }
@@ -45,9 +23,8 @@ public class MessageHandlerBuilderTests
         public void ConfigurationIsDelegatedToInnerBuilder()
         {
             var innerBuilder = CreateInnerBuilder();
-            var handlerSettings = new HandlerSettings<SomeMessage>("order-placed", "primary", "SomeHandler", false, 1, 0, 0, 0, default);
 
-            var messageHandlerBuilder = new MessageHandlerBuilder<SomeMessage>(innerBuilder, handlerSettings);
+            var messageHandlerBuilder = new MessageHandlerBuilder<SomeMessage>(innerBuilder);
 
             Assert.Same(innerBuilder.Configuration, messageHandlerBuilder.Configuration);
         }

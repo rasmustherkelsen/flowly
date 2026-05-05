@@ -127,14 +127,13 @@ public class MessageHandlerRegistrationExtensionsTests
         }
 
         [Fact]
-        public void ReturnsBuilderWithQueueAndProviderName()
+        public void ReturnsMessageHandlerBuilder()
         {
             var (flowlyBuilder, _) = CreateBuilder("primary");
 
             var messageHandlerBuilder = flowlyBuilder.AddMessageHandler<OrderPlaced, OrderPlacedHandler>();
 
-            Assert.Equal("order-placed", messageHandlerBuilder.HandlerSettings.QueueName);
-            Assert.Equal("primary", messageHandlerBuilder.HandlerSettings.ProviderName);
+            Assert.IsAssignableFrom<IMessageHandlerBuilder<OrderPlaced>>(messageHandlerBuilder);
         }
     }
 

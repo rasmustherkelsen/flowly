@@ -17,7 +17,7 @@ namespace Flowly.MessageInfrastructure.BackgroundServices;
 ///     One instance is registered per <see cref="MessageHandler{TMessage}" /> registration.
 /// </summary>
 /// <typeparam name="TMessage">The message type this service processes.</typeparam>
-public sealed class MessageProcessingBackgroundService<TMessage>(
+internal sealed class MessageProcessingBackgroundService<TMessage>(
     IMessageBusClientRegistry clientRegistry,
     IServiceScopeFactory serviceScopeFactory,
     IHandlerSettings<TMessage> handlerSettings,

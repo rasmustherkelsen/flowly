@@ -10,7 +10,9 @@
 
     <ItemGroup>
         <InternalsVisibleTo Include="Flowly.Tests"/>
+        <InternalsVisibleTo Include="Flowly.Jobs"/>
         <InternalsVisibleTo Include="Flowly.Jobs.Tests"/>
+        <InternalsVisibleTo Include="Flowly.DeadLetters"/>
     </ItemGroup>
 
     <ItemGroup>

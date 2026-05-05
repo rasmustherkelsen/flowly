@@ -8,7 +8,7 @@ namespace Flowly.MessageInfrastructure.Telemetry;
 ///     Two implementations are registered depending on <see cref="FlowlyOptions.EnableTelemetry" />:
 ///     <c>HandlerInstrumentation</c> (active) and <c>NullHandlerInstrumentation</c> (no-op).
 /// </summary>
-public interface IHandlerInstrumentation
+internal interface IHandlerInstrumentation
 {
     /// <summary>
     ///     <see langword="true" /> when telemetry is active; <see langword="false" /> for the no-op implementation.

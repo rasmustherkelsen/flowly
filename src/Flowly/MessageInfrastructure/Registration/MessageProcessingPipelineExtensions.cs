@@ -13,7 +13,7 @@ namespace Flowly.MessageInfrastructure.Registration;
 ///     and transport-specific registration extensions; most application code should use higher-level helpers such as
 ///     <see cref="MessageHandlerRegistrationExtensions.AddMessageHandler{TMessage,THandler}" /> instead.
 /// </summary>
-public static class MessageProcessingPipelineExtensions
+internal static class MessageProcessingPipelineExtensions
 {
     /// <summary>
     ///     Registers a <see cref="MessageProcessingBackgroundService{TMessage}" /> as a hosted service, wiring it to the
