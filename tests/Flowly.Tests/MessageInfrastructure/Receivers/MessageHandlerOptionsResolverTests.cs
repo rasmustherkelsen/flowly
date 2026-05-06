@@ -1,15 +1,18 @@
+using Flowly.MessageInfrastructure;
 using Flowly.MessageInfrastructure.Receivers;
 
 namespace Flowly.Tests.MessageInfrastructure.Receivers;
 
 public class MessageHandlerOptionsResolverTests
 {
+    private static readonly ITopologyNameResolver Resolver = new KebabCaseTopologyNameResolver();
+
     public class Resolve
     {
         [Fact]
         public void WithoutAnyAttributes_UsesDefaults()
         {
-            var resolved = MessageHandlerOptionsResolver.Resolve<BareHandler, SomeMessage>();
+            var resolved = MessageHandlerOptionsResolver.Resolve<BareHandler, SomeMessage>(Resolver);
 
             Assert.Equal(TimeSpan.FromDays(1), resolved.DefaultMessageTimeToLive);
             Assert.True(resolved.DeadLetterOnMessageExpiration);
@@ -22,7 +25,7 @@ public class MessageHandlerOptionsResolverTests
         [Fact]
         public void WithBatchHandlerWithoutAnyAttributes_UsesBatchDefaults()
         {
-            var resolved = MessageHandlerOptionsResolver.Resolve<BareBatchHandler, SomeMessage>();
+            var resolved = MessageHandlerOptionsResolver.Resolve<BareBatchHandler, SomeMessage>(Resolver);
 
             Assert.Equal(100, resolved.MaxMessagesBeforeProcessing);
             Assert.Equal(TimeSpan.FromSeconds(30), resolved.MaxWaitTime);
@@ -31,7 +34,7 @@ public class MessageHandlerOptionsResolverTests
         [Fact]
         public void WithoutAnyAttributes_ResolvesQueueNameFromMessageType()
         {
-            var resolved = MessageHandlerOptionsResolver.Resolve<BareHandler, SomeMessage>();
+            var resolved = MessageHandlerOptionsResolver.Resolve<BareHandler, SomeMessage>(Resolver);
 
             Assert.Equal("some", resolved.QueueName);
         }
@@ -39,7 +42,7 @@ public class MessageHandlerOptionsResolverTests
         [Fact]
         public void WithQueueNameAttributeOnMessage_UsesAttributeQueueName()
         {
-            var resolved = MessageHandlerOptionsResolver.Resolve<BareHandler, OverriddenMessage>();
+            var resolved = MessageHandlerOptionsResolver.Resolve<BareHandler, OverriddenMessage>(Resolver);
 
             Assert.Equal("my-custom-queue", resolved.QueueName);
         }
@@ -47,7 +50,7 @@ public class MessageHandlerOptionsResolverTests
         [Fact]
         public void WithDefaultMessageTimeToLiveAttribute_AppliesAttributeValue()
         {
-            var resolved = MessageHandlerOptionsResolver.Resolve<HandlerWithTtl, SomeMessage>();
+            var resolved = MessageHandlerOptionsResolver.Resolve<HandlerWithTtl, SomeMessage>(Resolver);
 
             Assert.Equal(TimeSpan.FromHours(2), resolved.DefaultMessageTimeToLive);
         }
@@ -55,7 +58,7 @@ public class MessageHandlerOptionsResolverTests
         [Fact]
         public void WithDeadLetterOnMessageExpirationAttributeFalse_DisablesDeadLetter()
         {
-            var resolved = MessageHandlerOptionsResolver.Resolve<HandlerWithDeadLetterDisabled, SomeMessage>();
+            var resolved = MessageHandlerOptionsResolver.Resolve<HandlerWithDeadLetterDisabled, SomeMessage>(Resolver);
 
             Assert.False(resolved.DeadLetterOnMessageExpiration);
         }
@@ -63,7 +66,7 @@ public class MessageHandlerOptionsResolverTests
         [Fact]
         public void WithLockDurationAttribute_AppliesAttributeValue()
         {
-            var resolved = MessageHandlerOptionsResolver.Resolve<HandlerWithLockDuration, SomeMessage>();
+            var resolved = MessageHandlerOptionsResolver.Resolve<HandlerWithLockDuration, SomeMessage>(Resolver);
 
             Assert.Equal(TimeSpan.FromMinutes(10), resolved.LockDuration);
         }
@@ -71,7 +74,7 @@ public class MessageHandlerOptionsResolverTests
         [Fact]
         public void WithRetryPolicyAttribute_AppliesMaxRetriesAndDelaySeconds()
         {
-            var resolved = MessageHandlerOptionsResolver.Resolve<HandlerWithRetryPolicy, SomeMessage>();
+            var resolved = MessageHandlerOptionsResolver.Resolve<HandlerWithRetryPolicy, SomeMessage>(Resolver);
 
             Assert.Equal(5, resolved.MaxRetries);
             Assert.Equal(30, resolved.RetryDelaySeconds);
@@ -80,7 +83,7 @@ public class MessageHandlerOptionsResolverTests
         [Fact]
         public void WithMaxConcurrentCallsAttribute_AppliesAttributeValue()
         {
-            var resolved = MessageHandlerOptionsResolver.Resolve<HandlerWithMaxConcurrency, SomeMessage>();
+            var resolved = MessageHandlerOptionsResolver.Resolve<HandlerWithMaxConcurrency, SomeMessage>(Resolver);
 
             Assert.Equal(8, resolved.MaxConcurrentCalls);
         }
@@ -88,7 +91,7 @@ public class MessageHandlerOptionsResolverTests
         [Fact]
         public void WithBatchProcessingAttribute_AppliesMaxMessagesAndWaitTime()
         {
-            var resolved = MessageHandlerOptionsResolver.Resolve<HandlerWithBatchAttribute, SomeMessage>();
+            var resolved = MessageHandlerOptionsResolver.Resolve<HandlerWithBatchAttribute, SomeMessage>(Resolver);
 
             Assert.Equal(50, resolved.MaxMessagesBeforeProcessing);
             Assert.Equal(TimeSpan.FromSeconds(10), resolved.MaxWaitTime);
@@ -97,7 +100,7 @@ public class MessageHandlerOptionsResolverTests
         [Fact]
         public void WithAllHandlerAttributes_AppliesAllValues()
         {
-            var resolved = MessageHandlerOptionsResolver.Resolve<HandlerWithAllAttributes, SomeMessage>();
+            var resolved = MessageHandlerOptionsResolver.Resolve<HandlerWithAllAttributes, SomeMessage>(Resolver);
 
             Assert.Equal(TimeSpan.FromHours(3), resolved.DefaultMessageTimeToLive);
             Assert.False(resolved.DeadLetterOnMessageExpiration);
@@ -110,7 +113,7 @@ public class MessageHandlerOptionsResolverTests
         [Fact]
         public void WithHandlerConfigureOverride_AppliesConfiguredValues()
         {
-            var resolved = MessageHandlerOptionsResolver.Resolve<HandlerWithConfigure, SomeMessage>();
+            var resolved = MessageHandlerOptionsResolver.Resolve<HandlerWithConfigure, SomeMessage>(Resolver);
 
             Assert.Equal(TimeSpan.FromMinutes(2), resolved.LockDuration);
             Assert.Equal(42, resolved.MaxConcurrentCalls);
@@ -119,7 +122,7 @@ public class MessageHandlerOptionsResolverTests
         [Fact]
         public void WithBatchHandlerConfigureOverride_AppliesConfiguredValues()
         {
-            var resolved = MessageHandlerOptionsResolver.Resolve<BatchHandlerWithConfigure, SomeMessage>();
+            var resolved = MessageHandlerOptionsResolver.Resolve<BatchHandlerWithConfigure, SomeMessage>(Resolver);
 
             Assert.Equal(25, resolved.MaxMessagesBeforeProcessing);
             Assert.Equal(TimeSpan.FromMinutes(1), resolved.MaxWaitTime);
@@ -128,7 +131,7 @@ public class MessageHandlerOptionsResolverTests
         [Fact]
         public void WithConfigureOverride_RespectsAttributeQueueName()
         {
-            var resolved = MessageHandlerOptionsResolver.Resolve<HandlerWithConfigure, OverriddenMessage>();
+            var resolved = MessageHandlerOptionsResolver.Resolve<HandlerWithConfigure, OverriddenMessage>(Resolver);
 
             Assert.Equal("my-custom-queue", resolved.QueueName);
         }
@@ -136,7 +139,7 @@ public class MessageHandlerOptionsResolverTests
         [Fact]
         public void WithBatchHandlerConfigureSettingQueueName_AppliesQueueName()
         {
-            var resolved = MessageHandlerOptionsResolver.Resolve<BatchHandlerWithQueueNameInConfigure, SomeMessage>();
+            var resolved = MessageHandlerOptionsResolver.Resolve<BatchHandlerWithQueueNameInConfigure, SomeMessage>(Resolver);
 
             Assert.Equal("custom-queue", resolved.QueueName);
         }
@@ -144,7 +147,7 @@ public class MessageHandlerOptionsResolverTests
         [Fact]
         public void WithConfigureOverrideOnlySettingSomeValues_KeepsDefaultsForRest()
         {
-            var resolved = MessageHandlerOptionsResolver.Resolve<HandlerWithPartialConfigure, SomeMessage>();
+            var resolved = MessageHandlerOptionsResolver.Resolve<HandlerWithPartialConfigure, SomeMessage>(Resolver);
 
             Assert.Equal(TimeSpan.FromDays(1), resolved.DefaultMessageTimeToLive);
             Assert.True(resolved.DeadLetterOnMessageExpiration);
@@ -155,7 +158,7 @@ public class MessageHandlerOptionsResolverTests
         [Fact]
         public void WithBatchHandlerConfigureOnlySettingMaxMessages_KeepsDefaultWaitTime()
         {
-            var resolved = MessageHandlerOptionsResolver.Resolve<BatchHandlerWithPartialConfigure, SomeMessage>();
+            var resolved = MessageHandlerOptionsResolver.Resolve<BatchHandlerWithPartialConfigure, SomeMessage>(Resolver);
 
             Assert.Equal(5, resolved.MaxMessagesBeforeProcessing);
             Assert.Equal(TimeSpan.FromSeconds(30), resolved.MaxWaitTime);
@@ -164,7 +167,7 @@ public class MessageHandlerOptionsResolverTests
         [Fact]
         public void WithHandlerConfigureAndAttributes_ConfigureTakesPrecedence()
         {
-            var resolved = MessageHandlerOptionsResolver.Resolve<HandlerWithAttributesAndConfigure, SomeMessage>();
+            var resolved = MessageHandlerOptionsResolver.Resolve<HandlerWithAttributesAndConfigure, SomeMessage>(Resolver);
 
             Assert.Equal(99, resolved.MaxConcurrentCalls);
         }
@@ -172,7 +175,7 @@ public class MessageHandlerOptionsResolverTests
         [Fact]
         public void WithBatchAttributeAndConfigure_ConfigureTakesPrecedence()
         {
-            var resolved = MessageHandlerOptionsResolver.Resolve<BatchHandlerWithAttributeAndConfigure, SomeMessage>();
+            var resolved = MessageHandlerOptionsResolver.Resolve<BatchHandlerWithAttributeAndConfigure, SomeMessage>(Resolver);
 
             Assert.Equal(77, resolved.MaxMessagesBeforeProcessing);
             Assert.Equal(TimeSpan.FromSeconds(7), resolved.MaxWaitTime);
@@ -181,7 +184,7 @@ public class MessageHandlerOptionsResolverTests
         [Fact]
         public void WithBatchHandlerConfigureSettingAllQueueOptions_AllOptionsApplied()
         {
-            var resolved = MessageHandlerOptionsResolver.Resolve<BatchHandlerWithAllQueueOptionsInConfigure, SomeMessage>();
+            var resolved = MessageHandlerOptionsResolver.Resolve<BatchHandlerWithAllQueueOptionsInConfigure, SomeMessage>(Resolver);
 
             Assert.Equal("all-options-queue", resolved.QueueName);
             Assert.Equal(TimeSpan.FromHours(6), resolved.DefaultMessageTimeToLive);
@@ -194,20 +197,20 @@ public class MessageHandlerOptionsResolverTests
         public void WithInvalidLockDurationAttribute_ThrowsArgumentException()
         {
             Assert.Throws<ArgumentException>(() =>
-                MessageHandlerOptionsResolver.Resolve<HandlerWithInvalidLockDuration, SomeMessage>());
+                MessageHandlerOptionsResolver.Resolve<HandlerWithInvalidLockDuration, SomeMessage>(Resolver));
         }
 
         [Fact]
         public void WithInvalidTtlAttribute_ThrowsArgumentException()
         {
             Assert.Throws<ArgumentException>(() =>
-                MessageHandlerOptionsResolver.Resolve<HandlerWithInvalidTtl, SomeMessage>());
+                MessageHandlerOptionsResolver.Resolve<HandlerWithInvalidTtl, SomeMessage>(Resolver));
         }
 
         [Fact]
         public void WithHandlerRequiringConstructorArgs_FallsBackToUninitializedAndAppliesConfigure()
         {
-            var resolved = MessageHandlerOptionsResolver.Resolve<HandlerWithConstructorDependency, SomeMessage>();
+            var resolved = MessageHandlerOptionsResolver.Resolve<HandlerWithConstructorDependency, SomeMessage>(Resolver);
 
             Assert.Equal(TimeSpan.FromSeconds(45), resolved.LockDuration);
         }
@@ -215,7 +218,7 @@ public class MessageHandlerOptionsResolverTests
         [Fact]
         public void WithBatchHandlerRequiringConstructorArgs_FallsBackToUninitializedAndAppliesConfigure()
         {
-            var resolved = MessageHandlerOptionsResolver.Resolve<BatchHandlerWithConstructorDependency, SomeMessage>();
+            var resolved = MessageHandlerOptionsResolver.Resolve<BatchHandlerWithConstructorDependency, SomeMessage>(Resolver);
 
             Assert.Equal(17, resolved.MaxMessagesBeforeProcessing);
         }

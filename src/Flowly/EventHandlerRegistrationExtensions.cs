@@ -33,8 +33,8 @@ public static class EventHandlerRegistrationExtensions
         where TEvent : class
     {
         var providerName = ProviderNameResolver.Resolve(flowlyBuilder.Services, typeof(TEvent));
-        var topicName = EventNameResolver.Resolve<TEvent>();
-        var subscriptionName = EventNameResolver.DeriveSubscriptionName(typeof(THandler));
+        var topicName = flowlyBuilder.TopologyNameResolver.ResolveEventName<TEvent>();
+        var subscriptionName = flowlyBuilder.TopologyNameResolver.ResolveSubscriptionName<THandler>();
         var handlerOptions = ResolveHandlerOptions(typeof(THandler));
 
         flowlyBuilder.AddEventRegistration(

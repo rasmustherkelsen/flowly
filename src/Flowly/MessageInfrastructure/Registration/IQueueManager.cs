@@ -9,7 +9,7 @@ namespace Flowly.MessageInfrastructure.Registration;
 ///     <see cref="IQueueRegistrar" /> to accumulate registrations and by the topology creation hosted service to
 ///     retrieve the final, deduplicated list of queues to provision.
 /// </summary>
-public interface IQueueManager
+internal interface IQueueManager
 {
     /// <summary>
     ///     Adds a deferred queue registration to the manager. Duplicate registrations for the same queue name are merged;

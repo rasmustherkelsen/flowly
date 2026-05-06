@@ -43,3 +43,7 @@
   - Keep fakes that are only used by a single test class as private nested classes on that test class
 
 - **Never** use timing like Task.Delay to wait on something to happen. It is error prune might lead to false negatives.
+
+## Changing Tests
+
+- Preferably unit tests should always work and when building new functionality test should only be *added* to. However, changes might have to happen but be very careful especially around functionality for publicly available classes and methods. Those should preferably not break. So don't just blindly change unit tests if they break. Consider if the functionality causing them to break is correct in the new context.

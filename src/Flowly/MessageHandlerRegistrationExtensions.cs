@@ -1,7 +1,6 @@
 using Flowly.MessageInfrastructure;
 using Flowly.MessageInfrastructure.BackgroundServices;
 using Flowly.MessageInfrastructure.MessageHandlingStrategies;
-using Flowly.MessageInfrastructure.Model;
 using Flowly.MessageInfrastructure.Registration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -26,7 +25,7 @@ public static class MessageHandlerRegistrationExtensions
         flowlyBuilder.Services.AddScoped<MessageHandler<TMessage>, THandler>();
         flowlyBuilder.AddMessageProcessor<TMessage, THandler, MessageProcessingBackgroundService<TMessage>, StandardMessageHandlingStrategy<TMessage>>();
 
-        return new MessageHandlerBuilder<TMessage>(flowlyBuilder, flowlyBuilder.Services.BuildServiceProvider().GetRequiredService<IHandlerSettings<TMessage>>());
+        return new MessageHandlerBuilder<TMessage>(flowlyBuilder);
     }
 
     /// <summary>

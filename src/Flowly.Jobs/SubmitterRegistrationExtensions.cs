@@ -1,6 +1,5 @@
 using Flowly.Jobs.Messages;
 using Flowly.Jobs.Senders;
-using Flowly.MessageInfrastructure;
 using Flowly.MessageInfrastructure.Registration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -42,7 +41,7 @@ public static class SubmitterRegistrationExtensions
             if (flowlyBuilder.Services.Any(s => s.ImplementationType == typeof(JobSubmitter<TMessage>)))
                 return flowlyBuilder;
 
-            var queueName = MessageQueueNameResolver.Resolve<TMessage>();
+            var queueName = flowlyBuilder.TopologyNameResolver.ResolveQueueName<TMessage>();
             var providerName = ProviderNameResolver.Resolve(flowlyBuilder.Services, typeof(TMessage));
 
             flowlyBuilder.Services

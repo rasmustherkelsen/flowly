@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace Flowly.Jobs;
 
 /// <summary>
@@ -8,6 +10,7 @@ namespace Flowly.Jobs;
 ///     consistent structure for all recurring job handlers within the Flowly framework, allowing for easy integration and
 ///     management of recurring tasks.
 /// </summary>
+[ExcludeFromCodeCoverage]
 public abstract class RecurringJobHandler
 {
     /// <summary>

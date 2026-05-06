@@ -3,7 +3,7 @@ using Flowly.MessageInfrastructure.Telemetry;
 
 namespace Flowly.Jobs.Telemetry;
 
-internal sealed class JobStateGaugeMetrics : IDisposable
+internal sealed class JobStateGaugeMetrics : IJobStateMetrics, IDisposable
 {
     private readonly Meter? _meter;
     private long _failedCount;

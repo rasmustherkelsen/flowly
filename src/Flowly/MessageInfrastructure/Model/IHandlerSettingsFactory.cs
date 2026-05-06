@@ -10,7 +10,7 @@ namespace Flowly.MessageInfrastructure.Model;
 ///     configuration or conventions defined in the application. This allows for a flexible and extensible way to generate
 ///     handler settings that can be used to configure message processing behavior in the Flowly framework.
 /// </summary>
-public interface IHandlerSettingsFactory
+internal interface IHandlerSettingsFactory
 {
     /// <summary>
     ///     Creates a HandlerRegistration instance for the specified handler type and message type, using the provided service

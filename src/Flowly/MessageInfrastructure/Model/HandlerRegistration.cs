@@ -12,6 +12,6 @@ namespace Flowly.MessageInfrastructure.Model;
 /// <param name="HandlerSettings">The handler settings for the message handler.</param>
 /// <param name="QueueRegistration">The deferred queue registration details for the message handler.</param>
 /// <typeparam name="TMessage">The message type that the handler processes.</typeparam>
-public record HandlerRegistration<TMessage>(
+internal record HandlerRegistration<TMessage>(
     IHandlerSettings<TMessage> HandlerSettings,
     DeferredQueueRegistration QueueRegistration);

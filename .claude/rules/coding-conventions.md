@@ -46,3 +46,10 @@ This clearly communicates the business logic without writing comments
 
 - If parameters are just passed in through the constructor and used without modification use primary constructor but **only** if the class is internal.
 
+## Generics
+
+- Use generics to enforce patterns. Use generics to ensure common components use the same patterns and that behavior is consistent by using them.
+
+## Shared Code
+
+- In general, establish patterns in Flowly core assembly which can then be used by message bus providers so that repeated patterns are not implemented multiple places but are enforced centrally to make it as easy as possible to define new providers.

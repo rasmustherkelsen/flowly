@@ -1,4 +1,5 @@
 using Flowly.DeadLetters.BackgroundServices;
+using Flowly.MessageInfrastructure;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -106,6 +107,7 @@ public class DeadLetterTrackingRegistrationExtensionsTests
     {
         public IServiceCollection Services => services;
         public IConfiguration Configuration => new ConfigurationBuilder().Build();
+        public ITopologyNameResolver TopologyNameResolver => new KebabCaseTopologyNameResolver();
     }
 
     private sealed class StubEventHandlerBuilder<TEvent>(
@@ -117,6 +119,7 @@ public class DeadLetterTrackingRegistrationExtensionsTests
     {
         public IServiceCollection Services => services;
         public IConfiguration Configuration => new ConfigurationBuilder().Build();
+        public ITopologyNameResolver TopologyNameResolver => new KebabCaseTopologyNameResolver();
         public string TopicName => topicName;
         public string SubscriptionName => subscriptionName;
         public string ProviderName => providerName;

@@ -14,6 +14,8 @@ internal class EventHandlerBuilder<TEvent>(
 
     public IConfiguration Configuration => inner.Configuration;
 
+    public ITopologyNameResolver TopologyNameResolver => inner.TopologyNameResolver;
+
     public string TopicName { get; } = topicName;
 
     public string SubscriptionName { get; } = subscriptionName;

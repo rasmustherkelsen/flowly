@@ -1,4 +1,5 @@
 using Azure.Core;
+using Flowly.MessageInfrastructure;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.Transport;
 using Microsoft.Extensions.Configuration;
@@ -119,6 +120,7 @@ public class AzureServiceBusRegistrationTests
     {
         public IServiceCollection Services => services;
         public IConfiguration Configuration => configuration;
+        public ITopologyNameResolver TopologyNameResolver => new KebabCaseTopologyNameResolver();
     }
 
     private sealed class FakeMessageBusClientRegistry : IMessageBusClientRegistry

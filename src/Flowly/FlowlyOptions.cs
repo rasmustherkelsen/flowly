@@ -1,3 +1,5 @@
+using Flowly.MessageInfrastructure;
+
 namespace Flowly;
 
 /// <summary>
@@ -25,4 +27,18 @@ public class FlowlyOptions
     ///     solution that is not compatible with Flowly's built-in telemetry features.
     /// </summary>
     public bool EnableTelemetry { get; set; } = true;
+
+    internal Type TopologyNameResolverType { get; private set; } = typeof(KebabCaseTopologyNameResolver);
+
+    /// <summary>
+    ///     Overrides the default <see cref="ITopologyNameResolver" /> used to derive broker-level names for queues, event
+    ///     topics, and event subscriptions. The resolver must have a public parameterless constructor. The default resolver
+    ///     is <see cref="KebabCaseTopologyNameResolver" />.
+    /// </summary>
+    /// <typeparam name="TResolver">
+    ///     The custom resolver type. Must implement <see cref="ITopologyNameResolver" /> and have a public parameterless
+    ///     constructor.
+    /// </typeparam>
+    public void WithTopologyNameResolver<TResolver>() where TResolver : ITopologyNameResolver, new()
+        => TopologyNameResolverType = typeof(TResolver);
 }

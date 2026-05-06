@@ -15,6 +15,7 @@ Flowly is a queue-based messaging abstraction for .NET. It sits between your app
 - [Message Handlers](#message-handlers)
 - [Sending Messages](#sending-messages)
 - [Events (Fan-Out)](#events-fan-out)
+- [Topology Name Resolution](#topology-name-resolution)
 - [Retry Policy](#retry-policy)
 - [Dead Letter Tracking](#dead-letter-tracking)
 - [Job Tracking](#job-tracking)
@@ -105,7 +106,7 @@ public record OrderCreated(Guid OrderId, decimal Total);
 
 ### Queue name auto-generation
 
-Flowly derives the queue name from the message type name: PascalCase is split on capital letters, joined with `-`, lowercased, and a trailing `Message` suffix is stripped.
+Flowly derives the queue name from the message type name using `KebabCaseTopologyNameResolver` (the built-in default): PascalCase is split on capital letters, joined with `-`, lowercased, and a trailing `Message` suffix is stripped.
 
 | Type name | Queue name |
 |---|---|
@@ -113,7 +114,7 @@ Flowly derives the queue name from the message type name: PascalCase is split on
 | `ProcessOrderMessage` | `process-order` |
 | `RebuildSearchIndexMessage` | `rebuild-search-index` |
 
-Only add `[QueueName]` when the auto-generated name is wrong.
+Only add `[QueueName]` when the auto-generated name is wrong. See [Topology Name Resolution](#topology-name-resolution) to replace the naming strategy entirely.
 
 ---
 
@@ -259,6 +260,8 @@ builder.AddEventHandler<OrderProcessed, OrderProcessedEventHandler>();
 
 ### Event and subscription naming
 
+Names are resolved by `KebabCaseTopologyNameResolver` (the built-in default). See [Topology Name Resolution](#topology-name-resolution) to replace the strategy entirely.
+
 | What | Rule |
 |---|---|
 | Topic / exchange name | Derived from event type: PascalCase → kebab-case, strip trailing `Event` (`OrderProcessedEvent` → `order-processed`) |
@@ -293,6 +296,74 @@ builder
 ```
 
 When a dead-lettered event is requeued, Flowly re-publishes it to the topic with a `flowly-target-subscription` header. Only the originating subscriber's filter accepts the message, so only that subscriber receives the requeued event.
+
+---
+
+## Topology Name Resolution
+
+Flowly resolves queue names, event topic names, and subscription names through an `ITopologyNameResolver`. The built-in implementation is `KebabCaseTopologyNameResolver`, which applies the kebab-case rules described in [Queue name auto-generation](#queue-name-auto-generation) and [Event and subscription naming](#event-and-subscription-naming).
+
+### Custom resolver
+
+Implement `ITopologyNameResolver` and register it via `FlowlyOptions`:
+
+```csharp
+public interface ITopologyNameResolver
+{
+    string ResolveQueueName<TMessage>();
+    string ResolveEventName<TEvent>();
+    string ResolveSubscriptionName<THandler>();
+}
+```
+
+Register your resolver in `AddFlowly`:
+
+```csharp
+services.AddFlowly(
+    options => options.WithTopologyNameResolver<MyTopologyNameResolver>(),
+    flowlyBuilder => flowlyBuilder
+        .UseAzureServiceBus("AzureServiceBus")
+        .AddMessageHandler<OrderCreated, OrderCreatedHandler>());
+```
+
+**Constraint: no dependency injection.** Topology name resolution happens at registration time — before the application's DI container is built — so the resolver cannot receive constructor-injected dependencies. Your implementation must have a public parameterless constructor and be self-contained.
+
+### Example: SCREAMING_SNAKE_CASE resolver
+
+```csharp
+using System.Text.RegularExpressions;
+
+public class UpperSnakeCaseTopologyNameResolver : ITopologyNameResolver
+{
+    public string ResolveQueueName<TMessage>()
+    {
+        var attribute = typeof(TMessage).GetCustomAttribute<QueueNameAttribute>();
+        return ToUpperSnake(attribute?.QueueName ?? DeriveFromTypeName<TMessage>("Message"));
+    }
+
+    public string ResolveEventName<TEvent>()
+    {
+        var attribute = typeof(TEvent).GetCustomAttribute<EventNameAttribute>();
+        return ToUpperSnake(attribute?.Name ?? DeriveFromTypeName<TEvent>("Event"));
+    }
+
+    public string ResolveSubscriptionName<THandler>()
+        => ToUpperSnake(typeof(THandler).Name);
+
+    private static string DeriveFromTypeName<T>(string suffix)
+    {
+        var name = typeof(T).Name;
+        if (name.EndsWith(suffix, StringComparison.Ordinal))
+            name = name[..^suffix.Length];
+        return name;
+    }
+
+    private static string ToUpperSnake(string name)
+        => Regex.Replace(name, @"(?<=[a-z])(?=[A-Z])", "_").ToUpperInvariant();
+}
+```
+
+With this resolver, `OrderCreatedMessage` resolves to `ORDER_CREATED` instead of `order-created`. `[QueueName]` and `[EventName]` attribute values are also passed through `ToUpperSnake`, so they are normalised consistently.
 
 ---
 

@@ -1,4 +1,5 @@
 using Flowly.Jobs.Tests.Fakes;
+using Flowly.MessageInfrastructure;
 using Flowly.MessageInfrastructure.BackgroundServices;
 using Flowly.MessageInfrastructure.Model;
 using Flowly.MessageInfrastructure.Registration;
@@ -23,6 +24,7 @@ public class JobHandlerRegistrationExtensionsTests
         services.AddSingleton<IMessageBusClientRegistry>(registry);
         var manifest = new ProviderQueueManifest(providerName, true, "Fake");
         services.AddSingleton(manifest);
+        services.AddSingleton<ITopologyNameResolver, KebabCaseTopologyNameResolver>();
         services.AddSingleton<IHandlerSettingsFactory, HandlerSettingsFactory>();
         services.AddSingleton<IQueueRegistrar, QueueRegistrar>();
         var builder = new StubFlowlyBuilder(services);
@@ -110,6 +112,7 @@ public class JobHandlerRegistrationExtensionsTests
     {
         public IServiceCollection Services => services;
         public IConfiguration Configuration => new ConfigurationBuilder().Build();
+        public ITopologyNameResolver TopologyNameResolver => new KebabCaseTopologyNameResolver();
     }
 
     private record SomeJobMessage : IJobMessage
