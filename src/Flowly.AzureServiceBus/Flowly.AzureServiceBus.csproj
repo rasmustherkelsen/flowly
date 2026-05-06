@@ -1,0 +1,27 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <PackageId>Flowly.AzureServiceBus</PackageId>
+        <Description>Azure Service Bus transport for Flowly.</Description>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>Flowly.AzureServiceBus.Tests</_Parameter1>
+        </AssemblyAttribute>
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Aspire.Azure.Messaging.ServiceBus" Version="13.2.4"/>
+        <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="10.0.7"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Flowly\Flowly.csproj"/>
+    </ItemGroup>
+
+</Project>

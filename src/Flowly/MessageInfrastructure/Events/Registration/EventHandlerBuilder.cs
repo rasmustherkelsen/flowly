@@ -1,0 +1,24 @@
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace Flowly.MessageInfrastructure.Events.Registration;
+
+internal class EventHandlerBuilder<TEvent>(
+    IFlowlyBuilder inner,
+    string topicName,
+    string subscriptionName,
+    string providerName) : IEventHandlerBuilder<TEvent>
+    where TEvent : class
+{
+    public IServiceCollection Services => inner.Services;
+
+    public IConfiguration Configuration => inner.Configuration;
+
+    public ITopologyNameResolver TopologyNameResolver => inner.TopologyNameResolver;
+
+    public string TopicName { get; } = topicName;
+
+    public string SubscriptionName { get; } = subscriptionName;
+
+    public string ProviderName { get; } = providerName;
+}

@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="EventSender/EventSender.csproj" />
+  <Project Path="Messages/Messages.csproj" />
+  <Project Path="ReceiverOne/ReceiverOne.csproj" />
+  <Project Path="ReceiverTwo/ReceiverTwo.csproj" />
+</Solution>

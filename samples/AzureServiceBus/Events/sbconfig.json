@@ -1,0 +1,63 @@
+{
+  "UserConfig": {
+    "Namespaces": [
+      {
+        "Name": "sbemulatorns",
+        "Queues": [],
+        "Topics": [
+          {
+            "Name": "order-submitted-message",
+            "Properties": {
+              "DefaultMessageTimeToLive": "PT1H",
+              "DuplicateDetectionHistoryTimeWindow": "PT5M",
+              "RequiresDuplicateDetection": false
+            },
+            "Subscriptions": [
+              {
+                "Name": "notify-employee-when-order-submitted-handler",
+                "Properties": {
+                  "DeadLetteringOnMessageExpiration": true,
+                  "DefaultMessageTimeToLive": "PT1H",
+                  "MaxDeliveryCount": 10
+                },
+                "Rules": [
+                  {
+                    "Name": "$Default",
+                    "Properties": {
+                      "FilterType": "Sql",
+                      "SqlFilter": {
+                        "SqlExpression": "(NOT EXISTS([flowly-target-subscription])) OR [flowly-target-subscription] = \u0027notify-employee-when-order-submitted-handler\u0027"
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "Name": "send-mail-when-order-submitted-handler",
+                "Properties": {
+                  "DeadLetteringOnMessageExpiration": true,
+                  "DefaultMessageTimeToLive": "PT1H",
+                  "MaxDeliveryCount": 10
+                },
+                "Rules": [
+                  {
+                    "Name": "$Default",
+                    "Properties": {
+                      "FilterType": "Sql",
+                      "SqlFilter": {
+                        "SqlExpression": "(NOT EXISTS([flowly-target-subscription])) OR [flowly-target-subscription] = \u0027send-mail-when-order-submitted-handler\u0027"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "Logging": {
+      "Type": "File"
+    }
+  }
+}

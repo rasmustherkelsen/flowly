@@ -1,0 +1,8 @@
+<Solution>
+  <Project Path="Api/Api.csproj" />
+  <Project Path="AzureServiceBusAspire.AppHost/AzureServiceBusAspire.AppHost.csproj" />
+  <Project Path="AzureServiceBusAspire.ServiceDefaults/AzureServiceBusAspire.ServiceDefaults.csproj" />
+  <Project Path="BackendFinanceProcessor/BackendFinanceProcessor.csproj" />
+  <Project Path="BackendProcessor/BackendProcessor.csproj" />
+  <Project Path="MessageContracts/MessageContracts.csproj" />
+</Solution>

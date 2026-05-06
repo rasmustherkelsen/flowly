@@ -1,0 +1,29 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <PackageId>Flowly</PackageId>
+        <Description>Transport-agnostic queue-based messaging abstraction for .NET. Supports dead letter tracking, jobs, and recurring jobs. Take your dependency on what of the Flowly transport implementations e.g. Flowly.RabbitMQ</Description>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="Flowly.Tests"/>
+        <InternalsVisibleTo Include="Flowly.Jobs"/>
+        <InternalsVisibleTo Include="Flowly.Jobs.Tests"/>
+        <InternalsVisibleTo Include="Flowly.DeadLetters"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Cronos" Version="0.13.0"/>
+        <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.7"/>
+        <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.7"/>
+        <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.7"/>
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.7"/>
+        <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.7"/>
+        <PackageReference Include="System.CommandLine" Version="2.0.7"/>
+    </ItemGroup>
+
+</Project>

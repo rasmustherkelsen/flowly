@@ -1,0 +1,119 @@
+namespace Flowly.Tool.QueueDiscovery;
+
+internal static class QueueDiscoveryRunner
+{
+    public static (IReadOnlyList<QueueDiscoveryQueue> QueueDefinitions, IReadOnlyList<QueueDiscoveryEvent> EventDefinitions, IReadOnlyList<string> ConfigurationTypes) DiscoverQueues(
+        IReadOnlyList<QueueDiscoverySource> sources,
+        string? configurationType,
+        DirectoryInfo? workingDirectory,
+        string? providerName = null)
+    {
+        var queueDefinitions = new Dictionary<string, QueueDiscoveryQueue>(StringComparer.OrdinalIgnoreCase);
+        var eventDefinitions = new Dictionary<string, QueueDiscoveryEvent>(StringComparer.OrdinalIgnoreCase);
+        var configurationTypes = new SortedSet<string>(StringComparer.Ordinal);
+        var failures = new List<string>();
+
+        foreach (var source in sources)
+        {
+            FlowlyQueueDiscoveryResult result;
+            try
+            {
+                var effectiveWorkingDirectory = workingDirectory ?? source.DefaultWorkingDirectory;
+                result = new FlowlyQueueDiscovery().DiscoverQueues(
+                    source.Assembly.FullName,
+                    configurationType,
+                    effectiveWorkingDirectory?.FullName,
+                    providerName);
+            }
+            catch (MissingTransportProviderException)
+            {
+                throw;
+            }
+            catch (FlowlyConfigurationNotFoundException)
+            {
+                failures.Add($"- {source.Assembly.FullName}: No Flowly configuration found. Ensure the assembly references Flowly and contains a FlowlyDesignTimeFactory or uses AddFlowly().");
+                continue;
+            }
+            catch (Exception ex)
+            {
+                failures.Add($"- {source.Assembly.FullName}: {ex.Message}");
+                continue;
+            }
+
+            configurationTypes.Add(result.ConfigurationType);
+
+            foreach (var queueDefinition in result.QueueDefinitions)
+            {
+                if (queueDefinitions.TryGetValue(queueDefinition.Name, out var existing))
+                {
+                    if (existing.DefaultMessageTimeToLive != queueDefinition.DefaultMessageTimeToLive)
+                    {
+                        throw new InvalidOperationException(
+                            $"Conflicting queue setting 'DefaultMessageTimeToLive' for queue '{queueDefinition.Name}'.");
+                    }
+
+                    if (existing.DeadLetterOnMessageExpiration != queueDefinition.DeadLetterOnMessageExpiration)
+                    {
+                        throw new InvalidOperationException(
+                            $"Conflicting queue setting 'DeadLetterOnMessageExpiration' for queue '{queueDefinition.Name}'.");
+                    }
+
+                    if (existing.LockDuration != queueDefinition.LockDuration)
+                    {
+                        throw new InvalidOperationException(
+                            $"Conflicting queue setting 'LockDuration' for queue '{queueDefinition.Name}'.");
+                    }
+
+                    queueDefinitions[queueDefinition.Name] = existing with
+                    {
+                        RequiresSession = existing.RequiresSession || queueDefinition.RequiresSession
+                    };
+
+                    continue;
+                }
+
+                queueDefinitions.Add(queueDefinition.Name, queueDefinition);
+            }
+
+            foreach (var eventDefinition in result.EventDefinitions)
+            {
+                var key = $"{eventDefinition.TopicName.ToLowerInvariant()}|{eventDefinition.SubscriptionName.ToLowerInvariant()}";
+                eventDefinitions.TryAdd(key, eventDefinition);
+            }
+        }
+
+        if (failures.Count > 0)
+        {
+            var previous = Console.ForegroundColor;
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.Error.WriteLine("Warning: Some inputs were skipped during queue discovery:");
+            foreach (var failure in failures)
+            {
+                Console.Error.WriteLine(failure);
+            }
+            Console.ForegroundColor = previous;
+        }
+
+        if (queueDefinitions.Count == 0 && eventDefinitions.Count == 0)
+        {
+            throw new InvalidOperationException(
+                "No queues or events were discovered from provided inputs. " +
+                (failures.Count > 0
+                    ? "All inputs failed queue discovery."
+                    : "No FlowlyDesignTimeFactory-based configuration was found."));
+        }
+
+        var orderedQueueDefinitions = queueDefinitions
+            .Values
+            .OrderBy(queue => queue.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        var orderedEventDefinitions = eventDefinitions
+            .Values
+            .OrderBy(e => e.TopicName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(e => e.SubscriptionName, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return (orderedQueueDefinitions, orderedEventDefinitions, configurationTypes.ToArray());
+    }
+}
