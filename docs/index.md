@@ -10,6 +10,7 @@ Flowly is a queue-based messaging abstraction for .NET. It sits between your app
 - [Azure Service Bus Quickstart](quickstart-azure-service-bus.md)
 - [Why Flowly?](#why-flowly)
 - [Packages](#packages)
+- [Installation](#installation)
 - [Getting Started](#getting-started)
 - [Defining Messages](#defining-messages)
 - [Message Handlers](#message-handlers)
@@ -44,6 +45,8 @@ Flowly is a queue-based messaging abstraction for .NET. It sits between your app
 
 ## Packages
 
+All packages are published to [NuGet.org](https://www.nuget.org/packages?q=Flowly).
+
 | Package | Description |
 |---|---|
 | `Flowly` | Core abstractions: handlers, senders, queue topology, retry engine |
@@ -57,6 +60,41 @@ Flowly is a queue-based messaging abstraction for .NET. It sits between your app
 | `Flowly.DeadLetters.Postgres` | PostgreSQL backend for dead letter tracking |
 | `Flowly.OpenTelemetry` | OpenTelemetry metrics and traces for handlers and submitters |
 | `Flowly.Tool` | `flowly` CLI for queue discovery and code generation |
+
+---
+
+## Installation
+
+Install the transport package for your broker — it pulls in `Flowly` core automatically:
+
+```bash
+# Azure Service Bus
+dotnet add package Flowly.AzureServiceBus
+
+# RabbitMQ
+dotnet add package Flowly.RabbitMQ
+```
+
+Add optional feature packages as needed:
+
+```bash
+# Job state tracking — pick the backend that matches your database
+dotnet add package Flowly.Jobs.SqlServer
+dotnet add package Flowly.Jobs.Postgres
+
+# Dead letter tracking — pick the backend that matches your database
+dotnet add package Flowly.DeadLetters.SqlServer
+dotnet add package Flowly.DeadLetters.Postgres
+
+# OpenTelemetry instrumentation
+dotnet add package Flowly.OpenTelemetry
+```
+
+Install the `flowly` CLI tool globally for local development and code generation:
+
+```bash
+dotnet tool install --global Flowly.Tool
+```
 
 ---
 
