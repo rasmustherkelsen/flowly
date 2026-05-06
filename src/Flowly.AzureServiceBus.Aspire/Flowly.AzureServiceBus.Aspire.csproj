@@ -6,6 +6,7 @@
         <Nullable>enable</Nullable>
         <PackageId>Flowly.AzureServiceBus.Aspire</PackageId>
         <Description>Aspire AppHost integration for Flowly Azure Service Bus.</Description>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
     </PropertyGroup>
 
     <ItemGroup>

@@ -10,6 +10,7 @@
         <ToolCommandName>flowly</ToolCommandName>
         <PackageId>Flowly.Tool</PackageId>
         <Description>CLI tool for Flowly queue discovery and provider-specific infrastructure generation.</Description>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
     </PropertyGroup>
 
     <ItemGroup>

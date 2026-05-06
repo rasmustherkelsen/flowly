@@ -15,5 +15,6 @@
 
   <ItemGroup Condition="'$(IsPackable)' != 'false'">
     <None Include="$(MSBuildThisFileDirectory)docs/assets/flowly-icon.png" Pack="true" PackagePath="icon.png" />
+    <None Include="README.md" Pack="true" PackagePath="\" Condition="Exists('README.md')" />
   </ItemGroup>
 </Project>

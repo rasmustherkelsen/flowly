@@ -6,6 +6,7 @@
         <Nullable>enable</Nullable>
         <PackageId>Flowly.Jobs</PackageId>
         <Description>Job state tracking and CRON scheduling for Flowly. Job state tracking requires an underlying database so take your dependency on Flowly.Jobs.X where X is the database you want to use.</Description>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
     </PropertyGroup>
 
     <ItemGroup>

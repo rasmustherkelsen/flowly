@@ -6,6 +6,7 @@
         <Nullable>enable</Nullable>
         <PackageId>Flowly</PackageId>
         <Description>Transport-agnostic queue-based messaging abstraction for .NET. Supports dead letter tracking, jobs, and recurring jobs. Take your dependency on what of the Flowly transport implementations e.g. Flowly.RabbitMQ</Description>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
     </PropertyGroup>
 
     <ItemGroup>
