@@ -9,6 +9,8 @@ internal class StandardMessageHandlingStrategy<TMessage> : IMessageHandlingStrat
 {
     public async Task HandleMessage(IReceivedMessage<TMessage> receivedMessage, IServiceProvider serviceProvider, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         var handler = serviceProvider.GetRequiredService<MessageHandler<TMessage>>();
         await handler.Handle(new MessageContext<TMessage>(receivedMessage.Body, cancellationToken));
     }
@@ -20,7 +22,7 @@ internal class StandardMessageHandlingStrategy<TMessage> : IMessageHandlingStrat
 
     public Task OnMessageHandlingError(ILogger logger, IServiceProvider serviceProvider, ErrorDetails errorDetails)
     {
-        logger.LogError(errorDetails.Exception.Message);
+        logger.LogError("{Message}", errorDetails.Exception.Message);
         return Task.CompletedTask;
     }
 }

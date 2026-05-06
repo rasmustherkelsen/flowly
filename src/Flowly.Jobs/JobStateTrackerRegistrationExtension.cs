@@ -31,6 +31,8 @@ public static class JobStateTrackerRegistrationExtension
         flowlyBuilder.Services.AddOptions<JobStateTrackingOptions>();
 
         flowlyBuilder.Services.AddSingleton<JobStateGaugeMetrics>();
+        flowlyBuilder.Services.AddSingleton<IJobStateMetrics>(sp => sp.GetRequiredService<JobStateGaugeMetrics>());
+        flowlyBuilder.Services.AddSingleton(new JobStateMetricsBackgroundServiceOptions(TimeSpan.FromSeconds(60)));
         flowlyBuilder.Services.AddHostedService<JobStateMetricsBackgroundService>();
 
         flowlyBuilder
@@ -68,6 +70,7 @@ public static class JobStateTrackerRegistrationExtension
     internal static IFlowlyBuilder AddRepositories(this IFlowlyBuilder flowlyBuilder, Action<DbContextOptionsBuilder> dbContextOptions)
     {
         flowlyBuilder.Services.AddDbContextFactory<JobStateDataContext>(dbContextOptions);
+        flowlyBuilder.Services.AddSingleton<IJobStateCountReader, JobStateCountReader>();
         flowlyBuilder.Services.AddScoped<IJobStateRepository, JobStateRepository>();
         flowlyBuilder.Services.AddScoped<IJobAliveStatusRepository, JobAliveStatusRepository>();
         flowlyBuilder.Services.AddScoped<ICustomJobStateRepository, CustomJobStateRepository>();

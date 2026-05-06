@@ -65,7 +65,7 @@ public sealed class ProviderQueueManifest
             return;
         }
 
-        _queues[existing] = Merge(_queues[existing], registration);
+        _queues[existing] = Merge(_queues[existing], registration, ProviderName);
     }
 
     internal void AddEvent(DeferredEventRegistration registration)
@@ -78,17 +78,17 @@ public sealed class ProviderQueueManifest
             _events.Add(registration);
     }
 
-    private static DeferredQueueRegistration Merge(DeferredQueueRegistration a, DeferredQueueRegistration b)
+    private static DeferredQueueRegistration Merge(DeferredQueueRegistration a, DeferredQueueRegistration b, string providerName)
     {
         return new DeferredQueueRegistration(
             a.QueueName,
             a.RequiresSession || b.RequiresSession,
-            MergeSetting(a.DefaultMessageTimeToLive, b.DefaultMessageTimeToLive, a.QueueName, nameof(DeferredQueueRegistration.DefaultMessageTimeToLive)),
-            MergeSetting(a.DeadLetterOnMessageExpiration, b.DeadLetterOnMessageExpiration, a.QueueName, nameof(DeferredQueueRegistration.DeadLetterOnMessageExpiration)),
-            MergeSetting(a.LockDuration, b.LockDuration, a.QueueName, nameof(DeferredQueueRegistration.LockDuration)));
+            MergeSetting(a.DefaultMessageTimeToLive, b.DefaultMessageTimeToLive, a.QueueName, nameof(DeferredQueueRegistration.DefaultMessageTimeToLive), providerName),
+            MergeSetting(a.DeadLetterOnMessageExpiration, b.DeadLetterOnMessageExpiration, a.QueueName, nameof(DeferredQueueRegistration.DeadLetterOnMessageExpiration), providerName),
+            MergeSetting(a.LockDuration, b.LockDuration, a.QueueName, nameof(DeferredQueueRegistration.LockDuration), providerName));
     }
 
-    private static T? MergeSetting<T>(T? a, T? b, string queueName, string settingName) where T : struct
+    private static T? MergeSetting<T>(T? a, T? b, string queueName, string settingName, string providerName) where T : struct
     {
         if (a is null) return b;
         if (b is null) return a;
@@ -96,6 +96,6 @@ public sealed class ProviderQueueManifest
         if (EqualityComparer<T>.Default.Equals(a.Value, b.Value))
             return a;
 
-        throw new InvalidOperationException($"Conflicting queue setting '{settingName}' for queue '{queueName}' on provider '{settingName}'.");
+        throw new InvalidOperationException($"Conflicting queue setting '{settingName}' for queue '{queueName}' on provider '{providerName}'.");
     }
 }

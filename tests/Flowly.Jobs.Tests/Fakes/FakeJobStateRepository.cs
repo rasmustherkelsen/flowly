@@ -18,6 +18,7 @@ internal class FakeJobStateRepository : IJobStateRepository
 
     public IReadOnlyCollection<RecurringJob> RecurringJobsToReturn { get; set; } = [];
     public IReadOnlyCollection<JobInfo> JobInfosToReturn { get; set; } = [];
+    public Action? OnGetRecurringJobsCalled { get; set; }
 
     public Task CreateJobState(CreateJobState createJobState)
     {
@@ -55,7 +56,11 @@ internal class FakeJobStateRepository : IJobStateRepository
         return Task.CompletedTask;
     }
 
-    public Task<IReadOnlyCollection<RecurringJob>> GetRecurringJobs() => Task.FromResult(RecurringJobsToReturn);
+    public Task<IReadOnlyCollection<RecurringJob>> GetRecurringJobs()
+    {
+        OnGetRecurringJobsCalled?.Invoke();
+        return Task.FromResult(RecurringJobsToReturn);
+    }
 
     public Task<IReadOnlyCollection<JobInfo>> Query(JobQuery query)
     {
