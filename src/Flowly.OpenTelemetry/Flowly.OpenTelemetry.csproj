@@ -6,6 +6,7 @@
         <Nullable>enable</Nullable>
         <PackageId>Flowly.OpenTelemetry</PackageId>
         <Description>OpenTelemetry metrics and traces integration for Flowly.</Description>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
     </PropertyGroup>
 
     <ItemGroup>

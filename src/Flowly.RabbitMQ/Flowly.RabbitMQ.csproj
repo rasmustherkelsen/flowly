@@ -6,6 +6,7 @@
         <Nullable>enable</Nullable>
         <PackageId>Flowly.RabbitMQ</PackageId>
         <Description>RabbitMQ transport for Flowly.</Description>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
     </PropertyGroup>
 
     <ItemGroup>

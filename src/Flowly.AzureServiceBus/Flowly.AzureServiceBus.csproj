@@ -6,6 +6,7 @@
         <Nullable>enable</Nullable>
         <PackageId>Flowly.AzureServiceBus</PackageId>
         <Description>Azure Service Bus transport for Flowly.</Description>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
     </PropertyGroup>
 
     <ItemGroup>
