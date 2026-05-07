@@ -1,0 +1,54 @@
+name: Feature request
+description: Propose a new feature or improvement
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before opening a feature request, please check existing issues to avoid duplicates. All pull requests must be preceded by an accepted issue — see [CONTRIBUTING.md](../../blob/main/CONTRIBUTING.md).
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or motivation
+      description: What problem does this feature solve? What can you not do today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the feature you'd like. Include API sketches or configuration examples if you have them.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What workarounds or alternative approaches did you consider?
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Core abstractions
+        - Azure Service Bus transport
+        - RabbitMQ transport
+        - Job tracking
+        - Dead letter tracking
+        - Recurring jobs
+        - OpenTelemetry
+        - Flowly.Tool CLI
+        - Aspire integration
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Any other context, links, or prior art that might be useful.
