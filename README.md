@@ -2,6 +2,8 @@
 
 Flowly is a queue-based messaging abstraction for .NET. It sits between your application code and the underlying message broker, giving you a clean, convention-driven API for message handling, job tracking, retries, dead letter management, and recurring scheduled work.
 
+[![Build](https://github.com/rasmustherkelsen/flowly/actions/workflows/build.yml/badge.svg)](https://github.com/rasmustherkelsen/flowly/actions/workflows/build.yml)
+
 ---
 
 ## Quick Navigation
@@ -940,6 +942,12 @@ All metrics use the meter name `"Flowly"` and follow the `messaging.*` semantic 
 ### Traces
 
 Each message or event handled creates a span named `flowly.handle {queueName}` with kind `Consumer`. The span includes `handler`, `messaging.system`, `messaging.destination.name`, `messaging.message.id`, and `messaging.message.conversation_id` attributes.
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how to report bugs and propose features. Unsolicited large PRs may be closed — please open an issue first.
 
 ---
 
