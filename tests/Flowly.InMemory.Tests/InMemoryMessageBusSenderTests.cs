@@ -113,6 +113,48 @@ public class InMemoryMessageBusSenderTests
         }
     }
 
+    public class ReferencePassing
+    {
+        [Fact]
+        public async Task StoresOriginalMessageReferenceInEnvelope()
+        {
+            var options = new InMemoryOptions { EnableReferencePassing = true };
+            var broker = new InMemoryBroker(options);
+            var sender = new InMemoryMessageBusSender("test-queue", broker, options, SenderMode.Queue);
+            var message = new TestMessage("ref");
+
+            await sender.SendMessage(message, MessageProperties.Empty);
+
+            broker.GetQueue("test-queue").Reader.TryRead(out var envelope);
+            Assert.Same(message, envelope!.OriginalMessage);
+        }
+
+        [Fact]
+        public async Task RawBodyIsEmptyWhenReferencePassingEnabled()
+        {
+            var options = new InMemoryOptions { EnableReferencePassing = true };
+            var broker = new InMemoryBroker(options);
+            var sender = new InMemoryMessageBusSender("test-queue", broker, options, SenderMode.Queue);
+
+            await sender.SendMessage(new TestMessage("ref"), MessageProperties.Empty);
+
+            broker.GetQueue("test-queue").Reader.TryRead(out var envelope);
+            Assert.Equal(string.Empty, envelope!.RawBody);
+        }
+
+        [Fact]
+        public async Task MessageSizeIsNotValidatedWhenReferencePassingEnabled()
+        {
+            var options = new InMemoryOptions { EnableReferencePassing = true, MaxMessageSizeBytes = 1 };
+            var broker = new InMemoryBroker(options);
+            var sender = new InMemoryMessageBusSender("test-queue", broker, options, SenderMode.Queue);
+
+            await sender.SendMessage(new TestMessage("this-would-exceed-1-byte"), MessageProperties.Empty);
+
+            Assert.True(broker.GetQueue("test-queue").Reader.TryRead(out _));
+        }
+    }
+
     public class SendEmptyMessage
     {
         [Fact]

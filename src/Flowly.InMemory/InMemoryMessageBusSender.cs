@@ -13,9 +13,14 @@ internal class InMemoryMessageBusSender(
 {
     public Task SendMessage<TMessage>(TMessage message, MessageProperties messageProperties, CancellationToken cancellationToken = default)
     {
-        var rawBody = JsonSerializer.Serialize(message);
-        ValidateMessageSize(rawBody);
-        var envelope = BuildEnvelope(rawBody, messageProperties);
+        var (rawBody, originalMessage) = options.EnableReferencePassing
+            ? (string.Empty, (object?)message)
+            : (JsonSerializer.Serialize(message), (object?)null);
+
+        if (originalMessage is null)
+            ValidateMessageSize(rawBody);
+
+        var envelope = BuildEnvelope(rawBody, messageProperties, originalMessage);
         return Deliver(envelope, messageProperties, cancellationToken);
     }
 
@@ -45,7 +50,7 @@ internal class InMemoryMessageBusSender(
         };
     }
 
-    private InMemoryEnvelope BuildEnvelope(string rawBody, MessageProperties messageProperties)
+    private InMemoryEnvelope BuildEnvelope(string rawBody, MessageProperties messageProperties, object? originalMessage = null)
     {
         var props = new Dictionary<string, object>();
 
@@ -74,7 +79,7 @@ internal class InMemoryMessageBusSender(
 
         DateTimeOffset? scheduledDeliveryTime = messageProperties.ScheduledEnqueueTime;
 
-        return new InMemoryEnvelope(messageId, rawBody, props, DateTimeOffset.UtcNow, scheduledDeliveryTime);
+        return new InMemoryEnvelope(messageId, rawBody, props, DateTimeOffset.UtcNow, scheduledDeliveryTime, originalMessage);
     }
 
     private Task Deliver(InMemoryEnvelope envelope, MessageProperties messageProperties, CancellationToken cancellationToken)

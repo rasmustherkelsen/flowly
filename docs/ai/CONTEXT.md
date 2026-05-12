@@ -600,7 +600,10 @@ For plain Docker Compose, use `Flowly.Tool` to generate `emulator-config.json` f
 
 Each `InMemoryBroker` instance (one per provider name) lazily creates channels on first access. No external broker connection is needed.
 
-Registration: `.UseInMemory()`. Optionally configure `MaxMessageSizeBytes` (default 1 MB) and `ChannelCapacity` (default 1000) via `Action<InMemoryOptions>`.
+Registration: `.UseInMemory()`. Optionally configure via `Action<InMemoryOptions>`:
+- `MaxMessageSizeBytes` (default 1 MB) — throws `MessageTooLargeException` when exceeded; not enforced when `EnableReferencePassing` is `true`.
+- `ChannelCapacity` (default 1000) — bounded channel capacity; writers block when full.
+- `EnableReferencePassing` (default `false`) — when `true`, messages bypass JSON serialisation: the sender stores the original object reference in the envelope (`InMemoryEnvelope.OriginalMessage`) and the receiver returns it directly via `is TMessage` pattern match. Useful as a mediator-style starting point before migrating to a real broker. Retries and scheduled delivery preserve the reference. Serialisation fidelity is not tested in this mode.
 
 ---
 

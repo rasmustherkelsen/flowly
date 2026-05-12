@@ -6,8 +6,10 @@ namespace Flowly.InMemory;
 internal class InMemoryUntypedReceivedMessage(InMemoryEnvelope envelope) : IReceivedMessage
 {
     public TBody GetBody<TBody>()
-        => JsonSerializer.Deserialize<TBody>(envelope.RawBody)
-           ?? throw new InvalidOperationException($"Deserialized message body is null for type {typeof(TBody).FullName}.");
+        => envelope.OriginalMessage is TBody original
+            ? original
+            : JsonSerializer.Deserialize<TBody>(envelope.RawBody)
+               ?? throw new InvalidOperationException($"Deserialized message body is null for type {typeof(TBody).FullName}.");
 
     public MessageProperties Properties => InMemoryReceivedMessage<object>.BuildProperties(envelope);
 }
