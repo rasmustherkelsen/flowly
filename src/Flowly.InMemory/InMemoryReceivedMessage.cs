@@ -7,8 +7,10 @@ namespace Flowly.InMemory;
 internal class InMemoryReceivedMessage<TMessage>(InMemoryEnvelope envelope, Channel<InMemoryEnvelope> deadLetterChannel) : IReceivedMessage<TMessage>
 {
     public TMessage Body => field
-        ??= JsonSerializer.Deserialize<TMessage>(envelope.RawBody)
-            ?? throw new InvalidOperationException($"Deserialized message body is null for type {typeof(TMessage).FullName}.");
+        ??= envelope.OriginalMessage is TMessage original
+            ? original
+            : JsonSerializer.Deserialize<TMessage>(envelope.RawBody)
+                ?? throw new InvalidOperationException($"Deserialized message body is null for type {typeof(TMessage).FullName}.");
 
     public MessageProperties Properties { get; } = BuildProperties(envelope);
 

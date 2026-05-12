@@ -5,4 +5,5 @@ internal record InMemoryEnvelope(
     string RawBody,
     Dictionary<string, object> ApplicationProperties,
     DateTimeOffset EnqueuedTime,
-    DateTimeOffset? ScheduledDeliveryTime = null);
+    DateTimeOffset? ScheduledDeliveryTime = null,
+    object? OriginalMessage = null);
