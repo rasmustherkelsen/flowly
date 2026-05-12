@@ -24,6 +24,13 @@ Each sample is self-contained and runnable. Pick the one matching your transport
 | [EventsWithDeadLetterTracking](RabbitMQ/EventsWithDeadLetterTracking/README.md) | Event subscriber that dead-letters failing messages, with a console app to list, requeue, and discard them |
 | [Aspire](RabbitMQ/Aspire/README.md) | Full-featured: jobs, batch handlers, recurring jobs, dead letters, OpenTelemetry, custom dashboard |
 
+## InMemory
+
+| Sample | What it shows |
+|---|---|
+| [SendReceive](InMemory/SendReceive/README.md) | Minimal send/receive with no external broker — sender and handler run in the same process |
+| [Events](InMemory/Events/README.md) | Fan-out event publishing to two independent in-process subscribers |
+
 ## MultiBus
 
 | Sample | What it shows |

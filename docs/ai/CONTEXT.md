@@ -20,6 +20,7 @@ This document gives an AI assistant the context needed to work effectively in th
 ├── Flowly/                          # Core abstractions and infrastructure
 ├── Flowly.AzureServiceBus/          # Azure Service Bus transport implementation
 ├── Flowly.RabbitMQ/                 # RabbitMQ transport implementation
+├── Flowly.InMemory/                 # In-memory transport (channels; no broker required)
 ├── Flowly.Jobs/                     # Job tracking, CRON scheduling, job state DB
 ├── Flowly.Jobs.SqlServer/           # SQL Server backend for job state tracking
 ├── Flowly.Jobs.Postgres/            # PostgreSQL backend for job state tracking
@@ -584,7 +585,26 @@ For plain Docker Compose, use `Flowly.Tool` to generate `emulator-config.json` f
 
 ---
 
-### 14. Transport Internals (RabbitMQ)
+### 14. Transport Internals (InMemory)
+
+| Feature | Implementation |
+|---|---|
+| Regular handler | `InMemoryMessageBusProcessor<T>` reading from a bounded `Channel<InMemoryEnvelope>` |
+| Batch handler | `InMemoryMessageBusReceiver` pulling from the same channel with timeout |
+| Recurring job handler | `InMemoryExecutionLaneProcessor` reading from a per-session `Channel<InMemoryEnvelope>` |
+| Serialization | `System.Text.Json` |
+| Scheduled delivery (retry delay) | `InMemoryScheduler` hosted service; drains a `PriorityQueue` every 100 ms |
+| Dead letter | `InMemoryReceivedMessage.DeadLetter()` writes to a separate DLQ `Channel<InMemoryEnvelope>` |
+| Event fan-out | `InMemoryMessageBusSender` (SenderMode.Topic) writes to every registered subscription channel |
+| Targeted event requeue | `InMemoryMessageBusSender` (SenderMode.TopicRetry) reads `flowly-target-subscription` from app properties and routes to one subscription |
+
+Each `InMemoryBroker` instance (one per provider name) lazily creates channels on first access. No external broker connection is needed.
+
+Registration: `.UseInMemory()`. Optionally configure `MaxMessageSizeBytes` (default 1 MB) and `ChannelCapacity` (default 1000) via `Action<InMemoryOptions>`.
+
+---
+
+### 15. Transport Internals (RabbitMQ)
 
 | Feature | Implementation |
 |---|---|
@@ -610,7 +630,7 @@ The validator uses `QueueDeclarePassiveAsync` to confirm existence. It cannot ve
 
 ---
 
-### 15. Naming & Conventions
+### 16. Naming & Conventions
 
 - Message types are plain `record` or `class` types — no base class required for regular messages
 - Job message types must implement `IJobMessage`
@@ -622,7 +642,7 @@ The validator uses `QueueDeclarePassiveAsync` to confirm existence. It cannot ve
 
 ---
 
-### 16. Testing Conventions
+### 17. Testing Conventions
 
 Tests live in `Flowly.Tests/`, which mirrors the source tree structure:
 
@@ -659,7 +679,7 @@ Rules:
 
 ---
 
-### 17. Key File Locations
+### 18. Key File Locations
 
 | What | Where |
 |---|---|
@@ -681,6 +701,9 @@ Rules:
 | RabbitMQ topology creation | `Flowly.RabbitMQ/RabbitMqMessagingTopologyCreator.cs` |
 | RabbitMQ retry DLX validation | `Flowly.RabbitMQ/RabbitMqRetryTopologyValidator.cs` |
 | RabbitMQ connection pool | `Flowly.RabbitMQ/RabbitMqConnectionPool.cs` |
+| InMemory wiring | `Flowly.InMemory/InMemoryRegistration.cs` |
+| InMemory broker (channel store) | `Flowly.InMemory/InMemoryBroker.cs` |
+| InMemory scheduler | `Flowly.InMemory/InMemoryScheduler.cs` |
 | Job DB entities | `Flowly.Jobs/DatabaseModel/` |
 | Job domain models | `Flowly.Jobs/Model/` |
 | Job DI extensions | `Flowly.Jobs/Registration/` |
@@ -693,7 +716,7 @@ Rules:
 
 ---
 
-### 18. Current Status & Roadmap Notes
+### 19. Current Status & Roadmap Notes
 
 - Azure Service Bus and RabbitMQ are both implemented transports
 - The abstraction layer (`IMessageBusClient`, etc.) is transport-agnostic
