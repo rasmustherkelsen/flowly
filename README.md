@@ -30,6 +30,7 @@ Flowly is a queue-based messaging abstraction for .NET. It sits between your app
 - [Azure Service Bus Transport](#azure-service-bus-transport)
 - [RabbitMQ Transport](#rabbitmq-transport)
 - [OpenTelemetry](#opentelemetry)
+- [Samples](#samples)
 - [Status](#status)
 
 ---
@@ -54,6 +55,7 @@ All packages are published to [NuGet.org](https://www.nuget.org/packages?q=Flowl
 | `Flowly` | Core abstractions: handlers, senders, queue topology, retry engine |
 | `Flowly.AzureServiceBus` | Azure Service Bus transport |
 | `Flowly.RabbitMQ` | RabbitMQ transport |
+| `Flowly.InMemory` | In-memory transport — no broker required; ideal for testing and local development |
 | `Flowly.Jobs` | Job state tracking and CRON scheduling core |
 | `Flowly.Jobs.SqlServer` | SQL Server backend for job state tracking |
 | `Flowly.Jobs.Postgres` | PostgreSQL backend for job state tracking |
@@ -75,6 +77,9 @@ dotnet add package Flowly.AzureServiceBus
 
 # RabbitMQ
 dotnet add package Flowly.RabbitMQ
+
+# In-memory (no broker — testing / local dev)
+dotnet add package Flowly.InMemory
 ```
 
 Add optional feature packages as needed:
@@ -942,6 +947,14 @@ All metrics use the meter name `"Flowly"` and follow the `messaging.*` semantic 
 ### Traces
 
 Each message or event handled creates a span named `flowly.handle {queueName}` with kind `Consumer`. The span includes `handler`, `messaging.system`, `messaging.destination.name`, `messaging.message.id`, and `messaging.message.conversation_id` attributes.
+
+---
+
+## Samples
+
+Runnable samples covering all transports and key Flowly features are available in the [`samples/`](samples/README.md) directory. Each sample is self-contained and includes setup instructions.
+
+See the **[Samples index](Samples/README.md)** for a full overview grouped by transport (Azure Service Bus, RabbitMQ, InMemory, MultiBus).
 
 ---
 

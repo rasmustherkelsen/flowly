@@ -2,6 +2,7 @@ using Azure.Core;
 using Azure.Messaging.ServiceBus;
 using Azure.Messaging.ServiceBus.Administration;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.Transport;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -145,7 +146,11 @@ public static class AzureServiceBusRegistration
         var services = flowlyBuilder.Services;
         var clientRegistry = ProviderNameResolver.GetRegistry(services);
 
-        var effectiveName = ResolveProviderName(clientRegistry, name);
+        var effectiveName = TransportRegistrationHelper.ResolveProviderName(
+            clientRegistry,
+            name,
+            DefaultProviderName,
+            "Secondary Azure Service Bus providers must have an explicit name. Pass name: \"...\" to UseAzureServiceBus().");
 
         var messageBusClient = new MessageBusClient(serviceBusClient, adminClient, maxMessageSizeBytes);
         var topologyCreator = new MessagingTopologyCreator(serviceBusClient, adminClient);
@@ -155,47 +160,14 @@ public static class AzureServiceBusRegistration
         if (enableHealthCheck)
             services
                 .AddHealthChecks()
-                .AddCheck(HealthCheckName(effectiveName), new AzureServiceBusHealthCheck(host, port), tags: ["azure-service-bus"]);
+                .AddCheck(
+                    TransportRegistrationHelper.BuildHealthCheckName(DefaultProviderName, effectiveName),
+                    new AzureServiceBusHealthCheck(host, port),
+                    tags: ["azure-service-bus"]);
 
-        var topologyRegistry = services
-            .Where(s => s.ServiceType == typeof(IMessagingTopologyCreatorRegistry))
-            .Select(s => s.ImplementationInstance)
-            .OfType<IMessagingTopologyCreatorRegistry>()
-            .First();
-
-        topologyRegistry.Register(effectiveName, topologyCreator);
-
-        var eventTopologyRegistry = services
-            .Where(s => s.ServiceType == typeof(IEventTopologyCreatorRegistry))
-            .Select(s => s.ImplementationInstance)
-            .OfType<IEventTopologyCreatorRegistry>()
-            .First();
-
-        eventTopologyRegistry.Register(effectiveName, topologyCreator);
-
-        var isPrimary = clientRegistry.GetAll().Count == 1;
-        services.AddSingleton(new ProviderQueueManifest(effectiveName, isPrimary, TransportType));
+        TransportRegistrationHelper.RegisterTopologyCreators(services, effectiveName, topologyCreator, topologyCreator);
+        TransportRegistrationHelper.RegisterProviderManifest(services, clientRegistry, effectiveName, TransportType);
 
         return flowlyBuilder;
-    }
-
-    private static string HealthCheckName(string effectiveName)
-    {
-        return effectiveName == DefaultProviderName ? DefaultProviderName : $"{DefaultProviderName}-{effectiveName}";
-    }
-
-    private static string ResolveProviderName(IMessageBusClientRegistry registry, string? name)
-    {
-        if (name is null)
-        {
-            if (registry.GetAll().Count > 0)
-                throw new InvalidOperationException(
-                    "Secondary Azure Service Bus providers must have an explicit name. " +
-                    "Pass name: \"...\" to UseAzureServiceBus().");
-
-            return DefaultProviderName;
-        }
-
-        return name;
     }
 }
