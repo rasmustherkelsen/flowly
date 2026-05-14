@@ -1,0 +1,21 @@
+@baseUrl = http://localhost:5083
+
+### Create contact
+# @name createContact
+POST {{baseUrl}}/contacts
+Content-Type: application/json
+
+{
+  "name": "John Doe"
+}
+
+> {%
+    client.global.set("contactLocation", response.headers.valueOf("Location"));
+%}
+
+### Get contact
+GET {{contactLocation}}
+
+
+###GET {{createContact.response.headers.location}}
+

@@ -29,7 +29,9 @@ Flowly is a queue-based messaging abstraction for .NET. It sits between your app
 - [Multi-Provider](#multi-provider)
 - [Azure Service Bus Transport](#azure-service-bus-transport)
 - [RabbitMQ Transport](#rabbitmq-transport)
+- [In-Memory Transport](#in-memory-transport)
 - [OpenTelemetry](#opentelemetry)
+- [Samples](#samples)
 - [Status](#status)
 
 ---
@@ -54,6 +56,7 @@ All packages are published to [NuGet.org](https://www.nuget.org/packages?q=Flowl
 | `Flowly` | Core abstractions: handlers, senders, queue topology, retry engine |
 | `Flowly.AzureServiceBus` | Azure Service Bus transport |
 | `Flowly.RabbitMQ` | RabbitMQ transport |
+| `Flowly.InMemory` | In-memory transport — no broker required; ideal for testing and local development |
 | `Flowly.Jobs` | Job state tracking and CRON scheduling core |
 | `Flowly.Jobs.SqlServer` | SQL Server backend for job state tracking |
 | `Flowly.Jobs.Postgres` | PostgreSQL backend for job state tracking |
@@ -75,6 +78,9 @@ dotnet add package Flowly.AzureServiceBus
 
 # RabbitMQ
 dotnet add package Flowly.RabbitMQ
+
+# In-memory (no broker — testing / local dev)
+dotnet add package Flowly.InMemory
 ```
 
 Add optional feature packages as needed:
@@ -901,6 +907,51 @@ Either set createTopology: true or ensure the queue topology is provisioned befo
 
 ---
 
+## In-Memory Transport
+
+The in-memory transport runs entirely in-process using .NET channels — no broker is required. It is suitable for testing, local development, and lightweight scenarios.
+
+### Registration
+
+```csharp
+builder.UseInMemory();
+```
+
+### Options
+
+All options are configured via the optional `Action<InMemoryOptions>` parameter:
+
+```csharp
+builder.UseInMemory(options =>
+{
+    options.MaxMessageSizeBytes = 512_000;
+    options.ChannelCapacity = 500;
+    options.EnableReferencePassing = true;
+});
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `MaxMessageSizeBytes` | 1 048 576 (1 MB) | Messages exceeding this size throw `MessageTooLargeException`. Not enforced when `EnableReferencePassing` is `true`. |
+| `ChannelCapacity` | 1000 | Bounded channel capacity per queue/topic subscription. Writers block when full, applying back-pressure analogous to a real broker. |
+| `EnableReferencePassing` | `false` | Pass messages as object references instead of JSON. See below. |
+
+### Reference passing
+
+When `EnableReferencePassing = true`, the sender stores the original object reference in the envelope and the receiver returns it directly — no JSON serialisation or deserialisation occurs.
+
+This is useful as a **mediator-style starting point**: build your application in-process first, then switch to a real broker by replacing `UseInMemory()` with the appropriate transport call. Handler code does not change.
+
+```csharp
+builder.UseInMemory(options => options.EnableReferencePassing = true);
+```
+
+Retries and scheduled delivery work normally — the object reference is preserved through the channel and scheduled-delivery paths. `MaxMessageSizeBytes` is not enforced when this option is enabled.
+
+> **Trade-off:** Serialisation fidelity is not tested in this mode. Any discrepancy between the in-memory and production behaviour — for example, a property that does not survive a JSON round-trip — will only surface when the real transport is used. Leave `EnableReferencePassing = false` (the default) when you want to validate serialisation as part of your test suite.
+
+---
+
 ## OpenTelemetry
 
 The `Flowly.OpenTelemetry` package wires Flowly's metrics and traces into the OpenTelemetry SDK.
@@ -942,6 +993,14 @@ All metrics use the meter name `"Flowly"` and follow the `messaging.*` semantic 
 ### Traces
 
 Each message or event handled creates a span named `flowly.handle {queueName}` with kind `Consumer`. The span includes `handler`, `messaging.system`, `messaging.destination.name`, `messaging.message.id`, and `messaging.message.conversation_id` attributes.
+
+---
+
+## Samples
+
+Runnable samples covering all transports and key Flowly features are available in the [`samples/`](samples/README.md) directory. Each sample is self-contained and includes setup instructions.
+
+See the **[Samples index](Samples/README.md)** for a full overview grouped by transport (Azure Service Bus, RabbitMQ, InMemory, MultiBus).
 
 ---
 
