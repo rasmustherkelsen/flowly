@@ -20,6 +20,7 @@
     <ItemGroup>
         <InternalsVisibleTo Include="Flowly.Jobs.SqlServer"/>
         <InternalsVisibleTo Include="Flowly.Jobs.Postgres"/>
+        <InternalsVisibleTo Include="Flowly.Jobs.SQLite"/>
         <InternalsVisibleTo Include="Flowly.Jobs.Tests"/>
     </ItemGroup>
 

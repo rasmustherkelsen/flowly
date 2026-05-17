@@ -67,7 +67,7 @@ public class InMemoryMessageBusSenderTests
         {
             var options = new InMemoryOptions();
             var broker = new InMemoryBroker(options);
-            var sender = new InMemoryMessageBusSender("test-queue", broker, options, SenderMode.Session);
+            var sender = new InMemoryMessageBusSender("test-queue", broker, options, SenderMode.Queue);
             var props = MessageProperties.Empty with { SessionId = "lane-1" };
 
             await sender.SendMessage(new TestMessage("x"), props);

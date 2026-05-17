@@ -2,7 +2,6 @@
 using Flowly.Jobs.DatabaseModel;
 using Flowly.Jobs.Messages;
 using Flowly.Jobs.Model;
-using Flowly.Jobs.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace Flowly.Jobs.Repositories;
@@ -37,13 +36,15 @@ internal class JobStateRepository(IDbContextFactory<JobStateDataContext> jobStat
 
         if (await context.Jobs.AnyAsync(x => x.JobType!.Name == createRecurringJobState.JobTypeName))
         {
+            var cronExpression = createRecurringJobState.CronExpression;
+
             await context.Jobs
                 .Where(x => x.JobType!.Name == createRecurringJobState.JobTypeName)
                 .ExecuteUpdateAsync(x => x
-                    .SetProperty(p => p.CronExpression, createRecurringJobState.CronExpression)
-                    .SetProperty(p => p.Completed, default(DateTime?))
-                    .SetProperty(p => p.Started, default(DateTime?))
-                    .SetProperty(p => p.CurrentState, JobState.Created));
+                    .SetProperty(p => p.CronExpression, _ => cronExpression)
+                    .SetProperty(p => p.Completed, _ => null)
+                    .SetProperty(p => p.Started, _ => null)
+                    .SetProperty(p => p.CurrentState, _ => JobState.Created));
 
             return;
         }
@@ -96,12 +97,15 @@ internal class JobStateRepository(IDbContextFactory<JobStateDataContext> jobStat
     {
         await using var context = await jobStateDataContextFactory.CreateDbContextAsync();
 
+        var faultReason = jobFailed.FaultReason;
+        DateTimeOffset? completedAt = jobFailed.TimeStamp;
+
         await context.Jobs
             .Where(x => x.JobIdentifier == jobFailed.JobId.InnerId)
             .ExecuteUpdateAsync(x => x
-                .SetProperty(p => p.CurrentState, JobState.Failed)
-                .SetProperty(p => p.FaultReason, jobFailed.FaultReason)
-                .SetProperty(p => p.Completed, jobFailed.TimeStamp));
+                .SetProperty(p => p.CurrentState, _ => JobState.Failed)
+                .SetProperty(p => p.FaultReason, _ => faultReason)
+                .SetProperty(p => p.Completed, _ => completedAt));
     }
 
     public async Task RemoveCompletedJobsOlderThan(TimeSpan age)
@@ -166,7 +170,8 @@ internal class JobStateRepository(IDbContextFactory<JobStateDataContext> jobStat
     {
         await using var context = await jobStateDataContextFactory.CreateDbContextAsync();
 
-        DateTime cutoffTime = DateTime.UtcNow - age;
+        DateTimeOffset? now = DateTimeOffset.UtcNow;
+        var cutoffTime = now.Value - age;
 
         await context.Jobs
             .Where(x => x.IsRecurringJob == false &&
@@ -174,9 +179,9 @@ internal class JobStateRepository(IDbContextFactory<JobStateDataContext> jobStat
                         x.CurrentState != JobState.Failed &&
                         x.Started < cutoffTime)
             .ExecuteUpdateAsync(x => x
-                .SetProperty(p => p.Completed, DateTime.UtcNow)
-                .SetProperty(p => p.FaultReason, "Hung job")
-                .SetProperty(p => p.CurrentState, JobState.Failed));
+                .SetProperty(p => p.Completed, _ => now)
+                .SetProperty(p => p.FaultReason, _ => "Hung job")
+                .SetProperty(p => p.CurrentState, _ => JobState.Failed));
     }
 
     private async Task<Job> ResilientGetJob(JobStateDataContext context, JobId jobId)

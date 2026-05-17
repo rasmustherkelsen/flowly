@@ -7,9 +7,13 @@
 End-user documentation must be kept current at all times. Whenever a feature is added, changed, or removed, update the relevant user-facing docs in the same change.
 
 End-user documentation lives in:
-- `docs/` — GitHub Pages site and general guides
+- `README.md` — root readme; the first thing GitHub visitors see
+- `docs/index.md` — GitHub Pages full reference
+- `docs/ai/CONTEXT.md` — AI/contributor onboarding; must always reflect the full set of available registration methods and packages
+- `docs/` — other guides (quickstarts, transport-specific docs)
 - `README.md` files under `Samples/` — sample-specific instructions
 - `Samples/README.md` — samples index
+- `.claude/CLAUDE.md` — project structure section
 
 When implementing a change, ask: *does this affect what an operator or developer needs to know to configure or use Flowly correctly?* If yes, update the docs before considering the task done. This includes:
 
@@ -17,6 +21,17 @@ When implementing a change, ask: *does this affect what an operator or developer
 - Changed behaviour of existing options (e.g. constraints, defaults, failure modes)
 - Startup validation errors a user might encounter
 - Any prerequisite infrastructure a user must provision manually
+
+### Adding a new backend package
+
+Adding a new database backend package (e.g. a new provider for `Flowly.Jobs` or `Flowly.DeadLetters`) is a canonical example where **all** documentation locations must be updated in the same change:
+
+1. `README.md` — add to the packages table and installation section
+2. `docs/index.md` — add to the packages table, installation section, and any configuration examples
+3. `docs/ai/CONTEXT.md` — add the new registration method(s) to the relevant section (Job State Tracking, Dead Letter Tracking, etc.)
+4. `.claude/CLAUDE.md` — add the new project to the Project Structure list
+
+The task is **not done** until all four are updated.
 
 ## Code Comments
 
