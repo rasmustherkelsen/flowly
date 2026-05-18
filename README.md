@@ -1016,6 +1016,12 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for how to report bugs and propose featur
 
 ---
 
+## Repository
+
+The canonical source lives in a self-hosted Gitea instance. This GitHub repository is a synchronized mirror — CI runs and NuGet releases are managed through Gitea. The `.gitea/workflows/` directory in this repository reflects the actual release pipeline, published here for transparency.
+
+---
+
 ## Status
 
 Flowly is under active development. Azure Service Bus and RabbitMQ transports are supported.

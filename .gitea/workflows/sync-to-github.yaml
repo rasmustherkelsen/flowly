@@ -1,0 +1,32 @@
+name: Sync to GitHub
+run-name: Sync Flowly main branch to GitHub
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build-test-and-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build
+        run: dotnet build Flowly.sln --configuration Release
+
+      - name: Test
+        run: dotnet test Flowly.sln --configuration Release --no-build
+
+      - name: Push to GitHub
+        run: |
+          git remote add github \
+            https://x-access-token:${{ secrets.PAT_FOR_GITHUB }}@github.com/rasmustherkelsen/flowly.git
+          git push github HEAD:main --force
