@@ -94,7 +94,7 @@ internal class InMemoryMessageBusSender(
         return mode switch
         {
             SenderMode.Topic or SenderMode.TopicRetry => FanOutToTopic(envelope, null, cancellationToken),
-            SenderMode.Session when !string.IsNullOrEmpty(messageProperties.SessionId)
+            _ when !string.IsNullOrEmpty(messageProperties.SessionId)
                 => broker.GetSessionChannel(destination, messageProperties.SessionId!).Writer.WriteAsync(envelope, cancellationToken).AsTask(),
             _ => broker.GetQueue(destination).Writer.WriteAsync(envelope, cancellationToken).AsTask()
         };

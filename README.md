@@ -40,7 +40,7 @@ Flowly is a queue-based messaging abstraction for .NET. It sits between your app
 
 - **Provider-agnostic** — swap the message broker without changing application code
 - **Convention-driven** — queue names derived automatically from message types; minimal boilerplate
-- **Job tracking built-in** — first-class support for tracking long-running job state in SQL Server or PostgreSQL
+- **Job tracking built-in** — first-class support for tracking long-running job state in SQL Server, PostgreSQL, or SQLite
 - **Retry and dead letter handling** — configurable retry with delay, and a persistent dead letter store
 - **Recurring jobs** — CRON-based scheduling with guaranteed single-execution semantics
 - **Local development first** — tooling for emulator configs, .NET Aspire integration, and Docker Compose
@@ -60,9 +60,11 @@ All packages are published to [NuGet.org](https://www.nuget.org/packages?q=Flowl
 | `Flowly.Jobs` | Job state tracking and CRON scheduling core |
 | `Flowly.Jobs.SqlServer` | SQL Server backend for job state tracking |
 | `Flowly.Jobs.Postgres` | PostgreSQL backend for job state tracking |
+| `Flowly.Jobs.SQLite` | SQLite backend for job state tracking |
 | `Flowly.DeadLetters` | Dead letter tracking core |
 | `Flowly.DeadLetters.SqlServer` | SQL Server backend for dead letter tracking |
 | `Flowly.DeadLetters.Postgres` | PostgreSQL backend for dead letter tracking |
+| `Flowly.DeadLetters.SQLite` | SQLite backend for dead letter tracking |
 | `Flowly.OpenTelemetry` | OpenTelemetry metrics and traces for handlers and submitters |
 | `Flowly.Tool` | `flowly` CLI for queue discovery and code generation |
 
@@ -89,10 +91,12 @@ Add optional feature packages as needed:
 # Job state tracking — pick the backend that matches your database
 dotnet add package Flowly.Jobs.SqlServer
 dotnet add package Flowly.Jobs.Postgres
+dotnet add package Flowly.Jobs.SQLite
 
 # Dead letter tracking — pick the backend that matches your database
 dotnet add package Flowly.DeadLetters.SqlServer
 dotnet add package Flowly.DeadLetters.Postgres
+dotnet add package Flowly.DeadLetters.SQLite
 
 # OpenTelemetry instrumentation
 dotnet add package Flowly.OpenTelemetry
@@ -452,7 +456,7 @@ Register the persistence layer once, then opt individual handlers in:
 
 ```csharp
 builder
-    .AddSqlServerDeadLetterTracking(connectionString)  // or AddPostgresDeadLetterTracking
+    .AddSqlServerDeadLetterTracking(connectionString)  // or AddPostgresDeadLetterTracking / AddSQLiteDeadLetterTracking
     .AddMessageHandler<OrderCreated, OrderCreatedHandler>()
     .WithDeadLetterTracking();                          // this handler's DLQ is tracked
 ```
@@ -560,9 +564,11 @@ During retries the job remains in `Started`. The `RetryAttempt` field on the job
 builder.AddSqlServerJobStateTracking(connectionString);
 // or
 builder.AddPostgresJobStateTracking(connectionString);
+// or
+builder.AddSQLiteJobStateTracking("Data Source=jobs.db");
 ```
 
-Both run EF Core migrations at startup by default (`enableMigrations: true`).
+All three run EF Core migrations at startup by default (`enableMigrations: true`).
 
 ---
 

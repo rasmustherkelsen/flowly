@@ -284,9 +284,12 @@ builder.AddSqlServerJobStateTracking("ConnectionString");
 
 // PostgreSQL (backend processor that runs jobs)
 builder.AddPostgresJobStateTracking("ConnectionString");
+
+// SQLite — file-based or in-memory; suited for development, testing, and lightweight deployments
+builder.AddSQLiteJobStateTracking("Data Source=jobs.db");
 ```
 
-Both accept an optional `enableMigrations` parameter (default `true`) that runs EF Core migrations at startup, and an optional `Action<JobStateTrackingOptions>` for cleanup configuration:
+All three accept an optional `enableMigrations` parameter (default `true`) that runs EF Core migrations at startup, and an optional `Action<JobStateTrackingOptions>` for cleanup configuration:
 
 ```csharp
 builder.AddSqlServerJobStateTracking("ConnectionString", configure: options =>
@@ -303,6 +306,7 @@ When `DeleteCompletedJobsAfter` or `DeleteFailedJobsAfter` is set, the `RemoveOl
 ```csharp
 builder.AddJobStateTrackingClient("ConnectionString");  // SQL Server
 builder.AddJobStateTrackingClient("ConnectionString");  // PostgreSQL (same method name, different package)
+builder.AddJobStateTrackingClient("Data Source=jobs.db");  // SQLite (same method name, different package)
 ```
 
 This registers only `IJobTrackingService` without the job processing infrastructure.
@@ -345,6 +349,8 @@ Dead letter tracking is opt-in per handler and requires a database backend.
 builder.AddSqlServerDeadLetterTracking("ConnectionString");
 // or
 builder.AddPostgresDeadLetterTracking("ConnectionString");
+// or
+builder.AddSQLiteDeadLetterTracking("Data Source=deadletters.db");
 
 // 2. Opt individual handlers in
 builder.AddMessageHandler<MyMsg, MyHandler>()
@@ -353,7 +359,7 @@ builder.AddMessageHandler<MyMsg, MyHandler>()
 
 Calling `.WithDeadLetterTracking()` without first registering a persistence layer throws `InvalidOperationException` at startup.
 
-Both registration methods accept an optional `Action<DeadLetterTrackingOptions>` for automatic cleanup:
+All three registration methods accept an optional `Action<DeadLetterTrackingOptions>` for automatic cleanup:
 
 ```csharp
 builder.AddSqlServerDeadLetterTracking("ConnectionString", configure: options =>

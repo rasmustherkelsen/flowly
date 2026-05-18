@@ -30,9 +30,11 @@ dotnet test --filter "FullyQualifiedName~MessageQueueNameResolverTests+Resolve"
 - `Flowly.Jobs/` — job state tracking (EF Core) and CRON scheduling
 - `Flowly.Jobs.SqlServer/` — SQL Server backend for job state tracking
 - `Flowly.Jobs.Postgres/` — PostgreSQL backend for job state tracking
+- `Flowly.Jobs.SQLite/` — SQLite backend for job state tracking
 - `Flowly.DeadLetters/` — dead letter tracking core (ingestion background service, EF Core model)
 - `Flowly.DeadLetters.SqlServer/` — SQL Server backend for dead letter tracking
 - `Flowly.DeadLetters.Postgres/` — PostgreSQL backend for dead letter tracking
+- `Flowly.DeadLetters.SQLite/` — SQLite backend for dead letter tracking
 - `Flowly.Tool/` — `flowly` CLI tool
 - `Samples/AzureServiceBus/Aspire/` — reference Aspire sample
 

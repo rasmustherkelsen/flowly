@@ -30,6 +30,7 @@ Each sample is self-contained and runnable. Pick the one matching your transport
 |---|---|
 | [SendReceive](InMemory/SendReceive/README.md) | Minimal send/receive with no external broker — sender and handler run in the same process |
 | [Events](InMemory/Events/README.md) | Fan-out event publishing to two independent in-process subscribers |
+| [FullSample](InMemory/FullSample/README.md) | Full-featured: jobs, batch handlers, recurring jobs, dead letters, and fan-out events — no external broker or database required |
 
 ## MultiBus
 

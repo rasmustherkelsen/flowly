@@ -21,6 +21,7 @@
         <InternalsVisibleTo Include="Flowly.DeadLetters.Tests"/>
         <InternalsVisibleTo Include="Flowly.DeadLetters.SqlServer"/>
         <InternalsVisibleTo Include="Flowly.DeadLetters.Postgres"/>
+        <InternalsVisibleTo Include="Flowly.DeadLetters.SQLite"/>
     </ItemGroup>
 
 </Project>

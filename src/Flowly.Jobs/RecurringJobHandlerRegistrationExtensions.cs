@@ -45,6 +45,7 @@ public static class RecurringJobHandlerRegistrationExtensions
             .AddScoped<TRecurringJob>();
 
         flowlyBuilder.AddMessageSubmitter<CreateRecurringJobState>();
+        flowlyBuilder.AddJobStateSubmitters();
 
         return flowlyBuilder;
     }
