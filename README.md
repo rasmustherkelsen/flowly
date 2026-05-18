@@ -340,7 +340,7 @@ Event handlers support `.WithDeadLetterTracking()` the same way regular handlers
 
 ```csharp
 builder
-    .AddSqlServerDeadLetterTracking(connectionString)
+    .AddSqlServerDeadLetterTracking(connectionString)  // or AddPostgresDeadLetterTracking / AddSQLiteDeadLetterTracking
     .AddEventHandler<OrderProcessed, OrderProcessedEventHandler>()
     .WithDeadLetterTracking();
 ```
@@ -1013,6 +1013,12 @@ See the **[Samples index](Samples/README.md)** for a full overview grouped by tr
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for how to report bugs and propose features. Unsolicited large PRs may be closed — please open an issue first.
+
+---
+
+## Repository
+
+The canonical source lives in a self-hosted Gitea instance. This GitHub repository is a synchronized mirror — CI runs and NuGet releases are managed through Gitea. The `.gitea/workflows/` directory in this repository reflects the actual release pipeline, published here for transparency.
 
 ---
 
