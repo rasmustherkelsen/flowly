@@ -4,6 +4,7 @@ run-name: Sync Flowly main branch to GitHub
 on:
   push:
     branches: [ "main" ]
+    tags: [ "v*" ]
 
 jobs:
   build-test-and-sync:
@@ -30,3 +31,4 @@ jobs:
           git remote add github \
             https://x-access-token:${{ secrets.PAT_FOR_GITHUB }}@github.com/rasmustherkelsen/flowly.git
           git push github HEAD:main --force
+          git push github --tags
