@@ -32,6 +32,8 @@ Flowly is a queue-based messaging abstraction for .NET. It sits between your app
 - [In-Memory Transport](#in-memory-transport)
 - [OpenTelemetry](#opentelemetry)
 - [Samples](#samples)
+- [Contributing](#contributing)
+- [Repository](#repository)
 - [Status](#status)
 
 ---

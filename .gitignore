@@ -410,3 +410,7 @@ FodyWeavers.xsd
 # JetBrains Rider
 *.sln.iml
 
+# DocFX build artifacts
+_site/
+api/
+
