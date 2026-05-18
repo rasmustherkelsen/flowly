@@ -340,7 +340,7 @@ Event handlers support `.WithDeadLetterTracking()` the same way regular handlers
 
 ```csharp
 builder
-    .AddSqlServerDeadLetterTracking(connectionString)
+    .AddSqlServerDeadLetterTracking(connectionString)  // or AddPostgresDeadLetterTracking / AddSQLiteDeadLetterTracking
     .AddEventHandler<OrderProcessed, OrderProcessedEventHandler>()
     .WithDeadLetterTracking();
 ```
