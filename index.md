@@ -1,3 +1,3 @@
 ---
-redirect_url: docs/index.html
+redirect_url: README.html
 ---

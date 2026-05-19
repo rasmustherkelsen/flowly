@@ -63,8 +63,8 @@ dotnet add Sender reference Messages
 Replace `Sender/Program.cs`:
 
 ```csharp
+using Flowly;
 using Flowly.AzureServiceBus;
-using Flowly.MessageInfrastructure.Registration;
 using Flowly.MessageInfrastructure.Senders;
 using Messages;
 
@@ -110,10 +110,8 @@ dotnet add Receiver reference Messages
 Replace `Receiver/Program.cs`:
 
 ```csharp
+using Flowly;
 using Flowly.AzureServiceBus;
-using Flowly.MessageInfrastructure.Model;
-using Flowly.MessageInfrastructure.Receivers;
-using Flowly.MessageInfrastructure.Registration;
 using Messages;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -127,7 +125,7 @@ builder.AddFlowly(
 var app = builder.Build();
 app.Run();
 
-internal class HelloWorldHandler : MessageHandlerBase<HelloWorldMessage>
+internal class HelloWorldHandler : MessageHandler<HelloWorldMessage>
 {
     public override Task Handle(IMessageContext<HelloWorldMessage> messageContext)
     {
@@ -278,8 +276,8 @@ Received: Hello at 04/20/2026 14:23:02
 
 ## Next steps
 
-- [Add retry policy](index.md#retry-policy) — annotate your handler with `[RetryPolicy]`
-- [Track job state](index.md#job-tracking) — use `JobMessageHandlerBase<T>` for long-running work
-- [Dead letter tracking](index.md#dead-letter-tracking) — persist and requeue failed messages
-- [Events (fan-out)](index.md#events-fan-out) — publish to multiple subscribers
-- [Full user guide](index.md)
+- [Add retry policy](../README.md#retry-policy) — annotate your handler with `[RetryPolicy]`
+- [Track job state](../README.md#job-tracking) — use `JobHandler<T>` for long-running work
+- [Dead letter tracking](../README.md#dead-letter-tracking) — persist and requeue failed messages
+- [Events (fan-out)](../README.md#events-fan-out) — publish to multiple subscribers
+- [Full user guide](../README.md)

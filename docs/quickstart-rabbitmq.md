@@ -63,7 +63,7 @@ dotnet add Sender reference Messages
 Replace `Sender/Program.cs`:
 
 ```csharp
-using Flowly.MessageInfrastructure.Registration;
+using Flowly;
 using Flowly.MessageInfrastructure.Senders;
 using Flowly.RabbitMQ;
 using Messages;
@@ -112,9 +112,7 @@ dotnet add Receiver reference Messages
 Replace `Receiver/Program.cs`:
 
 ```csharp
-using Flowly.MessageInfrastructure.Model;
-using Flowly.MessageInfrastructure.Receivers;
-using Flowly.MessageInfrastructure.Registration;
+using Flowly;
 using Flowly.RabbitMQ;
 using Messages;
 
@@ -129,7 +127,7 @@ builder.AddFlowly(
 var app = builder.Build();
 app.Run();
 
-internal class MyMessageHandler : MessageHandlerBase<MyMessage>
+internal class MyMessageHandler : MessageHandler<MyMessage>
 {
     public override Task Handle(IMessageContext<MyMessage> messageContext)
     {
@@ -216,7 +214,7 @@ Received: Hello from Sender at 04/20/2026 14:23:02
 
 ## Next steps
 
-- [Add retry policy](index.md#retry-policy) — annotate your handler with `[RetryPolicy]`
-- [Track job state](index.md#job-tracking) — use `JobMessageHandlerBase<T>` for long-running work
-- [Dead letter tracking](index.md#dead-letter-tracking) — persist and requeue failed messages
-- [Full user guide](index.md)
+- [Add retry policy](../README.md#retry-policy) — annotate your handler with `[RetryPolicy]`
+- [Track job state](../README.md#job-tracking) — use `JobHandler<T>` for long-running work
+- [Dead letter tracking](../README.md#dead-letter-tracking) — persist and requeue failed messages
+- [Full user guide](../README.md)

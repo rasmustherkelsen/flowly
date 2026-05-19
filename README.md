@@ -136,7 +136,7 @@ public class MyServiceConfiguration : FlowlyDesignTimeFactory, IFlowlyConfigurat
 ### 2. Register in Program.cs
 
 ```csharp
-builder.Services.AddFlowly<MyServiceConfiguration>(builder.Configuration);
+builder.AddFlowly<MyServiceConfiguration>();
 ```
 
 Flowly registers all background services, queue topology, and DI bindings automatically.
@@ -177,7 +177,7 @@ Only add `[QueueName]` when the auto-generated name is wrong. See [Topology Name
 Processes one message at a time. Throw to reject the message; return to acknowledge it.
 
 ```csharp
-public class OrderCreatedHandler : MessageHandlerBase<OrderCreated>
+public class OrderCreatedHandler : MessageHandler<OrderCreated>
 {
     public override async Task Handle(IMessageContext<OrderCreated> ctx)
     {
@@ -201,7 +201,7 @@ Receives multiple messages in a single call. Useful for bulk inserts or aggregat
 
 ```csharp
 [BatchProcessing(maxMessages: 100, maxWaitTimeInSeconds: 30)]
-public class EventBatchHandler : BatchMessageHandlerBase<AnalyticsEvent>
+public class EventBatchHandler : BatchMessageHandler<AnalyticsEvent>
 {
     public override async Task Handle(IBatchMessageContext<AnalyticsEvent> ctx)
     {
@@ -231,7 +231,7 @@ These attributes go on the **handler** class:
 Or override `Configure` on the handler:
 
 ```csharp
-public class OrderCreatedHandler : MessageHandlerBase<OrderCreated>
+public class OrderCreatedHandler : MessageHandler<OrderCreated>
 {
     public override void Configure(HandlerQueueOptions options)
     {
@@ -371,7 +371,7 @@ public interface ITopologyNameResolver
 Register your resolver in `AddFlowly`:
 
 ```csharp
-services.AddFlowly(
+builder.AddFlowly(
     options => options.WithTopologyNameResolver<MyTopologyNameResolver>(),
     flowlyBuilder => flowlyBuilder
         .UseAzureServiceBus("AzureServiceBus")
@@ -425,7 +425,7 @@ When a handler throws, Flowly can retry the message automatically before giving 
 
 ```csharp
 [RetryPolicy(maxRetries: 3, delaySeconds: 30)]
-public class OrderCreatedHandler : MessageHandlerBase<OrderCreated>
+public class OrderCreatedHandler : MessageHandler<OrderCreated>
 {
     public override async Task Handle(IMessageContext<OrderCreated> ctx)
     {
@@ -444,7 +444,7 @@ public class OrderCreatedHandler : MessageHandlerBase<OrderCreated>
 
 For job handlers, exhausted retries transition the job to `Failed` in the database — the message is completed rather than dead-lettered.
 
-Retry policy applies to `MessageHandlerBase<T>` and `JobMessageHandlerBase<T>`. Batch handlers and recurring jobs do not support retry.
+Retry policy applies to `MessageHandler<T>` and `JobHandler<T>`. Batch handlers and recurring jobs do not support retry.
 
 ---
 
@@ -483,7 +483,7 @@ The raw body is stored without deserialization — this ensures malformed messag
 
 ### Supported handler types
 
-Dead letter tracking is supported on `MessageHandlerBase<T>` and `EventHandlerBase<TEvent>` handlers. Job handlers use the job database as the failure record. Recurring jobs re-trigger via the CRON scheduler.
+Dead letter tracking is supported on `MessageHandler<T>` and `EventHandlerBase<TEvent>` handlers. Job handlers use the job database as the failure record. Recurring jobs re-trigger via the CRON scheduler.
 
 For event handlers, the `SubscriptionName` field in the `DeadLetters` table identifies which subscriber dead-lettered the event. Requeuing re-publishes to the topic with a `flowly-target-subscription` header so only the originating subscriber receives the requeued event.
 
@@ -509,7 +509,7 @@ public record ProcessReportJob(Guid ReportId, DateOnly Period) : IJobMessage
 
 ```csharp
 [RetryPolicy(maxRetries: 2, delaySeconds: 120)]
-public class ProcessReportJobHandler : JobMessageHandlerBase<ProcessReportJob>
+public class ProcessReportJobHandler : JobHandler<ProcessReportJob>
 {
     public override async Task Handle(IJobMessageContext<ProcessReportJob> ctx)
     {
@@ -543,7 +543,7 @@ builder.AddJobSubmitter<ProcessReportJob>();
 ```csharp
 public class ReportController(IJobMessageSender jobSender)
 {
-    public async Task<Guid> StartReport(DateOnly period)
+    public async Task<JobId> StartReport(DateOnly period)
     {
         var jobId = await jobSender.QueueJob(new ProcessReportJob(Guid.NewGuid(), period));
         return jobId; // poll this ID to check status
@@ -580,7 +580,7 @@ For scheduled background work — nightly reports, cleanup tasks, data syncs.
 
 ```csharp
 [RecurringJob("Nightly Report", "0 2 * * *")]   // runs at 02:00 every day
-public class NightlyReportJob : RecurringJobHandlerBase
+public class NightlyReportJob : RecurringJobHandler
 {
     public override async Task Handle(CancellationToken ct)
     {
@@ -812,7 +812,7 @@ public class MyServiceConfiguration : FlowlyDesignTimeFactory, IFlowlyConfigurat
 [DefaultMessageTimeToLive("2.00:00:00")]
 [LockDuration("00:10:00")]
 [RetryPolicy(maxRetries: 3, delaySeconds: 60)]
-public class OrderCreatedHandler : MessageHandlerBase<OrderCreated>
+public class OrderCreatedHandler : MessageHandler<OrderCreated>
 {
     private readonly IOrderRepository _orders;
 
