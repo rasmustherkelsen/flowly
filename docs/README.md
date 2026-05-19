@@ -17,4 +17,4 @@ Flowly is a queue-based messaging abstraction for .NET — provider-agnostic han
 
 | Document | Description |
 |---|---|
-| [AI & Contributor Context](ai/CONTEXT.md) | Codebase architecture, conventions, and implementation details for contributors and AI assistants |
+| [AI & Contributor Context](https://github.com/rasmustherkelsen/flowly/blob/main/docs/ai/CONTEXT.md) | Codebase architecture, conventions, and implementation details for contributors and AI assistants |
