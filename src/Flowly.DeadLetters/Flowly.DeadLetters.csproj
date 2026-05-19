@@ -10,18 +10,18 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.7"/>
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.8" />
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\Flowly\Flowly.csproj"/>
+        <ProjectReference Include="..\Flowly\Flowly.csproj" />
     </ItemGroup>
 
     <ItemGroup>
-        <InternalsVisibleTo Include="Flowly.DeadLetters.Tests"/>
-        <InternalsVisibleTo Include="Flowly.DeadLetters.SqlServer"/>
-        <InternalsVisibleTo Include="Flowly.DeadLetters.Postgres"/>
-        <InternalsVisibleTo Include="Flowly.DeadLetters.SQLite"/>
+        <InternalsVisibleTo Include="Flowly.DeadLetters.Tests" />
+        <InternalsVisibleTo Include="Flowly.DeadLetters.SqlServer" />
+        <InternalsVisibleTo Include="Flowly.DeadLetters.Postgres" />
+        <InternalsVisibleTo Include="Flowly.DeadLetters.SQLite" />
     </ItemGroup>
 
 </Project>

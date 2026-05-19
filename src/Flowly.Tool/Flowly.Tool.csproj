@@ -20,11 +20,11 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="System.CommandLine" Version="2.0.7"/>
+        <PackageReference Include="System.CommandLine" Version="2.0.8" />
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\Flowly\Flowly.csproj"/>
+        <ProjectReference Include="..\Flowly\Flowly.csproj" />
     </ItemGroup>
 
 </Project>

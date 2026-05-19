@@ -10,23 +10,23 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <InternalsVisibleTo Include="Flowly.Tests"/>
-        <InternalsVisibleTo Include="Flowly.Jobs"/>
-        <InternalsVisibleTo Include="Flowly.Jobs.Tests"/>
-        <InternalsVisibleTo Include="Flowly.Jobs.SqlServer.Tests"/>
-        <InternalsVisibleTo Include="Flowly.Jobs.Postgres.Tests"/>
-        <InternalsVisibleTo Include="Flowly.Jobs.SQLite.Tests"/>
-        <InternalsVisibleTo Include="Flowly.DeadLetters"/>
+        <InternalsVisibleTo Include="Flowly.Tests" />
+        <InternalsVisibleTo Include="Flowly.Jobs" />
+        <InternalsVisibleTo Include="Flowly.Jobs.Tests" />
+        <InternalsVisibleTo Include="Flowly.Jobs.SqlServer.Tests" />
+        <InternalsVisibleTo Include="Flowly.Jobs.Postgres.Tests" />
+        <InternalsVisibleTo Include="Flowly.Jobs.SQLite.Tests" />
+        <InternalsVisibleTo Include="Flowly.DeadLetters" />
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="Cronos" Version="0.13.0"/>
-        <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.7"/>
-        <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.7"/>
-        <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.7"/>
-        <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.7"/>
-        <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.7"/>
-        <PackageReference Include="System.CommandLine" Version="2.0.7"/>
+        <PackageReference Include="Cronos" Version="0.13.0" />
+        <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.8" />
+        <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.8" />
+        <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.8" />
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.8" />
+        <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.8" />
+        <PackageReference Include="System.CommandLine" Version="2.0.8" />
     </ItemGroup>
 
 </Project>
