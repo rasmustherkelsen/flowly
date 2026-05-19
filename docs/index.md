@@ -553,9 +553,9 @@ During retries the job remains in `Started`. The `RetryAttempt` field on the job
 ### Enable job state persistence
 
 ```csharp
-builder.AddSqlServerJobStateTracking(connectionString);
+builder.AddSqlServerJobStateTracking("JobsDb");
 // or
-builder.AddPostgresJobStateTracking(connectionString);
+builder.AddPostgresJobStateTracking("JobsDb");
 // or
 builder.AddSQLiteJobStateTracking("Data Source=jobs.db");
 ```
@@ -762,8 +762,7 @@ public class MyServiceConfiguration : FlowlyDesignTimeFactory, IFlowlyConfigurat
             .UseAzureServiceBus("AzureServiceBus")
 
             // Job state tracking (SQL Server)
-            .AddSqlServerJobStateTracking(
-                builder.Configuration.GetConnectionString("Jobs")!)
+            .AddSqlServerJobStateTracking("Jobs")
 
             // Dead letter tracking (SQL Server)
             .AddSqlServerDeadLetterTracking(

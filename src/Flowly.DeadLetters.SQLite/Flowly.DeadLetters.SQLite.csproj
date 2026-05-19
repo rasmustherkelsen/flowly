@@ -7,12 +7,12 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.7" PrivateAssets="all"/>
-        <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.7"/>
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.8" PrivateAssets="all" />
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.8" />
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\Flowly.DeadLetters\Flowly.DeadLetters.csproj"/>
+        <ProjectReference Include="..\Flowly.DeadLetters\Flowly.DeadLetters.csproj" />
     </ItemGroup>
 
 </Project>
