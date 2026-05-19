@@ -2,6 +2,7 @@ using Flowly.Jobs;
 using Flowly.Jobs.Services;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Flowly;
@@ -20,7 +21,10 @@ public static class SQLiteJobStateTrackerRegistrationExtension
     ///     migrations are managed externally (e.g. via a deployment pipeline).
     /// </remarks>
     /// <param name="flowlyBuilder">The <see cref="IFlowlyBuilder"/> to configure.</param>
-    /// <param name="connectionString">The SQLite connection string used to connect to the job state database, for example <c>Data Source=flowly-jobs.db</c>.</param>
+    /// <param name="connection">
+    ///     The name of a connection string in <c>IConfiguration</c> (looked up under <c>ConnectionStrings:</c>),
+    ///     or a literal SQLite connection string if no matching entry is found, for example <c>Data Source=flowly-jobs.db</c>.
+    /// </param>
     /// <param name="enableMigrations">
     ///     When <see langword="true"/> (the default), a hosted service applies pending EF Core migrations
     ///     automatically at application startup. Set to <see langword="false"/> to manage migrations externally.
@@ -32,12 +36,14 @@ public static class SQLiteJobStateTrackerRegistrationExtension
     /// <returns>The same <see cref="IFlowlyBuilder"/> instance, for fluent chaining.</returns>
     public static IFlowlyBuilder AddSQLiteJobStateTracking(
         this IFlowlyBuilder flowlyBuilder,
-        string connectionString,
+        string connection,
         bool enableMigrations = true,
         Action<JobStateTrackingOptions>? configure = null)
     {
         if (configure is not null)
             flowlyBuilder.Services.Configure(configure);
+
+        var connectionString = flowlyBuilder.Configuration.GetConnectionString(connection) ?? connection;
 
         RegisterInMemoryKeepAliveIfNeeded(flowlyBuilder.Services, connectionString);
 
@@ -95,13 +101,19 @@ public static class SQLiteJobStateTrackerRegistrationExtension
     ///     an API or dashboard) without participating in job processing.
     /// </remarks>
     /// <param name="flowlyBuilder">The <see cref="IFlowlyBuilder"/> to configure.</param>
-    /// <param name="connectionString">The SQLite connection string used to connect to the job state database, for example <c>Data Source=flowly-jobs.db</c>.</param>
+    /// <param name="connection">
+    ///     The name of a connection string in <c>IConfiguration</c> (looked up under <c>ConnectionStrings:</c>),
+    ///     or a literal SQLite connection string if no matching entry is found, for example <c>Data Source=flowly-jobs.db</c>.
+    /// </param>
     /// <returns>The same <see cref="IFlowlyBuilder"/> instance, for fluent chaining.</returns>
     public static IFlowlyBuilder AddJobStateTrackingClient(
         this IFlowlyBuilder flowlyBuilder,
-        string connectionString)
+        string connection)
     {
+        var connectionString = flowlyBuilder.Configuration.GetConnectionString(connection) ?? connection;
+
         flowlyBuilder.AddRepositories(dbOptions => dbOptions.UseSqlite(connectionString));
+
         return flowlyBuilder;
     }
 }

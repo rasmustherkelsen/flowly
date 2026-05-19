@@ -1,6 +1,7 @@
 using Flowly.Jobs;
 using Flowly.Jobs.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Flowly;
@@ -20,7 +21,10 @@ public static class PostgresJobStateTrackerRegistrationExtension
     ///     migrations are managed externally (e.g. via a deployment pipeline).
     /// </remarks>
     /// <param name="flowlyBuilder">The <see cref="IFlowlyBuilder"/> to configure.</param>
-    /// <param name="connectionString">The PostgreSQL connection string used to connect to the job state database.</param>
+    /// <param name="connection">
+    ///     The name of a connection string in <c>IConfiguration</c> (looked up under <c>ConnectionStrings:</c>),
+    ///     or a literal PostgreSQL connection string if no matching entry is found.
+    /// </param>
     /// <param name="enableMigrations">
     ///     When <see langword="true"/> (the default), a hosted service applies pending EF Core migrations
     ///     automatically at application startup. Set to <see langword="false"/> to manage migrations externally.
@@ -32,12 +36,14 @@ public static class PostgresJobStateTrackerRegistrationExtension
     /// <returns>The same <see cref="IFlowlyBuilder"/> instance, for fluent chaining.</returns>
     public static IFlowlyBuilder AddPostgresJobStateTracking(
         this IFlowlyBuilder flowlyBuilder,
-        string connectionString,
+        string connection,
         bool enableMigrations = true,
         Action<JobStateTrackingOptions>? configure = null)
     {
         if (configure is not null)
             flowlyBuilder.Services.Configure<JobStateTrackingOptions>(configure);
+
+        var connectionString = flowlyBuilder.Configuration.GetConnectionString(connection) ?? connection;
 
         flowlyBuilder
             .AddJobStateTracking()
@@ -66,12 +72,17 @@ public static class PostgresJobStateTrackerRegistrationExtension
     ///     an API or dashboard) without participating in job processing.
     /// </remarks>
     /// <param name="flowlyBuilder">The <see cref="IFlowlyBuilder"/> to configure.</param>
-    /// <param name="connectionString">The PostgreSQL connection string used to connect to the job state database.</param>
+    /// <param name="connection">
+    ///     The name of a connection string in <c>IConfiguration</c> (looked up under <c>ConnectionStrings:</c>),
+    ///     or a literal PostgreSQL connection string if no matching entry is found.
+    /// </param>
     /// <returns>The same <see cref="IFlowlyBuilder"/> instance, for fluent chaining.</returns>
     public static IFlowlyBuilder AddJobStateTrackingClient(
         this IFlowlyBuilder flowlyBuilder,
-        string connectionString)
+        string connection)
     {
+        var connectionString = flowlyBuilder.Configuration.GetConnectionString(connection) ?? connection;
+
         flowlyBuilder.AddRepositories(dbOptions =>
             dbOptions.UseNpgsql(
                 connectionString,

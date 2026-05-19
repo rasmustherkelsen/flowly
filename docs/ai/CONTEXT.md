@@ -280,19 +280,21 @@ Job state tracking requires a database backend. Register it using the provider-s
 
 ```csharp
 // SQL Server (backend processor that runs jobs)
-builder.AddSqlServerJobStateTracking("ConnectionString");
+builder.AddSqlServerJobStateTracking("JobsDb");
 
 // PostgreSQL (backend processor that runs jobs)
-builder.AddPostgresJobStateTracking("ConnectionString");
+builder.AddPostgresJobStateTracking("JobsDb");
 
 // SQLite — file-based or in-memory; suited for development, testing, and lightweight deployments
 builder.AddSQLiteJobStateTracking("Data Source=jobs.db");
 ```
 
+The `connection` parameter accepts either a connection string name from `IConfiguration` (resolved under `ConnectionStrings:`) or a literal connection string — the same convention used by transport providers such as `UseAzureServiceBus`.
+
 All three accept an optional `enableMigrations` parameter (default `true`) that runs EF Core migrations at startup, and an optional `Action<JobStateTrackingOptions>` for cleanup configuration:
 
 ```csharp
-builder.AddSqlServerJobStateTracking("ConnectionString", configure: options =>
+builder.AddSqlServerJobStateTracking("JobsDb", configure: options =>
 {
     options.DeleteCompletedJobsAfter = TimeSpan.FromDays(30);
     options.DeleteFailedJobsAfter = TimeSpan.FromDays(7);
@@ -304,8 +306,8 @@ When `DeleteCompletedJobsAfter` or `DeleteFailedJobsAfter` is set, the `RemoveOl
 **For read-only API services** that need to query job state but do not process jobs, use the lightweight client:
 
 ```csharp
-builder.AddJobStateTrackingClient("ConnectionString");  // SQL Server
-builder.AddJobStateTrackingClient("ConnectionString");  // PostgreSQL (same method name, different package)
+builder.AddJobStateTrackingClient("JobsDb");  // SQL Server
+builder.AddJobStateTrackingClient("JobsDb");  // PostgreSQL (same method name, different package)
 builder.AddJobStateTrackingClient("Data Source=jobs.db");  // SQLite (same method name, different package)
 ```
 
