@@ -32,4 +32,4 @@ jobs:
           git remote add github \
             https://x-access-token:${{ secrets.PAT_FOR_GITHUB }}@github.com/rasmustherkelsen/flowly.git
           git push github HEAD:main --force
-          git push github --tags
+          git push github --tags --force
