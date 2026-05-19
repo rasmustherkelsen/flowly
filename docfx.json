@@ -20,7 +20,7 @@
         "exclude": ["docs/ai/**"]
       },
       {
-        "files": ["toc.yml"]
+        "files": ["toc.yml", "*.md"]
       }
     ],
     "resource": [
