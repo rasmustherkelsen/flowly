@@ -162,10 +162,10 @@ builder
 ```csharp
 // Throws — conflicting TTL across two ASB namespaces
 [DefaultMessageTimeToLive("1.00:00:00")]
-public class EastHandler : MessageHandlerBase<OrderCreated> { ... }
+public class EastHandler : MessageHandler<OrderCreated> { ... }
 
 [DefaultMessageTimeToLive("7.00:00:00")]
-public class WestHandler : MessageHandlerBase<OrderCreated> { ... }
+public class WestHandler : MessageHandler<OrderCreated> { ... }
 ```
 
 ---

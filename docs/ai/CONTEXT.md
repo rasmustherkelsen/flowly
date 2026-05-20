@@ -21,21 +21,23 @@ This document gives an AI assistant the context needed to work effectively in th
 ├── Flowly.AzureServiceBus/          # Azure Service Bus transport implementation
 ├── Flowly.RabbitMQ/                 # RabbitMQ transport implementation
 ├── Flowly.InMemory/                 # In-memory transport (channels; no broker required)
+├── Flowly.OpenTelemetry/            # OpenTelemetry metrics and traces
 ├── Flowly.Jobs/                     # Job tracking, CRON scheduling, job state DB
 ├── Flowly.Jobs.SqlServer/           # SQL Server backend for job state tracking
 ├── Flowly.Jobs.Postgres/            # PostgreSQL backend for job state tracking
+├── Flowly.Jobs.SQLite/              # SQLite backend for job state tracking
 ├── Flowly.DeadLetters/              # Dead letter tracking core (ingestion, EF Core model)
 ├── Flowly.DeadLetters.SqlServer/    # SQL Server backend for dead letter tracking
 ├── Flowly.DeadLetters.Postgres/     # PostgreSQL backend for dead letter tracking
+├── Flowly.DeadLetters.SQLite/       # SQLite backend for dead letter tracking
 ├── Flowly.Tool/                     # dotnet CLI tool (queue discovery, code gen)
 ├── Samples/
 │   └── AzureServiceBus/
 │       └── Aspire/                  # Reference implementation using .NET Aspire
 ├── docs/
-│   ├── index.md                     # End-user documentation
 │   └── ai/
 │       └── CONTEXT.md               # This file
-└── README.md
+└── README.md                        # End-user documentation (single source of truth)
 ```
 
 ---
@@ -82,7 +84,7 @@ public class MyFlowlyConfig : FlowlyDesignTimeFactory, IFlowlyConfiguration
 Registration happens in `Program.cs`:
 
 ```csharp
-services.AddFlowly<MyFlowlyConfig>(configuration);
+builder.AddFlowly<MyFlowlyConfig>();
 ```
 
 ---
@@ -98,7 +100,7 @@ The queue name is derived from the **message type**, not the handler. Place `[Qu
 [DefaultMessageTimeToLive("1.00:00:00")]
 [LockDuration("00:05:00")]
 [RetryPolicy(maxRetries: 3, delaySeconds: 30)]
-public class MyHandler : MessageHandlerBase<MyMessage>
+public class MyHandler : MessageHandler<MyMessage>
 {
     public override async Task Handle(IMessageContext<MyMessage> ctx)
     {
@@ -121,7 +123,7 @@ builder.AddMessageHandler<MyMessage, MyHandler>()
 
 ```csharp
 [BatchProcessing(maxMessages: 100, maxWaitTimeInSeconds: 30)]
-public class MyBatchHandler : BatchMessageHandlerBase<MyMessage>
+public class MyBatchHandler : BatchMessageHandler<MyMessage>
 {
     public override async Task Handle(IBatchMessageContext<MyMessage> ctx)
     {
@@ -137,7 +139,7 @@ Register: `.AddBatchMessageHandler<MyMessage, MyBatchHandler>()`
 ```csharp
 [MaxConcurrentCalls(5)]
 [RetryPolicy(maxRetries: 3, delaySeconds: 60)]
-public class MyJobHandler : JobMessageHandlerBase<MyJobMessage>
+public class MyJobHandler : JobHandler<MyJobMessage>
 {
     public override async Task Handle(IJobMessageContext<MyJobMessage> ctx)
     {
@@ -169,7 +171,7 @@ Register the submitter so the queue is tracked: `.AddMessageSubmitter<MyMessage>
 Inject `IJobMessageSender`:
 
 ```csharp
-var jobId = await jobSender.QueueJob(new MyJobMessage { ... }); // returns Guid
+var jobId = await jobSender.QueueJob(new MyJobMessage { ... }); // returns JobId
 ```
 
 Register: `.AddJobSubmitter<MyJobMessage>()`
@@ -245,7 +247,7 @@ The subscription name is derived solely from the **handler class name**. Two ser
 
 ```csharp
 [RecurringJob("Nightly Cleanup", "0 2 * * *")]   // 02:00 every night
-public class NightlyCleanupJob : RecurringJobHandlerBase
+public class NightlyCleanupJob : RecurringJobHandler
 {
     public override async Task Handle(CancellationToken ct) { /* ... */ }
 }
@@ -261,7 +263,7 @@ public class NightlyCleanupJob : RecurringJobHandlerBase
 
 ### 6. Retry Policy
 
-Apply `[RetryPolicy(maxRetries, delaySeconds)]` to any `MessageHandlerBase<T>` or `JobMessageHandlerBase<T>`. Alternatively, set via `Configure(HandlerQueueOptions options)`.
+Apply `[RetryPolicy(maxRetries, delaySeconds)]` to any `MessageHandler<T>` or `JobHandler<T>`. Alternatively, set via `Configure(HandlerQueueOptions options)`.
 
 **How it works:**
 - On exception: if `RetryCount < MaxRetries`, Flowly re-publishes the message to the same queue with `RetryCount + 1` in the `flowly-retry-count` application property and a `ScheduledEnqueueTime` of `now + delaySeconds`
@@ -383,7 +385,7 @@ await deadLetterService.Requeue(messageId, requeuedBy: "user@example.com");
 await deadLetterService.Discard(messageId);
 ```
 
-**`MessageHandlerBase<T>` and `EventHandlerBase<TEvent>` handlers support dead letter tracking.** Job handlers use the job DB as the failure record. Recurring jobs re-trigger via the scheduler. Batch handlers do not support dead letter tracking.
+**`MessageHandler<T>` and `EventHandlerBase<TEvent>` handlers support dead letter tracking.** Job handlers use the job DB as the failure record. Recurring jobs re-trigger via the scheduler. Batch handlers do not support dead letter tracking.
 
 **Database entities (EF Core):**
 
@@ -741,13 +743,13 @@ Rules:
 
 | Task | What to do |
 |---|---|
-| Add a new message handler | Inherit `MessageHandlerBase<T>`, register with `.AddMessageHandler<T, THandler>()` |
+| Add a new message handler | Inherit `MessageHandler<T>`, register with `.AddMessageHandler<T, THandler>()` |
 | Add retry to a handler | Add `[RetryPolicy(maxRetries: 3, delaySeconds: 30)]` to the handler class |
 | Enable dead letter tracking | Call `AddSqlServerDeadLetterTracking(connStr)` once, then chain `.WithDeadLetterTracking()` after `AddMessageHandler` |
 | Configure dead letter cleanup | Pass `configure: options => { options.DeleteRequeuedMessagesAfter = ...; }` to `AddSqlServerDeadLetterTracking` |
-| Add a batch handler | Inherit `BatchMessageHandlerBase<T>`, add attributes, register with `.AddBatchMessageHandler<>()` |
-| Add a job handler | Inherit `JobMessageHandlerBase<T>`, register with `.AddJobHandler<>()` |
-| Add a recurring job | Inherit `RecurringJobHandlerBase`, add `[RecurringJob]`, register with `.AddRecurringJob<>()` |
+| Add a batch handler | Inherit `BatchMessageHandler<T>`, add attributes, register with `.AddBatchMessageHandler<>()` |
+| Add a job handler | Inherit `JobHandler<T>`, register with `.AddJobHandler<>()` |
+| Add a recurring job | Inherit `RecurringJobHandler`, add `[RecurringJob]`, register with `.AddRecurringJob<>()` |
 | Configure job cleanup | Pass `configure: options => { options.DeleteCompletedJobsAfter = ...; }` to `AddSqlServerJobStateTracking` |
 | Control the queue name | Add `[QueueName("name")]` to the **message contract** — only needed when auto-generation is wrong |
 | Send a message | Inject `IMessageSender`, call `.Send(msg)` |

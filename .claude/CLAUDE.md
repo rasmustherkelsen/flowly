@@ -27,6 +27,9 @@ dotnet test --filter "FullyQualifiedName~MessageQueueNameResolverTests+Resolve"
 - `Flowly/` — core abstractions, registration, background services
 - `Flowly.AzureServiceBus/` — Azure Service Bus transport
 - `Flowly.AzureServiceBus.Aspire/` — Aspire AppHost integration (emulator queue registration)
+- `Flowly.RabbitMQ/` — RabbitMQ transport
+- `Flowly.InMemory/` — In-memory transport (channels; no broker required)
+- `Flowly.OpenTelemetry/` — OpenTelemetry metrics and traces
 - `Flowly.Jobs/` — job state tracking (EF Core) and CRON scheduling
 - `Flowly.Jobs.SqlServer/` — SQL Server backend for job state tracking
 - `Flowly.Jobs.Postgres/` — PostgreSQL backend for job state tracking
@@ -60,16 +63,16 @@ public class MyConfig : FlowlyDesignTimeFactory, IFlowlyConfiguration
 }
 ```
 
-Registered in `Program.cs` via `services.AddFlowly<MyConfig>(configuration)` or auto-discovery with `services.AddFlowly()`.
+Registered in `Program.cs` via `builder.AddFlowly<MyConfig>()` or auto-discovery with `builder.AddFlowly()`.
 
 ### Handler Types
 
 | Base class | Use when | Supports retry | Supports DLQ tracking | Registration |
 |---|---|---|---|---|
-| `MessageHandlerBase<T>` | One message at a time | Yes | Yes | `.AddMessageHandler<T, TH>()` |
-| `BatchMessageHandlerBase<T>` | Multiple messages together | No | No | `.AddBatchMessageHandler<T, TH>()` |
-| `JobMessageHandlerBase<T>` | Job with state tracking (`T : IJobMessage`) | Yes | No | `.AddJobHandler<T, TH>()` |
-| `RecurringJobHandlerBase` | CRON-scheduled background job | No | No | `.AddRecurringJob<TH>()` |
+| `MessageHandler<T>` | One message at a time | Yes | Yes | `.AddMessageHandler<T, TH>()` |
+| `BatchMessageHandler<T>` | Multiple messages together | No | No | `.AddBatchMessageHandler<T, TH>()` |
+| `JobHandler<T>` | Job with state tracking (`T : IJobMessage`) | Yes | No | `.AddJobHandler<T, TH>()` |
+| `RecurringJobHandler` | CRON-scheduled background job | No | No | `.AddRecurringJob<TH>()` |
 | `EventHandlerBase<TEvent>` | Fan-out event (all subscribers receive) | Yes | Yes — requeue re-publishes to the topic/exchange with `flowly-target-subscription` set; only the originating subscriber receives the requeued message. | `.AddEventHandler<TEvent, TH>()` |
 
 ### Queue Names
@@ -79,12 +82,12 @@ Owned by the **message contract**, not the handler. Auto-generated: PascalCase �
 ### Sending
 
 - `IMessageSender.Send(msg)` — fire and forget (requires `.AddMessageSubmitter<T>()`)
-- `IJobMessageSender.QueueJob(msg)` — returns `Guid` job ID (requires `.AddJobSubmitter<T>()`)
+- `IJobMessageSender.QueueJob(msg)` — returns `JobId` (requires `.AddJobSubmitter<T>()`)
 - `IEventSender.RaiseEvent<TEvent>(event)` — fan-out event publish (requires `.AddEventSubmitter<TEvent>()`)
 
 ### Retry Policy
 
-Apply `[RetryPolicy(maxRetries, delaySeconds)]` to any `MessageHandlerBase<T>` or `JobMessageHandlerBase<T>`. On failure, Flowly re-publishes the message to the same queue with a scheduled enqueue time and increments a `flowly-retry-count` application property. After all retries are exhausted, normal handlers dead-letter the message; job handlers transition the job to `Failed`.
+Apply `[RetryPolicy(maxRetries, delaySeconds)]` to any `MessageHandler<T>` or `JobHandler<T>`. On failure, Flowly re-publishes the message to the same queue with a scheduled enqueue time and increments a `flowly-retry-count` application property. After all retries are exhausted, normal handlers dead-letter the message; job handlers transition the job to `Failed`.
 
 ### Job State Tracking (`Flowly.Jobs/`)
 
@@ -94,13 +97,13 @@ SQL Server or PostgreSQL via EF Core. Tables: `Job`, `JobAliveStatus`, `CustomJo
 
 Opt-in per handler. The framework registers a background service per opted-in queue/subscription that reads from the broker's dead letter sub-queue and persists records to a DB table (`DeadLetters`). Fields stored: raw message body, raw application properties (JSON), broker-provided reason and error description, timestamps, status (`Pending / Requeued / Discarded`), and an optional `SubscriptionName` for event subscription dead letters.
 
-Supported on `MessageHandlerBase<T>` and `EventHandlerBase<TEvent>` handlers. Requires `.AddSqlServerDeadLetterTracking()` or `.AddPostgresDeadLetterTracking()`.
+Supported on `MessageHandler<T>` and `EventHandlerBase<TEvent>` handlers. Requires `.AddSqlServerDeadLetterTracking()` or `.AddPostgresDeadLetterTracking()`.
 
 For event subscribers: `QueueName` in the DB holds the topic/exchange name; `SubscriptionName` identifies which subscriber dead-lettered the event. Requeuing re-publishes to the topic/exchange with a `flowly-target-subscription` property — only the originating subscriber's subscription filter accepts the message, so only that subscriber receives the requeued event.
 
 ### Recurring Jobs
 
-Annotate with `[RecurringJob("description", "0 2 * * *")]`, inherit `RecurringJobHandlerBase`. The scheduler polls every 5 seconds; execution uses session-based queues (`ExecutionLane`) to prevent parallel runs.
+Annotate with `[RecurringJob("description", "0 2 * * *")]`, inherit `RecurringJobHandler`. The scheduler polls every 5 seconds; execution uses session-based queues (`ExecutionLane`) to prevent parallel runs.
 
 ### Queue Topology
 

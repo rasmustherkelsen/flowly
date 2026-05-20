@@ -37,7 +37,7 @@ var api = builder.AddProject<Projects.Api>("api")
     .WaitFor(flowlyJobsDatabase)
     .WaitFor(flowlyDeadLettersDatabase);
 
-builder.AddJavaScriptApp("dashboard", "../../../AzureServiceBus/Aspire/Dashboard")
+builder.AddJavaScriptApp("dashboard", "../Dashboard")
     .WithNpm()
     .WithHttpEndpoint(env: "PORT")
     .WithReference(api)

@@ -45,7 +45,7 @@ public class JobHandlerRegistrationExtensionsTests
         }
 
         [Fact]
-        public void RegistersJobHandlerBaseMappingAsScoped()
+        public void RegistersJobHandlerMappingAsScoped()
         {
             var builder = BuildBuilder();
 

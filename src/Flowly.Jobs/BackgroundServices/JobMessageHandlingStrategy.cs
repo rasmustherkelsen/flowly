@@ -12,7 +12,7 @@ internal class JobMessageHandlingStrategy<TMessage>(IServiceScopeFactory service
     public async Task HandleMessage(IReceivedMessage<TMessage> receivedMessage, IServiceProvider serviceProvider, CancellationToken cancellationToken)
     {
         var jobId = new JobId(Guid.Parse(receivedMessage.Properties.MessageId));
-        var jobHandlerBase = serviceProvider.GetRequiredService<JobHandler<TMessage>>();
+        var jobHandler = serviceProvider.GetRequiredService<JobHandler<TMessage>>();
         var messageSender = serviceProvider.GetRequiredService<IMessageSender>();
 
         await messageSender.Send(new UpdateJobState(jobId, JobState.Started, DateTime.UtcNow, receivedMessage.Properties.RetryCount), cancellationToken);
@@ -28,7 +28,7 @@ internal class JobMessageHandlingStrategy<TMessage>(IServiceScopeFactory service
                 serviceProvider.GetRequiredService<IMessageSender>(),
                 cancellationToken);
 
-            await jobHandlerBase.Handle(context);
+            await jobHandler.Handle(context);
         }
         catch (Exception ex)
         {

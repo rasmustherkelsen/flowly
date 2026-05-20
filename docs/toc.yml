@@ -1,5 +1,5 @@
 - name: Overview
-  href: index.md
+  href: ../README.md
 - name: Quickstart — Azure Service Bus
   href: quickstart-azure-service-bus.md
 - name: Quickstart — RabbitMQ

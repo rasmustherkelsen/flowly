@@ -14,7 +14,7 @@ public record OrderCreated(Guid OrderId, decimal Total);
 ### 2. Write a handler
 
 ```csharp
-public class OrderCreatedHandler : MessageHandlerBase<OrderCreated>
+public class OrderCreatedHandler : MessageHandler<OrderCreated>
 {
     public override async Task Handle(IMessageContext<OrderCreated> ctx)
     {
