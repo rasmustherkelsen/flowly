@@ -52,10 +52,10 @@ builder.UseInMemory(configure: opts =>
 
 | Feature | Supported |
 |---|---|
-| Regular message handlers (`MessageHandlerBase<T>`) | ✓ |
-| Batch message handlers (`BatchMessageHandlerBase<T>`) | ✓ |
-| Job handlers (`JobMessageHandlerBase<T>`) | ✓ |
-| Recurring jobs (`RecurringJobHandlerBase`) | ✓ |
+| Regular message handlers (`MessageHandler<T>`) | ✓ |
+| Batch message handlers (`BatchMessageHandler<T>`) | ✓ |
+| Job handlers (`JobHandler<T>`) | ✓ |
+| Recurring jobs (`RecurringJobHandler`) | ✓ |
 | Event handlers (`EventHandlerBase<TEvent>`) | ✓ |
 | Retry policy (`[RetryPolicy]`) | ✓ |
 | Dead-letter tracking | ✓ |

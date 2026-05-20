@@ -22,7 +22,7 @@ public record ProcessReportJob(Guid ReportId, DateOnly Period) : IJobMessage
 
 ```csharp
 [RetryPolicy(maxRetries: 2, delaySeconds: 120)]
-public class ProcessReportJobHandler : JobMessageHandlerBase<ProcessReportJob>
+public class ProcessReportJobHandler : JobHandler<ProcessReportJob>
 {
     public override async Task Handle(IJobMessageContext<ProcessReportJob> ctx)
     {
@@ -56,7 +56,7 @@ public class ReportController(IJobMessageSender jobSender)
 
 ```csharp
 [RecurringJob("Nightly Report", "0 2 * * *")]
-public class NightlyReportJob : RecurringJobHandlerBase
+public class NightlyReportJob : RecurringJobHandler
 {
     public override async Task Handle(CancellationToken ct)
         => await GenerateReport(ct);

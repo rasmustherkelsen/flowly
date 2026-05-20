@@ -16,7 +16,7 @@ public static class FlowlyTracerProviderBuilderExtensions
     ///         <item>
     ///             <description>
     ///                 <b>Consumer spans</b> (<c>flowly.handle {queueName}</c>) — one span per message processed by a
-    ///                 <c>MessageHandlerBase&lt;T&gt;</c> or <c>EventHandlerBase&lt;TEvent&gt;</c>. Tags follow W3C messaging
+    ///                 <c>MessageHandler&lt;T&gt;</c> or <c>EventHandlerBase&lt;TEvent&gt;</c>. Tags follow W3C messaging
     ///                 semantic conventions: <see cref="FlowlyInstrumentationConstants.MessagingSystem" />,
     ///                 <see cref="FlowlyInstrumentationConstants.MessagingDestinationName" />,
     ///                 <see cref="FlowlyInstrumentationConstants.MessagingOperationType" /> (<c>process</c>),
