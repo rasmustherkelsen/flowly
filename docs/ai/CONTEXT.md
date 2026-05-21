@@ -739,6 +739,23 @@ Rules:
 
 ---
 
+### 20. Claude Code Skills
+
+The Flowly repository ships skills under `.claude/skills/`. Each skill is a directory containing a `SKILL.md` file that provides step-by-step scaffolding guidance. Users can copy any skill directory into their own project's `.claude/skills/` folder to make it available as a slash command in Claude Code.
+
+| Directory | Command | Purpose |
+|---|---|---|
+| `flowly-setup-azure-service-bus/` | `/flowly-setup-azure-service-bus` | Full project setup — NuGet packages, `FlowlyConfiguration`, `Program.cs` wiring, connection strings, optional extensions |
+| `create-message-handler/` | `/create-message-handler <MessageName>` | Scaffold message contract record, `MessageHandler<T>` subclass, registration in `IFlowlyConfiguration`, and unit tests |
+| `create-recurring-job/` | `/create-recurring-job <HandlerName>` | Scaffold `RecurringJobHandler` subclass with `[RecurringJob]` attribute, registration, and unit tests |
+| `create-contracts-assembly/` | `/create-contracts-assembly` | Create a shared `*.Messages` / `*.Contracts` project for solutions where multiple deployable services share message types |
+
+When a user in a Flowly-based project asks you to add a handler, recurring job, or set up the transport, suggest the appropriate skill command if the skills are present in their `.claude/skills/` directory.
+
+Skills must be kept current: whenever a registration method, handler base class, or scaffold pattern changes, update the relevant `SKILL.md` in the same commit. See `.claude/rules/skills-conventions.md` for the full maintenance rules.
+
+---
+
 ## Common Tasks Cheat Sheet
 
 | Task | What to do |

@@ -32,6 +32,7 @@ Flowly is a queue-based messaging abstraction for .NET. It sits between your app
 - [In-Memory Transport](#in-memory-transport)
 - [OpenTelemetry](#opentelemetry)
 - [Samples](#samples)
+- [Claude Code Skills](#claude-code-skills)
 - [Contributing](#contributing)
 - [Repository](#repository)
 - [Status](#status)
@@ -1008,6 +1009,36 @@ Each message or event handled creates a span named `flowly.handle {queueName}` w
 Runnable samples covering all transports and key Flowly features are available in the [`samples/`](samples/README.md) directory. Each sample is self-contained and includes setup instructions.
 
 See the **[Samples index](Samples/README.md)** for a full overview grouped by transport (Azure Service Bus, RabbitMQ, InMemory, MultiBus).
+
+---
+
+## Claude Code Skills
+
+Flowly ships with a set of [Claude Code](https://claude.ai/code) skills that give Claude contextual knowledge about Flowly conventions. Each skill is a guided, step-by-step scaffold that produces correct handler structure, registration wiring, naming conventions, and unit tests.
+
+### Available skills
+
+| Skill | Command | What it does |
+|---|---|---|
+| Setup Azure Service Bus | `/flowly-setup-azure-service-bus` | Adds Flowly with Azure Service Bus to a project — packages, `FlowlyConfiguration`, `Program.cs` wiring, connection strings, and optional extensions |
+| Create message handler | `/create-message-handler OrderPlacedMessage` | Scaffolds a complete handler: message contract record, handler class, registration snippet, and unit tests |
+| Create recurring job | `/create-recurring-job NightlyCleanupHandler` | Scaffolds a `RecurringJobHandler` with `[RecurringJob]` attribute, registration, and unit tests |
+| Create contracts assembly | `/create-contracts-assembly` | Creates a shared message contracts project for solutions where multiple services exchange the same message types |
+
+### Installation
+
+Copy the `.claude/skills/` directory (or individual skill subdirectories) from this repository into your own project:
+
+```bash
+# Copy the entire skills directory
+cp -r .claude/skills/ /path/to/your-project/.claude/skills/
+
+# Or copy individual skills
+cp -r .claude/skills/create-message-handler/ /path/to/your-project/.claude/skills/
+cp -r .claude/skills/create-recurring-job/ /path/to/your-project/.claude/skills/
+```
+
+Claude Code discovers skills under `.claude/skills/` automatically and makes them available as slash commands in any session within that project.
 
 ---
 
