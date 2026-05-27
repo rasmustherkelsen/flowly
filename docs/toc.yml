@@ -4,5 +4,9 @@
   href: quickstart-azure-service-bus.md
 - name: Quickstart — RabbitMQ
   href: quickstart-rabbitmq.md
+- name: Quickstart — InMemory
+  href: quickstart-inmemory.md
+- name: Dead Letter Tracking Quickstart
+  href: quickstart-dead-letter-tracking.md
 - name: Multi-Provider
   href: multi-provider.md

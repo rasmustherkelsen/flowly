@@ -1,6 +1,6 @@
 # Flowly.AzureServiceBus.Aspire
 
-.NET Aspire AppHost integration for [Flowly](https://rasmustherkelsen.github.io/flowly/) with Azure Service Bus. Automatically discovers queues and events from your service's `IFlowlyConfiguration` and registers them with the Azure Service Bus emulator.
+.NET Aspire AppHost integration for [Flowly](https://rasmustherkelsen.github.io/flowly/) with Azure Service Bus. Automatically discovers queues and events from your service's `FlowlyConfiguration` and registers them with the Azure Service Bus emulator.
 
 ## Setup
 
@@ -20,7 +20,7 @@ var azureServiceBus = builder
 
 var backendProcessor = builder.AddProject<Projects.BackendProcessor>("BackendProcessor");
 
-// Auto-discovers queues from the project's IFlowlyConfiguration
+// Auto-discovers queues from the project's FlowlyConfiguration
 azureServiceBus.AddFlowly(backendProcessor);
 
 backendProcessor
@@ -30,7 +30,7 @@ backendProcessor
 
 ## Explicit Topology
 
-For services that use inline `AddFlowly()` (no `FlowlyDesignTimeFactory`), declare topology explicitly:
+For services that use inline `AddFlowly()` (no `FlowlyConfiguration` subclass), declare topology explicitly:
 
 ```csharp
 azureServiceBus.AddFlowly(backendProcessor, topology =>

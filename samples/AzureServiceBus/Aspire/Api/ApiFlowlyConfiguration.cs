@@ -5,9 +5,9 @@ using MessageContracts;
 
 namespace Api;
 
-internal class ApiFlowlyConfiguration : FlowlyDesignTimeFactory, IFlowlyConfiguration
+internal class ApiFlowlyConfiguration : Configuration
 {
-    public void Configure(IFlowlyBuilder builder)
+    public override void Configure(IFlowlyBuilder builder)
     {
         builder
             .UseAzureServiceBus("EmulatorNamespace")

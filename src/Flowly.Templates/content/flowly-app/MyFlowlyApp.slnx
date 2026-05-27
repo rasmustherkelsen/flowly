@@ -1,0 +1,8 @@
+<Solution>
+  <Project Path="Messages/Messages.csproj" />
+  <Project Path="Sender/Sender.csproj" />
+  <Project Path="Receiver/Receiver.csproj" />
+  <!--#if (UseJobTracking)-->
+  <Project Path="JobTracker/JobTracker.csproj" />
+  <!--#endif-->
+</Solution>

@@ -5,9 +5,9 @@ using MessageContracts;
 
 namespace BackendFinanceProcessor;
 
-internal class BackendFinanceProcessorFlowlyConfiguration : FlowlyDesignTimeFactory, IFlowlyConfiguration
+internal class BackendFinanceProcessorFlowlyConfiguration : Configuration
 {
-    public void Configure(IFlowlyBuilder builder)
+    public override void Configure(IFlowlyBuilder builder)
     {
         builder
             .UseAzureServiceBus("EmulatorNamespace")

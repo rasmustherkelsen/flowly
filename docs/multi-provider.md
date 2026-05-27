@@ -20,9 +20,9 @@ This resolution happens at **registration time** (inside `Configure`), not at se
 ## Registering multiple providers
 
 ```csharp
-public class MyServiceConfiguration : FlowlyDesignTimeFactory, IFlowlyConfiguration
+public class MyServiceConfiguration : Configuration
 {
-    public void Configure(IFlowlyBuilder builder)
+    public override void Configure(IFlowlyBuilder builder)
     {
         builder
             // Primary provider — receives all messages with no explicit affinity

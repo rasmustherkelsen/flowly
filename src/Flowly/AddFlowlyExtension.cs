@@ -34,6 +34,17 @@ public static class AddFlowlyExtension
     /// Adds Flowly services and configurations to the dependency injection container using an inline configuration.
     /// </summary>
     /// <param name="builder">A valid IHostApplicationBuilder instance</param>
+    /// <param name="configure">Inline configuration action for Flowly</param>
+    /// <returns>A IHostApplicationBuilder instance for further configuration</returns>
+    public static IHostApplicationBuilder AddFlowly(
+        this IHostApplicationBuilder builder,
+        Action<IFlowlyBuilder> configure)
+        => AddFlowly(builder, null, configure);
+
+    /// <summary>
+    /// Adds Flowly services and configurations to the dependency injection container using an inline configuration.
+    /// </summary>
+    /// <param name="builder">A valid IHostApplicationBuilder instance</param>
     /// <param name="configureOptions">Additional configuration options for Flowly</param>
     /// <param name="configure">Inline configuration action for Flowly</param>
     /// <returns>A IHostApplicationBuilder instance for further configuration</returns>

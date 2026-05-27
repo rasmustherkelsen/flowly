@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "Rasmus Therkelsen",
+  "classifications": [ "Flowly", "Messaging", "Claude Code", "AI" ],
+  "identity": "Flowly.Skills.1.0",
+  "name": "Flowly Claude Code Skills",
+  "shortName": "flowlyskills",
+  "description": "Installs Flowly Claude Code AI skills into .claude/skills/ in the current directory.",
+  "preferNameDirectory": false,
+  "tags": {
+    "type": "item"
+  }
+}

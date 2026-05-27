@@ -1,0 +1,289 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "Rasmus Therkelsen",
+  "classifications": [ "Flowly", "Messaging", "Solution", "Quickstart" ],
+  "identity": "Flowly.App.1.0",
+  "name": "Flowly App",
+  "shortName": "flowlyapp",
+  "description": "A complete Flowly send/receive solution — Messages library, Sender, and Receiver pre-wired for your chosen transport.",
+  "sourceName": "MyFlowlyApp",
+  "preferNameDirectory": true,
+  "tags": {
+    "language": "C#",
+    "type": "solution"
+  },
+  "symbols": {
+    "transport": {
+      "type": "parameter",
+      "datatype": "choice",
+      "isRequired": true,
+      "displayName": "Transport",
+      "description": "The messaging transport to use. Required.",
+      "choices": [
+        { "choice": "rabbitmq",        "description": "RabbitMQ transport." },
+        { "choice": "rmq",             "description": "Alias for rabbitmq." },
+        { "choice": "azureservicebus", "description": "Azure Service Bus transport." },
+        { "choice": "asb",             "description": "Alias for azureservicebus." },
+        { "choice": "inmemory",        "description": "In-memory transport (no broker required)." },
+        { "choice": "inm",             "description": "Alias for inmemory." }
+      ]
+    },
+    "UseRabbitMQ": {
+      "type": "computed",
+      "value": "(transport == \"rabbitmq\" || transport == \"rmq\")"
+    },
+    "UseAzureServiceBus": {
+      "type": "computed",
+      "value": "(transport == \"azureservicebus\" || transport == \"asb\")"
+    },
+    "UseInMemory": {
+      "type": "computed",
+      "value": "(transport == \"inmemory\" || transport == \"inm\")"
+    },
+    "HasTransportConnectionString": {
+      "type": "computed",
+      "value": "(UseRabbitMQ || UseAzureServiceBus)"
+    },
+    "jobtracking": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "Job tracking",
+      "description": "Add Flowly job state tracking. Also specify --sqlserver, --postgres, or --sqlite."
+    },
+    "jobs": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "description": "Alias for --jobtracking."
+    },
+    "UseJobTracking": {
+      "type": "computed",
+      "value": "(jobtracking || jobs)"
+    },
+    "deadlettertracking": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "Dead-letter tracking",
+      "description": "Add Flowly dead-letter tracking. Also specify --sqlserver, --postgres, or --sqlite."
+    },
+    "deadletter": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "description": "Alias for --deadlettertracking."
+    },
+    "UseDeadLetterTracking": {
+      "type": "computed",
+      "value": "(deadlettertracking || deadletter)"
+    },
+    "UseDatabase": {
+      "type": "computed",
+      "value": "(UseJobTracking || UseDeadLetterTracking)"
+    },
+    "sqlserver": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "SQL Server",
+      "description": "Use SQL Server as the database backend for job/dead-letter tracking."
+    },
+    "UseSqlServer": {
+      "type": "computed",
+      "value": "sqlserver"
+    },
+    "postgres": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "PostgreSQL",
+      "description": "Use PostgreSQL as the database backend for job/dead-letter tracking."
+    },
+    "UsePostgres": {
+      "type": "computed",
+      "value": "postgres"
+    },
+    "sqlite": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "SQLite",
+      "description": "Use SQLite as the database backend for job/dead-letter tracking."
+    },
+    "UseSQLite": {
+      "type": "computed",
+      "value": "sqlite"
+    },
+    "HasDatabaseBackend": {
+      "type": "computed",
+      "value": "(UseSqlServer || UsePostgres || UseSQLite)"
+    },
+    "NeedsSqlServerInfrastructure": {
+      "type": "computed",
+      "value": "(UseDatabase && UseSqlServer)"
+    },
+    "NeedsPostgresInfrastructure": {
+      "type": "computed",
+      "value": "(UseDatabase && UsePostgres)"
+    },
+    "JobsIsFirstEntry": {
+      "type": "computed",
+      "value": "(UseJobTracking && !HasTransportConnectionString)"
+    },
+    "JobsIsSubsequentEntry": {
+      "type": "computed",
+      "value": "(UseJobTracking && HasTransportConnectionString)"
+    },
+    "DeadLettersIsFirstEntry": {
+      "type": "computed",
+      "value": "(UseDeadLetterTracking && !HasTransportConnectionString && !UseJobTracking)"
+    },
+    "DeadLettersIsSubsequentEntry": {
+      "type": "computed",
+      "value": "(UseDeadLetterTracking && (HasTransportConnectionString || UseJobTracking))"
+    },
+    "HttpPort": {
+      "type": "generated",
+      "generator": "port",
+      "replaces": "5195",
+      "parameters": {
+        "low": 5000,
+        "high": 5300
+      }
+    },
+    "HttpsPort": {
+      "type": "generated",
+      "generator": "port",
+      "replaces": "7176",
+      "parameters": {
+        "low": 7000,
+        "high": 7300
+      }
+    }
+  },
+  "sources": [
+    {
+      "modifiers": [
+        {
+          "condition": "(UseRabbitMQ)",
+          "rename": { "docker-compose-rabbitmq.yml": "docker-compose.yml" },
+          "exclude": [ "docker-compose-asb.yml", "sbconfig.json", "App/**", "MyFlowlyApp-single.slnx" ]
+        },
+        {
+          "condition": "(UseAzureServiceBus)",
+          "rename": { "docker-compose-asb.yml": "docker-compose.yml" },
+          "exclude": [ "docker-compose-rabbitmq.yml", "App/**", "MyFlowlyApp-single.slnx" ]
+        },
+        {
+          "condition": "(UseInMemory)",
+          "rename": { "MyFlowlyApp-single.slnx": "MyFlowlyApp.slnx" },
+          "exclude": [ "MyFlowlyApp.slnx", "docker-compose-rabbitmq.yml", "docker-compose-asb.yml", "sbconfig.json", "Messages/**", "Sender/**", "Receiver/**", "JobTracker/**" ]
+        },
+        {
+          "condition": "(!UseJobTracking)",
+          "exclude": [
+            "JobTracker/**",
+            "Messages/ProcessJobMessage.cs",
+            "Receiver/Handlers/ProcessJobHandler.cs",
+            "Sender/Services/JobSubmitterService.cs",
+            "App/Messages/ProcessJobMessage.cs",
+            "App/Handlers/ProcessJobHandler.cs",
+            "App/Services/JobSubmitterService.cs"
+          ]
+        },
+        {
+          "condition": "(!UseDeadLetterTracking)",
+          "exclude": [
+            "Messages/DeadLetterSampleMessage.cs",
+            "Receiver/Handlers/DeadLetterSampleMessageHandler.cs",
+            "Sender/Services/FailingMessageSenderService.cs",
+            "App/Messages/DeadLetterSampleMessage.cs",
+            "App/Handlers/DeadLetterSampleMessageHandler.cs",
+            "App/Services/FailingMessageSenderService.cs"
+          ]
+        }
+      ]
+    }
+  ],
+  "specialCustomOperations": {
+    "**/*.csproj": {
+      "operations": [
+        {
+          "type": "conditional",
+          "configuration": {
+            "if": [ "<!--#if" ],
+            "else": [ "<!--#else" ],
+            "elseif": [ "<!--#elseif" ],
+            "endif": [ "<!--#endif-->" ],
+            "trim": true,
+            "wholeLine": true
+          }
+        }
+      ]
+    },
+    "**/*.json": {
+      "operations": [
+        {
+          "type": "conditional",
+          "configuration": {
+            "if": [ "//#if" ],
+            "else": [ "//#else" ],
+            "elseif": [ "//#elseif" ],
+            "endif": [ "//#endif" ],
+            "trim": true,
+            "wholeLine": true
+          }
+        }
+      ]
+    },
+    "**/*.slnx": {
+      "operations": [
+        {
+          "type": "conditional",
+          "configuration": {
+            "if": [ "<!--#if" ],
+            "else": [ "<!--#else" ],
+            "elseif": [ "<!--#elseif" ],
+            "endif": [ "<!--#endif-->" ],
+            "trim": true,
+            "wholeLine": true
+          }
+        }
+      ]
+    },
+    "**/*.yml": {
+      "operations": [
+        {
+          "type": "conditional",
+          "configuration": {
+            "if": [ "#if" ],
+            "else": [ "#else" ],
+            "elseif": [ "#elseif" ],
+            "endif": [ "#endif" ],
+            "trim": true,
+            "wholeLine": true
+          }
+        }
+      ]
+    }
+  },
+  "primaryOutputs": [
+    {
+      "path": "MyFlowlyApp.slnx"
+    }
+  ],
+  "postActions": [
+    {
+      "id": "restore",
+      "description": "Restore NuGet packages",
+      "actionId": "210D431B-A78B-4D2F-B762-4ED3E3EA9025",
+      "continueOnError": true,
+      "manualInstructions": [
+        {
+          "text": "Run 'dotnet restore'"
+        }
+      ]
+    }
+  ]
+}

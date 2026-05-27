@@ -8,9 +8,9 @@ using MessageContracts;
 
 namespace BackendProcessor;
 
-internal class BackendProcessorFlowlyConfiguration : FlowlyDesignTimeFactory, IFlowlyConfiguration
+internal class BackendProcessorFlowlyConfiguration : Configuration
 {
-    public void Configure(IFlowlyBuilder builder)
+    public override void Configure(IFlowlyBuilder builder)
     {
         builder
             .UseRabbitMq(connection: "RabbitMQ")

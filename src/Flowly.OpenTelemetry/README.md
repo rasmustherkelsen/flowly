@@ -4,6 +4,14 @@ OpenTelemetry metrics and traces for [Flowly](https://rasmustherkelsen.github.io
 
 ## Setup
 
+The quickest way — registers both metrics and traces in one call:
+
+```csharp
+builder.AddFlowlyOpenTelemetry();
+```
+
+To compose Flowly into an existing OpenTelemetry pipeline instead:
+
 ```csharp
 builder.Services.AddOpenTelemetry()
     .WithMetrics(metrics => metrics.AddFlowlyInstrumentation())

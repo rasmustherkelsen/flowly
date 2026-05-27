@@ -1,0 +1,79 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "Rasmus Therkelsen",
+  "classifications": [ "Flowly", "Messaging", "Library" ],
+  "identity": "Flowly.MessageLib.1.0",
+  "name": "Flowly Message Library",
+  "shortName": "flowlymessagelib",
+  "description": "A class library pre-wired with Flowly for holding shared message contracts.",
+  "sourceName": "FlowlyMessageLib",
+  "preferNameDirectory": true,
+  "tags": {
+    "language": "C#",
+    "type": "project"
+  },
+  "symbols": {
+    "jobtracking": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "Job tracking",
+      "description": "Add a Flowly.Jobs dependency and a MyJobMessage.cs starter file."
+    },
+    "jobs": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "description": "Alias for --jobtracking."
+    },
+    "UseJobTracking": {
+      "type": "computed",
+      "value": "(jobtracking || jobs)"
+    }
+  },
+  "sources": [
+    {
+      "modifiers": [
+        {
+          "condition": "(!UseJobTracking)",
+          "exclude": [ "MyJobMessage.cs" ]
+        }
+      ]
+    }
+  ],
+  "specialCustomOperations": {
+    "**/*.csproj": {
+      "operations": [
+        {
+          "type": "conditional",
+          "configuration": {
+            "if": [ "<!--#if" ],
+            "else": [ "<!--#else" ],
+            "elseif": [ "<!--#elseif" ],
+            "endif": [ "<!--#endif-->" ],
+            "trim": true,
+            "wholeLine": true
+          }
+        }
+      ]
+    }
+  },
+  "primaryOutputs": [
+    {
+      "path": "FlowlyMessageLib.csproj"
+    }
+  ],
+  "postActions": [
+    {
+      "id": "restore",
+      "description": "Restore NuGet packages",
+      "actionId": "210D431B-A78B-4D2F-B762-4ED3E3EA9025",
+      "continueOnError": true,
+      "manualInstructions": [
+        {
+          "text": "Run 'dotnet restore'"
+        }
+      ]
+    }
+  ]
+}

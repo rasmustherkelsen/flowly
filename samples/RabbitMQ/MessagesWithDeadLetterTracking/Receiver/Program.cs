@@ -3,7 +3,7 @@ using Receiver;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.AddFlowly<FlowlyConfiguration>(x => x.CreateTopology = true);
+builder.AddFlowly<ReceiverFlowlyConfiguration>(x => x.CreateTopology = true);
 
 var app = builder.Build();
 

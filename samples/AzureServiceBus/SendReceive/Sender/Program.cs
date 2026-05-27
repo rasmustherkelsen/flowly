@@ -1,6 +1,5 @@
 using Flowly;
 using Flowly.AzureServiceBus;
-using Flowly.MessageInfrastructure.Senders;
 using Messages;
 
 var builder = WebApplication.CreateBuilder(args);

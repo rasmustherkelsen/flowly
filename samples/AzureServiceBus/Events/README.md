@@ -21,7 +21,7 @@ Fan-out event publishing with two independent subscribers. One event type (`Orde
 
 - .NET 10 SDK
 - Docker (for the ASB emulator)
-- [`flowly` CLI](../../../../Flowly.Tool/README.md)
+- `flowly` CLI (`dotnet tool install --global Flowly.Tool`)
 
 ## How to run
 

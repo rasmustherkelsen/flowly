@@ -10,7 +10,10 @@ Flowly is a queue-based messaging abstraction for .NET — provider-agnostic han
 |---|---|
 | [RabbitMQ Quickstart](quickstart-rabbitmq.md) | Get from zero to messages flowing with RabbitMQ in minutes |
 | [Azure Service Bus Quickstart](quickstart-azure-service-bus.md) | Get from zero to messages flowing with the Azure Service Bus emulator in minutes |
-| [User Guide](../README.md) | Full reference: handlers, events, jobs, retries, dead letters, recurring jobs, CLI, OpenTelemetry |
+| [InMemory Quickstart](quickstart-inmemory.md) | Get from zero to messages flowing with no broker — pure in-process channels |
+| [Job Tracking Quickstart](quickstart-job-tracking.md) | Extend any quickstart with job state tracking using SQL Server, PostgreSQL, or SQLite |
+| [Dead Letter Tracking Quickstart](quickstart-dead-letter-tracking.md) | Extend any quickstart with dead letter tracking using SQL Server, PostgreSQL, or SQLite |
+| [User Guide](../README.md) | Full reference: handlers, events, jobs, retries, dead letters, recurring jobs, CLI, OpenTelemetry, templates |
 | [Multi-Provider Configuration](multi-provider.md) | Running multiple message brokers in the same service |
 
 ## Internal / Contributor Docs

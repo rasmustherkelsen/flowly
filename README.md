@@ -10,6 +10,7 @@ Flowly is a queue-based messaging abstraction for .NET. It sits between your app
 
 - [RabbitMQ Quickstart](docs/quickstart-rabbitmq.md)
 - [Azure Service Bus Quickstart](docs/quickstart-azure-service-bus.md)
+- [InMemory Quickstart](docs/quickstart-inmemory.md)
 - [Why Flowly?](#why-flowly)
 - [Packages](#packages)
 - [Installation](#installation)
@@ -25,6 +26,7 @@ Flowly is a queue-based messaging abstraction for .NET. It sits between your app
 - [Recurring Jobs](#recurring-jobs)
 - [Local Development](#local-development)
 - [Flowly.Tool CLI](#flowlytool-cli)
+- [Project Templates](#project-templates)
 - [Full Configuration Example](#full-configuration-example)
 - [Multi-Provider](#multi-provider)
 - [Azure Service Bus Transport](#azure-service-bus-transport)
@@ -32,6 +34,7 @@ Flowly is a queue-based messaging abstraction for .NET. It sits between your app
 - [In-Memory Transport](#in-memory-transport)
 - [OpenTelemetry](#opentelemetry)
 - [Samples](#samples)
+- [Claude Code Skills](#claude-code-skills)
 - [Contributing](#contributing)
 - [Repository](#repository)
 - [Status](#status)
@@ -69,6 +72,7 @@ All packages are published to [NuGet.org](https://www.nuget.org/packages?q=Flowl
 | `Flowly.DeadLetters.SQLite` | SQLite backend for dead letter tracking |
 | `Flowly.OpenTelemetry` | OpenTelemetry metrics and traces for handlers and submitters |
 | `Flowly.Tool` | `flowly` CLI for queue discovery and code generation |
+| `Flowly.Templates` | `dotnet new flowlyapp` / `dotnet new flowly` project templates |
 
 ---
 
@@ -110,21 +114,26 @@ Install the `flowly` CLI tool globally for local development and code generation
 dotnet tool install --global Flowly.Tool
 ```
 
+Install the project templates to scaffold new Flowly services with `dotnet new`:
+
+```bash
+dotnet new install Flowly.Templates
+```
+
 ---
 
 ## Getting Started
 
 ### 1. Create a configuration class
 
-Every deployable service has exactly one configuration class that inherits `FlowlyDesignTimeFactory` and implements `IFlowlyConfiguration`. This is where you wire up the transport, handlers, and optional features.
+Every deployable service has exactly one configuration class that inherits `Configuration`. This is where you wire up the transport, handlers, and optional features.
 
 ```csharp
 using Flowly.AzureServiceBus;
-using Flowly.MessageInfrastructure.Registration;
 
-public class MyServiceConfiguration : FlowlyDesignTimeFactory, IFlowlyConfiguration
+public class MyServiceConfiguration : Configuration
 {
-    public void Configure(IFlowlyBuilder builder)
+    public override void Configure(IFlowlyBuilder builder)
     {
         builder
             .UseAzureServiceBus("AzureServiceBus")   // connection string name in appsettings
@@ -619,7 +628,7 @@ If `AddJobStateTracking` is configured, recurring jobs are tracked in the databa
 
 ### .NET Aspire (recommended)
 
-The `Flowly.AzureServiceBus.Aspire` package integrates with the Azure Service Bus emulator in .NET Aspire AppHost projects. It discovers and registers all queues from your service's `IFlowlyConfiguration` automatically.
+The `Flowly.AzureServiceBus.Aspire` package integrates with the Azure Service Bus emulator in .NET Aspire AppHost projects. It discovers and registers all queues from your service's `FlowlyConfiguration` automatically.
 
 In your AppHost:
 
@@ -630,7 +639,7 @@ var azureServiceBus = builder
 
 var backendProcessor = builder.AddProject<Projects.BackendProcessor>("BackendProcessor");
 
-// Auto-discovers queues and events from the project's FlowlyDesignTimeFactory
+// Auto-discovers queues and events from the project's FlowlyConfiguration
 azureServiceBus.AddFlowly(backendProcessor);
 
 backendProcessor
@@ -638,7 +647,7 @@ backendProcessor
     .WaitFor(azureServiceBus);
 ```
 
-When a service uses inline Flowly configuration (no `FlowlyDesignTimeFactory` class), there is no design-time class to discover — declare the topology explicitly instead:
+When a service uses inline Flowly configuration (no `FlowlyConfiguration` class), there is no design-time class to discover — declare the topology explicitly instead:
 
 ```csharp
 var backendFinanceProcessor = builder.AddProject<Projects.BackendFinanceProcessor>("BackendFinanceProcessor");
@@ -694,7 +703,7 @@ flowly azure-service-bus emulator-config \
 
 ## Flowly.Tool CLI
 
-The `flowly` CLI tool operates on your service project at design time. It loads your `IFlowlyConfiguration` class from the built assembly to discover queue topology.
+The `flowly` CLI tool operates on your service project at design time. It loads your `FlowlyConfiguration` subclass from the built assembly to discover queue topology.
 
 ### Install
 
@@ -760,12 +769,151 @@ The tool detects transports from package references (`Flowly.AzureServiceBus.dll
 
 ---
 
+## Project Templates
+
+Scaffold new Flowly projects in seconds using `dotnet new`:
+
+### Install
+
+```bash
+dotnet new install Flowly.Templates
+```
+
+### `flowlyapp` — Scaffold a complete send/receive solution
+
+The fastest way to get a working Flowly app running locally. Generates a full solution — Messages contracts library, Sender, and Receiver — matching the quickstart guides exactly. Includes `docker-compose.yml` for local infrastructure and `sbconfig.json` for Azure Service Bus.
+
+```bash
+dotnet new flowlyapp --transport <transport> [options] -n <SolutionName>
+```
+
+`--transport` is required:
+
+| Value | Alias | Transport |
+|---|---|---|
+| `rabbitmq` | `rmq` | RabbitMQ |
+| `azureservicebus` | `asb` | Azure Service Bus |
+| `inmemory` | `inm` | In-Memory (no broker) |
+
+Optional features (require a DB flag when used):
+
+| Flag | Alias | Description |
+|---|---|---|
+| `--jobtracking` | `--jobs` | Job state tracking — adds `ProcessJobMessage`, `ProcessJobHandler`, `JobSubmitterService`, and a `JobTracker` infrastructure project. |
+| `--deadlettertracking` | `--deadletter` | Dead-letter tracking — adds `DeadLetterSampleMessage`, `DeadLetterSampleMessageHandler` with `[RetryPolicy]`, and `FailingMessageSenderService`. |
+
+Database backend (required when `--jobs` or `--deadletter` is used): `--sqlserver`, `--postgres`, `--sqlite`.
+
+```bash
+# Full RabbitMQ solution
+dotnet new flowlyapp --transport rabbitmq -n MyApp
+
+# Full Azure Service Bus solution (includes sbconfig.json for the emulator)
+dotnet new flowlyapp --transport asb -n MyApp
+
+# Single-project InMemory solution (no broker, no Docker required)
+dotnet new flowlyapp --transport inm -n MyApp
+
+# RabbitMQ with job tracking and dead-letter tracking (SQLite)
+dotnet new flowlyapp --transport rabbitmq --jobs --deadletter --sqlite -n MyApp
+
+# ASB with job tracking using SQL Server
+dotnet new flowlyapp --transport asb --jobs --sqlserver -n MyApp
+```
+
+**RabbitMQ / Azure Service Bus** generates:
+
+```
+MyApp/
+├── MyApp.slnx
+├── Messages/            ← shared message contracts
+├── Sender/              ← WebApplication; sends messages
+├── Receiver/            ← worker; receives and handles messages
+├── JobTracker/          ← only with --jobs: infrastructure service for job state persistence
+├── docker-compose.yml   ← broker (+ SQL Server / Postgres when applicable)
+└── sbconfig.json        ← ASB only
+```
+
+**InMemory** generates a single-project solution (`App/`) with sender, receiver, and optionally job/dead-letter tracking in the same process.
+
+---
+
+### `flowly` — Scaffold a new Flowly project
+
+```bash
+dotnet new flowly --transport <transport> [options] -o <ProjectName>
+```
+
+`--transport` is required. Accepted values:
+
+| Value | Alias | Transport |
+|---|---|---|
+| `rabbitmq` | `rmq` | RabbitMQ |
+| `azureservicebus` | `asb` | Azure Service Bus |
+| `inmemory` | `inm` | In-Memory (no broker) |
+
+Optional feature flags:
+
+| Flag | Alias | Description |
+|---|---|---|
+| `--jobtracking` | `--jobs` | Add job state tracking. Requires a DB flag. |
+| `--deadlettertracking` | `--deadletter` | Add dead-letter tracking. Requires a DB flag. |
+| `--opentelemetry` | `--otel` | Add Flowly.OpenTelemetry metrics and tracing. |
+| `--inline` | | Wire Flowly inline in Program.cs instead of a config class. |
+| `--no-http` | | Configure as a worker service with no HTTP listener. Use for projects that only process queue messages. |
+
+Database backend (required when `--jobs` or `--deadletter` is used):
+
+| Flag | Database |
+|---|---|
+| `--sqlserver` | SQL Server |
+| `--postgres` | PostgreSQL |
+| `--sqlite` | SQLite |
+
+#### Examples
+
+```bash
+# Minimal RabbitMQ receiver
+dotnet new flowly --transport rabbitmq -o Receiver
+
+# Queue-only worker (no HTTP listener)
+dotnet new flowly --transport rabbitmq --no-http -o Worker
+
+# Azure Service Bus processor with job tracking, dead-letter tracking, and OTel
+dotnet new flowly --transport asb --jobs --sqlserver --deadletter --otel -o Processor
+
+# InMemory transport, all features, inline wiring
+dotnet new flowly --transport inm --jobs --sqlite --deadletter --otel --inline -o TestWorker
+```
+
+### `flowlymessagelib` — Scaffold a Flowly message contracts library
+
+Creates a class library pre-wired with Flowly for holding shared message contracts. Reference this project from both your sender and receiver services.
+
+```bash
+dotnet new flowlymessagelib -o <ProjectName>
+```
+
+| Flag | Alias | Description |
+|------|-------|-------------|
+| `--jobtracking` | `--jobs` | Add a `Flowly.Jobs` dependency and a `MyJobMessage.cs` starter file. |
+
+### `flowlyskills` — Install Flowly Claude Code skills
+
+Drops Flowly AI skills for [Claude Code](https://claude.ai/code) into `.claude/skills/` in the current directory. Run this from your repository root so skills are available across all projects in the repo.
+
+```bash
+dotnet new flowlyskills
+```
+
+No options or project name required. The skills teach Claude Code how to scaffold message handlers, recurring jobs, contracts assemblies, and configure Flowly transports.
+
 ## Full Configuration Example
 
 ```csharp
-public class MyServiceConfiguration : FlowlyDesignTimeFactory, IFlowlyConfiguration
+public class MyServiceConfiguration : Configuration
 {
-    public void Configure(IFlowlyBuilder builder)
+    public override void Configure(IFlowlyBuilder builder)
     {
         builder
             // Transport
@@ -965,6 +1113,14 @@ The `Flowly.OpenTelemetry` package wires Flowly's metrics and traces into the Op
 
 ### Setup
 
+The quickest way — registers both metrics and traces in one call:
+
+```csharp
+builder.AddFlowlyOpenTelemetry();
+```
+
+To compose Flowly into an existing OpenTelemetry pipeline instead:
+
 ```csharp
 builder.Services.AddOpenTelemetry()
     .WithMetrics(metrics => metrics.AddFlowlyInstrumentation())
@@ -1007,7 +1163,37 @@ Each message or event handled creates a span named `flowly.handle {queueName}` w
 
 Runnable samples covering all transports and key Flowly features are available in the [`samples/`](samples/README.md) directory. Each sample is self-contained and includes setup instructions.
 
-See the **[Samples index](Samples/README.md)** for a full overview grouped by transport (Azure Service Bus, RabbitMQ, InMemory, MultiBus).
+See the **[Samples index](samples/README.md)** for a full overview grouped by transport (Azure Service Bus, RabbitMQ, InMemory, MultiBus).
+
+---
+
+## Claude Code Skills
+
+Flowly ships with a set of [Claude Code](https://claude.ai/code) skills that give Claude contextual knowledge about Flowly conventions. Each skill is a guided, step-by-step scaffold that produces correct handler structure, registration wiring, naming conventions, and unit tests.
+
+### Available skills
+
+| Skill | Command | What it does |
+|---|---|---|
+| Setup Azure Service Bus | `/flowly-setup-azure-service-bus` | Adds Flowly with Azure Service Bus to a project — packages, `FlowlyConfiguration`, `Program.cs` wiring, connection strings, and optional extensions |
+| Create message handler | `/create-message-handler OrderPlacedMessage` | Scaffolds a complete handler: message contract record, handler class, registration snippet, and unit tests |
+| Create recurring job | `/create-recurring-job NightlyCleanupHandler` | Scaffolds a `RecurringJobHandler` with `[RecurringJob]` attribute, registration, and unit tests |
+| Create contracts assembly | `/create-contracts-assembly` | Creates a shared message contracts project for solutions where multiple services exchange the same message types |
+
+### Installation
+
+Copy the `.claude/skills/` directory (or individual skill subdirectories) from this repository into your own project:
+
+```bash
+# Copy the entire skills directory
+cp -r .claude/skills/ /path/to/your-project/.claude/skills/
+
+# Or copy individual skills
+cp -r .claude/skills/create-message-handler/ /path/to/your-project/.claude/skills/
+cp -r .claude/skills/create-recurring-job/ /path/to/your-project/.claude/skills/
+```
+
+Claude Code discovers skills under `.claude/skills/` automatically and makes them available as slash commands in any session within that project.
 
 ---
 

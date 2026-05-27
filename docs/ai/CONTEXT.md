@@ -31,6 +31,7 @@ This document gives an AI assistant the context needed to work effectively in th
 ├── Flowly.DeadLetters.Postgres/     # PostgreSQL backend for dead letter tracking
 ├── Flowly.DeadLetters.SQLite/       # SQLite backend for dead letter tracking
 ├── Flowly.Tool/                     # dotnet CLI tool (queue discovery, code gen)
+├── Flowly.Templates/                # dotnet new flowly project templates
 ├── Samples/
 │   └── AzureServiceBus/
 │       └── Aspire/                  # Reference implementation using .NET Aspire
@@ -56,14 +57,14 @@ Consuming applications must never take a dependency on `IDbContextFactory<JobSta
 
 ## Core Concepts
 
-### 1. IFlowlyConfiguration — the registration entry point
+### 1. Configuration (Flowly.Configuration) — the registration entry point
 
-Everything is configured through a class that implements `IFlowlyConfiguration` and inherits `FlowlyDesignTimeFactory`. This class is discovered by `Flowly.Tool` at design time.
+Everything is configured through a class that inherits `Configuration`. This class is discovered by `Flowly.Tool` at design time.
 
 ```csharp
-public class MyFlowlyConfig : FlowlyDesignTimeFactory, IFlowlyConfiguration
+public class MyFlowlyConfig : Configuration
 {
-    public void Configure(IFlowlyBuilder builder)
+    public override void Configure(IFlowlyBuilder builder)
     {
         builder
             .UseAzureServiceBus("AzureServiceBus")                       // transport
@@ -501,7 +502,7 @@ IEventContext<TEvent>
 
 ### 11. Flowly.Tool CLI
 
-Installed as a .NET global tool (`flowly`). For `azure-service-bus` subcommands, the tool requires a `FlowlyDesignTimeFactory` + `IFlowlyConfiguration` in the target assembly (or falls back to host-based discovery for inline `AddFlowly()` configurations). The `docker-compose` command works with both styles — it detects transports and database providers from build output DLL presence, not assembly introspection.
+Installed as a .NET global tool (`flowly`). For `azure-service-bus` subcommands, the tool requires a `Configuration` subclass (a.k.a. `Flowly.Configuration`) in the target assembly (or falls back to host-based discovery for inline `AddFlowly()` configurations). The `docker-compose` command works with both styles — it detects transports and database providers from build output DLL presence, not assembly introspection.
 
 ```bash
 # Pack and install locally
@@ -543,7 +544,103 @@ Multiple `--project` flags aggregate queues across projects.
 
 ---
 
-### 12. Local Development Setup
+### 12. Project Templates (`Flowly.Templates`)
+
+Install the template pack once to scaffold new Flowly services with `dotnet new`:
+
+```bash
+dotnet new install Flowly.Templates
+```
+
+#### `flowlyapp` — scaffold a complete send/receive solution
+
+Generates a full solution — Messages library + Sender + Receiver — matching the quickstart guides exactly. Includes `docker-compose.yml` (and `sbconfig.json` for ASB).
+
+```bash
+dotnet new flowlyapp --transport <value> [options] -n <SolutionName>
+```
+
+| Transport | Alias | Generated output |
+|---|---|---|
+| `rabbitmq` | `rmq` | `MyApp.slnx` + Messages + Sender + Receiver + `docker-compose.yml` |
+| `azureservicebus` | `asb` | same + `sbconfig.json` |
+| `inmemory` | `inm` | `MyApp.slnx` + `App/` (single-project, no docker) |
+
+Optional flags (same DB backend flags as `flowly`):
+
+| Flag | Alias | Description |
+|---|---|---|
+| `--jobtracking` | `--jobs` | Add job state tracking. Adds `ProcessJobMessage`/`ProcessJobHandler`/`JobSubmitterService` and a dedicated `JobTracker` infrastructure project (RabbitMQ/ASB). InMemory keeps everything in `App`. Requires `--sqlserver`, `--postgres`, or `--sqlite`. |
+| `--deadlettertracking` | `--deadletter` | Add dead-letter tracking. Adds `DeadLetterSampleMessage`/`DeadLetterSampleMessageHandler` (with `[RetryPolicy]`) and `FailingMessageSenderService`. Requires a DB flag. |
+| `--sqlserver` | | SQL Server backend |
+| `--postgres` | | PostgreSQL backend |
+| `--sqlite` | | SQLite backend |
+
+Connection string names: `FlowlyJobs` (job tracking), `FlowlyDeadLetters` (dead-letter tracking).
+
+After scaffolding: `docker compose up -d` (skip for SQLite/InMemory), then `dotnet run --project Sender` / `dotnet run --project Receiver` / `dotnet run --project JobTracker` (when `--jobs`).
+
+---
+
+#### `flowly` — scaffold a new project
+
+`--transport <value>` is required:
+
+| Value | Alias | Transport |
+|---|---|---|
+| `rabbitmq` | `rmq` | RabbitMQ |
+| `azureservicebus` | `asb` | Azure Service Bus |
+| `inmemory` | `inm` | In-Memory |
+
+Optional flags:
+
+| Flag | Alias | Description |
+|---|---|---|
+| `--jobtracking` | `--jobs` | Add job state tracking (also specify `--sqlserver`, `--postgres`, or `--sqlite`) |
+| `--deadlettertracking` | `--deadletter` | Add dead-letter tracking (also specify DB flag) |
+| `--opentelemetry` | `--otel` | Add `Flowly.OpenTelemetry`; wires up `builder.AddFlowlyOpenTelemetry()` |
+| `--inline` | | Wire Flowly inline in Program.cs instead of a config class |
+| `--no-http` | | Configure as a worker service with no HTTP listener; uses `Host.CreateApplicationBuilder` instead of `WebApplication.CreateBuilder` |
+
+```bash
+# Minimal RabbitMQ receiver
+dotnet new flowly --transport rabbitmq -o Receiver
+
+# Full-featured ASB processor (class-based)
+dotnet new flowly --transport asb --jobs --sqlserver --deadletter --otel -o Processor
+```
+
+**Generated files:** `<ProjectName>.csproj`, `Program.cs`, `FlowlyConfiguration.cs` (omitted with `--inline`), `appsettings.json`, `appsettings.Development.json` with dev connection strings.
+
+#### `flowlymessagelib` — scaffold a message contracts library
+
+Creates a class library pre-wired with Flowly for holding shared message contracts. Reference this from both sender and receiver services.
+
+```bash
+dotnet new flowlymessagelib -o <ProjectName>
+```
+
+| Flag | Alias | Description |
+|---|---|---|
+| `--jobtracking` | `--jobs` | Add `Flowly.Jobs` dependency and a `MyJobMessage.cs` starter file |
+
+**Generated files:** `<ProjectName>.csproj` (references `Flowly`; also `Flowly.Jobs` with `--jobs`), `MyMessage.cs`, `MyJobMessage.cs` (only with `--jobs`). All files use the project name as the top-level namespace.
+
+#### `flowlyskills` — install Claude Code AI skills
+
+Drops Flowly AI skills into `.claude/skills/` in the current directory. Run from the repo root.
+
+```bash
+dotnet new flowlyskills
+```
+
+No options required. Teaches Claude Code to scaffold message handlers, recurring jobs, contracts assemblies, and configure transports.
+
+The template pack lives in `src/Flowly.Templates/`. Template content is in `src/Flowly.Templates/content/`. The `SyncSkills` MSBuild target copies the live `.claude/skills/` into `content/flowly-skills/.claude/skills/` at build time.
+
+---
+
+### 13. Local Development Setup
 
 The `Samples/AzureServiceBus/Aspire/` folder contains a reference Aspire implementation.
 
@@ -555,7 +652,7 @@ The `Flowly.AzureServiceBus.Aspire` NuGet package provides AppHost extension met
 <ProjectReference Include="..." IsAspireProjectResource="false" />
 ```
 
-> **Important:** Every service project that calls `AddFlowly` in its AppHost must use the class-based configuration pattern — a class that inherits `FlowlyDesignTimeFactory` **and** implements `IFlowlyConfiguration`. Inline `AddFlowly(options, configure => ...)` configurations are not supported; `AddFlowly` on the AppHost side discovers topology by scanning the project assembly via reflection, and a lambda has no discoverable identity. Attempting to call `azureServiceBus.AddFlowly(project)` for a project without a design-time factory class throws `InvalidOperationException` at AppHost startup.
+> **Important:** Every service project that calls `AddFlowly` in its AppHost must use the class-based configuration pattern — a class that inherits `Configuration`. Inline `AddFlowly(options, configure => ...)` configurations are not supported; `AddFlowly` on the AppHost side discovers topology by scanning the project assembly via reflection, and a lambda has no discoverable identity. Attempting to call `azureServiceBus.AddFlowly(project)` for a project without a `Configuration` subclass (a.k.a. `Flowly.Configuration`) throws `InvalidOperationException` at AppHost startup.
 
 Usage in `Program.cs`:
 
@@ -565,14 +662,14 @@ using Flowly.AzureServiceBus.Aspire;
 var azureServiceBus = builder.AddAzureServiceBus("EmulatorNamespace").RunAsEmulator(...);
 
 var backendProcessor = builder.AddProject<Projects.BackendProcessor>("BackendProcessor");
-azureServiceBus.AddFlowly(backendProcessor);  // discovers queues and events via FlowlyDesignTimeFactory
+azureServiceBus.AddFlowly(backendProcessor);  // discovers queues and events via FlowlyConfiguration
 
 backendProcessor
     .WithReference(azureServiceBus)
     .WaitFor(azureServiceBus);
 ```
 
-`AddFlowly(project)` loads the project assembly via an isolated `AssemblyLoadContext`, finds the `FlowlyDesignTimeFactory` + `IFlowlyConfiguration` class, and collects `DeferredQueueRegistration` and `DeferredEventRegistration` instances automatically. Queue properties (lock duration, TTL, dead-lettering, session) are set on the emulator resources via `WithProperties`.
+`AddFlowly(project)` loads the project assembly via an isolated `AssemblyLoadContext`, finds the `Configuration` subclass (a.k.a. `Flowly.Configuration`), and collects `DeferredQueueRegistration` and `DeferredEventRegistration` instances automatically. Queue properties (lock duration, TTL, dead-lettering, session) are set on the emulator resources via `WithProperties`.
 
 For plain Docker Compose, use `Flowly.Tool` to generate `emulator-config.json` for the Azure Service Bus emulator container.
 
@@ -651,7 +748,7 @@ The validator uses `QueueDeclarePassiveAsync` to confirm existence. It cannot ve
 - Only add `[QueueName]` to a message contract when the auto-generated name is wrong
 - Handler classes are named `<MessageType>Handler` by convention
 - Recurring job classes are named `<Description>RecurringJob` or `<Description>Job` by convention
-- One `IFlowlyConfiguration` per deployable project/service
+- One `Configuration` subclass (a.k.a. `Flowly.Configuration`) per deployable project/service
 
 ---
 
@@ -739,6 +836,23 @@ Rules:
 
 ---
 
+### 20. Claude Code Skills
+
+The Flowly repository ships skills under `.claude/skills/`. Each skill is a directory containing a `SKILL.md` file that provides step-by-step scaffolding guidance. Users can copy any skill directory into their own project's `.claude/skills/` folder to make it available as a slash command in Claude Code.
+
+| Directory | Command | Purpose |
+|---|---|---|
+| `flowly-setup-azure-service-bus/` | `/flowly-setup-azure-service-bus` | Full project setup — NuGet packages, `FlowlyConfiguration`, `Program.cs` wiring, connection strings, optional extensions |
+| `create-message-handler/` | `/create-message-handler <MessageName>` | Scaffold message contract record, `MessageHandler<T>` subclass, registration in `FlowlyConfiguration`, and unit tests |
+| `create-recurring-job/` | `/create-recurring-job <HandlerName>` | Scaffold `RecurringJobHandler` subclass with `[RecurringJob]` attribute, registration, and unit tests |
+| `create-contracts-assembly/` | `/create-contracts-assembly` | Create a shared `*.Messages` / `*.Contracts` project for solutions where multiple deployable services share message types |
+
+When a user in a Flowly-based project asks you to add a handler, recurring job, or set up the transport, suggest the appropriate skill command if the skills are present in their `.claude/skills/` directory.
+
+Skills must be kept current: whenever a registration method, handler base class, or scaffold pattern changes, update the relevant `SKILL.md` in the same commit. See `.claude/rules/skills-conventions.md` for the full maintenance rules.
+
+---
+
 ## Common Tasks Cheat Sheet
 
 | Task | What to do |
@@ -758,7 +872,7 @@ Rules:
 | Enable dead letter tracking for an event subscriber | Chain `.WithDeadLetterTracking()` after `.AddEventHandler<TEvent, THandler>()` — requires `AddSqlServerDeadLetterTracking` or `AddPostgresDeadLetterTracking` |
 | Queue a tracked job | Inject `IJobMessageSender`, call `.QueueJob(msg)` |
 | Query job state (read-only API) | Inject `IJobTrackingService`, call `.GetJobs()` or `.GetRecurringJobs()` |
-| Register read-only job access | Call `.AddJobStateTrackingClient(connStr)` in the API's `IFlowlyConfiguration` |
+| Register read-only job access | Call `.AddJobStateTrackingClient(connStr)` in the API's `FlowlyConfiguration` |
 | Manage dead letters | Inject `IDeadLetterService`, call `.Requeue(id)` or `.Discard(id)` |
 | Add a new queue | Just add a handler — queue is registered automatically from the message type |
 | Generate emulator config | `flowly azure-service-bus emulator-config --project ./MyProject` |

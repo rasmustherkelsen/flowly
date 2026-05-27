@@ -17,9 +17,9 @@ dotnet add package Flowly.InMemory
 ## Usage
 
 ```csharp
-public class MyConfig : FlowlyDesignTimeFactory, IFlowlyConfiguration
+public class MyConfig : Configuration
 {
-    public void Configure(IFlowlyBuilder builder) =>
+    public override void Configure(IFlowlyBuilder builder) =>
         builder
             .UseInMemory()
             .AddMessageHandler<MyMessage, MyHandler>()
