@@ -4,7 +4,7 @@
       "src": [
         {
           "files": ["src/**/*.csproj"],
-          "exclude": ["src/Flowly.Tool/**"]
+          "exclude": ["src/Flowly.Tool/**", "src/Flowly.Templates/**"]
         }
       ],
       "dest": "api"
