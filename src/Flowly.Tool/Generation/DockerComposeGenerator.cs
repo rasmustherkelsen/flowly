@@ -69,7 +69,7 @@ internal static class DockerComposeGenerator
         sb.AppendLine("      - \"1433:1433\"");
         sb.AppendLine("    environment:");
         sb.AppendLine("      - ACCEPT_EULA=Y");
-        sb.AppendLine("      - SA_PASSWORD=Pass@word1");
+        sb.AppendLine("      - SA_PASSWORD=Password1!");
     }
 
     private static void AppendAsbEmulatorService(StringBuilder sb, string sbconfigRelativePath)
@@ -78,7 +78,7 @@ internal static class DockerComposeGenerator
         sb.AppendLine("    image: mcr.microsoft.com/azure-messaging/servicebus-emulator:latest");
         sb.AppendLine("    environment:");
         sb.AppendLine("      SQL_SERVER: sql-server");
-        sb.AppendLine("      MSSQL_SA_PASSWORD: 'Pass@word1'");
+        sb.AppendLine("      MSSQL_SA_PASSWORD: 'Password1!'");
         sb.AppendLine("      ACCEPT_EULA: Y");
         sb.AppendLine("      SQL_WAIT_INTERVAL: 15");
         sb.AppendLine("    ports:");

@@ -21,6 +21,10 @@
       },
       {
         "files": ["toc.yml", "*.md"]
+      },
+      {
+        "files": ["samples/**/README.md"],
+        "exclude": ["**/node_modules/**"]
       }
     ],
     "resource": [

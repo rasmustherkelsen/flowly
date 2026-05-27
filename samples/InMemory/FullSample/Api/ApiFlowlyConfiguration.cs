@@ -7,9 +7,9 @@ using Flowly.InMemory;
 using Flowly.Jobs;
 using Flowly.Jobs.SQLite;
 
-internal class ApiFlowlyConfiguration : IFlowlyConfiguration
+internal class ApiFlowlyConfiguration : Configuration
 {
-    public void Configure(IFlowlyBuilder builder)
+    public override void Configure(IFlowlyBuilder builder)
     {
         builder
             .UseInMemory()

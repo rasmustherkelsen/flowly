@@ -105,6 +105,9 @@ public static class AzureServiceBusRegistration
         bool enableHealthCheck = false,
         long? maxMessageSizeBytes = null)
     {
+        if (IsDiscoveryMode())
+            return flowlyBuilder.RegisterForDiscovery(name, createTopology);
+
         var fullyQualifiedNamespace =
             flowlyBuilder.Configuration[fullyQualifiedNamespaceOrConfigKey]
             ?? fullyQualifiedNamespaceOrConfigKey;
@@ -123,6 +126,9 @@ public static class AzureServiceBusRegistration
         bool enableHealthCheck,
         long? maxMessageSizeBytes)
     {
+        if (IsDiscoveryMode())
+            return flowlyBuilder.RegisterForDiscovery(name, createTopology);
+
         var serviceBusClient = new ServiceBusClient(connectionString);
         var adminClient = new ServiceBusAdministrationClient(connectionString);
 
@@ -130,6 +136,33 @@ public static class AzureServiceBusRegistration
         var port = isEmulator ? EmulatorPort : ProductionPort;
 
         return flowlyBuilder.RegisterAzureServiceBusClients(serviceBusClient, adminClient, name, createTopology, enableHealthCheck, serviceBusClient.FullyQualifiedNamespace, port, maxMessageSizeBytes);
+    }
+
+    private static bool IsDiscoveryMode() =>
+        Environment.GetEnvironmentVariable(Services.CommandLineParserHostedServiceDefinitions.OutputFileEnvVar) is not null;
+
+    private static IFlowlyBuilder RegisterForDiscovery(
+        this IFlowlyBuilder flowlyBuilder,
+        string? name,
+        bool? createTopology)
+    {
+        var services = flowlyBuilder.Services;
+        var clientRegistry = ProviderNameResolver.GetRegistry(services);
+
+        var effectiveName = TransportRegistrationHelper.ResolveProviderName(
+            clientRegistry,
+            name,
+            DefaultProviderName,
+            "Secondary Azure Service Bus providers must have an explicit name. Pass name: \"...\" to UseAzureServiceBus().");
+
+        clientRegistry.Register(effectiveName, new DiscoveryModeMessageBusClient(), createTopology);
+
+        var discoveryTopologyCreator = new DiscoveryModeMessagingTopologyCreator();
+
+        TransportRegistrationHelper.RegisterTopologyCreators(services, effectiveName, discoveryTopologyCreator, discoveryTopologyCreator);
+        TransportRegistrationHelper.RegisterProviderManifest(services, clientRegistry, effectiveName, TransportType);
+
+        return flowlyBuilder;
     }
 
     private static IFlowlyBuilder RegisterAzureServiceBusClients(

@@ -12,6 +12,12 @@ This guide walks you through building a minimal send/receive setup with Flowly a
 dotnet tool install --global Flowly.Tool
 ```
 
+- Flowly.Templates installed:
+
+```bash
+dotnet new install Flowly.Templates
+```
+
 ## What you'll build
 
 Three projects in one solution:
@@ -20,65 +26,76 @@ Three projects in one solution:
 |---|---|
 | `Messages` | Shared message contract library |
 | `Sender` | ASP.NET Core worker that sends a message every second |
-| `Receiver` | ASP.NET Core worker that receives and prints messages |
+| `Receiver` | Worker that receives and prints messages (no HTTP listener) |
 
 ---
 
-## 1. Create the solution
+## 1. Scaffold the solution
 
 ```bash
 mkdir MyFlowlyApp && cd MyFlowlyApp
 dotnet new sln -n MyFlowlyApp
 
-dotnet new classlib -n Messages
-dotnet new web -n Sender
-dotnet new web -n Receiver
+dotnet new flowlymessagelib -n Messages
+dotnet new flowly --transport azureservicebus -n Sender
+dotnet new flowly --transport azureservicebus --no-http -n Receiver
 
 dotnet sln add Messages Sender Receiver
+dotnet add Sender reference Messages
+dotnet add Receiver reference Messages
 ```
+
+The `flowly` template adds the `Flowly.AzureServiceBus` package, generates `FlowlyConfiguration.cs` with Azure Service Bus already wired, and sets the local emulator connection string in `appsettings.Development.json`.
 
 ---
 
 ## 2. Define the message contract
 
-In `Messages/`, delete the generated file and add `HelloWorldMessage.cs`:
+The template generated `Messages/MyMessage.cs`. Update the property name:
 
 ```csharp
 namespace Messages;
 
-public record HelloWorldMessage(string Payload);
+public record MyMessage(string Text);
 ```
 
 ---
 
 ## 3. Set up the Sender
 
-Add dependencies:
-
-```bash
-dotnet add Sender package Flowly.AzureServiceBus
-dotnet add Sender reference Messages
-```
-
-Replace `Sender/Program.cs`:
+**`Sender/FlowlyConfiguration.cs`** — add `using Messages;` and register a message submitter:
 
 ```csharp
 using Flowly;
 using Flowly.AzureServiceBus;
-using Flowly.MessageInfrastructure.Senders;
 using Messages;
+
+namespace Sender;
+
+internal class FlowlyConfiguration : Configuration
+{
+    public override void Configure(IFlowlyBuilder builder)
+    {
+        builder.UseAzureServiceBus(connection: "AzureServiceBus")
+               .AddMessageSubmitter<MyMessage>();
+    }
+}
+```
+
+**`Sender/Program.cs`** — disable topology creation (the emulator owns this) and add the background service:
+
+```csharp
+using Flowly;
+using Messages;
+using Sender;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.AddFlowly(
-    options => options.CreateTopology = false,
-    configure => configure
-        .UseAzureServiceBus()
-        .AddMessageSubmitter<HelloWorldMessage>());
-
+builder.AddFlowly<FlowlyConfiguration>(options => options.CreateTopology = false);
 builder.Services.AddHostedService<SenderBackgroundService>();
 
 var app = builder.Build();
+
 app.Run();
 
 internal class SenderBackgroundService(IServiceScopeFactory serviceScopeFactory) : BackgroundService
@@ -89,7 +106,7 @@ internal class SenderBackgroundService(IServiceScopeFactory serviceScopeFactory)
         {
             await using var scope = serviceScopeFactory.CreateAsyncScope();
             var sender = scope.ServiceProvider.GetRequiredService<IMessageSender>();
-            await sender.Send(new HelloWorldMessage($"Hello at {DateTime.Now}"), stoppingToken);
+            await sender.Send(new MyMessage($"Hello at {DateTime.Now}"), stoppingToken);
             await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
         }
     }
@@ -100,39 +117,57 @@ internal class SenderBackgroundService(IServiceScopeFactory serviceScopeFactory)
 
 ## 4. Set up the Receiver
 
-Add dependencies:
+**`Receiver/Handlers/MyMessageHandler.cs`** — create this file:
 
-```bash
-dotnet add Receiver package Flowly.AzureServiceBus
-dotnet add Receiver reference Messages
+```csharp
+using Flowly;
+using Messages;
+
+namespace Receiver.Handlers;
+
+internal class MyMessageHandler : MessageHandler<MyMessage>
+{
+    public override Task Handle(IMessageContext<MyMessage> messageContext)
+    {
+        Console.WriteLine($"Received: {messageContext.Message.Text}");
+        return Task.CompletedTask;
+    }
+}
 ```
 
-Replace `Receiver/Program.cs`:
+**`Receiver/FlowlyConfiguration.cs`** — add `using Messages;` and register a message handler:
 
 ```csharp
 using Flowly;
 using Flowly.AzureServiceBus;
 using Messages;
+using Receiver.Handlers;
 
-var builder = WebApplication.CreateBuilder(args);
+namespace Receiver;
 
-builder.AddFlowly(
-    options => options.CreateTopology = false,
-    configure => configure
-        .UseAzureServiceBus()
-        .AddMessageHandler<HelloWorldMessage, HelloWorldHandler>());
-
-var app = builder.Build();
-app.Run();
-
-internal class HelloWorldHandler : MessageHandler<HelloWorldMessage>
+internal class FlowlyConfiguration : Configuration
 {
-    public override Task Handle(IMessageContext<HelloWorldMessage> messageContext)
+    public override void Configure(IFlowlyBuilder builder)
     {
-        Console.WriteLine($"Received: {messageContext.Message.Payload}");
-        return Task.CompletedTask;
+        builder.UseAzureServiceBus(connection: "AzureServiceBus")
+               .AddMessageHandler<MyMessage, MyMessageHandler>();
     }
 }
+```
+
+**`Receiver/Program.cs`** — disable topology creation:
+
+```csharp
+using Flowly;
+using Receiver;
+
+var builder = Host.CreateApplicationBuilder(args);
+
+builder.AddFlowly<FlowlyConfiguration>(options => options.CreateTopology = false);
+
+var host = builder.Build();
+
+host.Run();
 ```
 
 ### Why `CreateTopology = false`?
@@ -165,13 +200,13 @@ services:
       - "1433:1433"
     environment:
       - ACCEPT_EULA=Y
-      - SA_PASSWORD=Pass@word1
+      - SA_PASSWORD=Password1!
 
   servicebus-emulator:
     image: mcr.microsoft.com/azure-messaging/servicebus-emulator:latest
     environment:
       SQL_SERVER: sql-server
-      MSSQL_SA_PASSWORD: 'Pass@word1'
+      MSSQL_SA_PASSWORD: 'Password1!'
       ACCEPT_EULA: Y
       SQL_WAIT_INTERVAL: 15
     ports:
@@ -192,7 +227,7 @@ And alongside it, `sbconfig.json` — the emulator queue configuration derived f
         "Name": "sbemulatorns",
         "Queues": [
           {
-            "Name": "hello-world",
+            "Name": "my",
             ...
           }
         ]
@@ -202,7 +237,7 @@ And alongside it, `sbconfig.json` — the emulator queue configuration derived f
 }
 ```
 
-The queue name `hello-world` is derived automatically from `HelloWorldMessage` (PascalCase → kebab-case, `Message` suffix stripped).
+The queue name `my` is derived automatically from `MyMessage`: PascalCase → kebab-case with the trailing `Message` suffix stripped (`MyMessage` → `My` → `my`).
 
 > **Important:** regenerate `sbconfig.json` whenever you add, rename, or remove message types. The emulator only creates queues that are declared in the config at startup — it will not create them on demand.
 
@@ -264,9 +299,11 @@ Received: Hello at 04/20/2026 14:23:02
 
 ## How it works
 
-**Queue naming** — `HelloWorldMessage` → `hello-world`. Both Sender and Receiver register the same message type, so they automatically target the same queue. The name is also what appears in `sbconfig.json`.
+**Queue naming** — `MyMessage` → `my` (PascalCase → kebab-case, trailing `Message` suffix stripped). Both Sender and Receiver register the same message type, so they automatically target the same queue. The name is also what appears in `sbconfig.json`.
 
-**Emulator connection** — `UseAzureServiceBus()` with no arguments connects using the built-in emulator connection string (`Endpoint=sb://localhost;SharedAccessKeyName=RootManageSharedAccessKey;...`). No `appsettings.json` changes needed for local development.
+**Template scaffolding** — `dotnet new flowly` adds the transport package, wires `FlowlyConfiguration`, and sets the local emulator connection string in `appsettings.Development.json` automatically.
+
+**Emulator connection** — `UseAzureServiceBus(connection: "AzureServiceBus")` reads the connection string from configuration. The template pre-populates `appsettings.Development.json` with the built-in emulator connection string — no manual changes needed for local development.
 
 **Two-file generation** — `flowly docker-compose` generates both infrastructure files in one step. `sbconfig.json` is derived from your actual message types, so topology in the emulator always matches what your code expects.
 
@@ -277,7 +314,7 @@ Received: Hello at 04/20/2026 14:23:02
 ## Next steps
 
 - [Add retry policy](../README.md#retry-policy) — annotate your handler with `[RetryPolicy]`
-- [Track job state](../README.md#job-tracking) — use `JobHandler<T>` for long-running work
-- [Dead letter tracking](../README.md#dead-letter-tracking) — persist and requeue failed messages
+- [Track job state](quickstart-job-tracking.md) — add a `JobTracker` service with SQL Server, PostgreSQL, or SQLite
+- [Dead letter tracking](quickstart-dead-letter-tracking.md) — persist and requeue failed messages with SQL Server, PostgreSQL, or SQLite
 - [Events (fan-out)](../README.md#events-fan-out) — publish to multiple subscribers
 - [Full user guide](../README.md)

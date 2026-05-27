@@ -5,9 +5,9 @@ using Receiver.MessageHandlers;
 
 namespace Receiver;
 
-public class FlowlyConfiguration : FlowlyDesignTimeFactory, IFlowlyConfiguration
+internal class ReceiverFlowlyConfiguration : Configuration
 {
-    public void Configure(IFlowlyBuilder builder)
+    public override void Configure(IFlowlyBuilder builder)
     {
         builder
             .UseRabbitMq()

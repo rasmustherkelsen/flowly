@@ -12,6 +12,12 @@ This guide walks you through building a minimal send/receive setup with Flowly a
 dotnet tool install --global Flowly.Tool
 ```
 
+- Flowly.Templates installed:
+
+```bash
+dotnet new install Flowly.Templates
+```
+
 ## What you'll build
 
 Three projects in one solution:
@@ -20,28 +26,32 @@ Three projects in one solution:
 |---|---|
 | `Messages` | Shared message contract library |
 | `Sender` | ASP.NET Core worker that sends a message every second |
-| `Receiver` | ASP.NET Core worker that receives and prints messages |
+| `Receiver` | Worker that receives and prints messages (no HTTP listener) |
 
 ---
 
-## 1. Create the solution
+## 1. Scaffold the solution
 
 ```bash
 mkdir MyFlowlyApp && cd MyFlowlyApp
 dotnet new sln -n MyFlowlyApp
 
-dotnet new classlib -n Messages
-dotnet new web -n Sender
-dotnet new web -n Receiver
+dotnet new flowlymessagelib -n Messages
+dotnet new flowly --transport rabbitmq -n Sender
+dotnet new flowly --transport rabbitmq --no-http -n Receiver
 
 dotnet sln add Messages Sender Receiver
+dotnet add Sender reference Messages
+dotnet add Receiver reference Messages
 ```
+
+The `flowly` template adds the `Flowly.RabbitMQ` package, generates `FlowlyConfiguration.cs` with RabbitMQ already wired, and sets the local connection string in `appsettings.Development.json`.
 
 ---
 
 ## 2. Define the message contract
 
-In `Messages/`, delete the generated file and add `MyMessage.cs`:
+The template generated `Messages/MyMessage.cs`. Update the property name:
 
 ```csharp
 namespace Messages;
@@ -53,32 +63,40 @@ public record MyMessage(string Text);
 
 ## 3. Set up the Sender
 
-Add dependencies:
+**`Sender/FlowlyConfiguration.cs`** — add `using Messages;` and register a message submitter:
 
-```bash
-dotnet add Sender package Flowly.RabbitMQ
-dotnet add Sender reference Messages
+```csharp
+using Flowly;
+using Flowly.RabbitMQ;
+using Messages;
+
+namespace Sender;
+
+internal class FlowlyConfiguration : Configuration
+{
+    public override void Configure(IFlowlyBuilder builder)
+    {
+        builder.UseRabbitMq(connection: "RabbitMQ")
+               .AddMessageSubmitter<MyMessage>();
+    }
+}
 ```
 
-Replace `Sender/Program.cs`:
+**`Sender/Program.cs`** — enable topology creation and add the background service:
 
 ```csharp
 using Flowly;
 using Flowly.MessageInfrastructure.Senders;
-using Flowly.RabbitMQ;
 using Messages;
+using Sender;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.AddFlowly(
-    options => options.CreateTopology = true,
-    configure => configure
-        .UseRabbitMq()
-        .AddMessageSubmitter<MyMessage>());
-
+builder.AddFlowly<FlowlyConfiguration>(options => options.CreateTopology = true);
 builder.Services.AddHostedService<SenderBackgroundService>();
 
 var app = builder.Build();
+
 app.Run();
 
 internal class SenderBackgroundService(IServiceScopeFactory serviceScopeFactory) : BackgroundService
@@ -96,36 +114,17 @@ internal class SenderBackgroundService(IServiceScopeFactory serviceScopeFactory)
 }
 ```
 
-`UseRabbitMq()` with no arguments connects to `amqp://guest:guest@localhost:5672/` — the default local RabbitMQ instance.
-
 ---
 
 ## 4. Set up the Receiver
 
-Add dependencies:
-
-```bash
-dotnet add Receiver package Flowly.RabbitMQ
-dotnet add Receiver reference Messages
-```
-
-Replace `Receiver/Program.cs`:
+**`Receiver/Handlers/MyMessageHandler.cs`** — create this file:
 
 ```csharp
 using Flowly;
-using Flowly.RabbitMQ;
 using Messages;
 
-var builder = WebApplication.CreateBuilder(args);
-
-builder.AddFlowly(
-    options => options.CreateTopology = true,
-    configure => configure
-        .UseRabbitMq()
-        .AddMessageHandler<MyMessage, MyMessageHandler>());
-
-var app = builder.Build();
-app.Run();
+namespace Receiver.Handlers;
 
 internal class MyMessageHandler : MessageHandler<MyMessage>
 {
@@ -135,6 +134,41 @@ internal class MyMessageHandler : MessageHandler<MyMessage>
         return Task.CompletedTask;
     }
 }
+```
+
+**`Receiver/FlowlyConfiguration.cs`** — add `using Messages;` and register a message handler:
+
+```csharp
+using Flowly;
+using Flowly.RabbitMQ;
+using Messages;
+using Receiver.Handlers;
+
+namespace Receiver;
+
+internal class FlowlyConfiguration : Configuration
+{
+    public override void Configure(IFlowlyBuilder builder)
+    {
+        builder.UseRabbitMq(connection: "RabbitMQ")
+               .AddMessageHandler<MyMessage, MyMessageHandler>();
+    }
+}
+```
+
+**`Receiver/Program.cs`** — enable topology creation:
+
+```csharp
+using Flowly;
+using Receiver;
+
+var builder = Host.CreateApplicationBuilder(args);
+
+builder.AddFlowly<FlowlyConfiguration>(options => options.CreateTopology = true);
+
+var host = builder.Build();
+
+host.Run();
 ```
 
 `CreateTopology = true` tells Flowly to create the queue in RabbitMQ on startup if it doesn't already exist — no manual queue setup needed.
@@ -204,7 +238,9 @@ Received: Hello from Sender at 04/20/2026 14:23:02
 
 ## How it works
 
-**Queue naming** — Flowly derives the queue name from the message type. `MyMessage` becomes `my-message`. Both Sender and Receiver register the same message type, so they automatically use the same queue.
+**Queue naming** — Flowly derives the queue name from the message type. `MyMessage` becomes `my` (PascalCase → kebab-case, trailing `Message` suffix stripped). Both Sender and Receiver register the same message type, so they automatically use the same queue.
+
+**Template scaffolding** — `dotnet new flowly` adds the transport package, wires `FlowlyConfiguration`, and sets the local connection string in `appsettings.Development.json` automatically.
 
 **Topology creation** — `options.CreateTopology = true` lets each service declare and create queues at startup. In production you would set this to `false` and provision queues through infrastructure-as-code instead (see `flowly azure-service-bus bicep`).
 
@@ -215,6 +251,6 @@ Received: Hello from Sender at 04/20/2026 14:23:02
 ## Next steps
 
 - [Add retry policy](../README.md#retry-policy) — annotate your handler with `[RetryPolicy]`
-- [Track job state](../README.md#job-tracking) — use `JobHandler<T>` for long-running work
-- [Dead letter tracking](../README.md#dead-letter-tracking) — persist and requeue failed messages
+- [Track job state](quickstart-job-tracking.md) — add a `JobTracker` service with SQL Server, PostgreSQL, or SQLite
+- [Dead letter tracking](quickstart-dead-letter-tracking.md) — persist and requeue failed messages with SQL Server, PostgreSQL, or SQLite
 - [Full user guide](../README.md)

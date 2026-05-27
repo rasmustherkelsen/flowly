@@ -39,6 +39,12 @@ dotnet test --filter "FullyQualifiedName~MessageQueueNameResolverTests+Resolve"
 - `Flowly.DeadLetters.Postgres/` — PostgreSQL backend for dead letter tracking
 - `Flowly.DeadLetters.SQLite/` — SQLite backend for dead letter tracking
 - `Flowly.Tool/` — `flowly` CLI tool
+- `Flowly.Templates/` — `dotnet new` project templates (`Flowly.Templates` NuGet package); contains four templates:
+  - `flowlyapp` (`dotnet new flowlyapp --transport <rabbitmq|azureservicebus|inmemory> [--jobs] [--deadletter] [--sqlserver|--postgres|--sqlite] -n <Name>`) — scaffolds a complete send/receive solution (Messages + Sender + Receiver) matching the quickstart guides; includes `docker-compose.yml` and `sbconfig.json` for ASB; InMemory produces a single `App/` project; `--jobs` adds `ProcessJobMessage`/`ProcessJobHandler`/`JobSubmitterService` and a dedicated `JobTracker` project (multi-project) or in-process job state (InMemory); `--deadletter` adds `DeadLetterSampleMessage`/`DeadLetterSampleMessageHandler` with `[RetryPolicy]` and `FailingMessageSenderService`
+  - `flowly` (`dotnet new flowly --transport <rabbitmq|azureservicebus|inmemory> [options]`) — scaffolds a new Flowly ASP.NET Core project; ports are randomly assigned per instantiation (HTTP 5000–5300, HTTPS 7000–7300); pass `--no-http` to skip the HTTP listener entirely (produces a `Host.CreateApplicationBuilder`-based worker)
+  - `flowlymessagelib` (`dotnet new flowlymessagelib [--jobs] [options]`) — scaffolds a Flowly message contracts class library
+  - `flowlyskills` (`dotnet new flowlyskills`) — installs Flowly Claude Code skills into `.claude/skills/`
+  - Template content lives in `src/Flowly.Templates/content/`; a `SyncSkills` MSBuild target keeps skills in sync with `.claude/skills/` at build time
 - `Samples/AzureServiceBus/Aspire/` — reference Aspire sample
 
 ## Architecture Overview
@@ -47,12 +53,12 @@ Flowly is a queue-based messaging abstraction for .NET. The core library (`Flowl
 
 ### Registration
 
-Everything flows through `IFlowlyConfiguration` + `FlowlyDesignTimeFactory`. One per deployable service:
+Everything flows through `Configuration`. One per deployable service:
 
 ```csharp
-public class MyConfig : FlowlyDesignTimeFactory, IFlowlyConfiguration
+public class MyConfig : Configuration
 {
-    public void Configure(IFlowlyBuilder builder) =>
+    public override void Configure(IFlowlyBuilder builder) =>
         builder
             .UseAzureServiceBus("AzureServiceBus")
             .AddSqlServerJobStateTracking("JobsDb")             // optional
@@ -141,7 +147,7 @@ flowly azure-service-bus aspire-code --project ./MyProcessor --connection-name E
 
 ## Aspire AppHost Integration (`Flowly.AzureServiceBus.Aspire`)
 
-Automatically discovers and registers emulator queues from a service project's `IFlowlyConfiguration`:
+Automatically discovers and registers emulator queues from a service project's `FlowlyConfiguration`:
 
 ```csharp
 // AppHost Program.cs

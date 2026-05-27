@@ -26,7 +26,7 @@ public static class JobStateTrackerRegistrationExtension
     /// </summary>
     /// <param name="flowlyBuilder">The Flowly builder to register job state tracking with.</param>
     /// <returns>The same <see cref="IFlowlyBuilder" /> instance for further configuration.</returns>
-    public static IFlowlyBuilder AddJobStateTracking(this IFlowlyBuilder flowlyBuilder)
+    internal static IFlowlyBuilder AddJobStateTracking(this IFlowlyBuilder flowlyBuilder)
     {
         flowlyBuilder.Services.AddOptions<JobStateTrackingOptions>();
 
