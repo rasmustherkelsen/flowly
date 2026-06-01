@@ -4,8 +4,20 @@ using Sender.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-#if (UseRabbitMQ)
+#if (UseRabbitMQ && UseCallHandler)
+builder.AddFlowly<FlowlyConfiguration>(options =>
+{
+    options.CreateTopology = true;
+    options.InstanceName = "sender";
+});
+#elseif (UseRabbitMQ)
 builder.AddFlowly<FlowlyConfiguration>(options => options.CreateTopology = true);
+#elseif (UseCallHandler)
+builder.AddFlowly<FlowlyConfiguration>(options =>
+{
+    options.CreateTopology = false;
+    options.InstanceName = "sender";
+});
 #else
 builder.AddFlowly<FlowlyConfiguration>(options => options.CreateTopology = false);
 #endif

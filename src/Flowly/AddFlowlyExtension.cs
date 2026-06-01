@@ -111,20 +111,28 @@ public static class AddFlowlyExtension
         IHandlerInstrumentation handlerInstrumentation = options.EnableTelemetry
             ? new HandlerInstrumentation()
             : new NullHandlerInstrumentation();
+        
         ISubmitterInstrumentation submitterInstrumentation = options.EnableTelemetry
             ? new SubmitterInstrumentation()
             : new NullSubmitterInstrumentation();
+        
         IEventHandlerInstrumentation eventHandlerInstrumentation = options.EnableTelemetry
             ? new EventHandlerInstrumentation()
             : new NullEventHandlerInstrumentation();
+        
         IEventPublisherInstrumentation eventPublisherInstrumentation = options.EnableTelemetry
             ? new EventPublisherInstrumentation()
             : new NullEventPublisherInstrumentation();
+
+        ICallerInstrumentation callerInstrumentation = options.EnableTelemetry
+            ? new CallerInstrumentation()
+            : new NullCallerInstrumentation();
 
         services.TryAddSingleton(handlerInstrumentation);
         services.TryAddSingleton(submitterInstrumentation);
         services.TryAddSingleton(eventHandlerInstrumentation);
         services.TryAddSingleton(eventPublisherInstrumentation);
+        services.TryAddSingleton(callerInstrumentation);
         services.TryAddSingleton<IHandlerSettingsFactory, HandlerSettingsFactory>();
         services.TryAddSingleton<IQueueRegistrar, QueueRegistrar>();
 

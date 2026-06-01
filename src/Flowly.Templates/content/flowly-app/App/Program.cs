@@ -7,7 +7,11 @@ using App.Services;
 
 var builder = Host.CreateApplicationBuilder(args);
 
+#if (UseCallHandler)
+builder.AddFlowly<FlowlyConfiguration>(options => options.InstanceName = "app");
+#else
 builder.AddFlowly<FlowlyConfiguration>();
+#endif
 
 builder.Services.AddHostedService<MessageSenderService>();
 #if (UseJobTracking)

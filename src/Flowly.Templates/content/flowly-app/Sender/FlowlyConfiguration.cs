@@ -20,8 +20,12 @@ internal class FlowlyConfiguration : Configuration
 #else
         builder.UseAzureServiceBus(connection: "AzureServiceBus");
 #endif
-        
+
+#if (UseCallHandler)
+        builder.AddCallSubmitter<MyMessage>();
+#else
         builder.AddMessageSubmitter<MyMessage>();
+#endif
 #if (UseDeadLetterTracking)
         builder.AddMessageSubmitter<DeadLetterSampleMessage>();
 #endif

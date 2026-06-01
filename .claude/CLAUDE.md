@@ -40,7 +40,7 @@ dotnet test --filter "FullyQualifiedName~MessageQueueNameResolverTests+Resolve"
 - `Flowly.DeadLetters.SQLite/` — SQLite backend for dead letter tracking
 - `Flowly.Tool/` — `flowly` CLI tool
 - `Flowly.Templates/` — `dotnet new` project templates (`Flowly.Templates` NuGet package); contains four templates:
-  - `flowlyapp` (`dotnet new flowlyapp --transport <rabbitmq|azureservicebus|inmemory> [--jobs] [--deadletter] [--sqlserver|--postgres|--sqlite] -n <Name>`) — scaffolds a complete send/receive solution (Messages + Sender + Receiver) matching the quickstart guides; includes `docker-compose.yml` and `sbconfig.json` for ASB; InMemory produces a single `App/` project; `--jobs` adds `ProcessJobMessage`/`ProcessJobHandler`/`JobSubmitterService` and a dedicated `JobTracker` project (multi-project) or in-process job state (InMemory); `--deadletter` adds `DeadLetterSampleMessage`/`DeadLetterSampleMessageHandler` with `[RetryPolicy]` and `FailingMessageSenderService`
+  - `flowlyapp` (`dotnet new flowlyapp --transport <rabbitmq|azureservicebus|inmemory> [--call] [--jobs] [--deadletter] [--sqlserver|--postgres|--sqlite] -n <Name>`) — scaffolds a complete solution (Messages + Sender + Receiver) matching the quickstart guides; includes `docker-compose.yml` and `sbconfig.json` for ASB; InMemory produces a single `App/` project; `--call` (alias `--callhandler`) replaces the default `MessageHandler`/`IMessageSender` pattern with RPC-style `CallHandler`/`IMessageCaller` — `MyMessage` implements `IReturns<MyReturnMessage>`, sender blocks on `IMessageCaller.Call`, `InstanceName = "sender"` is set automatically; `--jobs` adds `ProcessJobMessage`/`ProcessJobHandler`/`JobSubmitterService` and a dedicated `JobTracker` project (multi-project) or in-process job state (InMemory); `--deadletter` adds `DeadLetterSampleMessage`/`DeadLetterSampleMessageHandler` with `[RetryPolicy]` and `FailingMessageSenderService`
   - `flowly` (`dotnet new flowly --transport <rabbitmq|azureservicebus|inmemory> [options]`) — scaffolds a new Flowly ASP.NET Core project; ports are randomly assigned per instantiation (HTTP 5000–5300, HTTPS 7000–7300); pass `--no-http` to skip the HTTP listener entirely (produces a `Host.CreateApplicationBuilder`-based worker)
   - `flowlymessagelib` (`dotnet new flowlymessagelib [--jobs] [options]`) — scaffolds a Flowly message contracts class library
   - `flowlyskills` (`dotnet new flowlyskills`) — installs Flowly Claude Code skills into `.claude/skills/`
@@ -80,6 +80,7 @@ Registered in `Program.cs` via `builder.AddFlowly<MyConfig>()` or auto-discovery
 | `JobHandler<T>` | Job with state tracking (`T : IJobMessage`) | Yes | No | `.AddJobHandler<T, TH>()` |
 | `RecurringJobHandler` | CRON-scheduled background job | No | No | `.AddRecurringJob<TH>()` |
 | `EventHandlerBase<TEvent>` | Fan-out event (all subscribers receive) | Yes | Yes — requeue re-publishes to the topic/exchange with `flowly-target-subscription` set; only the originating subscriber receives the requeued message. | `.AddEventHandler<TEvent, TH>()` |
+| `CallHandler<T, TReturn>` | RPC-style blocking call — `T : IReturns<TReturn>`. Caller awaits a typed response via `IMessageCaller.Call<T, TReturn>()`. Requires `FlowlyOptions.InstanceName` on sender side. | Yes | No | `.AddCallHandler<T, TH>()` (receiver) / `.AddCallSubmitter<T>()` (sender) |
 
 ### Queue Names
 
@@ -88,6 +89,7 @@ Owned by the **message contract**, not the handler. Auto-generated: PascalCase �
 ### Sending
 
 - `IMessageSender.Send(msg)` — fire and forget (requires `.AddMessageSubmitter<T>()`)
+- `IMessageCaller.Call<T, TReturn>(msg, ct)` — blocking RPC call, awaits response (requires `.AddCallSubmitter<T>()` and `FlowlyOptions.InstanceName`)
 - `IJobMessageSender.QueueJob(msg)` — returns `JobId` (requires `.AddJobSubmitter<T>()`)
 - `IEventSender.RaiseEvent<TEvent>(event)` — fan-out event publish (requires `.AddEventSubmitter<TEvent>()`)
 

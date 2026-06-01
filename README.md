@@ -278,6 +278,77 @@ public class OrderService(IMessageSender sender)
 
 ---
 
+## RPC-Style Calls
+
+`CallHandler` lets you make blocking remote-procedure-call style requests: the caller sends a message and waits for a typed response before continuing.
+
+### Message contract
+
+The call message implements `IReturns<TReturn>` to declare its response type:
+
+```csharp
+public record ReturnMessage(string ReturnValue);
+
+public record CallMessage(string Payload) : IReturns<ReturnMessage>;
+```
+
+### Handler (receiver side)
+
+```csharp
+public class CallMessageHandler : CallHandler<CallMessage, ReturnMessage>
+{
+    protected override Task<ReturnMessage> Handle(IMessageContext<CallMessage> ctx)
+        => Task.FromResult(new ReturnMessage($"Received: {ctx.Message.Payload}"));
+}
+```
+
+Register in the receiver's configuration:
+
+```csharp
+builder.AddCallHandler<CallMessage, CallMessageHandler>();
+```
+
+The `CallHandler` supports the same attributes and `Configure` overrides as `MessageHandler` (retry policy, queue name, concurrency, etc.).
+
+### Caller (sender side)
+
+Set `InstanceName` in options and register a call submitter:
+
+```csharp
+builder.AddFlowly<FlowlyConfiguration>(options =>
+{
+    options.InstanceName = "my-service";  // required — used for the reply queue name
+});
+
+// In FlowlyConfiguration.Configure:
+builder.AddCallSubmitter<CallMessage>();
+
+// Optional per-submitter timeout (defaults to FlowlyOptions.MessageCallTimeout = 2 min):
+builder.AddCallSubmitter<CallMessage>(opts => opts.Timeout = TimeSpan.FromSeconds(30));
+```
+
+Inject `IMessageCaller` and call:
+
+```csharp
+public class MyService(IMessageCaller caller)
+{
+    public async Task DoWork(CancellationToken ct)
+    {
+        ReturnMessage response = await caller.Call<CallMessage, ReturnMessage>(
+            new CallMessage("hello"), ct);
+        Console.WriteLine(response.ReturnValue);
+    }
+}
+```
+
+### Infrastructure
+
+Each sender gets a dedicated reply queue named `{callQueue}.reply.{instanceName}` (e.g. `call-message.reply.my-service`). Flowly creates this queue at startup, routes responses to it via `CorrelationId`, and resolves the waiting `Call` task.
+
+> **Note:** Attributes on the return message type (`[QueueName]`, `[RetryPolicy]`, `[ProviderAffinity]`, etc.) are **silently ignored** on the reply path. The response is delivered via the infrastructure reply queue and these attributes only apply if `ReturnMessage` is also independently registered as a normal handler or submitter elsewhere.
+
+---
+
 ## Events (Fan-Out)
 
 Events let multiple independent services each receive a copy of the same occurrence. Use events when several consumers need to react to the same thing — as opposed to a regular message, where only one handler processes each message.
@@ -795,12 +866,13 @@ dotnet new flowlyapp --transport <transport> [options] -n <SolutionName>
 | `azureservicebus` | `asb` | Azure Service Bus |
 | `inmemory` | `inm` | In-Memory (no broker) |
 
-Optional features (require a DB flag when used):
+Optional features:
 
 | Flag | Alias | Description |
 |---|---|---|
-| `--jobtracking` | `--jobs` | Job state tracking — adds `ProcessJobMessage`, `ProcessJobHandler`, `JobSubmitterService`, and a `JobTracker` infrastructure project. |
-| `--deadlettertracking` | `--deadletter` | Dead-letter tracking — adds `DeadLetterSampleMessage`, `DeadLetterSampleMessageHandler` with `[RetryPolicy]`, and `FailingMessageSenderService`. |
+| `--callhandler` | `--call` | Scaffold as RPC-style call/response — `MyMessage` implements `IReturns<MyReturnMessage>`; the sender uses `IMessageCaller.Call` and blocks for the response. |
+| `--jobtracking` | `--jobs` | Job state tracking — adds `ProcessJobMessage`, `ProcessJobHandler`, `JobSubmitterService`, and a `JobTracker` infrastructure project. Requires a DB flag. |
+| `--deadlettertracking` | `--deadletter` | Dead-letter tracking — adds `DeadLetterSampleMessage`, `DeadLetterSampleMessageHandler` with `[RetryPolicy]`, and `FailingMessageSenderService`. Requires a DB flag. |
 
 Database backend (required when `--jobs` or `--deadletter` is used): `--sqlserver`, `--postgres`, `--sqlite`.
 
@@ -813,6 +885,9 @@ dotnet new flowlyapp --transport asb -n MyApp
 
 # Single-project InMemory solution (no broker, no Docker required)
 dotnet new flowlyapp --transport inm -n MyApp
+
+# RPC-style call/response (RabbitMQ)
+dotnet new flowlyapp --transport rabbitmq --call -n MyApp
 
 # RabbitMQ with job tracking and dead-letter tracking (SQLite)
 dotnet new flowlyapp --transport rabbitmq --jobs --deadletter --sqlite -n MyApp

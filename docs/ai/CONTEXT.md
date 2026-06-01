@@ -153,6 +153,45 @@ Register: `.AddJobHandler<MyJobMessage, MyJobHandler>()`
 
 Job handlers support retry but NOT dead letter tracking. The job DB record is the failure artifact.
 
+#### Call handler (RPC-style blocking request/response)
+
+The message contract implements `IReturns<TReturn>`:
+```csharp
+public record ReturnMessage(string ReturnValue);
+public record CallMessage(string Payload) : IReturns<ReturnMessage>;
+```
+
+Handler inherits `CallHandler<TMessage, TReturn>`:
+```csharp
+public class MyCallHandler : CallHandler<CallMessage, ReturnMessage>
+{
+    protected override Task<ReturnMessage> Handle(IMessageContext<CallMessage> ctx)
+        => Task.FromResult(new ReturnMessage($"echo: {ctx.Message.Payload}"));
+}
+```
+
+Register on the receiver: `.AddCallHandler<CallMessage, MyCallHandler>()`
+
+Supports the same attributes and `Configure` overrides as `MessageHandler<T>` (retry policy, queue name, concurrency).
+
+**Sender side** — set `InstanceName` and register a call submitter:
+```csharp
+// In AddFlowly options:
+options.InstanceName = "my-service";  // required — used to name the reply queue
+
+// In FlowlyConfiguration.Configure:
+builder.AddCallSubmitter<CallMessage>();
+// Optional per-submitter timeout (overrides FlowlyOptions.MessageCallTimeout default of 2 min):
+builder.AddCallSubmitter<CallMessage>(opts => opts.Timeout = TimeSpan.FromSeconds(30));
+```
+
+Inject `IMessageCaller` and call:
+```csharp
+ReturnMessage response = await caller.Call<CallMessage, ReturnMessage>(new CallMessage("hi"), ct);
+```
+
+**Important:** Attributes on `TReturn` (`[QueueName]`, `[RetryPolicy]`, `[ProviderAffinity]`, etc.) are **silently ignored** on the reply path. They only apply if `TReturn` is also registered as a normal handler elsewhere.
+
 ---
 
 ### 3. Sending Messages
@@ -542,6 +581,12 @@ flowly azure-service-bus aspire-code \
 
 Multiple `--project` flags aggregate queues across projects.
 
+**Standard Docker images** — always use these exact image tags when writing or generating Docker Compose files:
+
+| Service | Image |
+|---|---|
+| RabbitMQ (with management UI) | `rabbitmq:4-management` |
+
 ---
 
 ### 12. Project Templates (`Flowly.Templates`)
@@ -566,10 +611,11 @@ dotnet new flowlyapp --transport <value> [options] -n <SolutionName>
 | `azureservicebus` | `asb` | same + `sbconfig.json` |
 | `inmemory` | `inm` | `MyApp.slnx` + `App/` (single-project, no docker) |
 
-Optional flags (same DB backend flags as `flowly`):
+Optional flags:
 
 | Flag | Alias | Description |
 |---|---|---|
+| `--callhandler` | `--call` | Scaffold the main message as an RPC-style call/response. `MyMessage` implements `IReturns<MyReturnMessage>`; Sender uses `IMessageCaller.Call` and blocks for the response; Receiver uses `CallHandler<MyMessage, MyReturnMessage>`. Sender `Program.cs` sets `options.InstanceName = "sender"`. For ASB, `sbconfig.json` includes the reply queue `my.reply.sender`. |
 | `--jobtracking` | `--jobs` | Add job state tracking. Adds `ProcessJobMessage`/`ProcessJobHandler`/`JobSubmitterService` and a dedicated `JobTracker` infrastructure project (RabbitMQ/ASB). InMemory keeps everything in `App`. Requires `--sqlserver`, `--postgres`, or `--sqlite`. |
 | `--deadlettertracking` | `--deadletter` | Add dead-letter tracking. Adds `DeadLetterSampleMessage`/`DeadLetterSampleMessageHandler` (with `[RetryPolicy]`) and `FailingMessageSenderService`. Requires a DB flag. |
 | `--sqlserver` | | SQL Server backend |

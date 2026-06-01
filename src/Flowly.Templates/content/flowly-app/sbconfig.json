@@ -132,6 +132,22 @@
             }
           }
 //#endif
+//#if (UseCallHandler)
+          ,{
+            "Name": "my.reply.sender",
+            "Properties": {
+              "DeadLetteringOnMessageExpiration": false,
+              "DefaultMessageTimeToLive": "PT2M",
+              "DuplicateDetectionHistoryTimeWindow": "PT5M",
+              "ForwardDeadLetteredMessagesTo": "",
+              "ForwardTo": "",
+              "LockDuration": "PT5M",
+              "MaxDeliveryCount": 1,
+              "RequiresDuplicateDetection": false,
+              "RequiresSession": false
+            }
+          }
+//#endif
 //#if (UseDeadLetterTracking)
           ,{
             "Name": "dead-letter-sample",

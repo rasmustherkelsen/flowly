@@ -23,6 +23,7 @@ Each sample is self-contained and runnable. Pick the one matching your transport
 | [MessagesWithDeadLetterTracking](RabbitMQ/MessagesWithDeadLetterTracking/README.md) | Point-to-point handler that crashes on half its messages; dead letters are persisted to PostgreSQL with automatic retention-based purging |
 | [EventsWithDeadLetterTracking](RabbitMQ/EventsWithDeadLetterTracking/README.md) | Event subscriber that dead-letters failing messages, with a console app to list, requeue, and discard them |
 | [Aspire](RabbitMQ/Aspire/README.md) | Full-featured: jobs, batch handlers, recurring jobs, dead letters, OpenTelemetry, custom dashboard |
+| [RpcCalls](RabbitMQ/RpcCalls/README.md) | RPC-style blocking call/response using `CallHandler` and `IMessageCaller` |
 
 ## InMemory
 

@@ -30,6 +30,7 @@ internal class InMemoryReceivedMessage<TMessage>(InMemoryEnvelope envelope, Chan
         e.ApplicationProperties.TryGetValue("tracestate", out var ts);
         e.ApplicationProperties.TryGetValue("sessionId", out var sid);
         e.ApplicationProperties.TryGetValue("correlationId", out var cid);
+        e.ApplicationProperties.TryGetValue("replyTo", out var replyTo);
 
         return new MessageProperties(
             e.MessageId,
@@ -37,7 +38,8 @@ internal class InMemoryReceivedMessage<TMessage>(InMemoryEnvelope envelope, Chan
             RetryCount: rc is int i ? i : 0,
             Traceparent: tp as string,
             Tracestate: ts as string,
-            SessionId: sid as string);
+            SessionId: sid as string,
+            ReplyTo: replyTo as string);
     }
 
     private static InMemoryEnvelope CreateDeadLetterEnvelope(InMemoryEnvelope source, string? reason)

@@ -1,6 +1,6 @@
 ---
 name: create-recurring-job
-description: Scaffold a new Flowly RecurringJobHandler — handler class, cron schedule, registration snippet, and unit tests. Use when the user asks to add a new scheduled/cron background job to a Flowly project.
+description: Scaffold a new Flowly RecurringJobHandler — handler class, cron schedule, and registration snippet. Use when the user asks to add a new scheduled/cron background job to a Flowly project.
 arguments:
   - name: handlerName
     description: PascalCase handler class name ending in Handler for example NightlyCleanupHandler
@@ -95,71 +95,9 @@ builder.AddRecurringJob<$0>();
 
 `AddRecurringJob` is an extension on `IFlowlyBuilder` from `Flowly.Jobs`. No message contract or queue name is needed — Flowly manages the internal execution lane automatically.
 
-## Step 4 — Write unit tests
-
-Before writing tests, look for existing test files in the project and follow whatever conventions are already in use — test framework, file location, class structure, naming style. The example below reflects one common convention; adapt it to match the project.
-
-Create a test file for `$0`:
-
-```csharp
-using Flowly.Jobs;
-
-namespace <Project>.Tests.JobHandlers;
-
-public class $0Tests
-{
-    public class Handle
-    {
-        [Fact]
-        public async Task WhenCancellationIsNotRequested_CompletesSuccessfully()
-        {
-            var handler = new $0();
-
-            await handler.Handle(CancellationToken.None);
-
-            // assert side-effects; e.g. verify a repository was called
-        }
-
-        [Fact]
-        public async Task WhenCancellationIsRequested_ThrowsOperationCanceled()
-        {
-            var handler = new $0();
-            using var cts = new CancellationTokenSource();
-            cts.Cancel();
-
-            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => handler.Handle(cts.Token));
-        }
-    }
-
-    public class RecurringJobAttribute
-    {
-        [Fact]
-        public void HasExpectedCronExpression()
-        {
-            var attribute = typeof($0).GetCustomAttribute<Flowly.Jobs.RecurringJobAttribute>();
-
-            Assert.NotNull(attribute);
-            Assert.Equal("$1", attribute.CronExpression);
-        }
-
-        [Fact]
-        public void HasNonEmptyJobDescription()
-        {
-            var attribute = typeof($0).GetCustomAttribute<Flowly.Jobs.RecurringJobAttribute>();
-
-            Assert.NotNull(attribute);
-            Assert.NotEmpty(attribute.JobDescription);
-        }
-    }
-}
-```
-
-If the handler does not use `[RecurringJob]` (uses `Configure` instead), skip the `RecurringJobAttribute` test class and test the `Configure` output directly by instantiating the handler and calling `Configure(new RecurringJobHandlerOptions())`.
-
 ## Checklist
 
 - [ ] `Flowly.Jobs` package referenced
 - [ ] Job state tracking backend registered (SQL Server, Postgres, SQLite file, or SQLite in-memory)
 - [ ] Handler class created (`internal`, `[RecurringJob]` attribute, primary constructor for any dependencies)
 - [ ] Registered with `AddRecurringJob<TH>()` in `FlowlyConfiguration`
-- [ ] Unit tests created following the project's existing test conventions (happy path, cancellation, attribute values)

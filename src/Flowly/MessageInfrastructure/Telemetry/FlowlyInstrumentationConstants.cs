@@ -88,5 +88,14 @@ public static class FlowlyInstrumentationConstants
     /// <summary>Histogram: event publish duration in milliseconds.</summary>
     public const string EventPublisherRaiseDuration = "flowly.event.publisher.duration";
 
+    /// <summary>Counter: number of calls that completed successfully (response received before timeout).</summary>
+    public const string CallerCallsSucceeded = "flowly.call.succeeded";
+
+    /// <summary>Counter: number of calls that failed (timed out or threw).</summary>
+    public const string CallerCallsFailed = "flowly.call.failed";
+
+    /// <summary>Histogram: end-to-end call round-trip duration in milliseconds (from Call() to response).</summary>
+    public const string CallerCallDuration = "flowly.call.duration";
+
     internal static readonly ActivitySource ActivitySource = new(ActivitySourceName);
 }

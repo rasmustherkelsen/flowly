@@ -30,6 +30,7 @@ dotnet new flowlyapp --transport <transport> [options] -n <SolutionName>
 
 | Flag | Alias | Description |
 |------|-------|-------------|
+| `--callhandler` | `--call` | Scaffold the main message as an RPC-style call/response pair using `CallHandler` and `IMessageCaller` instead of the default fire-and-forget `MessageHandler`. `MyMessage` implements `IReturns<MyReturnMessage>`; the sender blocks on `IMessageCaller.Call` and prints each response. |
 | `--jobtracking` | `--jobs` | Add job state tracking. Adds `ProcessJobMessage`, `ProcessJobHandler`, `JobSubmitterService`, and a dedicated `JobTracker` infrastructure project. Requires a DB flag. Not applicable to InMemory (job state runs in `App`). |
 | `--deadlettertracking` | `--deadletter` | Add dead-letter tracking. Adds `DeadLetterSampleMessage`, `DeadLetterSampleMessageHandler` with `[RetryPolicy]`, and `FailingMessageSenderService`. Requires a DB flag. |
 
@@ -52,6 +53,15 @@ dotnet new flowlyapp --transport asb -n MyApp
 
 # Single-project InMemory solution (no broker required)
 dotnet new flowlyapp --transport inm -n MyApp
+
+# RPC-style call/response (RabbitMQ)
+dotnet new flowlyapp --transport rabbitmq --call -n MyApp
+
+# RPC-style call/response (ASB) — reply queue added to sbconfig.json automatically
+dotnet new flowlyapp --transport asb --call -n MyApp
+
+# RPC in a single in-process worker (InMemory)
+dotnet new flowlyapp --transport inm --call -n MyApp
 
 # RabbitMQ with job tracking (SQLite) and dead-letter tracking
 dotnet new flowlyapp --transport rabbitmq --jobs --deadletter --sqlite -n MyApp

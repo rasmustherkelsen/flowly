@@ -67,6 +67,9 @@ internal class RabbitMqMessageBusSender(string queueName, IChannel channel, long
         if (!string.IsNullOrEmpty(messageProperties.CorrelationId))
             props.CorrelationId = messageProperties.CorrelationId;
 
+        if (!string.IsNullOrEmpty(messageProperties.ReplyTo))
+            props.ReplyTo = messageProperties.ReplyTo;
+
         if (messageProperties.RetryCount > 0)
             props.Headers[FlowlyMessageProperties.RetryCount] = messageProperties.RetryCount;
 
