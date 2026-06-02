@@ -412,5 +412,5 @@ FodyWeavers.xsd
 
 # DocFX build artifacts
 _site/
-api/
+/api/
 

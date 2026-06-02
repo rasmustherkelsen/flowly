@@ -1,0 +1,5 @@
+{
+  "appHost": {
+    "path": "RabbitMQAspire.AppHost/RabbitMQAspire.AppHost.csproj"
+  }
+}
