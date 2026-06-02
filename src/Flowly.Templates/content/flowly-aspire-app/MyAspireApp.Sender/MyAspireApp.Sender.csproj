@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <!--#if (UseRabbitMQ)-->
+        <PackageReference Include="Flowly.RabbitMQ" Version="1.1.0" />
+        <!--#else-->
+        <PackageReference Include="Flowly.AzureServiceBus" Version="1.1.0" />
+        <!--#endif-->
+        <PackageReference Include="Flowly.OpenTelemetry" Version="1.1.0" />
+        <!--#if (UseJobTracking)-->
+        <PackageReference Include="Flowly.Jobs" Version="1.1.0" />
+        <!--#endif-->
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\MyAspireApp.Messages\MyAspireApp.Messages.csproj" />
+        <ProjectReference Include="..\MyAspireApp.ServiceDefaults\MyAspireApp.ServiceDefaults.csproj" />
+    </ItemGroup>
+
+</Project>

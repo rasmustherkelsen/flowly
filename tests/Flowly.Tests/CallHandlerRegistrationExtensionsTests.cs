@@ -55,7 +55,7 @@ public class CallHandlerRegistrationExtensionsTests
 
             flowlyBuilder.AddCallSubmitter<PingMessage>();
 
-            Assert.Contains(manifest.Queues, q => q.QueueName == "ping.reply.sender" && q.IsReplyQueue);
+            Assert.Contains(manifest.Queues, q => q.QueueName == "ping-reply-sender" && q.IsReplyQueue);
         }
 
         [Fact]

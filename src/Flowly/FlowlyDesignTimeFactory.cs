@@ -18,6 +18,15 @@ namespace Flowly;
 public abstract class FlowlyDesignTimeFactory
 {
     /// <summary>
+    ///     The unique name for this service instance. Override to declare the instance name used to derive reply queue
+    ///     names for call submitters (format: <c>{callQueue}-reply-{InstanceName}</c>). When overridden,
+    ///     <see cref="AddFlowlyExtension.AddFlowly{TFlowlyConfiguration}(Microsoft.Extensions.Hosting.IHostApplicationBuilder,System.Action{FlowlyOptions}?)" />
+    ///     and Aspire's <c>AddFlowly</c> read it automatically — no need to set
+    ///     <see cref="FlowlyOptions.InstanceName" /> separately. Defaults to <see langword="null" />.
+    /// </summary>
+    public virtual string? InstanceName => null;
+
+    /// <summary>
     ///     Discovers queues and events defined in the specified Flowly configuration type. This method creates a temporary
     ///     service collection, registers the necessary Flowly services, and invokes the Configure method of the provided
     ///     configuration type to populate the service collection with queue and event definitions. It then extracts and
@@ -29,11 +38,29 @@ public abstract class FlowlyDesignTimeFactory
     ///     The type of the Flowly configuration class that implements IFlowlyConfiguration and has a
     ///     parameterless constructor.
     /// </param>
+    /// <param name="options">
+    ///     Optional <see cref="FlowlyOptions" /> to seed the design-time container with. When provided, the
+    ///     <see cref="FlowlyOptions.InstanceName" /> value is used to derive reply-queue names for any call submitters
+    ///     registered in the configuration (e.g. <c>AddCallSubmitter&lt;TMessage&gt;</c>). When <see langword="null" />,
+    ///     <see cref="InstanceName" /> is read from the configuration class itself if overridden; otherwise a default
+    ///     <see cref="FlowlyOptions" /> instance is used and call submitters will throw if
+    ///     <see cref="FlowlyOptions.InstanceName" /> is required but absent.
+    /// </param>
     /// <returns>List of ProviderQueueManifest instances</returns>
-    public static IReadOnlyList<ProviderQueueManifest> DiscoverQueues(Type configType)
+    public static IReadOnlyList<ProviderQueueManifest> DiscoverQueues(Type configType, FlowlyOptions? options = null)
     {
+        var instance = (IFlowlyConfiguration)Activator.CreateInstance(configType)!;
+
+        if (options?.InstanceName is null
+            && instance is FlowlyDesignTimeFactory designTimeFactory
+            && designTimeFactory.InstanceName is not null)
+        {
+            options = new FlowlyOptions { InstanceName = designTimeFactory.InstanceName };
+        }
+
         var services = new ServiceCollection();
 
+        services.AddSingleton(options ?? new FlowlyOptions());
         services.AddSingleton<IMessageBusClientRegistry>(new MessageBusClientRegistry());
         services.AddSingleton<IMessagingTopologyCreatorRegistry>(new MessagingTopologyCreatorRegistry());
         services.AddSingleton<IEventTopologyCreatorRegistry>(new EventTopologyCreatorRegistry());
@@ -43,7 +70,6 @@ public abstract class FlowlyDesignTimeFactory
         services.AddSingleton<IQueueRegistrar, QueueRegistrar>();
 
         var builder = new FlowlyBuilder(services, new DiscoveryConfiguration(), topologyNameResolver);
-        var instance = (IFlowlyConfiguration)Activator.CreateInstance(configType)!;
         instance.Configure(builder);
 
         return services

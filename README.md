@@ -72,7 +72,7 @@ All packages are published to [NuGet.org](https://www.nuget.org/packages?q=Flowl
 | `Flowly.DeadLetters.SQLite` | SQLite backend for dead letter tracking |
 | `Flowly.OpenTelemetry` | OpenTelemetry metrics and traces for handlers and submitters |
 | `Flowly.Tool` | `flowly` CLI for queue discovery and code generation |
-| `Flowly.Templates` | `dotnet new flowlyapp` / `dotnet new flowly` project templates |
+| `Flowly.Templates` | `dotnet new flowlyapp` / `dotnet new flowlyaspireapp` / `dotnet new flowly` project templates |
 
 ---
 
@@ -734,6 +734,14 @@ backendFinanceProcessor
 
 `IFlowlyAspireTopologyBuilder` supports `.AddQueue(name)` and `.AddEventSubscription<TEvent>(subscriptionName)`. The topic name for `AddEventSubscription` is derived from the event type the same way as at runtime.
 
+**RPC call handlers:** When a sender uses `AddCallSubmitter<TMessage>()` it owns a reply queue named `{callQueue}.reply.{InstanceName}`. The emulator must have this queue pre-created, so call `AddFlowly` for the sender project as well and pass the `instanceName` that matches `FlowlyOptions.InstanceName` in the sender's `Program.cs`:
+
+```csharp
+// AppHost Program.cs
+azureServiceBus.AddFlowly(receiver);                         // registers the main queue
+azureServiceBus.AddFlowly(sender, instanceName: "sender");   // registers the reply queue
+```
+
 Reference `Flowly.AzureServiceBus.Aspire` in the AppHost `.csproj` with `IsAspireProjectResource="false"`:
 
 ```xml
@@ -849,6 +857,22 @@ Scaffold new Flowly projects in seconds using `dotnet new`:
 ```bash
 dotnet new install Flowly.Templates
 ```
+
+### `flowlyaspireapp` — Scaffold a complete Aspire-based send/receive solution
+
+Generates a full .NET Aspire solution — AppHost, ServiceDefaults, Messages, Sender, and Receiver — wired for your chosen transport. OpenTelemetry is always enabled. Aspire provisions all infrastructure; no docker-compose or sbconfig.json required.
+
+```bash
+dotnet new flowlyaspireapp --transport <rabbitmq|asb|inmemory> [options] -n <SolutionName>
+```
+
+Supports the same `--callhandler`, `--jobs`, `--deadletter`, `--sqlserver`, `--postgres`, and `--sqlite` flags as `flowlyapp`. Run everything with:
+
+```bash
+dotnet run --project MyApp.AppHost
+```
+
+---
 
 ### `flowlyapp` — Scaffold a complete send/receive solution
 

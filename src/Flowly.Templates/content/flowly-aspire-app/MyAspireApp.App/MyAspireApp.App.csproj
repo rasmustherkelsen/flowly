@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Flowly.InMemory" Version="1.1.0" />
+        <PackageReference Include="Flowly.OpenTelemetry" Version="1.1.0" />
+        <!--#if (UseJobTracking && UseSqlServer)-->
+        <PackageReference Include="Flowly.Jobs.SqlServer" Version="1.1.0" />
+        <!--#endif-->
+        <!--#if (UseJobTracking && UsePostgres)-->
+        <PackageReference Include="Flowly.Jobs.Postgres" Version="1.1.0" />
+        <!--#endif-->
+        <!--#if (UseJobTracking && UseSQLite)-->
+        <PackageReference Include="Flowly.Jobs.SQLite" Version="1.1.0" />
+        <!--#endif-->
+        <!--#if (UseDeadLetterTracking && UseSqlServer)-->
+        <PackageReference Include="Flowly.DeadLetters.SqlServer" Version="1.1.0" />
+        <!--#endif-->
+        <!--#if (UseDeadLetterTracking && UsePostgres)-->
+        <PackageReference Include="Flowly.DeadLetters.Postgres" Version="1.1.0" />
+        <!--#endif-->
+        <!--#if (UseDeadLetterTracking && UseSQLite)-->
+        <PackageReference Include="Flowly.DeadLetters.SQLite" Version="1.1.0" />
+        <!--#endif-->
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\MyAspireApp.ServiceDefaults\MyAspireApp.ServiceDefaults.csproj" />
+    </ItemGroup>
+
+</Project>

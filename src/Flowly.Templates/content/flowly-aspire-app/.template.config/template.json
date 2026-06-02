@@ -1,0 +1,322 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "Rasmus Therkelsen",
+  "classifications": [ "Flowly", "Messaging", "Solution", "Aspire" ],
+  "identity": "Flowly.AspireApp.1.0",
+  "name": "Flowly Aspire App",
+  "shortName": "flowlyaspireapp",
+  "description": "A complete Flowly send/receive solution with .NET Aspire — AppHost, ServiceDefaults, Messages, Sender, and Receiver pre-wired for your chosen transport. OpenTelemetry enabled by default.",
+  "sourceName": "MyAspireApp",
+  "preferNameDirectory": true,
+  "tags": {
+    "language": "C#",
+    "type": "solution"
+  },
+  "symbols": {
+    "transport": {
+      "type": "parameter",
+      "datatype": "choice",
+      "isRequired": true,
+      "displayName": "Transport",
+      "description": "The messaging transport to use. Required.",
+      "choices": [
+        { "choice": "rabbitmq",        "description": "RabbitMQ transport." },
+        { "choice": "rmq",             "description": "Alias for rabbitmq." },
+        { "choice": "azureservicebus", "description": "Azure Service Bus transport." },
+        { "choice": "asb",             "description": "Alias for azureservicebus." },
+        { "choice": "inmemory",        "description": "In-memory transport (no broker required)." },
+        { "choice": "inm",             "description": "Alias for inmemory." }
+      ]
+    },
+    "UseRabbitMQ": {
+      "type": "computed",
+      "value": "(transport == \"rabbitmq\" || transport == \"rmq\")"
+    },
+    "UseAzureServiceBus": {
+      "type": "computed",
+      "value": "(transport == \"azureservicebus\" || transport == \"asb\")"
+    },
+    "UseInMemory": {
+      "type": "computed",
+      "value": "(transport == \"inmemory\" || transport == \"inm\")"
+    },
+    "HasTransportConnectionString": {
+      "type": "computed",
+      "value": "(UseRabbitMQ || UseAzureServiceBus)"
+    },
+    "jobtracking": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "Job tracking",
+      "description": "Add Flowly job state tracking. Also specify --sqlserver, --postgres, or --sqlite."
+    },
+    "jobs": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "description": "Alias for --jobtracking."
+    },
+    "UseJobTracking": {
+      "type": "computed",
+      "value": "(jobtracking || jobs)"
+    },
+    "deadlettertracking": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "Dead-letter tracking",
+      "description": "Add Flowly dead-letter tracking. Also specify --sqlserver, --postgres, or --sqlite."
+    },
+    "deadletter": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "description": "Alias for --deadlettertracking."
+    },
+    "UseDeadLetterTracking": {
+      "type": "computed",
+      "value": "(deadlettertracking || deadletter)"
+    },
+    "callhandler": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "Call handler (RPC)",
+      "description": "Scaffold the main message as an RPC-style call/response pair using CallHandler and IMessageCaller instead of the default fire-and-forget MessageHandler."
+    },
+    "call": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "description": "Alias for --callhandler."
+    },
+    "UseCallHandler": {
+      "type": "computed",
+      "value": "(callhandler || call)"
+    },
+    "UseDatabase": {
+      "type": "computed",
+      "value": "(UseJobTracking || UseDeadLetterTracking)"
+    },
+    "sqlserver": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "SQL Server",
+      "description": "Use SQL Server as the database backend for job/dead-letter tracking."
+    },
+    "UseSqlServer": {
+      "type": "computed",
+      "value": "sqlserver"
+    },
+    "postgres": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "PostgreSQL",
+      "description": "Use PostgreSQL as the database backend for job/dead-letter tracking."
+    },
+    "UsePostgres": {
+      "type": "computed",
+      "value": "postgres"
+    },
+    "sqlite": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "SQLite",
+      "description": "Use SQLite as the database backend for job/dead-letter tracking."
+    },
+    "UseSQLite": {
+      "type": "computed",
+      "value": "sqlite"
+    },
+    "HasDatabaseBackend": {
+      "type": "computed",
+      "value": "(UseSqlServer || UsePostgres || UseSQLite)"
+    },
+    "NeedsSqlServerInfrastructure": {
+      "type": "computed",
+      "value": "(UseDatabase && UseSqlServer)"
+    },
+    "NeedsPostgresInfrastructure": {
+      "type": "computed",
+      "value": "(UseDatabase && UsePostgres)"
+    },
+    "AppHostHttpPort": {
+      "type": "generated",
+      "generator": "port",
+      "replaces": "15023",
+      "parameters": { "low": 15000, "high": 15999 }
+    },
+    "AppHostHttpsPort": {
+      "type": "generated",
+      "generator": "port",
+      "replaces": "17258",
+      "parameters": { "low": 17000, "high": 17999 }
+    },
+    "DashboardOtlpHttpPort": {
+      "type": "generated",
+      "generator": "port",
+      "replaces": "19215",
+      "parameters": { "low": 19000, "high": 19999 }
+    },
+    "DashboardOtlpHttpsPort": {
+      "type": "generated",
+      "generator": "port",
+      "replaces": "21117",
+      "parameters": { "low": 21000, "high": 21999 }
+    },
+    "ResourceServiceHttpPort": {
+      "type": "generated",
+      "generator": "port",
+      "replaces": "20268",
+      "parameters": { "low": 20000, "high": 20999 }
+    },
+    "ResourceServiceHttpsPort": {
+      "type": "generated",
+      "generator": "port",
+      "replaces": "22183",
+      "parameters": { "low": 22000, "high": 22999 }
+    },
+    "SenderHttpPort": {
+      "type": "generated",
+      "generator": "port",
+      "replaces": "5101",
+      "parameters": { "low": 5100, "high": 5199 }
+    },
+    "SenderHttpsPort": {
+      "type": "generated",
+      "generator": "port",
+      "replaces": "7101",
+      "parameters": { "low": 7100, "high": 7199 }
+    },
+    "ReceiverHttpPort": {
+      "type": "generated",
+      "generator": "port",
+      "replaces": "5201",
+      "parameters": { "low": 5200, "high": 5299 }
+    },
+    "ReceiverHttpsPort": {
+      "type": "generated",
+      "generator": "port",
+      "replaces": "7201",
+      "parameters": { "low": 7200, "high": 7299 }
+    },
+    "AppHttpPort": {
+      "type": "generated",
+      "generator": "port",
+      "replaces": "5301",
+      "parameters": { "low": 5300, "high": 5399 }
+    },
+    "AppHttpsPort": {
+      "type": "generated",
+      "generator": "port",
+      "replaces": "7301",
+      "parameters": { "low": 7300, "high": 7399 }
+    }
+  },
+  "sources": [
+    {
+      "modifiers": [
+        {
+          "condition": "(UseInMemory)",
+          "rename": { "MyAspireApp-single.slnx": "MyAspireApp.slnx" },
+          "exclude": [ "MyAspireApp.slnx", "MyAspireApp.Messages/**", "MyAspireApp.Sender/**", "MyAspireApp.Receiver/**" ]
+        },
+        {
+          "condition": "(!UseInMemory)",
+          "exclude": [ "MyAspireApp-single.slnx", "MyAspireApp.App/**" ]
+        },
+        {
+          "condition": "(!UseJobTracking)",
+          "exclude": [
+            "MyAspireApp.Messages/ProcessJobMessage.cs",
+            "MyAspireApp.Receiver/Handlers/ProcessJobHandler.cs",
+            "MyAspireApp.Sender/Services/JobSubmitterService.cs",
+            "MyAspireApp.App/Messages/ProcessJobMessage.cs",
+            "MyAspireApp.App/Handlers/ProcessJobHandler.cs",
+            "MyAspireApp.App/Services/JobSubmitterService.cs"
+          ]
+        },
+        {
+          "condition": "(!UseDeadLetterTracking)",
+          "exclude": [
+            "MyAspireApp.Messages/DeadLetterSampleMessage.cs",
+            "MyAspireApp.Receiver/Handlers/DeadLetterSampleMessageHandler.cs",
+            "MyAspireApp.Sender/Services/FailingMessageSenderService.cs",
+            "MyAspireApp.App/Messages/DeadLetterSampleMessage.cs",
+            "MyAspireApp.App/Handlers/DeadLetterSampleMessageHandler.cs",
+            "MyAspireApp.App/Services/FailingMessageSenderService.cs"
+          ]
+        }
+      ]
+    }
+  ],
+  "specialCustomOperations": {
+    "**/*.csproj": {
+      "operations": [
+        {
+          "type": "conditional",
+          "configuration": {
+            "if": [ "<!--#if" ],
+            "else": [ "<!--#else" ],
+            "elseif": [ "<!--#elseif" ],
+            "endif": [ "<!--#endif-->" ],
+            "trim": true,
+            "wholeLine": true
+          }
+        }
+      ]
+    },
+    "**/*.json": {
+      "operations": [
+        {
+          "type": "conditional",
+          "configuration": {
+            "if": [ "//#if" ],
+            "else": [ "//#else" ],
+            "elseif": [ "//#elseif" ],
+            "endif": [ "//#endif" ],
+            "trim": true,
+            "wholeLine": true
+          }
+        }
+      ]
+    },
+    "**/*.slnx": {
+      "operations": [
+        {
+          "type": "conditional",
+          "configuration": {
+            "if": [ "<!--#if" ],
+            "else": [ "<!--#else" ],
+            "elseif": [ "<!--#elseif" ],
+            "endif": [ "<!--#endif-->" ],
+            "trim": true,
+            "wholeLine": true
+          }
+        }
+      ]
+    }
+  },
+  "primaryOutputs": [
+    {
+      "path": "MyAspireApp.slnx"
+    }
+  ],
+  "postActions": [
+    {
+      "id": "restore",
+      "description": "Restore NuGet packages",
+      "actionId": "210D431B-A78B-4D2F-B762-4ED3E3EA9025",
+      "continueOnError": true,
+      "manualInstructions": [
+        {
+          "text": "Run 'dotnet restore'"
+        }
+      ]
+    }
+  ]
+}

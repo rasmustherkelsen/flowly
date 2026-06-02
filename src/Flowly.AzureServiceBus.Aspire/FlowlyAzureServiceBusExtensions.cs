@@ -73,11 +73,14 @@ public static class FlowlyAzureServiceBusExtensions
     ///     Thrown when the project has not been built and no assembly <c>.dll</c> exists under the project's
     ///     <c>bin/</c> directory.
     /// </exception>
-    public static IResourceBuilder<AzureServiceBusResource> AddFlowly(this IResourceBuilder<AzureServiceBusResource> serviceBus, IResourceBuilder<ProjectResource> project, string? providerName = null)
+    public static IResourceBuilder<AzureServiceBusResource> AddFlowly(
+        this IResourceBuilder<AzureServiceBusResource> serviceBus,
+        IResourceBuilder<ProjectResource> project,
+        string? providerName = null)
     {
         var metadata = project.Resource.Annotations.OfType<IProjectMetadata>().Single();
         var assemblyPath = FindAssemblyPath(metadata.ProjectPath);
-        var (queues, events) = DiscoverFromAssembly(assemblyPath, providerName);
+        var (queues, events) = DiscoverFromAssembly(assemblyPath, providerName, null);
         serviceBus = RegisterQueues(serviceBus, queues);
         serviceBus = RegisterEvents(serviceBus, events);
         return serviceBus;
@@ -147,7 +150,7 @@ public static class FlowlyAzureServiceBusExtensions
         return annotation;
     }
 
-    private static (IReadOnlyList<DeferredQueueRegistration> Queues, IReadOnlyList<DeferredEventRegistration> Events) DiscoverFromAssembly(string assemblyPath, string? providerName)
+    private static (IReadOnlyList<DeferredQueueRegistration> Queues, IReadOnlyList<DeferredEventRegistration> Events) DiscoverFromAssembly(string assemblyPath, string? providerName, FlowlyOptions? options = null)
     {
         var loadContext = new AssemblyLoadContext($"flowly-aspire-{Guid.NewGuid():N}", true);
         loadContext.Resolving += (_, name) =>
@@ -172,7 +175,7 @@ public static class FlowlyAzureServiceBusExtensions
                     $"Aspire topology discovery requires a class that inherits FlowlyDesignTimeFactory and implements IFlowlyConfiguration. " +
                     $"Inline AddFlowly() configurations are not supported — use the class-based pattern instead.");
 
-            var manifests = configTypes.SelectMany(t => FlowlyDesignTimeFactory.DiscoverQueues(t)).ToList();
+            var manifests = configTypes.SelectMany(t => FlowlyDesignTimeFactory.DiscoverQueues(t, options)).ToList();
             var selectedManifests = SelectManifests(manifests, providerName);
 
             var queues = selectedManifests

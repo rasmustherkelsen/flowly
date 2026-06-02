@@ -117,16 +117,18 @@ Optionally override the default 2-minute call timeout:
 builder.AddCallSubmitter<$0>(opts => opts.Timeout = TimeSpan.FromSeconds(30));
 ```
 
-**Important — `InstanceName` is required.** The sender must have a unique instance name configured; Flowly uses it to create a per-instance reply queue (`{queueName}.reply.{instanceName}`). Add it to the `FlowlyOptions` binding in `Program.cs`:
+**Important — `InstanceName` is required.** The sender must have a unique instance name; Flowly uses it to create a per-instance reply queue (`{queueName}.reply.{instanceName}`). Declare it once by overriding `InstanceName` on the sender's `FlowlyConfiguration`:
 
 ```csharp
-builder.Services.Configure<FlowlyOptions>(options =>
+internal class FlowlyConfiguration : Configuration
 {
-    options.InstanceName = "sender"; // must be unique per deployed instance
-});
+    public override string? InstanceName => "sender"; // must be unique per deployed instance
+
+    public override void Configure(IFlowlyBuilder builder) { ... }
+}
 ```
 
-Flowly throws `InvalidOperationException` at startup if `InstanceName` is not set.
+Both `AddFlowly<T>` (runtime) and the Aspire/CLI design-time discovery read `InstanceName` from the class automatically — no need to set it via the options delegate. Flowly throws `InvalidOperationException` at startup if a call submitter is registered but `InstanceName` is null.
 
 ### Using `IMessageCaller`
 
@@ -146,6 +148,41 @@ internal class MyService(IMessageCaller messageCaller) : BackgroundService
 }
 ```
 
+## Step 6 — Aspire AppHost wiring
+
+If the solution runs under .NET Aspire, additional wiring is needed so the broker has the reply queue ready before services start.
+
+### Azure Service Bus
+
+The reply queue (`{callQueue}.reply.{instanceName}`) must be pre-registered in the ASB emulator at AppHost startup. Call `AddFlowly` for the **sender** project too — the `InstanceName` property on the sender's `FlowlyConfiguration` is read automatically to derive the reply queue name:
+
+```csharp
+// AppHost Program.cs
+azureServiceBus.AddFlowly(receiver);  // registers the main queue
+azureServiceBus.AddFlowly(sender);    // registers the reply queue (InstanceName read from FlowlyConfiguration)
+```
+
+Without `InstanceName` overridden on the sender's `FlowlyConfiguration`, the design-time discovery cannot form the correct reply queue name and calls will fail at runtime.
+
+The sender's `Program.cs` must set `CreateTopology = false` (Aspire creates queues) and `InstanceName`:
+```csharp
+builder.AddFlowly<FlowlyConfiguration>(options =>
+{
+    options.CreateTopology = false;
+    options.InstanceName = "sender";
+});
+```
+
+### RabbitMQ
+
+No special AppHost wiring is needed — `CreateTopology = true` means Flowly creates both the call queue and the reply queue at startup. Just wire the project references as normal:
+
+```csharp
+builder.AddProject<Projects.MyApp_Sender>("sender")
+    .WithReference(rabbitMq)
+    .WaitFor(rabbitMq);
+```
+
 ## Checklist
 
 - [ ] Return message record created
@@ -153,4 +190,6 @@ internal class MyService(IMessageCaller messageCaller) : BackgroundService
 - [ ] Handler class created (`internal`, inherits `CallHandler<$0, <ReturnMessageName>>`)
 - [ ] Receiver: `AddCallHandler<$0, $0Handler>()` registered in `FlowlyConfiguration`
 - [ ] Sender: `AddCallSubmitter<$0>()` registered in `FlowlyConfiguration`
-- [ ] `FlowlyOptions.InstanceName` confirmed set on the sender side
+- [ ] Sender's `FlowlyConfiguration` overrides `InstanceName` (e.g. `public override string? InstanceName => "sender"`)
+- [ ] (ASB + Aspire) AppHost calls `azureServiceBus.AddFlowly(sender)` so the reply queue is pre-registered
+- [ ] (ASB + Aspire) Sender `Program.cs` sets `CreateTopology = false`

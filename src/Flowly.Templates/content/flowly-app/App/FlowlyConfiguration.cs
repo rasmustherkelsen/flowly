@@ -10,6 +10,10 @@ namespace App;
 
 internal class FlowlyConfiguration : Configuration
 {
+#if (UseCallHandler)
+    public override string? InstanceName => "app";
+
+#endif
     public override void Configure(IFlowlyBuilder builder)
     {
         builder.UseInMemory();

@@ -31,7 +31,7 @@ public class FlowlyOptions
     /// <summary>
     ///     The name of this application instance. Required when registering a call submitter with
     ///     <c>AddCallSubmitter&lt;TMessage&gt;()</c>. Used to derive a unique reply queue name in the format
-    ///     <c>{callQueue}.reply.{InstanceName}</c>. Flowly throws <see cref="InvalidOperationException" /> at
+    ///     <c>{callQueue}-reply-{InstanceName}</c>. Flowly throws <see cref="InvalidOperationException" /> at
     ///     startup if a call submitter is registered without this value being set.
     /// </summary>
     public string? InstanceName { get; set; }

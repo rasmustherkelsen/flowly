@@ -13,6 +13,10 @@ namespace Sender;
 
 internal class FlowlyConfiguration : Configuration
 {
+#if (UseCallHandler)
+    public override string? InstanceName => "sender";
+
+#endif
     public override void Configure(IFlowlyBuilder builder)
     {
 #if (UseRabbitMQ)

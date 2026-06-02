@@ -103,6 +103,10 @@ public static class AddFlowlyExtension
 
         var options = new FlowlyOptions();
         configureOptions?.Invoke(options);
+
+        if (options.InstanceName is null && module is FlowlyDesignTimeFactory designTimeFactory)
+            options.InstanceName = designTimeFactory.InstanceName;
+
         services.TryAddSingleton(options);
 
         var topologyNameResolver = (ITopologyNameResolver)Activator.CreateInstance(options.TopologyNameResolverType)!;

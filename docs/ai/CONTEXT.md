@@ -597,6 +597,35 @@ Install the template pack once to scaffold new Flowly services with `dotnet new`
 dotnet new install Flowly.Templates
 ```
 
+#### `flowlyaspireapp` — scaffold a complete Aspire-based send/receive solution
+
+Generates a full .NET Aspire solution — AppHost, ServiceDefaults, Messages library, Sender, and Receiver — pre-wired for the chosen transport. OpenTelemetry is **always enabled** (unconditional; the Aspire dashboard depends on it). No docker-compose or sbconfig.json is generated; Aspire provisions and manages all infrastructure.
+
+```bash
+dotnet new flowlyaspireapp --transport <value> [options] -n <SolutionName>
+```
+
+| Transport | Alias | Generated output |
+|---|---|---|
+| `rabbitmq` | `rmq` | AppHost + ServiceDefaults + Messages + Sender + Receiver |
+| `azureservicebus` | `asb` | same; AppHost uses `AddFlowly(receiver)` to discover queues |
+| `inmemory` | `inm` | AppHost + ServiceDefaults + `App/` (single-project, in-process) |
+
+Supports the same optional flags as `flowlyapp` — `--callhandler`/`--call`, `--jobtracking`/`--jobs`, `--deadlettertracking`/`--deadletter`, `--sqlserver`, `--postgres`, `--sqlite` — with these differences:
+
+- Job/dead-letter tracking is embedded in the **Receiver** (no separate `JobTracker` project).
+- `--sqlserver` / `--postgres` causes the AppHost to provision the DB resource and pass it to the Receiver via `WithReference`.
+- `--sqlite` does not require an Aspire resource; the connection string is in `appsettings.Development.json`.
+- For ASB, `CreateTopology = false` (Aspire creates queues via `azureServiceBus.AddFlowly(receiver)`).
+- For RabbitMQ, `CreateTopology = true` (Aspire Hosting does not manage RabbitMQ queue topology).
+- For `--call` with ASB, `azureServiceBus.AddFlowly(sender, instanceName: "sender")` is also called to register the reply queue. The `instanceName` must match `FlowlyOptions.InstanceName` set in the sender's `Program.cs`.
+
+Run everything with: `dotnet run --project MyApp.AppHost`
+
+**Aspire SDK version:** `Aspire.AppHost.Sdk` is referenced without a pinned version so the SDK resolver uses the version from the installed Aspire workload. `ServiceDefaults/Extensions.cs` is a verbatim copy of the Microsoft-generated boilerplate (Aspire 13.3.3) and can be regenerated with `dotnet new aspire-servicedefaults` if Aspire upgrades.
+
+---
+
 #### `flowlyapp` — scaffold a complete send/receive solution
 
 Generates a full solution — Messages library + Sender + Receiver — matching the quickstart guides exactly. Includes `docker-compose.yml` (and `sbconfig.json` for ASB).
@@ -716,6 +745,15 @@ backendProcessor
 ```
 
 `AddFlowly(project)` loads the project assembly via an isolated `AssemblyLoadContext`, finds the `Configuration` subclass (a.k.a. `Flowly.Configuration`), and collects `DeferredQueueRegistration` and `DeferredEventRegistration` instances automatically. Queue properties (lock duration, TTL, dead-lettering, session) are set on the emulator resources via `WithProperties`.
+
+**RPC call handlers:** When a sender uses `AddCallSubmitter<TMessage>()`, it owns a reply queue named `{callQueue}.reply.{InstanceName}`. The emulator must have this queue pre-created. Call `AddFlowly` for the sender project too, and pass `instanceName` matching `FlowlyOptions.InstanceName` set in the sender's `Program.cs`:
+
+```csharp
+azureServiceBus.AddFlowly(receiver);                         // main queue
+azureServiceBus.AddFlowly(sender, instanceName: "sender");   // reply queue
+```
+
+Without `instanceName`, topology discovery runs with no `InstanceName` context and `AddCallSubmitter` throws `InvalidOperationException: FlowlyOptions.InstanceName must be set` at AppHost startup.
 
 For plain Docker Compose, use `Flowly.Tool` to generate `emulator-config.json` for the Azure Service Bus emulator container.
 

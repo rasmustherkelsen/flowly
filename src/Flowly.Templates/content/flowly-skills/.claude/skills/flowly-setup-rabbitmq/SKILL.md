@@ -159,19 +159,38 @@ Requires `Flowly.OpenTelemetry` and an OpenTelemetry SDK already configured in t
 
 ## Step 8 — Optional: Aspire AppHost integration
 
-If the solution uses .NET Aspire, use Aspire's built-in RabbitMQ resource — there is no separate `Flowly.RabbitMQ.Aspire` package:
+If the solution uses .NET Aspire, use Aspire's built-in RabbitMQ resource — there is no separate `Flowly.RabbitMQ.Aspire` package. No queue pre-registration step is needed; Flowly creates topology at startup.
+
+### AppHost wiring
 
 ```csharp
 // AppHost Program.cs
-var rabbitMq = builder.AddRabbitMQ("RabbitMQ");
-var processor = builder.AddProject<Projects.MyProcessor>("processor");
+var rabbitMq = builder
+    .AddRabbitMQ("RabbitMQ",
+        userName: builder.AddParameter("rabbitmq-username", value: "guest"),
+        password: builder.AddParameter("rabbitmq-password", secret: true, value: "guest"))
+    .WithManagementPlugin();
 
-processor
+builder.AddProject<Projects.MyProcessor_Receiver>("receiver")
+    .WithReference(rabbitMq)
+    .WaitFor(rabbitMq);
+
+builder.AddProject<Projects.MyProcessor_Sender>("sender")
     .WithReference(rabbitMq)
     .WaitFor(rabbitMq);
 ```
 
-The project uses the standard `UseRabbitMq("RabbitMQ")` configuration — Aspire injects the connection string automatically. No queue pre-registration step is needed; topology is created automatically at startup.
+### Service project setup
+
+Use `CreateTopology = true` — Aspire Hosting does **not** create RabbitMQ queues; Flowly must create them at startup:
+
+```csharp
+builder.AddFlowly<FlowlyConfiguration>(options => options.CreateTopology = true);
+```
+
+Each service project must also call `builder.AddServiceDefaults()` and `app.MapDefaultEndpoints()` so the Aspire dashboard can collect health status and telemetry.
+
+Aspire injects the RabbitMQ connection string automatically via the resource name `"RabbitMQ"`, which matches `UseRabbitMq("RabbitMQ")` in `FlowlyConfiguration`.
 
 ## Step 9 — Local development with Docker Compose
 
