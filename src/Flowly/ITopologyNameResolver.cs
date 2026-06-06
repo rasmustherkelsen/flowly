@@ -38,4 +38,15 @@ public interface ITopologyNameResolver
     /// <typeparam name="THandler">The event handler type to resolve a subscription name for.</typeparam>
     /// <returns>The resolved subscription name.</returns>
     string ResolveSubscriptionName<THandler>();
+
+    /// <summary>
+    ///     Resolves the reply queue name for an RPC call submitter. The returned name is used as the broker-level queue
+    ///     on which the caller listens for responses. Must be compatible with all supported brokers (Azure Service Bus,
+    ///     RabbitMQ, InMemory) — only lowercase alphanumeric characters and hyphens are guaranteed safe across all
+    ///     transports. The default implementation produces <c>{callQueueName}-reply-{normalizedInstanceName}</c>.
+    /// </summary>
+    /// <param name="callQueueName">The resolved queue name of the call message.</param>
+    /// <param name="instanceName">The <see cref="FlowlyOptions.InstanceName" /> of the sending service.</param>
+    /// <returns>The resolved reply queue name.</returns>
+    string ResolveReplyQueueName(string callQueueName, string instanceName);
 }

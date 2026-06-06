@@ -47,6 +47,10 @@ public class KebabCaseTopologyNameResolver : ITopologyNameResolver
     public string ResolveSubscriptionName<THandler>()
         => ToKebabCase(typeof(THandler).Name);
 
+    /// <inheritdoc />
+    public string ResolveReplyQueueName(string callQueueName, string instanceName)
+        => $"{callQueueName}-reply-{Regex.Replace(instanceName.ToLowerInvariant(), @"[^a-z0-9-]", "-")}";
+
     private static string DeriveKebabName(string typeName, string suffix)
     {
         var name = typeName.EndsWith(suffix, StringComparison.Ordinal)

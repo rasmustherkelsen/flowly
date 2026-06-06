@@ -166,20 +166,72 @@ Requires `Flowly.OpenTelemetry` and an OpenTelemetry SDK already configured in t
 
 ## Step 8 — Optional: Aspire AppHost integration
 
-If the solution uses .NET Aspire, update the AppHost `Program.cs` instead of managing the emulator config manually:
+If the solution uses .NET Aspire, update the AppHost `Program.cs` instead of managing the emulator config manually.
+
+### Package requirement
+
+Add `Flowly.AzureServiceBus.Aspire` to the AppHost `.csproj` with `IsAspireProjectResource="false"`:
+
+```xml
+<PackageReference Include="Flowly.AzureServiceBus.Aspire" IsAspireProjectResource="false" />
+```
+
+`AddFlowly` loads the project assembly at AppHost startup to discover queues. Only class-based `FlowlyConfiguration` (inheriting `Flowly.Configuration`) is supported — inline `AddFlowly()` registrations are not discoverable at design time.
+
+### Service project setup
+
+Since Aspire creates queues, set `CreateTopology = false` in each service project's `Program.cs`:
 
 ```csharp
-var azureServiceBus = builder.AddAzureServiceBus("AzureServiceBus").RunAsEmulator(...);
-var processor = builder.AddProject<Projects.MyProcessor>("processor");
+builder.AddFlowly<FlowlyConfiguration>(options => options.CreateTopology = false);
+```
 
-azureServiceBus.AddFlowly(processor); // discovers queues from FlowlyConfiguration
+Each service project must also call `builder.AddServiceDefaults()` and `app.MapDefaultEndpoints()` so the Aspire dashboard can collect health status and telemetry.
 
-processor
+### AppHost wiring
+
+Call `azureServiceBus.AddFlowly(project)` once per service project — the method discovers and registers all queues declared in that project's `FlowlyConfiguration`:
+
+```csharp
+using Flowly.AzureServiceBus.Aspire;
+
+var azureServiceBus = builder.AddAzureServiceBus("AzureServiceBus").RunAsEmulator();
+
+var receiver = builder.AddProject<Projects.MyProcessor_Receiver>("receiver");
+azureServiceBus.AddFlowly(receiver);  // discovers queues from Receiver's FlowlyConfiguration
+
+receiver
+    .WithReference(azureServiceBus)
+    .WaitFor(azureServiceBus);
+
+var sender = builder.AddProject<Projects.MyProcessor_Sender>("sender");
+sender
     .WithReference(azureServiceBus)
     .WaitFor(azureServiceBus);
 ```
 
-Requires `Flowly.AzureServiceBus.Aspire` in the AppHost project with `IsAspireProjectResource="false"`.
+### RPC call handlers require `InstanceName`
+
+When a sender project uses `AddCallSubmitter<TMessage>()`, it creates a reply queue named `{callQueue}.reply.{InstanceName}`. Declare `InstanceName` once by overriding it on the sender's `FlowlyConfiguration` — both the runtime and Aspire design-time discovery read it automatically:
+
+```csharp
+// Sender's FlowlyConfiguration.cs
+internal class FlowlyConfiguration : Configuration
+{
+    public override string? InstanceName => "sender";   // determines the reply queue name
+
+    public override void Configure(IFlowlyBuilder builder) { ... }
+}
+
+// Sender's Program.cs (runtime) — no InstanceName needed here
+builder.AddFlowly<FlowlyConfiguration>(options => options.CreateTopology = false);
+
+// AppHost Program.cs
+azureServiceBus.AddFlowly(receiver);  // main queue
+azureServiceBus.AddFlowly(sender);    // reply queue (InstanceName read from FlowlyConfiguration)
+```
+
+Without `InstanceName` overridden on the sender's `FlowlyConfiguration`, the reply queue is not registered and calls fail at runtime.
 
 ## Step 9 — Verify topology discovery works
 

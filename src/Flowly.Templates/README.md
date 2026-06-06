@@ -30,6 +30,7 @@ dotnet new flowlyapp --transport <transport> [options] -n <SolutionName>
 
 | Flag | Alias | Description |
 |------|-------|-------------|
+| `--callhandler` | `--call` | Scaffold the main message as an RPC-style call/response pair using `CallHandler` and `IMessageCaller` instead of the default fire-and-forget `MessageHandler`. `MyMessage` implements `IReturns<MyReturnMessage>`; the sender blocks on `IMessageCaller.Call` and prints each response. |
 | `--jobtracking` | `--jobs` | Add job state tracking. Adds `ProcessJobMessage`, `ProcessJobHandler`, `JobSubmitterService`, and a dedicated `JobTracker` infrastructure project. Requires a DB flag. Not applicable to InMemory (job state runs in `App`). |
 | `--deadlettertracking` | `--deadletter` | Add dead-letter tracking. Adds `DeadLetterSampleMessage`, `DeadLetterSampleMessageHandler` with `[RetryPolicy]`, and `FailingMessageSenderService`. Requires a DB flag. |
 
@@ -52,6 +53,15 @@ dotnet new flowlyapp --transport asb -n MyApp
 
 # Single-project InMemory solution (no broker required)
 dotnet new flowlyapp --transport inm -n MyApp
+
+# RPC-style call/response (RabbitMQ)
+dotnet new flowlyapp --transport rabbitmq --call -n MyApp
+
+# RPC-style call/response (ASB) — reply queue added to sbconfig.json automatically
+dotnet new flowlyapp --transport asb --call -n MyApp
+
+# RPC in a single in-process worker (InMemory)
+dotnet new flowlyapp --transport inm --call -n MyApp
 
 # RabbitMQ with job tracking (SQLite) and dead-letter tracking
 dotnet new flowlyapp --transport rabbitmq --jobs --deadletter --sqlite -n MyApp
@@ -100,6 +110,97 @@ dotnet run --project Sender     # or: dotnet run --project App
 dotnet run --project Receiver
 dotnet run --project JobTracker  # only when --jobs
 ```
+
+---
+
+### `flowlyaspireapp` — Scaffold a complete Aspire-based send/receive solution
+
+Generates a full Aspire solution with an AppHost, ServiceDefaults, a Messages contracts library, a Sender, and a Receiver — all wired for the chosen transport. OpenTelemetry is always enabled (the Aspire dashboard depends on it). No docker-compose or sbconfig.json required; Aspire manages all infrastructure.
+
+```bash
+dotnet new flowlyaspireapp --transport <transport> [options] -n <SolutionName>
+```
+
+#### Transport (required)
+
+| Value | Alias | Transport |
+|-------|-------|-----------|
+| `rabbitmq` | `rmq` | RabbitMQ |
+| `azureservicebus` | `asb` | Azure Service Bus |
+| `inmemory` | `inm` | In-Memory (no broker) |
+
+#### Features (optional)
+
+| Flag | Alias | Description |
+|------|-------|-------------|
+| `--callhandler` | `--call` | Scaffold the main message as an RPC-style call/response pair using `CallHandler` and `IMessageCaller`. |
+| `--jobtracking` | `--jobs` | Add job state tracking. Requires a DB flag. Job state is embedded in the Receiver (no separate project). |
+| `--deadlettertracking` | `--deadletter` | Add dead-letter tracking. Requires a DB flag. |
+
+#### Database backend (required when `--jobs` or `--deadletter` is used)
+
+| Flag | Database | Aspire resource |
+|------|----------|-----------------|
+| `--sqlserver` | SQL Server | Provisioned by AppHost |
+| `--postgres` | PostgreSQL | Provisioned by AppHost |
+| `--sqlite` | SQLite | File-based; no Aspire resource needed |
+
+#### Examples
+
+```bash
+# RabbitMQ with Aspire
+dotnet new flowlyaspireapp --transport rabbitmq -n MyApp
+
+# Azure Service Bus with Aspire
+dotnet new flowlyaspireapp --transport asb -n MyApp
+
+# InMemory with Aspire (single App project)
+dotnet new flowlyaspireapp --transport inm -n MyApp
+
+# RPC call/response with ASB
+dotnet new flowlyaspireapp --transport asb --call -n MyApp
+
+# RabbitMQ with job tracking (PostgreSQL) and dead-letter tracking
+dotnet new flowlyaspireapp --transport rabbitmq --jobs --deadletter --postgres -n MyApp
+
+# ASB with job tracking (SQL Server)
+dotnet new flowlyaspireapp --transport asb --jobs --sqlserver -n MyApp
+
+# InMemory with SQLite job tracking
+dotnet new flowlyaspireapp --transport inm --jobs --sqlite -n MyApp
+```
+
+#### What's generated
+
+**RabbitMQ / Azure Service Bus (baseline):**
+
+```
+MyApp/
+├── MyApp.slnx
+├── MyApp.AppHost/           ← Aspire orchestrator; provisions broker and optional DB
+├── MyApp.ServiceDefaults/   ← Standard Aspire OTel, health checks, service discovery
+├── MyApp.Messages/          ← Shared message contracts
+├── MyApp.Sender/            ← WebApplication; sends a message every second
+└── MyApp.Receiver/          ← WebApplication; receives and prints messages (+ job/DLQ tracking when requested)
+```
+
+**InMemory:**
+
+```
+MyApp/
+├── MyApp.slnx
+├── MyApp.AppHost/           ← Aspire orchestrator (no broker to provision)
+├── MyApp.ServiceDefaults/
+└── MyApp.App/               ← Single WebApplication; sends and receives in-process
+```
+
+After scaffolding, run the AppHost to start everything:
+
+```bash
+dotnet run --project MyApp.AppHost
+```
+
+The Aspire dashboard opens automatically and shows all services, health checks, logs, and traces.
 
 ---
 

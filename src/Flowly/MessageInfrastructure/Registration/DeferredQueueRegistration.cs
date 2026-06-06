@@ -16,9 +16,15 @@ namespace Flowly.MessageInfrastructure.Registration;
 ///     Defaults to null.
 /// </param>
 /// <param name="LockDuration">The duration for which a message is locked during processing. Defaults to null.</param>
+/// <param name="IsReplyQueue">
+///     When <see langword="true" />, the queue is a Flowly reply queue used to return call responses. Topology
+///     creators will declare a simple durable queue without DLX, retry queue, or dead-letter infrastructure.
+///     Defaults to <see langword="false" />.
+/// </param>
 public record DeferredQueueRegistration(
     string QueueName,
     bool RequiresSession = false,
     TimeSpan? DefaultMessageTimeToLive = null,
     bool? DeadLetterOnMessageExpiration = null,
-    TimeSpan? LockDuration = null);
+    TimeSpan? LockDuration = null,
+    bool IsReplyQueue = false);

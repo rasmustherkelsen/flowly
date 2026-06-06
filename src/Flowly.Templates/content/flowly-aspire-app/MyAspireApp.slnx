@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="MyAspireApp.AppHost/MyAspireApp.AppHost.csproj" />
+  <Project Path="MyAspireApp.ServiceDefaults/MyAspireApp.ServiceDefaults.csproj" />
+  <Project Path="MyAspireApp.Messages/MyAspireApp.Messages.csproj" />
+  <Project Path="MyAspireApp.Sender/MyAspireApp.Sender.csproj" />
+  <Project Path="MyAspireApp.Receiver/MyAspireApp.Receiver.csproj" />
+</Solution>

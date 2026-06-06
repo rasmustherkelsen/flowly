@@ -92,7 +92,7 @@ internal static class DockerComposeGenerator
     private static void AppendRabbitMqService(StringBuilder sb, int hostPort)
     {
         sb.AppendLine("  rabbitmq:");
-        sb.AppendLine("    image: rabbitmq:3-management");
+        sb.AppendLine("    image: rabbitmq:4-management");
         sb.AppendLine("    container_name: rabbitmq");
         sb.AppendLine("    ports:");
         sb.AppendLine($"      - \"{hostPort}:5672\"");

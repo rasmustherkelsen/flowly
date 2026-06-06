@@ -7,7 +7,7 @@ internal class QueueManager : IQueueManager
 {
     private readonly ConcurrentDictionary<string, DeferredQueueRegistration> _queues = new(StringComparer.OrdinalIgnoreCase);
 
-    private List<QueueDescription>? _queueDescriptions;
+    private List<IQueueDescription>? _queueDescriptions;
 
     public void RegisterQueue(DeferredQueueRegistration registration)
     {
@@ -23,14 +23,22 @@ internal class QueueManager : IQueueManager
     {
         if (_queueDescriptions == null)
         {
-            _queueDescriptions = new List<QueueDescription>();
+            _queueDescriptions = new List<IQueueDescription>();
             foreach (var registration in _queues.Values.OrderBy(x => x.QueueName, StringComparer.OrdinalIgnoreCase))
+            {
+                if (registration.IsReplyQueue)
+                {
+                    _queueDescriptions.Add(new ReplyQueueDescription(registration.QueueName));
+                    continue;
+                }
+
                 _queueDescriptions.Add(new QueueDescription(
                     registration.QueueName,
                     registration.DefaultMessageTimeToLive ?? TimeSpan.FromDays(1),
                     registration.DeadLetterOnMessageExpiration ?? true,
                     registration.LockDuration ?? TimeSpan.FromMinutes(5),
                     registration.RequiresSession));
+            }
         }
 
         return _queueDescriptions;

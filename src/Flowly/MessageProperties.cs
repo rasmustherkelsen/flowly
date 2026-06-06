@@ -25,6 +25,11 @@ namespace Flowly;
 /// <param name="Tracestate">
 ///     The W3C tracestate header value, propagated alongside <paramref name="Traceparent" />.
 /// </param>
+/// <param name="ReplyTo">
+///     The name of the reply queue to which the call handler should send its response. Set by the Flowly
+///     infrastructure when sending a call message via <see cref="IMessageCaller" />; read by
+///     <c>CallMessageHandlingStrategy</c> to route the response back to the originating caller.
+/// </param>
 public record MessageProperties(
     string MessageId,
     string CorrelationId,
@@ -32,7 +37,8 @@ public record MessageProperties(
     int RetryCount = 0,
     DateTimeOffset? ScheduledEnqueueTime = null,
     string? Traceparent = null,
-    string? Tracestate = null)
+    string? Tracestate = null,
+    string? ReplyTo = null)
 {
     /// <summary>
     ///     A default empty <see cref="MessageProperties" /> instance with empty strings for required fields. Used as a

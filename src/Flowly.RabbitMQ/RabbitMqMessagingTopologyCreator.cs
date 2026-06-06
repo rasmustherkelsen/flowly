@@ -25,6 +25,12 @@ internal class RabbitMqMessagingTopologyCreator(IRabbitMqConnectionPool connecti
 
     private static async Task DeclareQueueTopology(IChannel channel, IQueueDescription queue, CancellationToken cancellationToken)
     {
+        if (queue is IReplyQueueDescription)
+        {
+            await channel.QueueDeclareAsync(queue.Name, true, false, false, cancellationToken: cancellationToken);
+            return;
+        }
+
         var dlxName = $"{queue.Name}.dlx";
 
         await channel.ExchangeDeclareAsync(

@@ -62,14 +62,60 @@ public class FlowlyDesignTimeFactoryTests
         {
             Assert.ThrowsAny<Exception>(() => FlowlyDesignTimeFactory.DiscoverQueues(typeof(ConfigWithRequiredArgs)));
         }
+
+        [Fact]
+        public void WithConfigThatOverridesInstanceName_PropagatesInstanceNameToDiscoveryContainer()
+        {
+            FlowlyDesignTimeFactory.DiscoverQueues(typeof(CapturingOptionsConfig));
+
+            Assert.Equal("my-instance", CapturingOptionsConfig.CapturedInstanceName);
+        }
+
+        [Fact]
+        public void WithConfigOverridingInstanceName_ExplicitOptionsInstanceNameTakesPriority()
+        {
+            var options = new FlowlyOptions { InstanceName = "explicit-instance" };
+
+            FlowlyDesignTimeFactory.DiscoverQueues(typeof(CapturingOptionsConfig), options);
+
+            Assert.Equal("explicit-instance", CapturingOptionsConfig.CapturedInstanceName);
+        }
+
+        [Fact]
+        public void WithConfigNotOverridingInstanceName_DiscoveryContainerHasNullInstanceName()
+        {
+            FlowlyDesignTimeFactory.DiscoverQueues(typeof(SingleQueueConfig));
+
+            Assert.Null(SingleQueueConfig.CapturedInstanceName);
+        }
     }
 
     private sealed class SingleQueueConfig : FlowlyDesignTimeFactory, IFlowlyConfiguration
     {
+        public static string? CapturedInstanceName;
+
         public void Configure(IFlowlyBuilder builder)
         {
+            CapturedInstanceName = (builder.Services
+                .FirstOrDefault(s => s.ServiceType == typeof(FlowlyOptions) && s.ImplementationInstance is FlowlyOptions)
+                ?.ImplementationInstance as FlowlyOptions)?.InstanceName;
+
             builder.Services.AddProviderQueueManifest("test-provider", isPrimary: true, transportType: "Stub");
             builder.Services.AddDeferredQueueRegistration("test-provider", new DeferredQueueRegistration("orders"));
+        }
+    }
+
+    private sealed class CapturingOptionsConfig : FlowlyDesignTimeFactory, IFlowlyConfiguration
+    {
+        public override string? InstanceName => "my-instance";
+
+        public static string? CapturedInstanceName;
+
+        public void Configure(IFlowlyBuilder builder)
+        {
+            CapturedInstanceName = (builder.Services
+                .FirstOrDefault(s => s.ServiceType == typeof(FlowlyOptions) && s.ImplementationInstance is FlowlyOptions)
+                ?.ImplementationInstance as FlowlyOptions)?.InstanceName;
         }
     }
 

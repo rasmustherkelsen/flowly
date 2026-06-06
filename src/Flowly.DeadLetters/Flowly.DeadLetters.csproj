@@ -5,7 +5,7 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <PackageId>Flowly.DeadLetters</PackageId>
-        <Description>Dead letter tracking core for Flowly. Deadletter tracking requires an underlying database so take your dependency on Flowly.DeadLetters.X where X is your database abstraction.</Description>
+        <Description>Dead letter tracking core for Flowly. Requires a database backend: Flowly.DeadLetters.SqlServer, Flowly.DeadLetters.Postgres, or Flowly.DeadLetters.SQLite.</Description>
         <PackageReadmeFile>README.md</PackageReadmeFile>
     </PropertyGroup>
 

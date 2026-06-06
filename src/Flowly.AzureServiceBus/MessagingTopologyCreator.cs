@@ -26,14 +26,22 @@ internal class MessagingTopologyCreator(ServiceBusClient serviceBusClient, Servi
         foreach (var queue in queueDescriptions)
         {
             var exists = await adminClient.QueueExistsAsync(queue.Name, cancellationToken);
-            if (!exists.Value)
-                await adminClient.CreateQueueAsync(new CreateQueueOptions(queue.Name)
-                {
-                    DefaultMessageTimeToLive = queue.DefaultMessageTimeToLive,
-                    DeadLetteringOnMessageExpiration = queue.DeadLetterOnMessageExpiration,
-                    LockDuration = queue.LockDuration,
-                    RequiresSession = queue.RequiresSession
-                }, cancellationToken);
+            if (exists.Value)
+                continue;
+
+            if (queue is IReplyQueueDescription)
+            {
+                await adminClient.CreateQueueAsync(new CreateQueueOptions(queue.Name), cancellationToken);
+                continue;
+            }
+
+            await adminClient.CreateQueueAsync(new CreateQueueOptions(queue.Name)
+            {
+                DefaultMessageTimeToLive = queue.DefaultMessageTimeToLive,
+                DeadLetteringOnMessageExpiration = queue.DeadLetterOnMessageExpiration,
+                LockDuration = queue.LockDuration,
+                RequiresSession = queue.RequiresSession
+            }, cancellationToken);
         }
     }
 

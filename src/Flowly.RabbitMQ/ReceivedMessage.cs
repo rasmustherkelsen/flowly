@@ -19,7 +19,8 @@ internal class RabbitMqReceivedMessage<TMessage>(IChannel channel, BasicDeliverE
         args.BasicProperties.CorrelationId ?? string.Empty,
         RetryCount: GetRetryCount(args.BasicProperties),
         Traceparent: GetStringHeader(args.BasicProperties, "traceparent"),
-        Tracestate: GetStringHeader(args.BasicProperties, "tracestate"));
+        Tracestate: GetStringHeader(args.BasicProperties, "tracestate"),
+        ReplyTo: string.IsNullOrEmpty(args.BasicProperties.ReplyTo) ? null : args.BasicProperties.ReplyTo);
 
     public Task Complete(CancellationToken cancellationToken = default)
     {

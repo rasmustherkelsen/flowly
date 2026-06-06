@@ -28,6 +28,21 @@ public class FlowlyOptions
     /// </summary>
     public bool EnableTelemetry { get; set; } = true;
 
+    /// <summary>
+    ///     The name of this application instance. Required when registering a call submitter with
+    ///     <c>AddCallSubmitter&lt;TMessage&gt;()</c>. Used to derive a unique reply queue name in the format
+    ///     <c>{callQueue}-reply-{InstanceName}</c>. Flowly throws <see cref="InvalidOperationException" /> at
+    ///     startup if a call submitter is registered without this value being set.
+    /// </summary>
+    public string? InstanceName { get; set; }
+
+    /// <summary>
+    ///     The global default timeout for <see cref="IMessageCaller.Call{TMessage,TReturn}" /> operations. Applied
+    ///     when no per-submitter timeout is configured via <see cref="CallSubmitterOptions.Timeout" />.
+    ///     Defaults to 2 minutes.
+    /// </summary>
+    public TimeSpan MessageCallTimeout { get; set; } = TimeSpan.FromMinutes(2);
+
     internal Type TopologyNameResolverType { get; private set; } = typeof(KebabCaseTopologyNameResolver);
 
     /// <summary>

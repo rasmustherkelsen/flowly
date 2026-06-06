@@ -1,9 +1,9 @@
 ---
 name: create-message-handler
-description: Scaffold a new Flowly message handler — message contract, handler class, registration snippet, and unit tests. Use when the user asks to add a new queue-based message handler to a Flowly project.
+description: Scaffold a new Flowly message handler — message contract, handler class, and registration snippet. Use when the user asks to add a new queue-based message handler to a Flowly project.
 arguments:
   - name: messageName
-    description: PascalCase message class name, including the Message suffix. Example: OrderPlacedMessage
+    description: "PascalCase message class name, including the Message suffix. Example: OrderPlacedMessage"
     required: true
 ---
 
@@ -89,51 +89,9 @@ If the project also needs to **send** this message (not just receive), also add:
 builder.AddMessageSubmitter<$0>();
 ```
 
-## Step 5 — Write unit tests
-
-Before writing tests, look for existing test files in the project and follow whatever conventions are already in use — test framework, file location, class structure, naming style. The example below reflects one common convention; adapt it to match the project.
-
-Create a test file for `$0Handler`.
-
-```csharp
-using Flowly;
-
-namespace <Project>.Tests.Handlers;
-
-public class $0HandlerTests
-{
-    public class Handle
-    {
-        [Fact]
-        public async Task WithValidMessage_CompletesSuccessfully()
-        {
-            var handler = new $0Handler();
-            var context = new FakeMessageContext<$0>(new $0(<example args>));
-
-            await handler.Handle(context);
-
-            // assert observable side-effects, e.g. repository calls, published events
-        }
-    }
-}
-```
-
-Use a `FakeMessageContext<T>` fake in `tests/<Project>.Tests/Fakes/` if it does not already exist:
-
-```csharp
-namespace <Project>.Tests.Fakes;
-
-internal class FakeMessageContext<T>(T message) : IMessageContext<T>
-{
-    public T Message => message;
-    // implement remaining IMessageContext members as no-ops
-}
-```
-
 ## Checklist
 
 - [ ] Message contract record created
 - [ ] Handler class created (`internal`, primary constructor for any dependencies)
 - [ ] Registered with `AddMessageHandler` in `FlowlyConfiguration`
 - [ ] Submitter added with `AddMessageSubmitter` in `FlowlyConfiguration` if this project also sends the message
-- [ ] Unit test created (following the project's existing test conventions)

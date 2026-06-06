@@ -79,5 +79,6 @@ public class FlowlyOptionsTests
         public string ResolveQueueName<TMessage>() => "test-queue";
         public string ResolveEventName<TEvent>() => "test-topic";
         public string ResolveSubscriptionName<THandler>() => "test-subscription";
+        public string ResolveReplyQueueName(string callQueueName, string instanceName) => $"{callQueueName}-reply-{instanceName}";
     }
 }

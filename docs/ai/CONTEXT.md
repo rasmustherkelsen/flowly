@@ -153,6 +153,45 @@ Register: `.AddJobHandler<MyJobMessage, MyJobHandler>()`
 
 Job handlers support retry but NOT dead letter tracking. The job DB record is the failure artifact.
 
+#### Call handler (RPC-style blocking request/response)
+
+The message contract implements `IReturns<TReturn>`:
+```csharp
+public record ReturnMessage(string ReturnValue);
+public record CallMessage(string Payload) : IReturns<ReturnMessage>;
+```
+
+Handler inherits `CallHandler<TMessage, TReturn>`:
+```csharp
+public class MyCallHandler : CallHandler<CallMessage, ReturnMessage>
+{
+    protected override Task<ReturnMessage> Handle(IMessageContext<CallMessage> ctx)
+        => Task.FromResult(new ReturnMessage($"echo: {ctx.Message.Payload}"));
+}
+```
+
+Register on the receiver: `.AddCallHandler<CallMessage, MyCallHandler>()`
+
+Supports the same attributes and `Configure` overrides as `MessageHandler<T>` (retry policy, queue name, concurrency).
+
+**Sender side** — set `InstanceName` and register a call submitter:
+```csharp
+// In AddFlowly options:
+options.InstanceName = "my-service";  // required — used to name the reply queue
+
+// In FlowlyConfiguration.Configure:
+builder.AddCallSubmitter<CallMessage>();
+// Optional per-submitter timeout (overrides FlowlyOptions.MessageCallTimeout default of 2 min):
+builder.AddCallSubmitter<CallMessage>(opts => opts.Timeout = TimeSpan.FromSeconds(30));
+```
+
+Inject `IMessageCaller` and call:
+```csharp
+ReturnMessage response = await caller.Call<CallMessage, ReturnMessage>(new CallMessage("hi"), ct);
+```
+
+**Important:** Attributes on `TReturn` (`[QueueName]`, `[RetryPolicy]`, `[ProviderAffinity]`, etc.) are **silently ignored** on the reply path. They only apply if `TReturn` is also registered as a normal handler elsewhere.
+
 ---
 
 ### 3. Sending Messages
@@ -542,6 +581,12 @@ flowly azure-service-bus aspire-code \
 
 Multiple `--project` flags aggregate queues across projects.
 
+**Standard Docker images** — always use these exact image tags when writing or generating Docker Compose files:
+
+| Service | Image |
+|---|---|
+| RabbitMQ (with management UI) | `rabbitmq:4-management` |
+
 ---
 
 ### 12. Project Templates (`Flowly.Templates`)
@@ -551,6 +596,35 @@ Install the template pack once to scaffold new Flowly services with `dotnet new`
 ```bash
 dotnet new install Flowly.Templates
 ```
+
+#### `flowlyaspireapp` — scaffold a complete Aspire-based send/receive solution
+
+Generates a full .NET Aspire solution — AppHost, ServiceDefaults, Messages library, Sender, and Receiver — pre-wired for the chosen transport. OpenTelemetry is **always enabled** (unconditional; the Aspire dashboard depends on it). No docker-compose or sbconfig.json is generated; Aspire provisions and manages all infrastructure.
+
+```bash
+dotnet new flowlyaspireapp --transport <value> [options] -n <SolutionName>
+```
+
+| Transport | Alias | Generated output |
+|---|---|---|
+| `rabbitmq` | `rmq` | AppHost + ServiceDefaults + Messages + Sender + Receiver |
+| `azureservicebus` | `asb` | same; AppHost uses `AddFlowly(receiver)` to discover queues |
+| `inmemory` | `inm` | AppHost + ServiceDefaults + `App/` (single-project, in-process) |
+
+Supports the same optional flags as `flowlyapp` — `--callhandler`/`--call`, `--jobtracking`/`--jobs`, `--deadlettertracking`/`--deadletter`, `--sqlserver`, `--postgres`, `--sqlite` — with these differences:
+
+- Job/dead-letter tracking is embedded in the **Receiver** (no separate `JobTracker` project).
+- `--sqlserver` / `--postgres` causes the AppHost to provision the DB resource and pass it to the Receiver via `WithReference`.
+- `--sqlite` does not require an Aspire resource; the connection string is in `appsettings.Development.json`.
+- For ASB, `CreateTopology = false` (Aspire creates queues via `azureServiceBus.AddFlowly(receiver)`).
+- For RabbitMQ, `CreateTopology = true` (Aspire Hosting does not manage RabbitMQ queue topology).
+- For `--call` with ASB, `azureServiceBus.AddFlowly(sender, instanceName: "sender")` is also called to register the reply queue. The `instanceName` must match `FlowlyOptions.InstanceName` set in the sender's `Program.cs`.
+
+Run everything with: `dotnet run --project MyApp.AppHost`
+
+**Aspire SDK version:** `Aspire.AppHost.Sdk` is referenced without a pinned version so the SDK resolver uses the version from the installed Aspire workload. `ServiceDefaults/Extensions.cs` is a verbatim copy of the Microsoft-generated boilerplate (Aspire 13.3.3) and can be regenerated with `dotnet new aspire-servicedefaults` if Aspire upgrades.
+
+---
 
 #### `flowlyapp` — scaffold a complete send/receive solution
 
@@ -566,10 +640,11 @@ dotnet new flowlyapp --transport <value> [options] -n <SolutionName>
 | `azureservicebus` | `asb` | same + `sbconfig.json` |
 | `inmemory` | `inm` | `MyApp.slnx` + `App/` (single-project, no docker) |
 
-Optional flags (same DB backend flags as `flowly`):
+Optional flags:
 
 | Flag | Alias | Description |
 |---|---|---|
+| `--callhandler` | `--call` | Scaffold the main message as an RPC-style call/response. `MyMessage` implements `IReturns<MyReturnMessage>`; Sender uses `IMessageCaller.Call` and blocks for the response; Receiver uses `CallHandler<MyMessage, MyReturnMessage>`. Sender `Program.cs` sets `options.InstanceName = "sender"`. For ASB, `sbconfig.json` includes the reply queue `my.reply.sender`. |
 | `--jobtracking` | `--jobs` | Add job state tracking. Adds `ProcessJobMessage`/`ProcessJobHandler`/`JobSubmitterService` and a dedicated `JobTracker` infrastructure project (RabbitMQ/ASB). InMemory keeps everything in `App`. Requires `--sqlserver`, `--postgres`, or `--sqlite`. |
 | `--deadlettertracking` | `--deadletter` | Add dead-letter tracking. Adds `DeadLetterSampleMessage`/`DeadLetterSampleMessageHandler` (with `[RetryPolicy]`) and `FailingMessageSenderService`. Requires a DB flag. |
 | `--sqlserver` | | SQL Server backend |
@@ -670,6 +745,15 @@ backendProcessor
 ```
 
 `AddFlowly(project)` loads the project assembly via an isolated `AssemblyLoadContext`, finds the `Configuration` subclass (a.k.a. `Flowly.Configuration`), and collects `DeferredQueueRegistration` and `DeferredEventRegistration` instances automatically. Queue properties (lock duration, TTL, dead-lettering, session) are set on the emulator resources via `WithProperties`.
+
+**RPC call handlers:** When a sender uses `AddCallSubmitter<TMessage>()`, it owns a reply queue named `{callQueue}.reply.{InstanceName}`. The emulator must have this queue pre-created. Call `AddFlowly` for the sender project too, and pass `instanceName` matching `FlowlyOptions.InstanceName` set in the sender's `Program.cs`:
+
+```csharp
+azureServiceBus.AddFlowly(receiver);                         // main queue
+azureServiceBus.AddFlowly(sender, instanceName: "sender");   // reply queue
+```
+
+Without `instanceName`, topology discovery runs with no `InstanceName` context and `AddCallSubmitter` throws `InvalidOperationException: FlowlyOptions.InstanceName must be set` at AppHost startup.
 
 For plain Docker Compose, use `Flowly.Tool` to generate `emulator-config.json` for the Azure Service Bus emulator container.
 

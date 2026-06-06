@@ -36,6 +36,9 @@ internal class MessageBusSender(ServiceBusSender serviceBusSender, long? maxMess
         if (!string.IsNullOrEmpty(messageProperties.CorrelationId))
             serviceBusMessage.CorrelationId = messageProperties.CorrelationId;
 
+        if (!string.IsNullOrEmpty(messageProperties.ReplyTo))
+            serviceBusMessage.ReplyTo = messageProperties.ReplyTo;
+
         if (!string.IsNullOrEmpty(messageProperties.SessionId))
             serviceBusMessage.SessionId = messageProperties.SessionId;
 

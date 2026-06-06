@@ -285,6 +285,42 @@ public class AddFlowlyExtensionTests
         }
 
         [Fact]
+        public void WhenConfigOverridesInstanceName_SetsFlowlyOptionsInstanceNameAutomatically()
+        {
+            var hostApplicationBuilder = new StubHostApplicationBuilder();
+
+            hostApplicationBuilder.AddFlowly<ConfigWithInstanceNameOverride>();
+
+            using var serviceProvider = hostApplicationBuilder.Services.BuildServiceProvider();
+            var options = serviceProvider.GetRequiredService<FlowlyOptions>();
+            Assert.Equal("my-service", options.InstanceName);
+        }
+
+        [Fact]
+        public void WhenDelegateAlsoSetsInstanceName_DelegateTakesPriorityOverClassProperty()
+        {
+            var hostApplicationBuilder = new StubHostApplicationBuilder();
+
+            hostApplicationBuilder.AddFlowly<ConfigWithInstanceNameOverride>(o => o.InstanceName = "from-delegate");
+
+            using var serviceProvider = hostApplicationBuilder.Services.BuildServiceProvider();
+            var options = serviceProvider.GetRequiredService<FlowlyOptions>();
+            Assert.Equal("from-delegate", options.InstanceName);
+        }
+
+        [Fact]
+        public void WhenConfigDoesNotOverrideInstanceName_FlowlyOptionsInstanceNameIsNull()
+        {
+            var hostApplicationBuilder = new StubHostApplicationBuilder();
+
+            hostApplicationBuilder.AddFlowly<RecordingFlowlyConfiguration>();
+
+            using var serviceProvider = hostApplicationBuilder.Services.BuildServiceProvider();
+            var options = serviceProvider.GetRequiredService<FlowlyOptions>();
+            Assert.Null(options.InstanceName);
+        }
+
+        [Fact]
         public void CustomTopologyNameResolver_IsRegistered()
         {
             var hostApplicationBuilder = new StubHostApplicationBuilder();
@@ -362,6 +398,14 @@ public class AddFlowlyExtensionTests
         public string ResolveQueueName<TMessage>() => "custom-queue";
         public string ResolveEventName<TEvent>() => "custom-event";
         public string ResolveSubscriptionName<THandler>() => "custom-subscription";
+        public string ResolveReplyQueueName(string callQueueName, string instanceName) => $"{callQueueName}-reply-{instanceName}";
+    }
+
+    private sealed class ConfigWithInstanceNameOverride : FlowlyDesignTimeFactory, IFlowlyConfiguration
+    {
+        public override string? InstanceName => "my-service";
+
+        public void Configure(IFlowlyBuilder builder) { }
     }
 
     private sealed class RecordingFlowlyConfiguration : FlowlyDesignTimeFactory, IFlowlyConfiguration

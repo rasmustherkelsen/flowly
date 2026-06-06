@@ -34,7 +34,11 @@ internal class FlowlyConfiguration : Configuration
         builder.AddSQLiteDeadLetterTracking(builder.Configuration.GetConnectionString("FlowlyDeadLetters")!, enableMigrations: true);
 #endif
 
+#if (UseCallHandler)
+        builder.AddCallHandler<MyMessage, MyMessageHandler>();
+#else
         builder.AddMessageHandler<MyMessage, MyMessageHandler>();
+#endif
 #if (UseJobTracking)
 
         builder.AddJobHandler<ProcessJobMessage, ProcessJobHandler>();

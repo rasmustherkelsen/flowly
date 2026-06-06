@@ -13,6 +13,10 @@ namespace Sender;
 
 internal class FlowlyConfiguration : Configuration
 {
+#if (UseCallHandler)
+    public override string? InstanceName => "sender";
+
+#endif
     public override void Configure(IFlowlyBuilder builder)
     {
 #if (UseRabbitMQ)
@@ -20,8 +24,12 @@ internal class FlowlyConfiguration : Configuration
 #else
         builder.UseAzureServiceBus(connection: "AzureServiceBus");
 #endif
-        
+
+#if (UseCallHandler)
+        builder.AddCallSubmitter<MyMessage>();
+#else
         builder.AddMessageSubmitter<MyMessage>();
+#endif
 #if (UseDeadLetterTracking)
         builder.AddMessageSubmitter<DeadLetterSampleMessage>();
 #endif

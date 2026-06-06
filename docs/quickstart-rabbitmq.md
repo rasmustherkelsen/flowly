@@ -194,7 +194,7 @@ The generated file:
 ```yaml
 services:
   rabbitmq:
-    image: rabbitmq:3-management
+    image: rabbitmq:4-management
     container_name: rabbitmq
     ports:
       - "5672:5672"

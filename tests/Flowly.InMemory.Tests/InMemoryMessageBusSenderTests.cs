@@ -240,5 +240,31 @@ public class InMemoryMessageBusSenderTests
         }
     }
 
+    public class ReplyTo
+    {
+        [Fact]
+        public async Task WithReplyTo_StoresReplyToInApplicationProperties()
+        {
+            var (broker, sender) = CreateQueueSender();
+            var props = MessageProperties.Empty with { ReplyTo = "reply-queue" };
+
+            await sender.SendMessage(new TestMessage("x"), props);
+
+            broker.GetQueue("test-queue").Reader.TryRead(out var envelope);
+            Assert.Equal("reply-queue", envelope!.ApplicationProperties["replyTo"]);
+        }
+
+        [Fact]
+        public async Task WithoutReplyTo_DoesNotAddReplyToKey()
+        {
+            var (broker, sender) = CreateQueueSender();
+
+            await sender.SendMessage(new TestMessage("x"), MessageProperties.Empty);
+
+            broker.GetQueue("test-queue").Reader.TryRead(out var envelope);
+            Assert.False(envelope!.ApplicationProperties.ContainsKey("replyTo"));
+        }
+    }
+
     private record TestMessage(string Value);
 }

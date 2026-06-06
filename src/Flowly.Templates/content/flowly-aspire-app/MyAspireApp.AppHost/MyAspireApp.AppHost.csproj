@@ -1,0 +1,37 @@
+<Project Sdk="Aspire.AppHost.Sdk/13.3.3">
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <IsAspireHost>true</IsAspireHost>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <!--#if (UseRabbitMQ)-->
+        <PackageReference Include="Aspire.Hosting.RabbitMQ" Version="13.3.3" />
+        <!--#endif-->
+        <!--#if (UseAzureServiceBus)-->
+        <PackageReference Include="Aspire.Hosting.Azure.ServiceBus" Version="13.3.3" />
+        <PackageReference Include="Flowly.AzureServiceBus.Aspire" Version="1.1.0" />
+        <!--#endif-->
+        <!--#if (NeedsSqlServerInfrastructure)-->
+        <PackageReference Include="Aspire.Hosting.SqlServer" Version="13.3.3" />
+        <!--#endif-->
+        <!--#if (NeedsPostgresInfrastructure)-->
+        <PackageReference Include="Aspire.Hosting.PostgreSQL" Version="13.3.3" />
+        <!--#endif-->
+    </ItemGroup>
+
+    <ItemGroup>
+        <!--#if (!UseInMemory)-->
+        <ProjectReference Include="..\MyAspireApp.Sender\MyAspireApp.Sender.csproj" />
+        <ProjectReference Include="..\MyAspireApp.Receiver\MyAspireApp.Receiver.csproj" />
+        <!--#endif-->
+        <!--#if (UseInMemory)-->
+        <ProjectReference Include="..\MyAspireApp.App\MyAspireApp.App.csproj" />
+        <!--#endif-->
+    </ItemGroup>
+
+</Project>

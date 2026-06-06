@@ -73,6 +73,9 @@ internal class InMemoryMessageBusSender(
         else if (Activity.Current?.TraceStateString is { Length: > 0 } actTs)
             props["tracestate"] = actTs;
 
+        if (!string.IsNullOrEmpty(messageProperties.ReplyTo))
+            props["replyTo"] = messageProperties.ReplyTo;
+
         var messageId = !string.IsNullOrEmpty(messageProperties.MessageId)
             ? messageProperties.MessageId
             : Guid.NewGuid().ToString();

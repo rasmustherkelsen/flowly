@@ -78,6 +78,23 @@
       "type": "computed",
       "value": "(deadlettertracking || deadletter)"
     },
+    "callhandler": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "Call handler (RPC)",
+      "description": "Scaffold the main message as an RPC-style call/response pair using CallHandler and IMessageCaller instead of the default fire-and-forget MessageHandler."
+    },
+    "call": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "description": "Alias for --callhandler."
+    },
+    "UseCallHandler": {
+      "type": "computed",
+      "value": "(callhandler || call)"
+    },
     "UseDatabase": {
       "type": "computed",
       "value": "(UseJobTracking || UseDeadLetterTracking)"

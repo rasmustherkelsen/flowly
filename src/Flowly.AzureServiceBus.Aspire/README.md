@@ -28,6 +28,25 @@ backendProcessor
     .WaitFor(azureServiceBus);
 ```
 
+## RPC Call Handlers (AddCallSubmitter)
+
+When a service registers an RPC call submitter with `AddCallSubmitter<TMessage>()`, it creates a reply queue named `{callQueue}.reply.{InstanceName}`. The emulator must have this queue pre-created, so call `AddFlowly` for the **sender** project too — and pass the `instanceName` that matches `FlowlyOptions.InstanceName` set in the sender's `Program.cs`:
+
+```csharp
+// Sender's Program.cs (runtime)
+builder.AddFlowly<FlowlyConfiguration>(options =>
+{
+    options.CreateTopology = false;
+    options.InstanceName = "sender";   // determines the reply queue name
+});
+
+// AppHost Program.cs
+azureServiceBus.AddFlowly(receiver);                         // registers the main queue
+azureServiceBus.AddFlowly(sender, instanceName: "sender");   // registers the reply queue
+```
+
+Without `instanceName`, `AddFlowly` cannot form the correct reply queue name at design time and the call will fail at runtime because the queue does not exist in the emulator.
+
 ## Explicit Topology
 
 For services that use inline `AddFlowly()` (no `FlowlyConfiguration` subclass), declare topology explicitly:
