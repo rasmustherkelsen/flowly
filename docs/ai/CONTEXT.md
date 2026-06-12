@@ -22,6 +22,7 @@ This document gives an AI assistant the context needed to work effectively in th
 ├── Flowly.RabbitMQ/                 # RabbitMQ transport implementation
 ├── Flowly.InMemory/                 # In-memory transport (channels; no broker required)
 ├── Flowly.OpenTelemetry/            # OpenTelemetry metrics and traces
+├── Flowly.Dashboard/                # Embedded ASP.NET Core middleware dashboard (management UI at /flowly)
 ├── Flowly.Jobs/                     # Job tracking, CRON scheduling, job state DB
 ├── Flowly.Jobs.SqlServer/           # SQL Server backend for job state tracking
 ├── Flowly.Jobs.Postgres/            # PostgreSQL backend for job state tracking
@@ -611,7 +612,7 @@ dotnet new flowlyaspireapp --transport <value> [options] -n <SolutionName>
 | `azureservicebus` | `asb` | same; AppHost uses `AddFlowly(receiver)` to discover queues |
 | `inmemory` | `inm` | AppHost + ServiceDefaults + `App/` (single-project, in-process) |
 
-Supports the same optional flags as `flowlyapp` — `--callhandler`/`--call`, `--jobtracking`/`--jobs`, `--deadlettertracking`/`--deadletter`, `--sqlserver`, `--postgres`, `--sqlite` — with these differences:
+Supports the same optional flags as `flowlyapp` — `--callhandler`/`--call`, `--jobtracking`/`--jobs`, `--deadlettertracking`/`--deadletter`, `--sqlserver`, `--postgres`, `--sqlite`, `--dashboard` — with these differences:
 
 - Job/dead-letter tracking is embedded in the **Receiver** (no separate `JobTracker` project).
 - `--sqlserver` / `--postgres` causes the AppHost to provision the DB resource and pass it to the Receiver via `WithReference`.
@@ -647,13 +648,14 @@ Optional flags:
 | `--callhandler` | `--call` | Scaffold the main message as an RPC-style call/response. `MyMessage` implements `IReturns<MyReturnMessage>`; Sender uses `IMessageCaller.Call` and blocks for the response; Receiver uses `CallHandler<MyMessage, MyReturnMessage>`. Sender `Program.cs` sets `options.InstanceName = "sender"`. For ASB, `sbconfig.json` includes the reply queue `my.reply.sender`. |
 | `--jobtracking` | `--jobs` | Add job state tracking. Adds `ProcessJobMessage`/`ProcessJobHandler`/`JobSubmitterService` and a dedicated `JobTracker` infrastructure project (RabbitMQ/ASB). InMemory keeps everything in `App`. Requires `--sqlserver`, `--postgres`, or `--sqlite`. |
 | `--deadlettertracking` | `--deadletter` | Add dead-letter tracking. Adds `DeadLetterSampleMessage`/`DeadLetterSampleMessageHandler` (with `[RetryPolicy]`) and `FailingMessageSenderService`. Requires a DB flag. |
+| `--dashboard` | | Scaffold a standalone `Dashboard/` project — a minimal `WebApplication` that calls `AddFlowlyDashboard()` / `UseFlowlyDashboard()` and serves the management UI at `/flowly`. The Receiver stays a pure background worker. For InMemory the dashboard is embedded in `App/` instead. |
 | `--sqlserver` | | SQL Server backend |
 | `--postgres` | | PostgreSQL backend |
 | `--sqlite` | | SQLite backend |
 
 Connection string names: `FlowlyJobs` (job tracking), `FlowlyDeadLetters` (dead-letter tracking).
 
-After scaffolding: `docker compose up -d` (skip for SQLite/InMemory), then `dotnet run --project Sender` / `dotnet run --project Receiver` / `dotnet run --project JobTracker` (when `--jobs`).
+After scaffolding: `docker compose up -d` (skip for SQLite/InMemory), then `dotnet run --project Sender` / `dotnet run --project Receiver` / `dotnet run --project JobTracker` (when `--jobs`) / `dotnet run --project Dashboard` (when `--dashboard`, non-InMemory).
 
 ---
 

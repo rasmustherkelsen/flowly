@@ -5,4 +5,7 @@
   <!--#if (UseJobTracking)-->
   <Project Path="JobTracker/JobTracker.csproj" />
   <!--#endif-->
+  <!--#if (UseDashboard)-->
+  <Project Path="Dashboard/Dashboard.csproj" />
+  <!--#endif-->
 </Solution>

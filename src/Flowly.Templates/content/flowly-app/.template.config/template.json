@@ -136,6 +136,17 @@
       "type": "computed",
       "value": "(UseSqlServer || UsePostgres || UseSQLite)"
     },
+    "dashboard": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "Dashboard",
+      "description": "Scaffold a standalone Dashboard project hosting the Flowly management UI at /flowly. For InMemory transport the dashboard is embedded in App instead."
+    },
+    "UseDashboard": {
+      "type": "computed",
+      "value": "dashboard"
+    },
     "NeedsSqlServerInfrastructure": {
       "type": "computed",
       "value": "(UseDatabase && UseSqlServer)"
@@ -177,6 +188,24 @@
         "low": 7000,
         "high": 7300
       }
+    },
+    "DashboardHttpPort": {
+      "type": "generated",
+      "generator": "port",
+      "replaces": "5080",
+      "parameters": {
+        "low": 5000,
+        "high": 5300
+      }
+    },
+    "DashboardHttpsPort": {
+      "type": "generated",
+      "generator": "port",
+      "replaces": "7080",
+      "parameters": {
+        "low": 7000,
+        "high": 7300
+      }
     }
   },
   "sources": [
@@ -195,7 +224,7 @@
         {
           "condition": "(UseInMemory)",
           "rename": { "MyFlowlyApp-single.slnx": "MyFlowlyApp.slnx" },
-          "exclude": [ "MyFlowlyApp.slnx", "docker-compose-rabbitmq.yml", "docker-compose-asb.yml", "sbconfig.json", "Messages/**", "Sender/**", "Receiver/**", "JobTracker/**" ]
+          "exclude": [ "MyFlowlyApp.slnx", "docker-compose-rabbitmq.yml", "docker-compose-asb.yml", "sbconfig.json", "Messages/**", "Sender/**", "Receiver/**", "JobTracker/**", "Dashboard/**" ]
         },
         {
           "condition": "(!UseJobTracking)",
@@ -219,6 +248,10 @@
             "App/Handlers/DeadLetterSampleMessageHandler.cs",
             "App/Services/FailingMessageSenderService.cs"
           ]
+        },
+        {
+          "condition": "(!UseDashboard)",
+          "exclude": [ "Dashboard/**" ]
         }
       ]
     }

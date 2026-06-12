@@ -136,6 +136,17 @@
       "type": "computed",
       "value": "(UseSqlServer || UsePostgres || UseSQLite)"
     },
+    "dashboard": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "Dashboard",
+      "description": "Add the embedded Flowly Dashboard to the receiver (or App for InMemory). Mounts a management UI at /flowly."
+    },
+    "UseDashboard": {
+      "type": "computed",
+      "value": "dashboard"
+    },
     "NeedsSqlServerInfrastructure": {
       "type": "computed",
       "value": "(UseDatabase && UseSqlServer)"

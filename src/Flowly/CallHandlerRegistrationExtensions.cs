@@ -99,6 +99,9 @@ public static class CallHandlerRegistrationExtensions
 
         flowlyBuilder.Services.TryAddSingleton<IMessageCaller, MessageCaller>();
 
+        FlowlySubmitterManifest.GetOrCreate(flowlyBuilder.Services)
+            .Add(new DeferredSubmitterRegistration(typeof(TMessage), callQueueName, SubmitterKind.Call));
+
         return flowlyBuilder;
     }
 

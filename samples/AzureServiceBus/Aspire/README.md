@@ -9,10 +9,9 @@ Full-featured Flowly sample using Azure Service Bus with .NET Aspire. Demonstrat
 | `MessageContracts` | Shared message contracts (`ProcessOrder`, `RebuildIndexMessage`, `SomeQueryMessage`, `OrderProcessedEvent`) |
 | `BackendProcessor` | Handles all messages and publishes events; owns queue topology via `BackendProcessorFlowlyConfiguration` |
 | `BackendFinanceProcessor` | Subscribes to `OrderProcessedEvent` to write orders to the accounting system |
-| `Api` | HTTP API that submits jobs and messages, reads job state and dead letters |
+| `Api` | Hosts the embedded Flowly Dashboard at `/flowly` |
 | `AzureServiceBusAspire.AppHost` | Aspire host: wires up ASB emulator, SQL Server, and all projects |
 | `AzureServiceBusAspire.ServiceDefaults` | Shared Aspire service defaults (logging, health checks, OTel) |
-| `Dashboard` | Next.js (MUI) web app for submitting messages, monitoring jobs, managing dead letters, and triggering recurring jobs |
 
 ## What it demonstrates
 
@@ -23,14 +22,13 @@ Full-featured Flowly sample using Azure Service Bus with .NET Aspire. Demonstrat
 - **Fan-out events** (`OrderProcessedEvent`): after completing an order, `BackendProcessor` raises the event; both `OrderProcessedEventHandler` (BackendProcessor) and `FinanceOrderProcessedEventHandler` (BackendFinanceProcessor) receive it independently
 - **OpenTelemetry** metrics and traces via `AddFlowlyInstrumentation()`
 - **Queue topology auto-registration** via `Flowly.AzureServiceBus.Aspire` — queues and event subscriptions are created in the emulator automatically at AppHost startup
-- **Next.js dashboard** (`Dashboard/`) — UI for submitting orders, viewing live job progress, inspecting and requeueing dead letters, and manually triggering recurring jobs
+- **Embedded dashboard** (`Flowly.Dashboard`) — management UI served at `http://<api-host>/flowly`; submits messages, monitors jobs, manages dead letters, and triggers recurring jobs
 
 ## Prerequisites
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)
 - [.NET Aspire workload](https://learn.microsoft.com/en-us/dotnet/aspire/fundamentals/setup-tooling): `dotnet workload install aspire`
 - [Docker Desktop](https://www.docker.com/products/docker-desktop)
-- Node.js (for the dashboard frontend)
 
 ## How to run
 
@@ -42,7 +40,7 @@ Aspire starts the ASB emulator, SQL Server, BackendProcessor, BackendFinanceProc
 
 ### What to observe
 
-- Open the **Flowly Dashboard** URL (shown in the Aspire dashboard under the `dashboard` resource) to access the Next.js UI.
+- Open the **Flowly Dashboard** by navigating to `<Api URL>/flowly` (the Api service URL is shown in the Aspire dashboard).
 - Use the **Submit** page to queue `ProcessOrder` jobs, send `RebuildIndex` batch messages, or send `SomeQuery` messages.
 - The **Jobs** page shows live job progress, including intermediate state saved by `OrderProcessor`.
 - The **Dead Letters** page lists messages that exhausted all retries; from here you can requeue or discard them.

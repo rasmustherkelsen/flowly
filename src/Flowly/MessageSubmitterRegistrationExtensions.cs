@@ -36,6 +36,9 @@ public static class MessageSubmitterRegistrationExtensions
 
         flowlyBuilder.Services.TryAddSingleton<IMessageSender, MessageSender>();
 
+        FlowlySubmitterManifest.GetOrCreate(flowlyBuilder.Services)
+            .Add(new DeferredSubmitterRegistration(typeof(TMessage), queueName, SubmitterKind.Message));
+
         return flowlyBuilder;
     }
 }

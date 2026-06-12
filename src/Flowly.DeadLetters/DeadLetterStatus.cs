@@ -1,8 +1,11 @@
+using System.Text.Json.Serialization;
+
 namespace Flowly.DeadLetters;
 
 /// <summary>
 ///     Represents the status of a dead letter message.
 /// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum DeadLetterStatus
 {
     /// <summary>

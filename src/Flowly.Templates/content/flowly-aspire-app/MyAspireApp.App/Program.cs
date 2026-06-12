@@ -1,6 +1,9 @@
 using Flowly;
 using MyAspireApp.App;
 using MyAspireApp.App.Services;
+#if (UseDashboard)
+using Flowly.Dashboard;
+#endif
 #if (UseDatabase && !HasDatabaseBackend)
 #error Specify a database backend: --sqlserver, --postgres, or --sqlite
 #endif
@@ -8,6 +11,9 @@ using MyAspireApp.App.Services;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
+#if (UseDashboard)
+builder.Services.AddFlowlyDashboard();
+#endif
 
 builder.AddFlowly<FlowlyConfiguration>();
 
@@ -22,5 +28,8 @@ builder.Services.AddHostedService<FailingMessageSenderService>();
 var app = builder.Build();
 
 app.MapDefaultEndpoints();
+#if (UseDashboard)
+app.UseFlowlyDashboard();
+#endif
 
 app.Run();

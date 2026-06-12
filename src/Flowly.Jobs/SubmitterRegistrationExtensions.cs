@@ -49,6 +49,9 @@ public static class SubmitterRegistrationExtensions
                 .AddSingleton<IJobSubmitter<TMessage>, JobSubmitter<TMessage>>()
                 .AddSingleton<IJobMessageSender, JobMessageSender>();
 
+            FlowlySubmitterManifest.GetOrCreate(flowlyBuilder.Services)
+                .Add(new DeferredSubmitterRegistration(typeof(TMessage), queueName, SubmitterKind.Job));
+
             flowlyBuilder.AddJobStateSubmitters();
 
             return flowlyBuilder;

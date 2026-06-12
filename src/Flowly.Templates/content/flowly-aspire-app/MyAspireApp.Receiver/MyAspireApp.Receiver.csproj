@@ -31,6 +31,9 @@
         <!--#if (UseDeadLetterTracking && UseSQLite)-->
         <PackageReference Include="Flowly.DeadLetters.SQLite" Version="1.1.0" />
         <!--#endif-->
+        <!--#if (UseDashboard)-->
+        <PackageReference Include="Flowly.Dashboard" Version="1.1.0" />
+        <!--#endif-->
     </ItemGroup>
 
     <ItemGroup>

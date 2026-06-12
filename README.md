@@ -71,6 +71,7 @@ All packages are published to [NuGet.org](https://www.nuget.org/packages?q=Flowl
 | `Flowly.DeadLetters.Postgres` | PostgreSQL backend for dead letter tracking |
 | `Flowly.DeadLetters.SQLite` | SQLite backend for dead letter tracking |
 | `Flowly.OpenTelemetry` | OpenTelemetry metrics and traces for handlers and submitters |
+| `Flowly.Dashboard` | Embedded web dashboard middleware — submit messages, browse jobs, inspect dead letters, and trigger recurring jobs at `/flowly` |
 | `Flowly.Tool` | `flowly` CLI for queue discovery and code generation |
 | `Flowly.Templates` | `dotnet new flowlyapp` / `dotnet new flowlyaspireapp` / `dotnet new flowly` project templates |
 
@@ -866,7 +867,7 @@ Generates a full .NET Aspire solution — AppHost, ServiceDefaults, Messages, Se
 dotnet new flowlyaspireapp --transport <rabbitmq|asb|inmemory> [options] -n <SolutionName>
 ```
 
-Supports the same `--callhandler`, `--jobs`, `--deadletter`, `--sqlserver`, `--postgres`, and `--sqlite` flags as `flowlyapp`. Run everything with:
+Supports the same `--callhandler`, `--jobs`, `--deadletter`, `--sqlserver`, `--postgres`, `--sqlite`, and `--dashboard` flags as `flowlyapp`. Run everything with:
 
 ```bash
 dotnet run --project MyApp.AppHost
@@ -897,6 +898,7 @@ Optional features:
 | `--callhandler` | `--call` | Scaffold as RPC-style call/response — `MyMessage` implements `IReturns<MyReturnMessage>`; the sender uses `IMessageCaller.Call` and blocks for the response. |
 | `--jobtracking` | `--jobs` | Job state tracking — adds `ProcessJobMessage`, `ProcessJobHandler`, `JobSubmitterService`, and a `JobTracker` infrastructure project. Requires a DB flag. |
 | `--deadlettertracking` | `--deadletter` | Dead-letter tracking — adds `DeadLetterSampleMessage`, `DeadLetterSampleMessageHandler` with `[RetryPolicy]`, and `FailingMessageSenderService`. Requires a DB flag. |
+| `--dashboard` | | Scaffold a standalone `Dashboard/` project hosting the Flowly management UI at `/flowly`. For InMemory transport the dashboard is embedded in `App/` instead. |
 
 Database backend (required when `--jobs` or `--deadletter` is used): `--sqlserver`, `--postgres`, `--sqlite`.
 
@@ -918,6 +920,9 @@ dotnet new flowlyapp --transport rabbitmq --jobs --deadletter --sqlite -n MyApp
 
 # ASB with job tracking using SQL Server
 dotnet new flowlyapp --transport asb --jobs --sqlserver -n MyApp
+
+# RabbitMQ with standalone Dashboard project
+dotnet new flowlyapp --transport rabbitmq --dashboard -n MyApp
 ```
 
 **RabbitMQ / Azure Service Bus** generates:
@@ -929,11 +934,12 @@ MyApp/
 ├── Sender/              ← WebApplication; sends messages
 ├── Receiver/            ← worker; receives and handles messages
 ├── JobTracker/          ← only with --jobs: infrastructure service for job state persistence
+├── Dashboard/           ← only with --dashboard: standalone web app hosting the management UI at /flowly
 ├── docker-compose.yml   ← broker (+ SQL Server / Postgres when applicable)
 └── sbconfig.json        ← ASB only
 ```
 
-**InMemory** generates a single-project solution (`App/`) with sender, receiver, and optionally job/dead-letter tracking in the same process.
+**InMemory** generates a single-project solution (`App/`) with sender, receiver, and optionally job/dead-letter tracking in the same process. With `--dashboard`, the management UI is embedded in `App/`.
 
 ---
 
