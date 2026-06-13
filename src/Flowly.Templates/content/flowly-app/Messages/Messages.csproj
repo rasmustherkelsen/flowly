@@ -7,9 +7,9 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Flowly" Version="1.1.0" />
+        <PackageReference Include="Flowly" Version="1.2.0" />
         <!--#if (UseJobTracking)-->
-        <PackageReference Include="Flowly.Jobs" Version="1.1.0" />
+        <PackageReference Include="Flowly.Jobs" Version="1.2.0" />
         <!--#endif-->
     </ItemGroup>
 

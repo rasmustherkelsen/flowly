@@ -60,6 +60,7 @@ All packages are published to [NuGet.org](https://www.nuget.org/packages?q=Flowl
 |---|---|
 | `Flowly` | Core abstractions: handlers, senders, queue topology, retry engine |
 | `Flowly.AzureServiceBus` | Azure Service Bus transport |
+| `Flowly.AzureServiceBus.Aspire` | .NET Aspire AppHost integration — automatically discovers and registers queue topology from a service project's `FlowlyConfiguration` for the Azure Service Bus emulator |
 | `Flowly.RabbitMQ` | RabbitMQ transport |
 | `Flowly.InMemory` | In-memory transport — no broker required; ideal for testing and local development |
 | `Flowly.Jobs` | Job state tracking and CRON scheduling core |

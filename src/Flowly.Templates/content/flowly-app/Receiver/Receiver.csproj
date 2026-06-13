@@ -8,21 +8,21 @@
 
     <ItemGroup>
         <!--#if (UseRabbitMQ)-->
-        <PackageReference Include="Flowly.RabbitMQ" Version="1.1.0" />
+        <PackageReference Include="Flowly.RabbitMQ" Version="1.2.0" />
         <!--#else-->
-        <PackageReference Include="Flowly.AzureServiceBus" Version="1.1.0" />
+        <PackageReference Include="Flowly.AzureServiceBus" Version="1.2.0" />
         <!--#endif-->
         <!--#if (UseJobTracking)-->
-        <PackageReference Include="Flowly.Jobs" Version="1.1.0" />
+        <PackageReference Include="Flowly.Jobs" Version="1.2.0" />
         <!--#endif-->
         <!--#if (UseDeadLetterTracking && UseSqlServer)-->
-        <PackageReference Include="Flowly.DeadLetters.SqlServer" Version="1.1.0" />
+        <PackageReference Include="Flowly.DeadLetters.SqlServer" Version="1.2.0" />
         <!--#endif-->
         <!--#if (UseDeadLetterTracking && UsePostgres)-->
-        <PackageReference Include="Flowly.DeadLetters.Postgres" Version="1.1.0" />
+        <PackageReference Include="Flowly.DeadLetters.Postgres" Version="1.2.0" />
         <!--#endif-->
         <!--#if (UseDeadLetterTracking && UseSQLite)-->
-        <PackageReference Include="Flowly.DeadLetters.SQLite" Version="1.1.0" />
+        <PackageReference Include="Flowly.DeadLetters.SQLite" Version="1.2.0" />
         <!--#endif-->
     </ItemGroup>
 

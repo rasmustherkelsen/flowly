@@ -19,6 +19,7 @@ This document gives an AI assistant the context needed to work effectively in th
 /
 ├── Flowly/                          # Core abstractions and infrastructure
 ├── Flowly.AzureServiceBus/          # Azure Service Bus transport implementation
+├── Flowly.AzureServiceBus.Aspire/   # .NET Aspire AppHost integration (emulator queue registration)
 ├── Flowly.RabbitMQ/                 # RabbitMQ transport implementation
 ├── Flowly.InMemory/                 # In-memory transport (channels; no broker required)
 ├── Flowly.OpenTelemetry/            # OpenTelemetry metrics and traces

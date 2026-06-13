@@ -20,7 +20,8 @@
 
     <Target Name="SyncSkills" BeforeTargets="BeforeBuild">
         <ItemGroup>
-            <SkillFiles Include="$(MSBuildThisFileDirectory)..\..\\.claude\skills\**\*" />
+            <SkillFiles Include="$(MSBuildThisFileDirectory)..\..\\.claude\skills\**\*"
+                        Exclude="$(MSBuildThisFileDirectory)..\..\\.claude\skills\prepare-release\**\*" />
         </ItemGroup>
         <Copy SourceFiles="@(SkillFiles)"
               DestinationFolder="$(MSBuildThisFileDirectory)content\flowly-skills\.claude\skills\%(RecursiveDir)"
