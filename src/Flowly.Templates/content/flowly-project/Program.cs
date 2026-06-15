@@ -53,17 +53,17 @@ builder.AddFlowly(flowlyBuilder =>
 #endif
 #if (UseDeadLetterTracking && UseSqlServer)
     flowlyBuilder.AddSqlServerDeadLetterTracking(
-        builder.Configuration.GetConnectionString("FlowlyDeadLetters")!,
+        "FlowlyDeadLetters",
         enableMigrations: true);
 #endif
 #if (UseDeadLetterTracking && UsePostgres)
     flowlyBuilder.AddPostgresDeadLetterTracking(
-        builder.Configuration.GetConnectionString("FlowlyDeadLetters")!,
+        "FlowlyDeadLetters",
         enableMigrations: true);
 #endif
 #if (UseDeadLetterTracking && UseSQLite)
     flowlyBuilder.AddSQLiteDeadLetterTracking(
-        builder.Configuration.GetConnectionString("FlowlyDeadLetters")!,
+        "FlowlyDeadLetters",
         enableMigrations: true);
 #endif
 });

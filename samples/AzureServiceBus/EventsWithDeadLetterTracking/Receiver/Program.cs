@@ -1,6 +1,5 @@
 using Flowly;
 using Flowly.AzureServiceBus;
-using Flowly.MessageInfrastructure.Receivers;
 using Messages;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -10,7 +9,7 @@ builder.AddFlowly(
     options => options
         .UseAzureServiceBus()
         .AddSqlServerDeadLetterTracking(
-            builder.Configuration.GetConnectionString("FlowlyDeadLetters")!,
+            "FlowlyDeadLetters",
             true,
             deadLetterOptions =>
             {

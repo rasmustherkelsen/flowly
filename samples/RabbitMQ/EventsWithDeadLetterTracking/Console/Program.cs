@@ -1,7 +1,6 @@
 using Flowly;
 using Flowly.DeadLetters;
 using Flowly.RabbitMQ;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
@@ -11,9 +10,7 @@ builder.AddFlowly(
     options => options.CreateTopology = false,
     flowlyBuilder => flowlyBuilder
         .UseRabbitMq()
-        .AddPostgresDeadLetterTracking(
-            builder.Configuration.GetConnectionString("FlowlyDeadLetters")!,
-            false));
+        .AddPostgresDeadLetterTracking("FlowlyDeadLetters", false));
 
 var host = builder.Build();
 

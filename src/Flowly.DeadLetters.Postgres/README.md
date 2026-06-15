@@ -7,8 +7,7 @@ PostgreSQL backend for [Flowly](https://rasmustherkelsen.github.io/flowly/) dead
 ```csharp
 builder.AddFlowly(configure => configure
     .UseRabbitMq("RabbitMQ")
-    .AddPostgresDeadLetterTracking(
-        builder.Configuration.GetConnectionString("DeadLetters")!)
+    .AddPostgresDeadLetterTracking("DeadLetters")
     .AddMessageHandler<OrderCreated, OrderCreatedHandler>()
     .WithDeadLetterTracking());
 ```
@@ -16,7 +15,7 @@ builder.AddFlowly(configure => configure
 Migrations run at startup by default. To disable:
 
 ```csharp
-.AddPostgresDeadLetterTracking(connectionString, enableMigrations: false)
+.AddPostgresDeadLetterTracking("DeadLetters", enableMigrations: false)
 ```
 
 ## Documentation

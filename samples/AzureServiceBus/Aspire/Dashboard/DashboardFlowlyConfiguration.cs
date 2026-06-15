@@ -11,8 +11,8 @@ internal class DashboardFlowlyConfiguration : Configuration
     {
         builder
             .UseAzureServiceBus("EmulatorNamespace")
-            .AddSqlServerDeadLetterTracking(builder.Configuration.GetConnectionString("FlowlyDeadLetters")!, false)
-            .AddJobStateTrackingClient(builder.Configuration.GetConnectionString("FlowlyJobs")!)
+            .AddSqlServerDeadLetterTracking("FlowlyDeadLetters", false)
+            .AddJobStateTrackingClient("FlowlyJobs")
             .AddJobSubmitter<ProcessOrder>()
             .AddMessageSubmitter<RebuildIndexMessage>()
             .AddMessageSubmitter<SomeQueryMessage>();

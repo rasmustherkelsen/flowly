@@ -39,7 +39,7 @@ public class ProcessReportJobHandler : JobHandler<ProcessReportJob>
 ```csharp
 builder.AddFlowly(configure => configure
     .UseAzureServiceBus("AzureServiceBus")
-    .AddSqlServerJobStateTracking(connectionString)
+    .AddSqlServerJobStateTracking("Jobs")
     .AddJobHandler<ProcessReportJob, ProcessReportJobHandler>()
     .AddJobSubmitter<ProcessReportJob>());
 ```

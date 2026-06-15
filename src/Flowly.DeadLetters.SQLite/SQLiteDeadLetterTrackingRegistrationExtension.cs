@@ -1,6 +1,7 @@
 using Flowly.DeadLetters.Services;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Flowly;
@@ -28,9 +29,12 @@ public static class SQLiteDeadLetterTrackingRegistrationExtension
     ///     </para>
     /// </remarks>
     /// <param name="flowlyBuilder">The <see cref="IFlowlyBuilder"/> to configure.</param>
-    /// <param name="connectionString">
-    ///     The SQLite connection string used by the data context, for example
+    /// <param name="connection">
+    ///     A connection string name from <c>IConfiguration</c> (resolved under <c>ConnectionStrings:</c>)
+    ///     or a literal SQLite connection string, for example
     ///     <c>Data Source=flowly-deadletters.db</c>.
+    ///     When a name is provided and found in configuration, the resolved value is used; otherwise the
+    ///     parameter value itself is used as the connection string.
     /// </param>
     /// <param name="enableMigrations">
     ///     When <see langword="true"/> (the default), a hosted service is registered that applies any pending EF Core
@@ -46,12 +50,14 @@ public static class SQLiteDeadLetterTrackingRegistrationExtension
     /// <returns>The same <see cref="IFlowlyBuilder"/> for chaining.</returns>
     public static IFlowlyBuilder AddSQLiteDeadLetterTracking(
         this IFlowlyBuilder flowlyBuilder,
-        string connectionString,
+        string connection,
         bool enableMigrations = true,
         Action<DeadLetterTrackingOptions>? configure = null)
     {
         if (configure is not null)
             flowlyBuilder.Services.Configure<DeadLetterTrackingOptions>(configure);
+
+        var connectionString = flowlyBuilder.Configuration.GetConnectionString(connection) ?? connection;
 
         RegisterInMemoryKeepAliveIfNeeded(flowlyBuilder.Services, connectionString);
 

@@ -89,9 +89,46 @@ If the project also needs to **send** this message (not just receive), also add:
 builder.AddMessageSubmitter<$0>();
 ```
 
+## Final step — Regenerate sbconfig.json (ASB emulator / Docker Compose only)
+
+This step applies **only** when the solution uses the Azure Service Bus **emulator** running under Docker Compose. When targeting the real Azure Service Bus, `CreateTopology = true` (the default) creates the new queue at startup and no `sbconfig.json` is involved. For Aspire, the AppHost manages topology — skip this step.
+
+Check whether a `sbconfig.json` exists at the repo root or alongside `docker-compose.yml`:
+
+```
+find . -name "sbconfig.json" -not -path "*/node_modules/*"
+```
+
+**If found** → regenerate it using the `flowly` CLI — **do not manually edit it**. Pass `--project` for every project in the solution that has a `FlowlyConfiguration`:
+
+```bash
+flowly azure-service-bus emulator-config \
+  --project ./<ReceiverProject> \
+  --namespace EmulatorNamespace \
+  --output ./sbconfig.json
+```
+
+Adjust `--project` paths and `--namespace` to match the actual solution layout. The namespace value must match what the docker-compose / emulator container uses.
+
+After regenerating, check for a `docker-compose.yml` (or `docker-compose.yaml`) in the repo root. If it exists and references the ASB emulator image (`mcr.microsoft.com/azure-messaging/servicebus-emulator`) or mounts `sbconfig.json`, offer to restart it:
+
+> "The emulator needs to be restarted to pick up the new queue. Should I run `docker compose down && docker compose up -d` for you?"
+
+If the user agrees, run:
+
+```bash
+docker compose down
+docker compose up -d
+```
+
+If no matching `docker-compose.yml` is found, tell the user to restart their ASB emulator manually.
+
+**If `sbconfig.json` not found** → this step does not apply. Skip it.
+
 ## Checklist
 
 - [ ] Message contract record created
 - [ ] Handler class created (`internal`, primary constructor for any dependencies)
 - [ ] Registered with `AddMessageHandler` in `FlowlyConfiguration`
 - [ ] Submitter added with `AddMessageSubmitter` in `FlowlyConfiguration` if this project also sends the message
+- [ ] (ASB Emulator / Docker Compose only) `sbconfig.json` regenerated with `flowly azure-service-bus emulator-config`; Docker restarted if emulator was already running

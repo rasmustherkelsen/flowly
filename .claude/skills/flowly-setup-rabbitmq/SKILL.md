@@ -116,7 +116,7 @@ If the project uses `JobHandler<T>` or `RecurringJobHandler`, add state tracking
 
 ```csharp
 .AddSqlServerJobStateTracking(
-    builder.Configuration.GetConnectionString("FlowlyJobs")!,
+    "FlowlyJobs",
     enableMigrations: true,
     options =>
     {
@@ -129,7 +129,7 @@ For PostgreSQL replace with `.AddPostgresJobStateTracking(...)`, for SQLite `.Ad
 
 **Sender-only services** that only need to read job state (not process jobs) use the lighter client:
 ```csharp
-.AddJobStateTrackingClient(builder.Configuration.GetConnectionString("FlowlyJobs")!)
+.AddJobStateTrackingClient("FlowlyJobs")
 ```
 
 ## Step 6 — Optional: dead letter tracking
@@ -138,7 +138,7 @@ If any `MessageHandler<T>` or `EventHandlerBase<TEvent>` handlers use `.WithDead
 
 ```csharp
 .AddSqlServerDeadLetterTracking(
-    builder.Configuration.GetConnectionString("FlowlyDeadLetters")!,
+    "FlowlyDeadLetters",
     enableMigrations: true,
     options =>
     {

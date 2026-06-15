@@ -1,7 +1,6 @@
 using Flowly;
 using Flowly.AzureServiceBus;
 using Flowly.DeadLetters;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
@@ -11,9 +10,7 @@ builder.AddFlowly(
     options => options.CreateTopology = false,
     flowlyBuilder => flowlyBuilder
         .UseAzureServiceBus()
-        .AddSqlServerDeadLetterTracking(
-            builder.Configuration.GetConnectionString("FlowlyDeadLetters")!,
-            false));
+        .AddSqlServerDeadLetterTracking("FlowlyDeadLetters", false));
 
 var host = builder.Build();
 

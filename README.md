@@ -424,7 +424,7 @@ Event handlers support `.WithDeadLetterTracking()` the same way regular handlers
 
 ```csharp
 builder
-    .AddSqlServerDeadLetterTracking(connectionString)  // or AddPostgresDeadLetterTracking / AddSQLiteDeadLetterTracking
+    .AddSqlServerDeadLetterTracking("DeadLetters")  // or AddPostgresDeadLetterTracking / AddSQLiteDeadLetterTracking; accepts a connection name or literal connection string
     .AddEventHandler<OrderProcessed, OrderProcessedEventHandler>()
     .WithDeadLetterTracking();
 ```
@@ -540,7 +540,7 @@ Register the persistence layer once, then opt individual handlers in:
 
 ```csharp
 builder
-    .AddSqlServerDeadLetterTracking(connectionString)  // or AddPostgresDeadLetterTracking / AddSQLiteDeadLetterTracking
+    .AddSqlServerDeadLetterTracking("DeadLetters")  // or AddPostgresDeadLetterTracking / AddSQLiteDeadLetterTracking; accepts a connection name or literal connection string
     .AddMessageHandler<OrderCreated, OrderCreatedHandler>()
     .WithDeadLetterTracking();                          // this handler's DLQ is tracked
 ```
@@ -1029,8 +1029,7 @@ public class MyServiceConfiguration : Configuration
             .AddSqlServerJobStateTracking("Jobs")
 
             // Dead letter tracking (SQL Server)
-            .AddSqlServerDeadLetterTracking(
-                builder.Configuration.GetConnectionString("DeadLetters")!)
+            .AddSqlServerDeadLetterTracking("DeadLetters")
 
             // Regular handler with retry and dead letter tracking
             .AddMessageHandler<OrderCreated, OrderCreatedHandler>()

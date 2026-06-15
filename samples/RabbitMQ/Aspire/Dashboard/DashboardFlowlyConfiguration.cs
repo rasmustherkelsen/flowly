@@ -11,8 +11,8 @@ internal class DashboardFlowlyConfiguration : Configuration
     {
         builder
             .UseRabbitMq(connection: "RabbitMQ")
-            .AddPostgresDeadLetterTracking(builder.Configuration.GetConnectionString("FlowlyDeadLetters")!, false)
-            .AddJobStateTrackingClient(builder.Configuration.GetConnectionString("FlowlyJobs")!)
+            .AddPostgresDeadLetterTracking("FlowlyDeadLetters", false)
+            .AddJobStateTrackingClient("FlowlyJobs")
             .AddJobSubmitter<ProcessOrder>()
             .AddMessageSubmitter<RebuildIndexMessage>()
             .AddMessageSubmitter<SomeQueryMessage>();

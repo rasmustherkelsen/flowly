@@ -7,8 +7,7 @@ SQLite backend for [Flowly](https://rasmustherkelsen.github.io/flowly/) dead let
 ```csharp
 builder.AddFlowly(configure => configure
     .UseAzureServiceBus("AzureServiceBus")
-    .AddSQLiteDeadLetterTracking(
-        builder.Configuration.GetConnectionString("DeadLetters")!)
+    .AddSQLiteDeadLetterTracking("DeadLetters")
     .AddMessageHandler<OrderCreated, OrderCreatedHandler>()
     .WithDeadLetterTracking());
 ```
@@ -16,7 +15,7 @@ builder.AddFlowly(configure => configure
 Migrations run at startup by default. To disable:
 
 ```csharp
-.AddSQLiteDeadLetterTracking(connectionString, enableMigrations: false)
+.AddSQLiteDeadLetterTracking("DeadLetters", enableMigrations: false)
 ```
 
 ## Documentation

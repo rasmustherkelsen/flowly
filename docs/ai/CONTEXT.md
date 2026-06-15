@@ -403,6 +403,8 @@ builder.AddMessageHandler<MyMsg, MyHandler>()
        .WithDeadLetterTracking()
 ```
 
+The `connection` parameter accepts either a connection string name from `IConfiguration` (resolved under `ConnectionStrings:`) or a literal connection string — the same convention used by the Jobs backends and transport providers.
+
 Calling `.WithDeadLetterTracking()` without first registering a persistence layer throws `InvalidOperationException` at startup.
 
 All three registration methods accept an optional `Action<DeadLetterTrackingOptions>` for automatic cleanup:
@@ -932,11 +934,26 @@ The Flowly repository ships skills under `.claude/skills/`. Each skill is a dire
 | `flowly-setup-azure-service-bus/` | `/flowly-setup-azure-service-bus` | Full project setup — NuGet packages, `FlowlyConfiguration`, `Program.cs` wiring, connection strings, optional extensions |
 | `create-message-handler/` | `/create-message-handler <MessageName>` | Scaffold message contract record, `MessageHandler<T>` subclass, registration in `FlowlyConfiguration`, and unit tests |
 | `create-recurring-job/` | `/create-recurring-job <HandlerName>` | Scaffold `RecurringJobHandler` subclass with `[RecurringJob]` attribute, registration, and unit tests |
+| `add-jobtracking/` | `/add-jobtracking` | Add job state tracking to an existing solution — either inline in a project's `FlowlyConfiguration` or as a standalone `JobTracker` project mirroring the `flowlyapp --jobs` template |
 | `create-contracts-assembly/` | `/create-contracts-assembly` | Create a shared `*.Messages` / `*.Contracts` project for solutions where multiple deployable services share message types |
+
+> **Maintenance note — keep `add-jobtracking` in sync with the `flowlyapp` template:**
+> The `add-jobtracking` skill's standalone JobTracker option mirrors the `JobTracker/` project scaffolded by `dotnet new flowlyapp --jobs`. Whenever the template's `JobTracker/` project structure changes (new packages, changed connection string names, `Program.cs` wiring, `appsettings` layout, or `launchSettings.json`), update `.claude/skills/add-jobtracking/SKILL.md` in the same change so the skill stays consistent with what the template produces.
 
 When a user in a Flowly-based project asks you to add a handler, recurring job, or set up the transport, suggest the appropriate skill command if the skills are present in their `.claude/skills/` directory.
 
 Skills must be kept current: whenever a registration method, handler base class, or scaffold pattern changes, update the relevant `SKILL.md` in the same commit. See `.claude/rules/skills-conventions.md` for the full maintenance rules.
+
+#### `.claude/` folder audience split
+
+The `.claude/` folder serves two distinct audiences — keep them separate:
+
+| Directory | Audience | Contains |
+|---|---|---|
+| `.claude/rules/` | **Contributors** working on the Flowly source code | Coding conventions, test conventions, encapsulation rules, documentation requirements, etc. — things that govern how the Flowly library itself is written and maintained |
+| `.claude/skills/` | **Users** of Flowly building their own solutions | Step-by-step scaffolding guidance invoked as slash commands in Claude Code |
+
+Rules that describe how to *author or maintain* skills (contributor-facing meta-guidance) belong in `.claude/rules/skills-conventions.md` — not as standalone rule files alongside coding conventions. Transport-specific behavioral constraints that skills must account for (e.g. Azure Service Bus emulator not supporting topology creation) belong there too, since that is author guidance rather than end-user documentation.
 
 ---
 

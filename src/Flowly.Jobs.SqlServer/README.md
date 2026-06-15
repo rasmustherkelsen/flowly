@@ -7,15 +7,14 @@ SQL Server backend for [Flowly](https://rasmustherkelsen.github.io/flowly/) job 
 ```csharp
 builder.AddFlowly(configure => configure
     .UseAzureServiceBus("AzureServiceBus")
-    .AddSqlServerJobStateTracking(
-        builder.Configuration.GetConnectionString("Jobs")!)
+    .AddSqlServerJobStateTracking("Jobs")
     .AddJobHandler<ProcessReportJob, ProcessReportJobHandler>());
 ```
 
 Migrations run at startup by default. To disable:
 
 ```csharp
-.AddSqlServerJobStateTracking(connectionString, enableMigrations: false)
+.AddSqlServerJobStateTracking("Jobs", enableMigrations: false)
 ```
 
 ## Documentation

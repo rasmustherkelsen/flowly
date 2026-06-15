@@ -11,6 +11,7 @@ import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import SendIcon from '@mui/icons-material/Send';
 import { useConfig } from '../hooks/useConfig';
 import type { DashboardConfig } from '../types';
+import FlowlyIcon from './FlowlyIcon';
 
 const DRAWER_WIDTH = 220;
 
@@ -32,6 +33,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const drawer = (
     <Box>
       <Toolbar sx={{ gap: 1 }}>
+        <FlowlyIcon size={28} />
         <Typography variant="h6" fontWeight={700} color="primary">Flowly</Typography>
       </Toolbar>
       <List disablePadding>

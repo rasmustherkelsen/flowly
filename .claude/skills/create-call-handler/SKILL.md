@@ -148,11 +148,31 @@ internal class MyService(IMessageCaller messageCaller) : BackgroundService
 }
 ```
 
-## Step 6 — Aspire AppHost wiring
+## Step 6 — Transport-specific wiring
 
-If the solution runs under .NET Aspire, additional wiring is needed so the broker has the reply queue ready before services start.
+### Azure Service Bus — real service
 
-### Azure Service Bus
+`CreateTopology = true` (the default) causes Flowly to create the call queue and reply queue at startup. No extra steps are needed beyond the normal registration above.
+
+### Azure Service Bus — emulator (Docker Compose)
+
+The emulator does not support dynamic topology creation, so `CreateTopology = false` is required and all queues must be declared in `sbconfig.json` before the emulator starts.
+
+**Do not manually edit `sbconfig.json`.** Instead, regenerate it with the `flowly` CLI after completing the registration steps:
+
+```bash
+flowly azure-service-bus emulator-config \
+  --project ./<ReceiverProject> \
+  --project ./<SenderProject> \
+  --namespace EmulatorNamespace \
+  --output ./sbconfig.json
+```
+
+Pass `--project` for every project in the solution that has a `FlowlyConfiguration`. Verify that `--namespace` matches the namespace in your `docker-compose.yml`.
+
+If the ASB emulator is already running, **restart the Docker Compose stack** so the emulator picks up the updated queue configuration.
+
+### Azure Service Bus — Aspire AppHost
 
 The reply queue (`{callQueue}.reply.{instanceName}`) must be pre-registered in the ASB emulator at AppHost startup. Call `AddFlowly` for the **sender** project too — the `InstanceName` property on the sender's `FlowlyConfiguration` is read automatically to derive the reply queue name:
 
@@ -175,7 +195,7 @@ builder.AddFlowly<FlowlyConfiguration>(options =>
 
 ### RabbitMQ
 
-No special AppHost wiring is needed — `CreateTopology = true` means Flowly creates both the call queue and the reply queue at startup. Just wire the project references as normal:
+No special wiring is needed — `CreateTopology = true` means Flowly creates both the call queue and the reply queue at startup. For Aspire, just wire the project references as normal:
 
 ```csharp
 builder.AddProject<Projects.MyApp_Sender>("sender")
@@ -191,5 +211,6 @@ builder.AddProject<Projects.MyApp_Sender>("sender")
 - [ ] Receiver: `AddCallHandler<$0, $0Handler>()` registered in `FlowlyConfiguration`
 - [ ] Sender: `AddCallSubmitter<$0>()` registered in `FlowlyConfiguration`
 - [ ] Sender's `FlowlyConfiguration` overrides `InstanceName` (e.g. `public override string? InstanceName => "sender"`)
+- [ ] (ASB Emulator + Docker Compose) Regenerated `sbconfig.json` with `flowly azure-service-bus emulator-config`; restarted Docker if emulator was already running
 - [ ] (ASB + Aspire) AppHost calls `azureServiceBus.AddFlowly(sender)` so the reply queue is pre-registered
 - [ ] (ASB + Aspire) Sender `Program.cs` sets `CreateTopology = false`

@@ -117,13 +117,38 @@ Note: sender-only services typically **should** still create topology — doing 
 builder.AddFlowly();
 ```
 
+## Step 4a — Generate sbconfig.json (ASB emulator / Docker Compose only)
+
+This step applies **only** when the project will run against the local Azure Service Bus **emulator** under Docker Compose. Skip it for real Azure Service Bus (topology is created at startup) and for Aspire (Step 8 handles it).
+
+The emulator requires all queues to be declared in `sbconfig.json` before it starts. After completing the `FlowlyConfiguration` in Step 2, generate this file using the `flowly` CLI — **do not create or edit it manually**:
+
+```bash
+flowly azure-service-bus emulator-config \
+  --project ./<ThisProject> \
+  --namespace EmulatorNamespace \
+  --output ./sbconfig.json
+```
+
+Pass `--project` for every project in the solution that has a `FlowlyConfiguration`. Verify that `--namespace` matches the namespace declared in your `docker-compose.yml`.
+
+After generating, check for a `docker-compose.yml` (or `docker-compose.yaml`) in the repo root. If it exists and references the ASB emulator image (`mcr.microsoft.com/azure-messaging/servicebus-emulator`) or mounts `sbconfig.json`, offer to start it:
+
+> "Should I run `docker compose up -d` to start the emulator with the new configuration?"
+
+If the user agrees, run:
+
+```bash
+docker compose up -d
+```
+
 ## Step 5 — Optional: job state tracking
 
 If the project uses `JobHandler<T>` or `RecurringJobHandler`, add state tracking after `UseAzureServiceBus`:
 
 ```csharp
 .AddSqlServerJobStateTracking(
-    builder.Configuration.GetConnectionString("FlowlyJobs")!,
+    "FlowlyJobs",
     runMigrationsOnStartup: true,
     options =>
     {
@@ -136,7 +161,7 @@ For PostgreSQL replace with `.AddPostgresJobStateTracking(...)`, for SQLite `.Ad
 
 **Sender-only services** that only need to read job state (not process jobs) use the lighter client:
 ```csharp
-.AddJobStateTrackingClient(builder.Configuration.GetConnectionString("FlowlyJobs")!)
+.AddJobStateTrackingClient("FlowlyJobs")
 ```
 
 ## Step 6 — Optional: dead letter tracking
@@ -145,7 +170,7 @@ If any `MessageHandler<T>` or `EventHandlerBase<TEvent>` handlers use `.WithDead
 
 ```csharp
 .AddSqlServerDeadLetterTracking(
-    builder.Configuration.GetConnectionString("FlowlyDeadLetters")!,
+    "FlowlyDeadLetters",
     runMigrationsOnStartup: true,
     options =>
     {
@@ -251,5 +276,6 @@ This exercises `FlowlyDesignTimeFactory` and will surface any configuration or r
 - [ ] Connection string in `appsettings.json` (or environment variable)
 - [ ] Job state tracking added if using `JobHandler` or `RecurringJobHandler`
 - [ ] Dead letter tracking added if any handlers use `.WithDeadLetterTracking()`
-- [ ] Aspire AppHost updated if project uses Aspire
+- [ ] (ASB Emulator / Docker Compose only) `sbconfig.json` generated with `flowly azure-service-bus emulator-config`; `docker compose up -d` run to start the emulator
+- [ ] (ASB + Aspire only) AppHost updated per Step 8
 - [ ] `flowly azure-service-bus queues` runs without errors
