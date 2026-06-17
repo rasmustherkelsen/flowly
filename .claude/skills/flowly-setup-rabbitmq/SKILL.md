@@ -217,6 +217,14 @@ Run the application and confirm:
 
 > **Note:** Unlike Azure Service Bus, there is no `flowly` CLI topology command for RabbitMQ. Topology is created at runtime on startup.
 
+## Final step — Verify the build
+
+```bash
+dotnet build
+```
+
+Fix any errors before reporting the task as complete.
+
 ## Checklist
 
 - [ ] Packages added to `.csproj`
@@ -227,3 +235,4 @@ Run the application and confirm:
 - [ ] Job state tracking added if using `JobHandler` or `RecurringJobHandler`
 - [ ] Dead letter tracking added if any handlers use `.WithDeadLetterTracking()`
 - [ ] Aspire AppHost updated if project uses Aspire
+- [ ] `dotnet build` passes with no errors

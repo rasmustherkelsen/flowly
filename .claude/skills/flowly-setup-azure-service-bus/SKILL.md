@@ -121,7 +121,15 @@ builder.AddFlowly();
 
 This step applies **only** when the project will run against the local Azure Service Bus **emulator** under Docker Compose. Skip it for real Azure Service Bus (topology is created at startup) and for Aspire (Step 8 handles it).
 
-The emulator requires all queues to be declared in `sbconfig.json` before it starts. After completing the `FlowlyConfiguration` in Step 2, generate this file using the `flowly` CLI — **do not create or edit it manually**:
+The emulator requires all queues to be declared in `sbconfig.json` before it starts. After completing the `FlowlyConfiguration` in Step 2, generate this file using the `flowly` CLI — **do not create or edit it manually**.
+
+First, ensure the Flowly CLI is installed:
+
+```bash
+dotnet tool list --global | grep -q "flowly.tool" || dotnet tool install --global Flowly.Tool
+```
+
+If a `flowly` command fails after install, run `dotnet tool update --global Flowly.Tool` and retry. Never reimplement what the tool does — always install it instead.
 
 ```bash
 flowly azure-service-bus emulator-config \
@@ -260,13 +268,25 @@ Without `InstanceName` overridden on the sender's `FlowlyConfiguration`, the rep
 
 ## Step 9 — Verify topology discovery works
 
-Run the `flowly` CLI tool to confirm queues are resolved correctly:
+Run the `flowly` CLI tool to confirm queues are resolved correctly. If you skipped Step 4a (e.g. real Azure Service Bus), ensure the CLI is installed first:
+
+```bash
+dotnet tool list --global | grep -q "flowly.tool" || dotnet tool install --global Flowly.Tool
+```
 
 ```bash
 flowly azure-service-bus queues --project ./MyProcessor
 ```
 
 This exercises `FlowlyDesignTimeFactory` and will surface any configuration or reflection errors before running the app.
+
+## Final step — Verify the build
+
+```bash
+dotnet build
+```
+
+Fix any errors before reporting the task as complete.
 
 ## Checklist
 
@@ -279,3 +299,4 @@ This exercises `FlowlyDesignTimeFactory` and will surface any configuration or r
 - [ ] (ASB Emulator / Docker Compose only) `sbconfig.json` generated with `flowly azure-service-bus emulator-config`; `docker compose up -d` run to start the emulator
 - [ ] (ASB + Aspire only) AppHost updated per Step 8
 - [ ] `flowly azure-service-bus queues` runs without errors
+- [ ] `dotnet build` passes with no errors

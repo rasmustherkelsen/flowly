@@ -13,6 +13,10 @@ namespace Dashboard;
 
 internal class FlowlyConfiguration : Configuration
 {
+#if (UseCallHandler)
+    public override string? InstanceName => "dashboard";
+
+#endif
     public override void Configure(IFlowlyBuilder builder)
     {
 #if (UseRabbitMQ)

@@ -94,6 +94,12 @@ internal static class DashboardEndpoints
         {
             return Results.NotFound(ex.Message);
         }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return Results.Json(
+                new { error = "The call timed out. The handler did not respond within the configured timeout period." },
+                statusCode: StatusCodes.Status408RequestTimeout);
+        }
         catch (Exception ex)
         {
             return Results.BadRequest(ex.Message);

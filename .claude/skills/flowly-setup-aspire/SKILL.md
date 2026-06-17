@@ -242,6 +242,14 @@ builder.AddSqlServerDeadLetterTracking("FlowlyDeadLetters", enableMigrations: tr
 
 ---
 
+## Final step — Verify the build
+
+```bash
+dotnet build
+```
+
+Fix any errors before reporting the task as complete.
+
 ## Checklist
 
 - [ ] Template scaffolded or projects created manually
@@ -253,3 +261,4 @@ builder.AddSqlServerDeadLetterTracking("FlowlyDeadLetters", enableMigrations: tr
 - [ ] (ASB + call handler) Sender's `FlowlyConfiguration` overrides `InstanceName`; AppHost calls `azureServiceBus.AddFlowly(sender)`
 - [ ] Job tracking DB provisioned by AppHost and wired to Receiver (if using jobs)
 - [ ] Dead letter tracking DB provisioned by AppHost and wired to Receiver (if using dead letters)
+- [ ] `dotnet build` passes with no errors

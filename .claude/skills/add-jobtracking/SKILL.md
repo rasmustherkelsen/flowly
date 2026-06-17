@@ -292,7 +292,15 @@ Check whether a `sbconfig.json` exists at the repo root or alongside `docker-com
 find . -name "sbconfig.json" -not -path "*/node_modules/*"
 ```
 
-**If found** → regenerate `sbconfig.json` using the `flowly` CLI — **do not manually edit it**. Pass `--project` for every project in the solution that has a `FlowlyConfiguration` (including the newly added or modified one):
+**If found** → regenerate `sbconfig.json` using the `flowly` CLI — **do not manually edit it**. First, ensure the CLI is installed:
+
+```bash
+dotnet tool list --global | grep -q "flowly.tool" || dotnet tool install --global Flowly.Tool
+```
+
+If a `flowly` command fails after install, run `dotnet tool update --global Flowly.Tool` and retry. Never reimplement what the tool does — always install it instead.
+
+Pass `--project` for every project in the solution that has a `FlowlyConfiguration` (including the newly added or modified one):
 
 ```bash
 flowly azure-service-bus emulator-config \
@@ -321,6 +329,14 @@ If no matching `docker-compose.yml` is found, tell the user to restart their ASB
 
 ---
 
+## Final step — Verify the build
+
+```bash
+dotnet build
+```
+
+Fix any errors before reporting the task as complete.
+
 ## Checklist
 
 - [ ] Confirmed no job tracking already existed (Step 1)
@@ -332,3 +348,4 @@ If no matching `docker-compose.yml` is found, tell the user to restart their ASB
 - [ ] (Option B only) `Program.cs`, `appsettings.json`, `launchSettings.json` created
 - [ ] (Option B only) Project added to the solution file with `dotnet sln add`
 - [ ] (ASB Emulator / Docker Compose only) `sbconfig.json` regenerated with `flowly azure-service-bus emulator-config`; Docker restarted if emulator was already running
+- [ ] `dotnet build` passes with no errors

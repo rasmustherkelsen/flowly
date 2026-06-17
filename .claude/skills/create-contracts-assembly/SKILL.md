@@ -166,6 +166,14 @@ If message records currently live inside the sender or receiver project, move th
 4. Fix any broken `using` statements.
 5. Run `dotnet build` to confirm no references are broken.
 
+## Final step — Verify the build
+
+```bash
+dotnet build
+```
+
+Fix any errors before reporting the task as complete.
+
 ## Checklist
 
 - [ ] Contracts project created and added to solution
@@ -175,3 +183,4 @@ If message records currently live inside the sender or receiver project, move th
 - [ ] Sender and receiver projects reference the contracts project
 - [ ] No business logic, handlers, or infrastructure code in the contracts project
 - [ ] If cross-repo: contracts project packaged and published as NuGet
+- [ ] `dotnet build` passes with no errors

@@ -147,6 +147,22 @@
               "RequiresSession": false
             }
           }
+//#if (UseDashboard)
+          ,{
+            "Name": "my.reply.dashboard",
+            "Properties": {
+              "DeadLetteringOnMessageExpiration": false,
+              "DefaultMessageTimeToLive": "PT2M",
+              "DuplicateDetectionHistoryTimeWindow": "PT5M",
+              "ForwardDeadLetteredMessagesTo": "",
+              "ForwardTo": "",
+              "LockDuration": "PT5M",
+              "MaxDeliveryCount": 1,
+              "RequiresDuplicateDetection": false,
+              "RequiresSession": false
+            }
+          }
+//#endif
 //#endif
 //#if (UseDeadLetterTracking)
           ,{

@@ -249,7 +249,15 @@ Check for an existing emulator config:
 find . -name "sbconfig.json" -not -path "*/obj/*" -not -path "*/bin/*"
 ```
 
-If found, regenerate it so the execution lane queue is included. Pass `--project` for every project in the solution that has a `FlowlyConfiguration`:
+If found, regenerate it so the execution lane queue is included. First, ensure the Flowly CLI is installed:
+
+```bash
+dotnet tool list --global | grep -q "flowly.tool" || dotnet tool install --global Flowly.Tool
+```
+
+If a `flowly` command fails after install, run `dotnet tool update --global Flowly.Tool` and retry. Never reimplement what the tool does — always install it instead.
+
+Pass `--project` for every project in the solution that has a `FlowlyConfiguration`:
 
 ```bash
 flowly azure-service-bus emulator-config \
@@ -263,6 +271,8 @@ Tell the user to verify `--namespace` matches the value in their `docker-compose
 
 > **Important — Docker restart required:** After regenerating `sbconfig.json`, the Docker containers must be restarted so the emulator picks up the new queue configuration. Without a restart the execution lane queues will not exist and recurring jobs will not run.
 >
+> If the emulator is already running, **ask the user** whether to restart it now — don't run this automatically, since it's a shared running service:
+>
 > ```bash
 > docker compose down && docker compose up -d
 > ```
@@ -272,6 +282,14 @@ If no `sbconfig.json` exists, skip this step.
 For **Scenarios A and B** (adding to an existing project that already has recurring jobs), this step is not needed — the execution lane queues are already registered in the emulator config.
 
 ---
+
+## Final step — Verify the build
+
+```bash
+dotnet build
+```
+
+Fix any errors before reporting the task as complete.
 
 ## Checklist
 
@@ -289,4 +307,5 @@ For **Scenarios A and B** (adding to an existing project that already has recurr
 - [ ] Project added to solution with `dotnet sln add`
 - [ ] User informed about removable `ProcessJobMessage` / `ProcessJobHandler` boilerplate
 - [ ] (Azure Service Bus emulator only) `sbconfig.json` regenerated with `flowly azure-service-bus emulator-config`
-- [ ] (Azure Service Bus emulator only) Docker containers restarted (`docker compose down && docker compose up -d`) so the emulator picks up the new execution lane queues
+- [ ] (Azure Service Bus emulator only) Asked the user before restarting Docker (`docker compose down && docker compose up -d`) so the emulator picks up the new execution lane queues
+- [ ] `dotnet build` passes with no errors

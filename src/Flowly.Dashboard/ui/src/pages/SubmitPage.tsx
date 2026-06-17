@@ -105,6 +105,8 @@ export default function SubmitPage() {
             : count === 1 ? 'Message sent successfully.'
             : `${count} messages sent successfully.`,
         });
+      } else if (res.status === 408) {
+        setResult({ ok: false, message: 'The call timed out — the handler did not respond within the configured timeout period.' });
       } else {
         const body = await res.text().catch(() => `HTTP ${res.status}`);
         setResult({ ok: false, message: body || `HTTP ${res.status}` });

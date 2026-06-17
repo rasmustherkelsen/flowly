@@ -1,4 +1,3 @@
-using Flowly.DeadLetters.BackgroundServices;
 using Flowly.DeadLetters.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -56,7 +55,7 @@ public static class PostgresDeadLetterTrackingRegistrationExtension
         Action<DeadLetterTrackingOptions>? configure = null)
     {
         if (configure is not null)
-            flowlyBuilder.Services.Configure<DeadLetterTrackingOptions>(configure);
+            flowlyBuilder.Services.Configure(configure);
 
         var connectionString = flowlyBuilder.Configuration.GetConnectionString(connection) ?? connection;
 

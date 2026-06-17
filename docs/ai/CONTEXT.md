@@ -194,6 +194,18 @@ ReturnMessage response = await caller.Call<CallMessage, ReturnMessage>(new CallM
 
 **Important:** Attributes on `TReturn` (`[QueueName]`, `[RetryPolicy]`, `[ProviderAffinity]`, etc.) are **silently ignored** on the reply path. They only apply if `TReturn` is also registered as a normal handler elsewhere.
 
+**Call handler invariants — checklist for reviewing templates and skills:**
+
+These are easy to miss because each is a small, separate piece of wiring; a solution can build and even run partially while one of them is missing. Use this list whenever auditing `Flowly.Templates` content or `.claude/skills/*` for call-handler correctness:
+
+1. **Every project that calls `AddCallSubmitter<T>()` must set `InstanceName`.** `AddCallSubmitter` throws `InvalidOperationException` synchronously, at registration time, if `FlowlyOptions.InstanceName` is null/empty. This applies to the sender — but just as much to a Dashboard, an API project, or any other process that submits the call.
+2. **`InstanceName` must be unique per process across the whole solution**, not per message type. It names that process's reply queue (`{callQueue}.reply.{InstanceName}`), so two projects sharing a value collide. A project that already sets `InstanceName` for one call submitter reuses the same value for any other — don't add a second override.
+3. **A message type with only a `CallHandler<T, TReturn>` registration (no `MessageHandler<T>`) cannot be submitted with `AddMessageSubmitter<T>()`.** Any project that needs to submit it — including a Dashboard's Submit panel — must use `AddCallSubmitter<T>()` instead, mirroring whatever the receiver registered.
+4. **A Flowly Dashboard (standalone project or embedded) that should be able to submit a call message needs its own `AddCallSubmitter<T>()` + `InstanceName`**, exactly like a sender. Adding a call handler to a solution that already has a Dashboard, or adding a Dashboard to a solution that already has a call handler, are both easy to get half-wired — check both directions.
+5. **ASB emulator (`CreateTopology = false`) needs every reply queue declared in `sbconfig.json`** — one per `InstanceName` that registers a call submitter, including the Dashboard's if it submits calls. Regenerate with `flowly azure-service-bus emulator-config --project <each project>`, never hand-edit.
+6. **ASB + Aspire AppHost needs `azureServiceBus.AddFlowly(<project>)` called for every project with a call submitter**, not just the primary sender — otherwise that project's reply queue is never pre-registered and calls fail at runtime. Include the Dashboard project here too if it submits calls.
+7. **Restarting a running ASB emulator / Docker Compose stack is disruptive** — a skill that just regenerated `sbconfig.json` should ask the user before restarting it, not do so automatically.
+
 ---
 
 ### 3. Sending Messages
@@ -935,10 +947,20 @@ The Flowly repository ships skills under `.claude/skills/`. Each skill is a dire
 | `create-message-handler/` | `/create-message-handler <MessageName>` | Scaffold message contract record, `MessageHandler<T>` subclass, registration in `FlowlyConfiguration`, and unit tests |
 | `create-recurring-job/` | `/create-recurring-job <HandlerName>` | Scaffold `RecurringJobHandler` subclass with `[RecurringJob]` attribute, registration, and unit tests |
 | `add-jobtracking/` | `/add-jobtracking` | Add job state tracking to an existing solution — either inline in a project's `FlowlyConfiguration` or as a standalone `JobTracker` project mirroring the `flowlyapp --jobs` template |
+| `add-opentelemetry/` | `/add-opentelemetry` | Add Flowly.OpenTelemetry metrics and tracing to an existing solution — `builder.AddFlowlyOpenTelemetry()` for a fresh setup, or `AddFlowlyInstrumentation()` composed into an existing pipeline / Aspire `ServiceDefaults` |
 | `create-contracts-assembly/` | `/create-contracts-assembly` | Create a shared `*.Messages` / `*.Contracts` project for solutions where multiple deployable services share message types |
+
+> **Skills are deployed to user sites — they must be self-contained.**
+> Skills are synced into `src/Flowly.Templates/content/flowly-skills/` via the `SyncSkills` MSBuild target and shipped to end-users as part of the `Flowly.Templates` NuGet package. When a user runs `dotnet new flowlyskills`, only the contents of `.claude/skills/` land in their project — nothing from `.claude/rules/`, `docs/`, or anywhere else in this repository. Therefore:
+> - Skills must **not** reference files that only exist in this repository (e.g. `.claude/rules/*.md`, source projects, local tooling scripts).
+> - Any instruction a skill needs to give must be **embedded inline** in the `SKILL.md` itself.
+> - Tools like the `flowly` CLI must be installed from NuGet (`dotnet tool install --global Flowly.Tool`), not built from source — user sites do not have `Flowly.Tool/Flowly.Tool.csproj`.
 
 > **Maintenance note — keep `add-jobtracking` in sync with the `flowlyapp` template:**
 > The `add-jobtracking` skill's standalone JobTracker option mirrors the `JobTracker/` project scaffolded by `dotnet new flowlyapp --jobs`. Whenever the template's `JobTracker/` project structure changes (new packages, changed connection string names, `Program.cs` wiring, `appsettings` layout, or `launchSettings.json`), update `.claude/skills/add-jobtracking/SKILL.md` in the same change so the skill stays consistent with what the template produces.
+
+> **Maintenance note — keep `add-opentelemetry` in sync with the `flowly-project` and `flowlyaspireapp` templates:**
+> The `add-opentelemetry` skill's wiring (`builder.AddFlowlyOpenTelemetry()` for fresh setups; `.WithMetrics(m => m.AddFlowlyInstrumentation()).WithTracing(t => t.AddFlowlyInstrumentation())` for composing into an existing pipeline or Aspire's `ServiceDefaults`) mirrors what `dotnet new flowly --opentelemetry` and `dotnet new flowlyaspireapp` generate. Whenever the templates' OpenTelemetry package set or registration calls change, update `.claude/skills/add-opentelemetry/SKILL.md` in the same change so the skill stays consistent with what the templates produce.
 
 When a user in a Flowly-based project asks you to add a handler, recurring job, or set up the transport, suggest the appropriate skill command if the skills are present in their `.claude/skills/` directory.
 

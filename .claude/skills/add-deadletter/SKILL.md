@@ -209,7 +209,24 @@ dotnet new flowly \
 
 Substitute the actual transport, backend, and project name. The `--no-http` flag produces a pure Worker with no HTTP listener, which is appropriate for a dedicated tracker.
 
-### B2 — Review the generated FlowlyConfiguration
+### B2 — Patch Program.cs for the ASB emulator
+
+**Applies only when the transport is Azure Service Bus.** Skip this step for RabbitMQ and In-Memory.
+
+The template's generated `<ProjectName>/Program.cs` calls `builder.AddFlowly<FlowlyConfiguration>();` with no options, which defaults `CreateTopology` to `true`. The Azure Service Bus emulator does not support dynamic topology creation, so this must be disabled. Open `<ProjectName>/Program.cs` and change:
+
+```csharp
+builder.AddFlowly<FlowlyConfiguration>();
+```
+
+to:
+
+```csharp
+// Set CreateTopology = true for RabbitMQ; false for Azure Service Bus (Aspire or emulator manages topology)
+builder.AddFlowly<FlowlyConfiguration>(options => options.CreateTopology = false);
+```
+
+### B3 — Review the generated FlowlyConfiguration
 
 Open the generated `DeadLetterTracker/FlowlyConfiguration.cs`. The template wires up a `DeadLetterSampleMessageHandler` with `[RetryPolicy]` and `.WithDeadLetterTracking()`. Explain to the user:
 
@@ -217,7 +234,7 @@ Open the generated `DeadLetterTracker/FlowlyConfiguration.cs`. The template wire
 - They should replace it (or add alongside it) with their actual message handler registrations, adding `.WithDeadLetterTracking()` to each one they want tracked
 - Only `MessageHandler<T>` and `EventHandlerBase<TEvent>` are supported; do not add `.WithDeadLetterTracking()` to job, batch, or call handlers
 
-### B3 — Add to the solution file
+### B4 — Add to the solution file
 
 Find the `.sln` or `.slnx` file in the repo root and add the new project:
 
@@ -225,7 +242,7 @@ Find the `.sln` or `.slnx` file in the repo root and add the new project:
 dotnet sln add DeadLetterTracker/DeadLetterTracker.csproj
 ```
 
-### B4 — Update connection strings
+### B5 — Update connection strings
 
 Fill in the actual connection strings in `DeadLetterTracker/appsettings.Development.json`. The generated file contains placeholder values — replace them with real ones for the local environment:
 
@@ -264,9 +281,9 @@ Also update the transport connection string (e.g. `RabbitMQ`, `AzureServiceBus`)
 
 The Flowly Dashboard feature-detects dead letter tracking at runtime by checking whether `IDeadLetterService` is registered in DI. No extra registration is needed when the dashboard is embedded in the same project that already has `AddXxxDeadLetterTracking()` registered.
 
-However, if the solution has a **standalone Dashboard project**, it needs its own dead letter registration so `IDeadLetterService` is present in its DI container.
+However, if the solution has a **standalone Dashboard project**, it needs its own dead letter registration so `IDeadLetterService` is present in its DI container. A solution can have more than one Dashboard project (e.g. one per deployable service) — repeat the steps below for each one found.
 
-### Check for a standalone Dashboard project
+### Check for standalone Dashboard project(s)
 
 Search for `AddFlowlyDashboard` across the solution:
 
@@ -274,9 +291,11 @@ Search for `AddFlowlyDashboard` across the solution:
 grep -r "AddFlowlyDashboard" --include="*.cs" -l .
 ```
 
-**If the result is the same project** where dead letter tracking was just added → nothing to do; the dashboard will automatically show the dead letters tab.
+This can return more than one match if the solution has multiple Dashboards.
 
-**If the result is a different project** (standalone Dashboard) → continue with the steps below.
+For **each** match:
+- **If it's the same project** where dead letter tracking was just added → nothing to do for that one; the dashboard will automatically show the dead letters tab.
+- **If it's a different project** (a standalone, or otherwise-embedded, Dashboard) → it needs its own dead letter registration so `IDeadLetterService` is present in its DI container. Continue with steps D1–D3 below for that project, then repeat for the next match.
 
 ### D1 — Add the dead letter package to the Dashboard project
 
@@ -345,7 +364,15 @@ Check whether a `sbconfig.json` exists at the repo root or alongside `docker-com
 find . -name "sbconfig.json" -not -path "*/node_modules/*"
 ```
 
-**If found** → the emulator must know about all queues (including DLQ sub-queues) before startup. Regenerate `sbconfig.json` using the `flowly` CLI — **do not manually edit it**. Pass `--project` for every project in the solution that has a `FlowlyConfiguration` (including the newly added or modified one):
+**If found** → the emulator must know about all queues (including DLQ sub-queues) before startup. Regenerate `sbconfig.json` using the `flowly` CLI — **do not manually edit it**. First, ensure the CLI is installed:
+
+```bash
+dotnet tool list --global | grep -q "flowly.tool" || dotnet tool install --global Flowly.Tool
+```
+
+If a `flowly` command fails after install, run `dotnet tool update --global Flowly.Tool` and retry. Never reimplement what the tool does — always install it instead.
+
+Pass `--project` for every project in the solution that has a `FlowlyConfiguration` (including the newly added or modified one):
 
 ```bash
 flowly azure-service-bus emulator-config \
@@ -374,6 +401,14 @@ If no matching `docker-compose.yml` is found, tell the user to restart their ASB
 
 ---
 
+## Final step — Verify the build
+
+```bash
+dotnet build
+```
+
+Fix any errors before reporting the task as complete.
+
 ## Checklist
 
 - [ ] Confirmed no dead letter tracking already existed (Step 1)
@@ -385,7 +420,9 @@ If no matching `docker-compose.yml` is found, tell the user to restart their ASB
 - [ ] Empty placeholder added to `appsettings.json` under `ConnectionStrings.FlowlyDeadLetters`
 - [ ] Real connection string added to `appsettings.Development.json` under `ConnectionStrings.FlowlyDeadLetters`
 - [ ] (Option B only) Project scaffolded with `dotnet new flowly --deadletter`
+- [ ] (Option B + Azure Service Bus only) `Program.cs` patched with `CreateTopology = false`
 - [ ] (Option B only) Sample handler reviewed and replaced or extended with actual message types
 - [ ] (Option B only) Project added to the solution file with `dotnet sln add`
-- [ ] (Standalone Dashboard exists) Dead letter package + registration + connection strings added to the Dashboard project
+- [ ] (Standalone Dashboard(s) exist) Dead letter package + registration + connection strings added to each Dashboard project found
 - [ ] (ASB Emulator / Docker Compose only) `sbconfig.json` regenerated with `flowly azure-service-bus emulator-config`; Docker restarted if emulator was already running
+- [ ] `dotnet build` passes with no errors

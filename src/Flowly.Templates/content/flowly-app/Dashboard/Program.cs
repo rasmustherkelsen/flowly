@@ -4,7 +4,7 @@ using Dashboard;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddFlowlyDashboard();
+builder.Services.AddFlowlyDashboard(options => options.PathPrefix = string.Empty);
 #if (UseRabbitMQ)
 builder.AddFlowly<FlowlyConfiguration>(options => options.CreateTopology = true);
 #else
