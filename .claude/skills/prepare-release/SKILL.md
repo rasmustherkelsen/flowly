@@ -118,9 +118,9 @@ find . -name "*.csproj" | xargs sed -i '' 's/\(Include="Flowly[^"]*"\) Version="
 | TestInMemory | `dotnet new flowlyapp --transport inmemory -n TestInMemory` |
 | TestAspireRabbitMq | `dotnet new flowlyaspireapp --transport rabbitmq -n TestAspireRabbitMq` |
 | TestAspireAsb | `dotnet new flowlyaspireapp --transport azureservicebus -n TestAspireAsb` |
-| TestJobs | `dotnet new flowlyapp --transport rabbitmq --jobs --sqlite -n TestJobs` |
-| TestDeadLetters | `dotnet new flowlyapp --transport rabbitmq --deadletter --sqlite -n TestDeadLetters` |
-| TestFull | `dotnet new flowlyapp --transport rabbitmq --jobs --deadletter --sqlite --dashboard -n TestFull` |
+| TestJobs | `dotnet new flowlyapp --transport rabbitmq --jobs --db sqlite -n TestJobs` |
+| TestDeadLetters | `dotnet new flowlyapp --transport rabbitmq --deadletter --db sqlite -n TestDeadLetters` |
+| TestFull | `dotnet new flowlyapp --transport rabbitmq --jobs --deadletter --db sqlite --dashboard -n TestFull` |
 
 ### 4e — Clean up
 

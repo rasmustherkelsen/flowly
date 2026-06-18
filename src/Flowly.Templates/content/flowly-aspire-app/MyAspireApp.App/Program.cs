@@ -4,9 +4,6 @@ using MyAspireApp.App.Services;
 #if (UseDashboard)
 using Flowly.Dashboard;
 #endif
-#if (UseDatabase && !HasDatabaseBackend)
-#error Specify a database backend: --sqlserver, --postgres, or --sqlite
-#endif
 
 var builder = WebApplication.CreateBuilder(args);
 

@@ -22,7 +22,10 @@ function buildDefaultPayload(schemaStr: string): Record<string, unknown> {
     const schema: JsonSchema = JSON.parse(schemaStr);
     const result: Record<string, unknown> = {};
     for (const [key, prop] of Object.entries(schema.properties ?? {})) {
-      const type = Array.isArray(prop.type) ? prop.type[0] : prop.type;
+      const typeArray = Array.isArray(prop.type) ? prop.type : prop.type ? [prop.type] : [];
+      const type = typeArray.find(t => t !== 'null' && t !== 'string')
+        ?? typeArray.find(t => t !== 'null')
+        ?? typeArray[0];
       result[key] = type === 'number' || type === 'integer' ? 1
         : type === 'boolean' ? false
         : type === 'array' ? []

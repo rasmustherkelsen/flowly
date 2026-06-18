@@ -19,11 +19,11 @@ dotnet new flowlyaspireapp --transport <rabbitmq|asb|inmemory> [options] -n <Nam
 | `--transport azureservicebus` | `asb` | Azure Service Bus transport |
 | `--transport inmemory` | `inm` | In-memory transport (no broker) |
 | `--call` | `--callhandler` | RPC call handler instead of fire-and-forget |
-| `--jobs` | `--jobtracking` | Job state tracking (requires a DB flag) |
-| `--deadletter` | `--deadlettertracking` | Dead letter tracking (requires a DB flag) |
-| `--sqlserver` | | SQL Server database backend |
-| `--postgres` | | PostgreSQL database backend |
-| `--sqlite` | | SQLite database backend |
+| `--jobs` | `--jobtracking` | Job state tracking (requires `--db` or `--database`) |
+| `--deadletter` | `--deadlettertracking` | Dead letter tracking (requires `--db` or `--database`) |
+| `--db sqlserver` / `--database sqlserver` | | SQL Server database backend |
+| `--db postgres` / `--database postgres` | | PostgreSQL database backend |
+| `--db sqlite` / `--database sqlite` | | SQLite database backend |
 
 **OpenTelemetry is always enabled** — no flag needed. The Aspire dashboard requires OTel; `Flowly.OpenTelemetry` is included unconditionally and every `FlowlyConfiguration` wires in `AddFlowlyInstrumentation()`.
 

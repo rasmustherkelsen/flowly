@@ -2,9 +2,6 @@
 using Flowly.AzureServiceBus.Aspire;
 
 #endif
-#if (UseDatabase && !HasDatabaseBackend)
-#error Specify a database backend: --sqlserver, --postgres, or --sqlite
-#endif
 var builder = DistributedApplication.CreateBuilder(args);
 
 #if (UseRabbitMQ)

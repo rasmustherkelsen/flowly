@@ -193,15 +193,15 @@ Run `dotnet new flowly` with the `--deadletter` flag and the matching transport 
 
 | Backend | Flag |
 |---|---|
-| SQL Server | `--sqlserver` |
-| PostgreSQL | `--postgres` |
-| SQLite | `--sqlite` |
+| SQL Server | `--db sqlserver` |
+| PostgreSQL | `--db postgres` |
+| SQLite | `--db sqlite` |
 
 ```bash
 dotnet new flowly \
   --transport rabbitmq \
   --deadletter \
-  --sqlserver \
+  --db sqlserver \
   --no-http \
   -n DeadLetterTracker \
   -o ./DeadLetterTracker

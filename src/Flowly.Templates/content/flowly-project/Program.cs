@@ -13,9 +13,6 @@ using Flowly.InMemory;
 #if (UseOpenTelemetry)
 using Flowly.OpenTelemetry;
 #endif
-#if (UseDatabase && !HasDatabaseBackend)
-#error Specify a database backend: --sqlserver, --postgres, or --sqlite
-#endif
 #if(!UseInline)
 using FlowlyApp;
 #endif

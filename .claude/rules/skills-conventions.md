@@ -41,6 +41,30 @@ Common triggers:
 - `Flowly.OpenTelemetry` registration pattern changes in the `flowly-project` or `flowlyaspireapp` templates → update `add-opentelemetry/SKILL.md` so the wiring stays consistent
 - A previously documented step becomes wrong, redundant, or replaced by a better approach → fix or remove it
 
+## Setup skills — prefer Flowly.Templates
+
+Skills that set up a new Flowly project or solution must use `dotnet new flowly`, `dotnet new flowlyapp`, or `dotnet new flowlyaspireapp` as the **primary path** rather than manually adding packages and writing configuration. The templates produce correct, tested, and version-consistent scaffolding. Reimplementing template output in a skill creates drift and extra maintenance.
+
+**Structure for every setup skill:**
+
+1. Ask upfront: **new project** or **existing project**?
+2. **New project path** — invoke the appropriate template, list relevant flags, add post-scaffold notes (e.g. `dotnet sln add`, `CreateTopology = false` for ASB). Then point the user to handler/job skills for next steps.
+3. **Existing project path** — manual steps (add NuGet packages, write `FlowlyConfiguration`, wire `Program.cs`) only for projects not created via a template.
+
+**Which template to use:**
+
+| Scenario | Template command |
+|---|---|
+| New complete solution (Messages + Sender + Receiver) | `dotnet new flowlyapp --transport <x>` |
+| New Aspire solution | `dotnet new flowlyaspireapp --transport <x>` |
+| New single project added to an existing solution | `dotnet new flowly --transport <x>`, then `dotnet sln add` |
+
+Always run `dotnet sln add` after scaffolding a single project into an existing solution.
+
+**Keeping setup skills in sync with templates:**
+
+When a template's flag set, generated file layout, or default wiring changes, update the corresponding setup skill's template step in the same change. The manual path also needs updating if the package names or registration calls it documents have changed.
+
 ## Adding new skills
 
 When adding a significant new feature that a developer would scaffold repeatedly, consider adding a skill. Follow the existing structure: one directory per skill, `SKILL.md` inside, frontmatter with `description` and `arguments` if the skill accepts parameters.

@@ -4,9 +4,6 @@ using App.Services;
 #if (UseDashboard)
 using Flowly.Dashboard;
 #endif
-#if (UseDatabase && !HasDatabaseBackend)
-#error Specify a database backend: --sqlserver, --postgres, or --sqlite
-#endif
 
 #if (UseDashboard)
 var builder = WebApplication.CreateBuilder(args);
