@@ -78,7 +78,7 @@ Registered in `Program.cs` via `builder.AddFlowly<MyConfig>()` or auto-discovery
 | Base class | Use when | Supports retry | Supports DLQ tracking | Registration |
 |---|---|---|---|---|
 | `MessageHandler<T>` | One message at a time | Yes | Yes | `.AddMessageHandler<T, TH>()` |
-| `BatchMessageHandler<T>` | Multiple messages together | No | No | `.AddBatchMessageHandler<T, TH>()` |
+| `BatchMessageHandler<T>` | Multiple messages together | Yes — opt-in via `[RetryPolicy]`; handler must be idempotent (whole batch redelivered on failure). Default is at-most-once (no retry). | No | `.AddBatchMessageHandler<T, TH>()` |
 | `JobHandler<T>` | Job with state tracking (`T : IJobMessage`) | Yes | No | `.AddJobHandler<T, TH>()` |
 | `RecurringJobHandler` | CRON-scheduled background job | No | No | `.AddRecurringJob<TH>()` |
 | `EventHandlerBase<TEvent>` | Fan-out event (all subscribers receive) | Yes | Yes — requeue re-publishes to the topic/exchange with `flowly-target-subscription` set; only the originating subscriber receives the requeued message. | `.AddEventHandler<TEvent, TH>()` |

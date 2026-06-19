@@ -227,6 +227,23 @@ Register:
 builder.AddBatchMessageHandler<AnalyticsEvent, EventBatchHandler>();
 ```
 
+**Delivery semantics:** by default, batch handlers use **at-most-once** delivery — messages are acknowledged before `Handle` is called. If the handler throws, those messages are gone and will not be redelivered. This suits bulk-write workloads where a duplicate insert is worse than a dropped message.
+
+To opt in to **at-least-once** delivery with automatic retry, apply `[RetryPolicy]`:
+
+```csharp
+[BatchProcessing(maxMessages: 100, maxWaitTimeInSeconds: 30)]
+[RetryPolicy(maxRetries: 3, delaySeconds: 30)]
+public class EventBatchHandler : BatchMessageHandler<AnalyticsEvent>
+{
+    ...
+}
+```
+
+When `[RetryPolicy]` is configured and `Handle` throws, Flowly republishes the **entire batch** to the same queue with an incremented retry counter, then acknowledges the originals. After all retries are exhausted the batch is discarded (batch handlers do not support dead letter tracking).
+
+> **Important:** when `[RetryPolicy]` is used on a batch handler, the handler **must be idempotent** — the whole batch is redelivered on failure, so processing the same message twice must produce the same outcome.
+
 ### Queue configuration attributes
 
 These attributes go on the **handler** class:
@@ -526,7 +543,7 @@ public class OrderCreatedHandler : MessageHandler<OrderCreated>
 
 For job handlers, exhausted retries transition the job to `Failed` in the database — the message is completed rather than dead-lettered.
 
-Retry policy applies to `MessageHandler<T>` and `JobHandler<T>`. Batch handlers and recurring jobs do not support retry.
+Retry policy applies to `MessageHandler<T>`, `JobHandler<T>`, and `BatchMessageHandler<T>`. Recurring jobs do not support retry. See the [Batch handler](#batch-handler) section for delivery-semantics details specific to batch handlers.
 
 ---
 

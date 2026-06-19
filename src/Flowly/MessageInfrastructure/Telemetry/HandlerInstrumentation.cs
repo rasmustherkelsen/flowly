@@ -74,11 +74,11 @@ public sealed class HandlerInstrumentation : IHandlerInstrumentation, IDisposabl
     }
 
     /// <inheritdoc />
-    public void RecordRetried(string handlerName, string queueName)
+    public void RecordRetried(string handlerName, string queueName, long count = 1)
     {
         Activity.Current?.SetTag("outcome", "retry");
 
-        _retried.Add(1, new TagList { { "handler", handlerName }, { FlowlyInstrumentationConstants.MessagingDestinationName, queueName } });
+        _retried.Add(count, new TagList { { "handler", handlerName }, { FlowlyInstrumentationConstants.MessagingDestinationName, queueName } });
     }
 
     /// <summary>Disposes the underlying OTel <see cref="Meter" />.</summary>

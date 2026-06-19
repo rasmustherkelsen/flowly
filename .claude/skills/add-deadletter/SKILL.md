@@ -307,13 +307,13 @@ Add the same backend package that was added to the primary project:
 
 ### D2 — Register dead letter tracking in the Dashboard's FlowlyConfiguration
 
-Open the Dashboard project's `FlowlyConfiguration` and add the backend registration. Use `enableMigrations: false` — the primary project (Receiver or DeadLetterTracker) already runs migrations; the Dashboard should not run them again:
+Open the Dashboard project's `FlowlyConfiguration` and add the client registration. Use `AddDeadLetterTrackingClient` — the Dashboard only reads state and must not run ingestion, cleanup, or metrics background services. The primary project (Receiver or DeadLetterTracker) owns migrations and ingestion:
 
 | Backend | Registration |
 |---|---|
-| SQL Server | `.AddSqlServerDeadLetterTracking("FlowlyDeadLetters", enableMigrations: false)` |
-| PostgreSQL | `.AddPostgresDeadLetterTracking("FlowlyDeadLetters", enableMigrations: false)` |
-| SQLite | `.AddSQLiteDeadLetterTracking("FlowlyDeadLetters", enableMigrations: false)` |
+| SQL Server | `.AddDeadLetterTrackingClient("FlowlyDeadLetters")` |
+| PostgreSQL | `.AddDeadLetterTrackingClient("FlowlyDeadLetters")` |
+| SQLite | `.AddDeadLetterTrackingClient("FlowlyDeadLetters")` |
 
 Example:
 
@@ -324,7 +324,7 @@ internal class FlowlyConfiguration : Configuration
     {
         builder
             .UseRabbitMq(connection: "RabbitMQ")
-            .AddSqlServerDeadLetterTracking("FlowlyDeadLetters", enableMigrations: false)
+            .AddDeadLetterTrackingClient("FlowlyDeadLetters")
             .AddMessageSubmitter<MyMessage>();
     }
 }

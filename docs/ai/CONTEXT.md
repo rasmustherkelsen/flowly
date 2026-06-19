@@ -137,6 +137,8 @@ public class MyBatchHandler : BatchMessageHandler<MyMessage>
 
 Register: `.AddBatchMessageHandler<MyMessage, MyBatchHandler>()`
 
+**Delivery semantics:** default is **at-most-once** — messages are acknowledged before `Handle` is called. If the handler throws, they are gone. Add `[RetryPolicy]` to opt in to at-least-once delivery; the entire batch is republished on failure. **Handler must be idempotent when `[RetryPolicy]` is used.** Batch handlers do not support dead letter tracking.
+
 #### Job message handler (with state tracking)
 
 ```csharp
@@ -317,7 +319,7 @@ public class NightlyCleanupJob : RecurringJobHandler
 
 ### 6. Retry Policy
 
-Apply `[RetryPolicy(maxRetries, delaySeconds)]` to any `MessageHandler<T>` or `JobHandler<T>`. Alternatively, set via `Configure(HandlerQueueOptions options)`.
+Apply `[RetryPolicy(maxRetries, delaySeconds)]` to any `MessageHandler<T>`, `JobHandler<T>`, or `BatchMessageHandler<T>`. Alternatively, set via `Configure(HandlerQueueOptions options)`.
 
 **How it works:**
 - On exception: if `RetryCount < MaxRetries`, Flowly re-publishes the message to the same queue with `RetryCount + 1` in the `flowly-retry-count` application property and a `ScheduledEnqueueTime` of `now + delaySeconds`
@@ -955,7 +957,7 @@ The Flowly repository ships skills under `.claude/skills/`. Each skill is a dire
 | Directory | Command | Purpose |
 |---|---|---|
 | `create-message-handler/` | `/create-message-handler <MessageName>` | Scaffold message contract, `MessageHandler<T>` subclass, and registration |
-| `create-batch-handler/` | `/create-batch-handler <MessageName>` | Scaffold message contract, `BatchMessageHandler<T>` subclass, and registration. No retry or dead letter tracking. |
+| `create-batch-handler/` | `/create-batch-handler <MessageName>` | Scaffold message contract, `BatchMessageHandler<T>` subclass, and registration. Supports optional `[RetryPolicy]` (handler must be idempotent). No dead letter tracking. |
 | `create-job-handler/` | `/create-job-handler <MessageName>` | Scaffold job message (`IJobMessage`), `JobHandler<T>` subclass, and registration. Requires job tracking. |
 | `create-event-handler/` | `/create-event-handler <EventName>` | Scaffold event contract, `EventHandlerBase<TEvent>` subclass, and registration |
 | `create-call-handler/` | `/create-call-handler <MessageName>` | Scaffold RPC call message (`IReturns<T>`), `CallHandler<T, TReturn>`, and sender/receiver registration |

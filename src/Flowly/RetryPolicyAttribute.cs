@@ -5,6 +5,11 @@ namespace Flowly;
 ///     define the maximum number of retries and the delay between retries when processing messages. The retry policy helps
 ///     to handle transient failures in message processing by allowing the system to automatically retry failed operations
 ///     according to the specified parameters.
+///     <para>
+///         When applied to a <see cref="BatchMessageHandler{TMessage}" />, the entire batch is re-published on failure.
+///         The handler <strong>must be idempotent</strong> — every message in the batch will be delivered again, so
+///         processing the same message twice must produce the same outcome.
+///     </para>
 /// </summary>
 /// <param name="maxRetries">The maximum number of retries allowed for failed message processing.</param>
 /// <param name="delaySeconds">The delay between retries in seconds.</param>

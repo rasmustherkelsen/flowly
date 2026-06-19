@@ -75,4 +75,31 @@ public static class PostgresDeadLetterTrackingRegistrationExtension
 
         return flowlyBuilder;
     }
+
+    /// <summary>
+    ///     Adds a read-only dead letter tracking client backed by PostgreSQL.
+    ///     Registers only the EF Core data context, repository, and <see cref="Flowly.DeadLetters.IDeadLetterService"/> —
+    ///     no ingestion background services, no cleanup background service, no metrics background service, and no
+    ///     migration service. Use this in applications that need to query, requeue, or discard dead letters (e.g. a
+    ///     standalone Dashboard project) without participating in dead letter ingestion or processing.
+    /// </summary>
+    /// <param name="flowlyBuilder">The <see cref="IFlowlyBuilder"/> to configure.</param>
+    /// <param name="connection">
+    ///     The name of a connection string in <c>IConfiguration</c> (looked up under <c>ConnectionStrings:</c>),
+    ///     or a literal PostgreSQL connection string if no matching entry is found.
+    /// </param>
+    /// <returns>The same <see cref="IFlowlyBuilder"/> instance, for fluent chaining.</returns>
+    public static IFlowlyBuilder AddDeadLetterTrackingClient(
+        this IFlowlyBuilder flowlyBuilder,
+        string connection)
+    {
+        var connectionString = flowlyBuilder.Configuration.GetConnectionString(connection) ?? connection;
+
+        flowlyBuilder.AddDeadLetterReadAccess(dbOptions =>
+            dbOptions.UseNpgsql(
+                connectionString,
+                npgsql => npgsql.EnableRetryOnFailure(5, TimeSpan.FromSeconds(30), null)));
+
+        return flowlyBuilder;
+    }
 }

@@ -15,5 +15,5 @@ internal sealed class NullHandlerInstrumentation : IHandlerInstrumentation
 
     public void RecordFailed(string handlerName, string queueName, long count = 1) { }
 
-    public void RecordRetried(string handlerName, string queueName) { }
+    public void RecordRetried(string handlerName, string queueName, long count = 1) { }
 }

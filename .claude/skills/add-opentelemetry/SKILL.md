@@ -71,11 +71,11 @@ Wire it in `Program.cs`:
 ```csharp
 using Flowly.OpenTelemetry;
 
-builder.AddFlowly<FlowlyConfiguration>();
+builder.AddFlowly<FlowlyConfiguration>(options => options.EnableTelemetry = true);
 builder.AddFlowlyOpenTelemetry();
 ```
 
-`FlowlyOptions.EnableTelemetry` defaults to `true`, so no extra option is needed. If the project's `AddFlowly` call already sets `options.EnableTelemetry = false`, remove that line or flip it to `true` — without it, Flowly emits no metrics or traces regardless of SDK wiring.
+If the project's `AddFlowly` call already exists without the options lambda, add `options => options.EnableTelemetry = true` to it. If it already has `options.EnableTelemetry = false`, flip it to `true` — without it, Flowly emits no metrics or traces regardless of SDK wiring.
 
 ### Add an exporter
 
@@ -95,6 +95,8 @@ Use the table below to determine exactly which NuGet package to add. Do not prob
 | Jaeger | `<PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="*" />` |
 | OTLP | `<PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="*" />` |
 
+> **Per-project requirement:** Add the exporter package to **each project's** `.csproj` that contains a `UseOtlpExporter()` or `AddConsoleExporter()` call. When instrumenting multiple projects (Sender, Receiver, Dashboard, JobTracker, etc.) the `<PackageReference>` must appear in every one of them separately — a reference in one project does not cover others.
+
 **Console (local debugging)** — add `OpenTelemetry.Exporter.Console`:
 
 ```csharp
@@ -105,35 +107,58 @@ builder.Services.AddOpenTelemetry()
     .WithTracing(t => t.AddConsoleExporter());
 ```
 
-**Jaeger (local Docker container)** — the out-of-the-box option. Add `OpenTelemetry.Exporter.OpenTelemetryProtocol` and wire the same `UseOtlpExporter()` call as the generic OTLP path below, then make it reach Jaeger by default:
+**Jaeger (local Docker container)** — the out-of-the-box option. Add `OpenTelemetry.Exporter.OpenTelemetryProtocol` to the project's `.csproj`, then wire:
 
-1. Check for a running Jaeger container: `docker ps --filter "ancestor=jaegertracing/jaeger" --format "{{.Names}}: {{.Ports}}"`. If it's running with remapped host ports, use those instead of the defaults below. If nothing is running, assume Jaeger's own default OTLP gRPC port and proceed — the user can start the container before first run.
+```csharp
+using OpenTelemetry;
+
+builder.AddFlowlyOpenTelemetry();
+builder.Services.AddOpenTelemetry().UseOtlpExporter();
+```
+
+The `OTEL_EXPORTER_OTLP_ENDPOINT` env var set in the next step makes this call route to Jaeger. `UseOtlpExporter()` is provided by the `OpenTelemetry.Exporter.OpenTelemetryProtocol` package and lives in the `OpenTelemetry` namespace — the `using` directive is required.
+
+1. Check for a running Jaeger container: `docker ps --filter "ancestor=cr.jaegertracing.io/jaegertracing/jaeger" --format "{{.Names}}: {{.Ports}}"`. If it's running with remapped host ports, use those instead of the defaults below. If nothing is running, assume Jaeger's own default OTLP gRPC port and proceed — the user can start the container before first run.
 2. For each target project, add to **every** profile in `Properties/launchSettings.json` (`http`/`https`, or `run` for worker-style projects):
 
    ```json
-   "OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4317",
+   "OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4318",
    "OTEL_SERVICE_NAME": "<ProjectName>"
    ```
 
-   `OTEL_EXPORTER_OTLP_ENDPOINT` makes the target explicit (Jaeger's default OTLP gRPC receiver port, `4317`). `OTEL_SERVICE_NAME` is what each project shows as in the Jaeger UI's service dropdown — set it per project (e.g. `Sender`, `Receiver`, `JobTracker`) so they're distinguishable. These are read by the SDK directly from the process environment, not from `IConfiguration`, so they must go in `launchSettings.json`'s `environmentVariables`, not `appsettings.json`.
+   Use port **4318** (OTLP HTTP/protobuf), not 4317. `OpenTelemetry.Exporter.OpenTelemetryProtocol` 1.7+ defaults to the `http/protobuf` protocol, which sends to port 4318; the gRPC port 4317 will silently drop those frames. `OTEL_SERVICE_NAME` is what each project shows as in the Jaeger UI's service dropdown — set it per project (e.g. `Sender`, `Receiver`, `JobTracker`) so they're distinguishable. These are read by the SDK directly from the process environment, not from `IConfiguration`, so they must go in `launchSettings.json`'s `environmentVariables`, not `appsettings.json`.
 3. Look for a `docker-compose.yml` in the solution. If one exists and has no `jaeger` service yet, offer to add one:
 
    ```yaml
    jaeger:
-     image: jaegertracing/jaeger:2
+     image: cr.jaegertracing.io/jaegertracing/jaeger:2.19.0
      container_name: jaeger
      ports:
        - "4317:4317"   # OTLP gRPC
        - "4318:4318"   # OTLP HTTP
        - "16686:16686" # Jaeger UI
+       - "5778:5778"   # Sampling config
+       - "9411:9411"   # Zipkin
    ```
 
-   Jaeger v2 has a native OTLP receiver, so no separate collector is needed. If no `docker-compose.yml` exists, tell the user to start one manually instead: `docker run --rm --name jaeger -p 4317:4317 -p 4318:4318 -p 16686:16686 jaegertracing/jaeger:2`.
+   Jaeger v2 has a native OTLP receiver, so no separate collector is needed. If no `docker-compose.yml` exists, tell the user to start one manually instead:
+
+   ```bash
+   docker run --rm --name jaeger \
+     -p 16686:16686 \
+     -p 4317:4317 \
+     -p 4318:4318 \
+     -p 5778:5778 \
+     -p 9411:9411 \
+     cr.jaegertracing.io/jaegertracing/jaeger:2.19.0
+   ```
 4. If Aspire was detected in Step 3, skip steps 2–3 — `ServiceDefaults` already points `OTEL_EXPORTER_OTLP_ENDPOINT` at the Aspire dashboard for every project. Routing to Jaeger instead means adding it as a container resource in `AppHost` and overriding the exporter endpoint explicitly; only do this if the user asks for it on top of the Aspire dashboard.
 
-**OTLP (custom collector or Aspire dashboard)** — add `OpenTelemetry.Exporter.OpenTelemetryProtocol`:
+**OTLP (custom collector or Aspire dashboard)** — add `OpenTelemetry.Exporter.OpenTelemetryProtocol` to the project's `.csproj`:
 
 ```csharp
+using OpenTelemetry;
+
 builder.AddFlowlyOpenTelemetry();
 
 var useOtlpExporter = !string.IsNullOrWhiteSpace(builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"]);
@@ -141,7 +166,7 @@ if (useOtlpExporter)
     builder.Services.AddOpenTelemetry().UseOtlpExporter();
 ```
 
-`UseOtlpExporter()` is what makes `OTEL_EXPORTER_OTLP_ENDPOINT` (and `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_EXPORTER_OTLP_HEADERS`) take effect — setting the env var alone does nothing until an OTLP exporter is registered in code. Gate the call on the env var being set, exactly as the Aspire template's generated `ServiceDefaults/Extensions.cs` does (`AddOpenTelemetryExporters`): `UseOtlpExporter()` defaults to `http://localhost:4317` when the env var is absent, so calling it unconditionally would silently start exporting to a collector that may not exist.
+`UseOtlpExporter()` is what makes `OTEL_EXPORTER_OTLP_ENDPOINT` (and `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_EXPORTER_OTLP_HEADERS`) take effect — setting the env var alone does nothing until an OTLP exporter is registered in code. Gate the call on the env var being set, exactly as the Aspire template's generated `ServiceDefaults/Extensions.cs` does (`AddOpenTelemetryExporters`): `UseOtlpExporter()` defaults to `http://localhost:4318` (HTTP/protobuf) when the env var is absent, so calling it unconditionally would silently start exporting to a collector that may not exist.
 
 ### Compose into an existing pipeline (or Aspire)
 
@@ -185,6 +210,8 @@ dotnet build
 ```
 
 Fix any errors before reporting the task as complete.
+
+> **If you get CS1061 `UseOtlpExporter not found`:** the `OpenTelemetry.Exporter.OpenTelemetryProtocol` package is missing from that project's `.csproj`. Add `<PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="*" />` to that specific project and rebuild. Do not probe DLLs, search the NuGet feed, or investigate further — the package must simply be present in every project that calls `UseOtlpExporter()`.
 
 ## Checklist
 

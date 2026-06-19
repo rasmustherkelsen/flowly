@@ -12,6 +12,8 @@ public class BatchProcessingBackgroundServiceTests
         string queueName = "batch-queue",
         int maxMessages = 10,
         TimeSpan maxWaitTime = default,
+        int maxRetries = 0,
+        int retryDelaySeconds = 0,
         FakeReceivedMessage<TestMessage>[]? messages = null,
         BatchMessageHandler<TestMessage>? handler = null)
     {
@@ -19,7 +21,7 @@ public class BatchProcessingBackgroundServiceTests
         var client = new FakeMessageBusClient(receiver);
         var clientRegistry = new FakeMessageBusClientRegistry(client);
         var settings = new HandlerSettings<TestMessage>(
-            queueName, "azure-service-bus", "BatchHandler", false, 1, 0, 0, maxMessages, maxWaitTime == default ? TimeSpan.FromSeconds(1) : maxWaitTime);
+            queueName, "azure-service-bus", "BatchHandler", false, 1, maxRetries, retryDelaySeconds, maxMessages, maxWaitTime == default ? TimeSpan.FromSeconds(1) : maxWaitTime);
         var scopeFactory = new FakeServiceScopeFactory<BatchMessageHandler<TestMessage>>(handler ?? new RecordingBatchHandler());
         var batchProcessingBackgroundService = new BatchProcessingBackgroundService<TestMessage>(
             clientRegistry, settings, scopeFactory, NullLogger<BatchProcessingBackgroundService<TestMessage>>.Instance, new NullHandlerInstrumentation());
@@ -85,7 +87,7 @@ public class BatchProcessingBackgroundServiceTests
         }
 
         [Fact]
-        public async Task WhenMessagesReceived_CompletesMessagesAfterHandling()
+        public async Task WhenMessagesReceived_CompletesMessages()
         {
             var messages = new[] { new FakeReceivedMessage<TestMessage>(new TestMessage("x")) };
             var (batchProcessingBackgroundService, _, receiver) = Build(messages: messages);
@@ -111,6 +113,116 @@ public class BatchProcessingBackgroundServiceTests
 
             var stopException = await Record.ExceptionAsync(() => batchProcessingBackgroundService.StopAsync(CancellationToken.None));
             Assert.Null(stopException);
+        }
+    }
+
+    public class AtMostOnce
+    {
+        [Fact]
+        public async Task WhenHandlerThrows_MessagesAreStillCompleted()
+        {
+            var messages = new[] { new FakeReceivedMessage<TestMessage>(new TestMessage("z")) };
+            var (batchProcessingBackgroundService, _, receiver) = Build(messages: messages, maxRetries: 0, handler: new ThrowingBatchHandler());
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            await batchProcessingBackgroundService.StartAsync(cts.Token);
+            await receiver.BatchCompleted.WaitAsync(cts.Token);
+            await batchProcessingBackgroundService.StopAsync(CancellationToken.None);
+
+            Assert.True(receiver.CompleteWasCalled);
+        }
+
+        [Fact]
+        public async Task WhenHandlerThrows_MessagesAreNotRepublished()
+        {
+            var messages = new[] { new FakeReceivedMessage<TestMessage>(new TestMessage("z")) };
+            var (batchProcessingBackgroundService, client, receiver) = Build(messages: messages, maxRetries: 0, handler: new ThrowingBatchHandler());
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            await batchProcessingBackgroundService.StartAsync(cts.Token);
+            await receiver.BatchCompleted.WaitAsync(cts.Token);
+            await batchProcessingBackgroundService.StopAsync(CancellationToken.None);
+
+            Assert.Equal(0, client.SentMessages.Count);
+        }
+    }
+
+    public class WithRetryPolicy
+    {
+        [Fact]
+        public async Task WhenHandlerSucceeds_CompletesMessagesAfterHandle()
+        {
+            var messages = new[] { new FakeReceivedMessage<TestMessage>(new TestMessage("ok")) };
+            var (batchProcessingBackgroundService, client, receiver) = Build(messages: messages, maxRetries: 3, retryDelaySeconds: 5);
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            await batchProcessingBackgroundService.StartAsync(cts.Token);
+            await receiver.BatchCompleted.WaitAsync(cts.Token);
+            await batchProcessingBackgroundService.StopAsync(CancellationToken.None);
+
+            Assert.True(receiver.CompleteWasCalled);
+            Assert.Equal(0, client.SentMessages.Count);
+        }
+
+        [Fact]
+        public async Task WhenHandlerThrows_AndRetriesRemain_RepublishesMessagesWithIncrementedRetryCount()
+        {
+            var messages = new[] { new FakeReceivedMessage<TestMessage>(new TestMessage("fail")) };
+            var (batchProcessingBackgroundService, client, receiver) = Build(messages: messages, maxRetries: 3, retryDelaySeconds: 5, handler: new ThrowingBatchHandler());
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            await batchProcessingBackgroundService.StartAsync(cts.Token);
+            await receiver.BatchCompleted.WaitAsync(cts.Token);
+            await batchProcessingBackgroundService.StopAsync(CancellationToken.None);
+
+            Assert.Single(client.SentMessages);
+            Assert.Equal(1, client.SentMessages[0].Properties.RetryCount);
+        }
+
+        [Fact]
+        public async Task WhenHandlerThrows_AndRetriesRemain_CompletesOriginalMessages()
+        {
+            var messages = new[] { new FakeReceivedMessage<TestMessage>(new TestMessage("fail")) };
+            var (batchProcessingBackgroundService, client, receiver) = Build(messages: messages, maxRetries: 3, retryDelaySeconds: 5, handler: new ThrowingBatchHandler());
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            await batchProcessingBackgroundService.StartAsync(cts.Token);
+            await receiver.BatchCompleted.WaitAsync(cts.Token);
+            await batchProcessingBackgroundService.StopAsync(CancellationToken.None);
+
+            Assert.True(receiver.CompleteWasCalled);
+        }
+
+        [Fact]
+        public async Task WhenHandlerThrows_AndRetriesExhausted_CompletesMessagesWithoutRepublishing()
+        {
+            var messages = new[] { new FakeReceivedMessage<TestMessage>(new TestMessage("fail"), MessageProperties.Empty with { RetryCount = 3 }) };
+            var (batchProcessingBackgroundService, client, receiver) = Build(messages: messages, maxRetries: 3, retryDelaySeconds: 5, handler: new ThrowingBatchHandler());
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            await batchProcessingBackgroundService.StartAsync(cts.Token);
+            await receiver.BatchCompleted.WaitAsync(cts.Token);
+            await batchProcessingBackgroundService.StopAsync(CancellationToken.None);
+
+            Assert.True(receiver.CompleteWasCalled);
+            Assert.Equal(0, client.SentMessages.Count);
+        }
+
+        [Fact]
+        public async Task WhenHandlerThrows_ScheduledEnqueueTimeIsSetToDelayFromNow()
+        {
+            var messages = new[] { new FakeReceivedMessage<TestMessage>(new TestMessage("fail")) };
+            var before = DateTimeOffset.UtcNow;
+            var (batchProcessingBackgroundService, client, receiver) = Build(messages: messages, maxRetries: 3, retryDelaySeconds: 10, handler: new ThrowingBatchHandler());
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            await batchProcessingBackgroundService.StartAsync(cts.Token);
+            await receiver.BatchCompleted.WaitAsync(cts.Token);
+            await batchProcessingBackgroundService.StopAsync(CancellationToken.None);
+
+            var scheduled = client.SentMessages[0].Properties.ScheduledEnqueueTime;
+            Assert.NotNull(scheduled);
+            Assert.True(scheduled >= before + TimeSpan.FromSeconds(10));
         }
     }
 
@@ -141,6 +253,7 @@ public class BatchProcessingBackgroundServiceTests
     {
         public string? CreatedReceiverQueueName { get; private set; }
         public string MessagingSystem => "fake";
+        public List<(object Body, MessageProperties Properties)> SentMessages { get; } = [];
 
         public Task<IMessageBusReceiver> CreateReceiver(string queueName)
         {
@@ -160,7 +273,7 @@ public class BatchProcessingBackgroundServiceTests
 
         public Task<IMessageBusSender> CreateMessageBusSender(string queueName)
         {
-            throw new NotImplementedException();
+            return Task.FromResult<IMessageBusSender>(new FakeMessageBusSender(SentMessages));
         }
 
         public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName)
@@ -172,6 +285,21 @@ public class BatchProcessingBackgroundServiceTests
         {
             throw new NotImplementedException();
         }
+    }
+
+    private class FakeMessageBusSender(List<(object Body, MessageProperties Properties)> sentMessages) : IMessageBusSender
+    {
+        public Task SendMessage<TMessage>(TMessage message, MessageProperties properties, CancellationToken cancellationToken = default)
+        {
+            sentMessages.Add((message!, properties));
+            return Task.CompletedTask;
+        }
+
+        public Task SendEmptyMessage(MessageProperties messageProperties, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        public Task SendRawMessage(string rawBody, IReadOnlyDictionary<string, object> applicationProperties, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
     }
 
     private class FakeMessageBusReceiver(

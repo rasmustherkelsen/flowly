@@ -76,6 +76,30 @@ public static class SQLiteDeadLetterTrackingRegistrationExtension
         return flowlyBuilder;
     }
 
+    /// <summary>
+    ///     Adds a read-only dead letter tracking client backed by SQLite.
+    ///     Registers only the EF Core data context, repository, and <see cref="Flowly.DeadLetters.IDeadLetterService"/> —
+    ///     no ingestion background services, no cleanup background service, no metrics background service, and no
+    ///     migration service. Use this in applications that need to query, requeue, or discard dead letters (e.g. a
+    ///     standalone Dashboard project) without participating in dead letter ingestion or processing.
+    /// </summary>
+    /// <param name="flowlyBuilder">The <see cref="IFlowlyBuilder"/> to configure.</param>
+    /// <param name="connection">
+    ///     The name of a connection string in <c>IConfiguration</c> (looked up under <c>ConnectionStrings:</c>),
+    ///     or a literal SQLite connection string if no matching entry is found, for example <c>Data Source=flowly-deadletters.db</c>.
+    /// </param>
+    /// <returns>The same <see cref="IFlowlyBuilder"/> instance, for fluent chaining.</returns>
+    public static IFlowlyBuilder AddDeadLetterTrackingClient(
+        this IFlowlyBuilder flowlyBuilder,
+        string connection)
+    {
+        var connectionString = flowlyBuilder.Configuration.GetConnectionString(connection) ?? connection;
+
+        flowlyBuilder.AddDeadLetterReadAccess(dbOptions => dbOptions.UseSqlite(connectionString));
+
+        return flowlyBuilder;
+    }
+
     private static void RegisterInMemoryKeepAliveIfNeeded(IServiceCollection services, string connectionString)
     {
         var builder = new SqliteConnectionStringBuilder(connectionString);

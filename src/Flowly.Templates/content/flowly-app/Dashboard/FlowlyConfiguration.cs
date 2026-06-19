@@ -38,27 +38,27 @@ internal class FlowlyConfiguration : Configuration
 #endif
 #if (UseJobTracking && UseSqlServer)
 
-        builder.AddSqlServerJobStateTracking("FlowlyJobs", enableMigrations: true);
+        builder.AddJobStateTrackingClient("FlowlyJobs");
 #endif
 #if (UseJobTracking && UsePostgres)
 
-        builder.AddPostgresJobStateTracking("FlowlyJobs", enableMigrations: true);
+        builder.AddJobStateTrackingClient("FlowlyJobs");
 #endif
 #if (UseJobTracking && UseSQLite)
 
-        builder.AddSQLiteJobStateTracking("FlowlyJobs", enableMigrations: true);
+        builder.AddJobStateTrackingClient("FlowlyJobs");
 #endif
 #if (UseDeadLetterTracking && UseSqlServer)
 
-        builder.AddSqlServerDeadLetterTracking("FlowlyDeadLetters",enableMigrations: true);
+        builder.AddDeadLetterTrackingClient("FlowlyDeadLetters");
 #endif
 #if (UseDeadLetterTracking && UsePostgres)
 
-        builder.AddPostgresDeadLetterTracking("FlowlyDeadLetters",enableMigrations: true);
+        builder.AddDeadLetterTrackingClient("FlowlyDeadLetters");
 #endif
 #if (UseDeadLetterTracking && UseSQLite)
 
-        builder.AddSQLiteDeadLetterTracking("FlowlyDeadLetters",enableMigrations: true);
+        builder.AddDeadLetterTrackingClient("FlowlyDeadLetters");
 #endif
     }
 }

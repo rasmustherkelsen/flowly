@@ -376,7 +376,7 @@ public class RecurringJobHandlerBackgroundServiceTests
         public void RecordReceived(string handlerName, string queueName, long count = 1) => ReceivedCalls.Add(handlerName);
         public void RecordSucceeded(string handlerName, string queueName, double durationMs, long count = 1) => SucceededCalls.Add(handlerName);
         public void RecordFailed(string handlerName, string queueName, long count = 1) => FailedCalls.Add(handlerName);
-        public void RecordRetried(string handlerName, string queueName) { }
+        public void RecordRetried(string handlerName, string queueName, long count = 1) { }
     }
 
     private sealed class FakeReceivedMessage(MessageProperties properties) : IReceivedMessage

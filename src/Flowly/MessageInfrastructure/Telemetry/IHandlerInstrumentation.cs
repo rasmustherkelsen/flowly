@@ -67,5 +67,6 @@ internal interface IHandlerInstrumentation
     /// </summary>
     /// <param name="handlerName">The name of the handler class.</param>
     /// <param name="queueName">The queue the message was received from.</param>
-    void RecordRetried(string handlerName, string queueName);
+    /// <param name="count">The number of messages to record (default <c>1</c>).</param>
+    void RecordRetried(string handlerName, string queueName, long count = 1);
 }

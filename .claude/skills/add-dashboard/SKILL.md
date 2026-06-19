@@ -86,12 +86,13 @@ internal class FlowlyConfiguration : Configuration
         builder
             .UseAzureServiceBus("AzureServiceBus")       // same connection name as Receiver
 
-            // Job tracking — include if job tracking is enabled in the Receiver.
-            // Use the same backend and connection string name as the Receiver.
-            // .AddSqlServerJobStateTracking("FlowlyJobs")  // or AddPostgresJobStateTracking / AddSQLiteJobStateTracking
+            // Job tracking — include if job tracking is enabled in the Receiver/JobTracker.
+            // Use the same connection string name. Use the client variant — the Dashboard reads state only.
+            // .AddJobStateTrackingClient("FlowlyJobs")
 
             // Dead letter tracking — include if dead letter tracking is enabled in the Receiver.
-            // .AddSqlServerDeadLetterTracking("FlowlyDeadLetters")  // or AddPostgresDeadLetterTracking / AddSQLiteDeadLetterTracking
+            // Use the same connection string name. Use the client variant — the Dashboard reads state only.
+            // .AddDeadLetterTrackingClient("FlowlyDeadLetters")
 
             // Register a submitter for every message type the dashboard should be able to send:
             .AddMessageSubmitter<MyMessage>();
@@ -104,7 +105,7 @@ internal class FlowlyConfiguration : Configuration
 Rules:
 - Only submitters here — no handlers, no `AddJobHandler`, no `AddRecurringJob`.
 - Use the same transport connection name and the same message types as the Receiver.
-- **Job/dead letter infrastructure must be registered here** — the Jobs and Dead Letters tabs are feature-detected from DI. If `.AddSqlServerJobStateTracking()` (or the matching backend) is not called in this `FlowlyConfiguration`, the tabs will not appear even if the packages are present.
+- **Job/dead letter infrastructure must be registered here** — the Jobs and Dead Letters tabs are feature-detected from DI. Use `AddJobStateTrackingClient` / `AddDeadLetterTrackingClient` (not the full `AddXxxJobStateTracking` / `AddXxxDeadLetterTracking` methods) — the Dashboard only reads state and must not run ingestion, maintenance, scheduler, or metrics background services. If the client method is not called the tab will not appear.
 - **Azure Service Bus only:** set `CreateTopology = false` in `Program.cs` — the Receiver owns the topology and the ASB emulator does not support dynamic queue creation. For RabbitMQ, leave `CreateTopology` at its default (`true`); queue declaration is idempotent.
 - **Call submitters require `InstanceName`:** if you add `.AddCallSubmitter<T>()`, you **must** also set `FlowlyOptions.InstanceName` in `Program.cs` — Flowly uses it to create the reply queue for RPC responses. Without it the call will fail at startup. See Step 4a.
 

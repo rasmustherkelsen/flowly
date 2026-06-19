@@ -1,6 +1,6 @@
 ---
 name: create-batch-handler
-description: Scaffold a new Flowly batch message handler — message contract, BatchMessageHandler<T> class, and registration snippet. Use when the user asks to add a batch message handler that processes multiple messages together. Batch handlers do NOT support retry or dead letter tracking.
+description: Scaffold a new Flowly batch message handler — message contract, BatchMessageHandler<T> class, and registration snippet. Use when the user asks to add a batch message handler that processes multiple messages together. Batch handlers support optional retry via [RetryPolicy] but do NOT support dead letter tracking.
 arguments:
   - name: messageName
     description: "PascalCase message class name, including the Message suffix. Example: ImportDataMessage"
@@ -10,11 +10,12 @@ arguments:
 Scaffold a complete Flowly batch message handler for `$0`. Follow all steps below.
 
 > **Important constraints to communicate upfront:**
-> `BatchMessageHandler<T>` processes messages in bulk but has two significant limitations:
-> - **No retry** — there is no `[RetryPolicy]` support. If the batch handler throws, the messages are not retried.
-> - **No dead letter tracking** — `.WithDeadLetterTracking()` is not supported. Failed messages are dead-lettered by the broker without being persisted to Flowly's dead letter DB.
+> `BatchMessageHandler<T>` processes messages in bulk. Key behaviours:
+> - **At-most-once by default** — messages are acknowledged before `Handle` is called. If the handler throws, they are gone and will not be redelivered. This suits bulk-write workloads where a duplicate is worse than a dropped message.
+> - **Optional retry via `[RetryPolicy]`** — add `[RetryPolicy(maxRetries, delaySeconds)]` to opt in to at-least-once delivery. On failure the **entire batch** is republished to the same queue. **The handler must be idempotent** — the same messages may be delivered more than once, and processing them twice must produce the same outcome.
+> - **No dead letter tracking** — `.WithDeadLetterTracking()` is not supported. After retries are exhausted (or immediately if no retry is configured), messages are discarded.
 >
-> If the user needs retry or dead letter tracking, suggest using `MessageHandler<T>` instead (see `/create-message-handler`).
+> If the user needs dead letter tracking, suggest using `MessageHandler<T>` instead (see `/create-message-handler`).
 
 ## Step 1 — Ask where to add the handler
 
@@ -127,7 +128,7 @@ Rules:
 - `IBatchMessageContext<T>` provides:
   - `messageContext.Messages` — `IReadOnlyList<T>` of the batch
   - `messageContext.CancellationToken`
-- **No retry support** — do not apply `[RetryPolicy]`.
+- **Retry is optional** — add `[RetryPolicy(maxRetries: N, delaySeconds: M)]` to opt in. If omitted, the default is at-most-once (no retry). **If `[RetryPolicy]` is used, the handler must be idempotent** — the whole batch is redelivered on failure and the same messages may be processed more than once.
 - **No dead letter tracking support** — do not chain `.WithDeadLetterTracking()`.
 
 Alternatively configure batch settings via override:
