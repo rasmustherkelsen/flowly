@@ -72,6 +72,8 @@ internal sealed class MessageProcessingBackgroundService<TMessage>(
             return;
         }
 
+        activity.ApplyTagsFrom(receivedMessage.Body);
+
         await using var scope = serviceScopeFactory.CreateAsyncScope();
 
         Exception? handlingException = null;
