@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Flowly.MessageInfrastructure.Events.Telemetry;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.Transport;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -61,6 +62,8 @@ internal class EventHandlerBackgroundService<TEvent, THandler>(
             await receivedMessage.DeadLetter($"Deserialization failed: {deserializationException!.Message}", cancellationToken);
             return;
         }
+
+        activity.ApplyTagsFrom(receivedMessage.Body);
 
         await using var scope = serviceScopeFactory.CreateAsyncScope();
 

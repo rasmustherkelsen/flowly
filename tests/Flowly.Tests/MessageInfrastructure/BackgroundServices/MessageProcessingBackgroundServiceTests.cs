@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using Flowly;
 using Flowly.MessageInfrastructure.BackgroundServices;
 using Flowly.MessageInfrastructure.MessageHandlingStrategies;
 using Flowly.MessageInfrastructure.Model;
@@ -14,7 +16,8 @@ public class MessageProcessingBackgroundServiceTests
         bool readAndDelete = false,
         int maxConcurrentCalls = 1,
         RecordingMessageHandler? handler = null,
-        FakeServiceScopeFactory<MessageHandler<TestMessage>>? scopeFactory = null)
+        FakeServiceScopeFactory<MessageHandler<TestMessage>>? scopeFactory = null,
+        IHandlerInstrumentation? instrumentation = null)
     {
         var client = new FakeMessageBusClient();
         var clientRegistry = new FakeMessageBusClientRegistry(client);
@@ -25,7 +28,7 @@ public class MessageProcessingBackgroundServiceTests
             factory,
             settings,
             NullLogger<MessageProcessingBackgroundService<TestMessage>>.Instance,
-            new NullHandlerInstrumentation(),
+            instrumentation ?? new NullHandlerInstrumentation(),
             new StandardMessageHandlingStrategy<TestMessage>());
         return (messageProcessingBackgroundService, client);
     }
@@ -211,7 +214,67 @@ public class MessageProcessingBackgroundServiceTests
         }
     }
 
+    public class WhenMessageImplementsIOpenTelemetryTagsProvider
+    {
+        [Fact]
+        public async Task SetsTagsOnHandlerSpan()
+        {
+            var instrumentation = new ActivityReturningHandlerInstrumentation();
+            var (service, client) = Build(instrumentation: instrumentation);
+
+            await service.StartAsync(CancellationToken.None);
+            var processor = await client.ProcessorCreated;
+            await processor.Started;
+
+            await processor.FireProcessMessage(new FakeReceivedMessage<TestMessage>(new TaggedTestMessage("order-123")));
+
+            await service.StopAsync(CancellationToken.None);
+
+            Assert.Equal("order-123", instrumentation.Activity.GetTagItem("order.id"));
+        }
+
+        [Fact]
+        public async Task WhenMessageDoesNotImplementInterface_SetsNoCustomTags()
+        {
+            var instrumentation = new ActivityReturningHandlerInstrumentation();
+            var (service, client) = Build(instrumentation: instrumentation);
+
+            await service.StartAsync(CancellationToken.None);
+            var processor = await client.ProcessorCreated;
+            await processor.Started;
+
+            await processor.FireProcessMessage(new FakeReceivedMessage<TestMessage>(new TestMessage("hello")));
+
+            await service.StopAsync(CancellationToken.None);
+
+            Assert.Null(instrumentation.Activity.GetTagItem("order.id"));
+        }
+    }
+
     private record TestMessage(string Value);
+
+    private record TaggedTestMessage(string OrderId) : TestMessage(OrderId), IOpenTelemetryTagsProvider
+    {
+        public IEnumerable<KeyValuePair<string, object?>> GetOpenTelemetryTags() =>
+            [new("order.id", OrderId)];
+    }
+
+    private class ActivityReturningHandlerInstrumentation : IHandlerInstrumentation
+    {
+        public Activity Activity { get; } = new Activity("flowly.handle test").Start();
+
+        public bool IsEnabled => true;
+
+        public Activity? StartHandling(string handlerName, string queueName, string messagingSystem, MessageProperties messageProperties, ActivityContext parentContext = default) => Activity;
+
+        public void RecordReceived(string handlerName, string queueName, long count = 1) { }
+
+        public void RecordSucceeded(string handlerName, string queueName, double durationMs, long count = 1) { }
+
+        public void RecordFailed(string handlerName, string queueName, long count = 1) { }
+
+        public void RecordRetried(string handlerName, string queueName, long count = 1) { }
+    }
 
     private class RecordingMessageHandler : MessageHandler<TestMessage>
     {

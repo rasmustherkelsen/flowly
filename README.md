@@ -1279,6 +1279,23 @@ All metrics use the meter name `"Flowly"` and follow the `messaging.*` semantic 
 
 Each message or event handled creates a span named `flowly.handle {queueName}` with kind `Consumer`. The span includes `handler`, `messaging.system`, `messaging.destination.name`, `messaging.message.id`, and `messaging.message.conversation_id` attributes.
 
+### Custom tags on spans
+
+Implement `IOpenTelemetryTagsProvider` on a message contract to attach business-level tags (e.g. `order.id`, `customer.id`) to Flowly spans:
+
+```csharp
+public record SubmitOrderMessage(string OrderId, string CustomerId) : IOpenTelemetryTagsProvider
+{
+    public IEnumerable<KeyValuePair<string, object?>> GetOpenTelemetryTags() =>
+    [
+        new("order.id", OrderId),
+        new("customer.id", CustomerId),
+    ];
+}
+```
+
+Flowly applies these tags to both the producer span (`flowly.send`) and the consumer span (`flowly.handle`) for that message type. Tags appear in Jaeger and any other OTel backend — they can be used as search filters to correlate traces by business values.
+
 ---
 
 ## Samples

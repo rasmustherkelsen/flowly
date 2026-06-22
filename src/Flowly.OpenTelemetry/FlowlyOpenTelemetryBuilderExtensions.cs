@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using OpenTelemetry;
+using OpenTelemetry.Logs;
 
 namespace Flowly.OpenTelemetry;
 
@@ -11,8 +12,12 @@ namespace Flowly.OpenTelemetry;
 public static class FlowlyOpenTelemetryBuilderExtensions
 {
     /// <summary>
-    ///     Registers Flowly metrics and tracing instrumentation with the OpenTelemetry pipeline.
-    ///     Equivalent to calling <c>.WithMetrics(m => m.AddFlowlyInstrumentation())</c> and
+    ///     Registers Flowly OpenTelemetry instrumentation — metrics and tracing — with the pipeline, and
+    ///     pre-configures the OTel logging sink options (<c>IncludeFormattedMessage</c> and
+    ///     <c>IncludeScopes</c>) so that log messages are exported with rendered placeholder values rather
+    ///     than raw message templates when the caller later wires an exporter (e.g.
+    ///     <c>builder.Services.AddOpenTelemetry().UseOtlpExporter()</c>).
+    ///     Also equivalent to calling <c>.WithMetrics(m => m.AddFlowlyInstrumentation())</c> and
     ///     <c>.WithTracing(t => t.AddFlowlyInstrumentation())</c> on an existing
     ///     <see cref="OpenTelemetryBuilder" />.
     /// </summary>
@@ -20,6 +25,12 @@ public static class FlowlyOpenTelemetryBuilderExtensions
     /// <returns>The same <see cref="IHostApplicationBuilder" />, for chaining.</returns>
     public static IHostApplicationBuilder AddFlowlyOpenTelemetry(this IHostApplicationBuilder builder)
     {
+        builder.Services.Configure<OpenTelemetryLoggerOptions>(logging =>
+        {
+            logging.IncludeFormattedMessage = true;
+            logging.IncludeScopes = true;
+        });
+
         builder.Services.AddOpenTelemetry()
             .WithMetrics(m => m.AddFlowlyInstrumentation())
             .WithTracing(t => t.AddFlowlyInstrumentation());

@@ -122,11 +122,11 @@ The `OTEL_EXPORTER_OTLP_ENDPOINT` env var set in the next step makes this call r
 2. For each target project, add to **every** profile in `Properties/launchSettings.json` (`http`/`https`, or `run` for worker-style projects):
 
    ```json
-   "OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4318",
+   "OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4317",
    "OTEL_SERVICE_NAME": "<ProjectName>"
    ```
 
-   Use port **4318** (OTLP HTTP/protobuf), not 4317. `OpenTelemetry.Exporter.OpenTelemetryProtocol` 1.7+ defaults to the `http/protobuf` protocol, which sends to port 4318; the gRPC port 4317 will silently drop those frames. `OTEL_SERVICE_NAME` is what each project shows as in the Jaeger UI's service dropdown — set it per project (e.g. `Sender`, `Receiver`, `JobTracker`) so they're distinguishable. These are read by the SDK directly from the process environment, not from `IConfiguration`, so they must go in `launchSettings.json`'s `environmentVariables`, not `appsettings.json`.
+   Use port **4317** (OTLP gRPC — `UseOtlpExporter()` defaults to gRPC protocol). `OTEL_SERVICE_NAME` is what each project shows as in the Jaeger UI's service dropdown — set it per project (e.g. `Sender`, `Receiver`, `JobTracker`) so they're distinguishable. These are read by the SDK directly from the process environment, not from `IConfiguration`, so they must go in `launchSettings.json`'s `environmentVariables`, not `appsettings.json`.
 3. Look for a `docker-compose.yml` in the solution. If one exists and has no `jaeger` service yet, offer to add one:
 
    ```yaml
@@ -166,7 +166,7 @@ if (useOtlpExporter)
     builder.Services.AddOpenTelemetry().UseOtlpExporter();
 ```
 
-`UseOtlpExporter()` is what makes `OTEL_EXPORTER_OTLP_ENDPOINT` (and `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_EXPORTER_OTLP_HEADERS`) take effect — setting the env var alone does nothing until an OTLP exporter is registered in code. Gate the call on the env var being set, exactly as the Aspire template's generated `ServiceDefaults/Extensions.cs` does (`AddOpenTelemetryExporters`): `UseOtlpExporter()` defaults to `http://localhost:4318` (HTTP/protobuf) when the env var is absent, so calling it unconditionally would silently start exporting to a collector that may not exist.
+`UseOtlpExporter()` is what makes `OTEL_EXPORTER_OTLP_ENDPOINT` (and `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_EXPORTER_OTLP_HEADERS`) take effect — setting the env var alone does nothing until an OTLP exporter is registered in code. Gate the call on the env var being set, exactly as the Aspire template's generated `ServiceDefaults/Extensions.cs` does (`AddOpenTelemetryExporters`): `UseOtlpExporter()` defaults to `http://localhost:4317` (gRPC) when the env var is absent, so calling it unconditionally would silently start exporting to a collector that may not exist.
 
 ### Compose into an existing pipeline (or Aspire)
 
@@ -201,7 +201,24 @@ Run the project(s) and confirm Flowly's instrumentation is active:
 
 Use whichever exporter was configured (console, OTLP collector, or Aspire dashboard) to confirm data is flowing after sending or handling a message.
 
-If Jaeger was configured, open `http://localhost:16686`, pick the project's `OTEL_SERVICE_NAME` in the service dropdown, click "Find Traces," and confirm spans named `flowly.handle {queueName}` appear within ~15s of sending or handling a message.
+If Jaeger was configured, open `http://localhost:16686`, pick the project's `OTEL_SERVICE_NAME` in the service dropdown, click "Find Traces," and confirm spans appear within ~15s of sending or handling a message.
+
+**Important — each project is its own Jaeger service:** Every instrumented project (Sender, Receiver, Dashboard, JobTracker) appears as a separate entry in Jaeger's service dropdown under the name set via `OTEL_SERVICE_NAME`. Spans from the Dashboard appear under **"Dashboard"**, not under "Sender". If you send a message from the Dashboard and nothing new appears under "Sender", select "Dashboard" from the dropdown — that is where `flowly.send {queueName}` spans from Dashboard-initiated sends will be listed. Similarly, when the Receiver processes those messages its `flowly.handle {queueName}` spans appear under "Receiver" as new traces, separate from traces that originated from the Sender.
+
+**Optional — attach business tags to spans via `IOpenTelemetryTagsProvider`:** If the user wants to filter traces in Jaeger by business values (e.g. `order.id`, `customer.id`), implement `IOpenTelemetryTagsProvider` on the message contract:
+
+```csharp
+public record SubmitOrderMessage(string OrderId, string CustomerId) : IOpenTelemetryTagsProvider
+{
+    public IEnumerable<KeyValuePair<string, object?>> GetOpenTelemetryTags() =>
+    [
+        new("order.id", OrderId),
+        new("customer.id", CustomerId),
+    ];
+}
+```
+
+Flowly sets these tags on both the producer (`flowly.send`) and consumer (`flowly.handle`) span automatically. No extra wiring needed — just implement the interface on the message contract. Tags appear in Jaeger and are searchable via the tag filter.
 
 ## Final step — Verify the build
 

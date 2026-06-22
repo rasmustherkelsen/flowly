@@ -143,7 +143,7 @@ public class BatchProcessingBackgroundServiceTests
             await receiver.BatchCompleted.WaitAsync(cts.Token);
             await batchProcessingBackgroundService.StopAsync(CancellationToken.None);
 
-            Assert.Equal(0, client.SentMessages.Count);
+            Assert.Empty(client.SentMessages);
         }
     }
 
@@ -161,7 +161,7 @@ public class BatchProcessingBackgroundServiceTests
             await batchProcessingBackgroundService.StopAsync(CancellationToken.None);
 
             Assert.True(receiver.CompleteWasCalled);
-            Assert.Equal(0, client.SentMessages.Count);
+            Assert.Empty(client.SentMessages);
         }
 
         [Fact]
@@ -205,7 +205,7 @@ public class BatchProcessingBackgroundServiceTests
             await batchProcessingBackgroundService.StopAsync(CancellationToken.None);
 
             Assert.True(receiver.CompleteWasCalled);
-            Assert.Equal(0, client.SentMessages.Count);
+            Assert.Empty(client.SentMessages);
         }
 
         [Fact]

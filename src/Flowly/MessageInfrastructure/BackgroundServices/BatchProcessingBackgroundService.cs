@@ -55,7 +55,7 @@ internal class BatchProcessingBackgroundService<TMessage>(
             }
             catch (Exception e)
             {
-                logger.LogError(e.Message, e);
+                logger.LogError(e, "Unexpected error in batch message processing loop for queue '{QueueName}'", handlerSettings.QueueName);
             }
     }
 

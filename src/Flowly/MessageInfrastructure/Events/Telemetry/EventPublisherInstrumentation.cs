@@ -25,7 +25,7 @@ internal sealed class EventPublisherInstrumentation : IEventPublisherInstrumenta
         => FlowlyInstrumentationConstants.ActivitySource.StartActivity(
             $"flowly.event.raise {topicName}",
             ActivityKind.Producer,
-            default(ActivityContext),
+            FlowlyInstrumentationConstants.ResolveProducerParentContext(),
             [
                 new KeyValuePair<string, object?>(FlowlyInstrumentationConstants.MessagingSystem, messagingSystem),
                 new KeyValuePair<string, object?>(FlowlyInstrumentationConstants.MessagingDestinationName, topicName),

@@ -330,6 +330,25 @@ Apply `[RetryPolicy(maxRetries, delaySeconds)]` to any `MessageHandler<T>`, `Job
 
 Retry logic lives in the Flowly core layer (`ServiceBusMessageHandlerBackgroundServiceBase`) and is transport-agnostic. The transport is responsible for honoring `ScheduledEnqueueTime` on send (ASB: `ServiceBusMessage.ScheduledEnqueueTime`).
 
+### Custom OpenTelemetry Tags on Message Spans
+
+Implement `IOpenTelemetryTagsProvider` on a message contract to attach business-level tags to the Flowly OTel spans for that message. Flowly calls `GetOpenTelemetryTags()` and sets each key-value pair on the active `Activity` — both on the producer (`flowly.send` / `flowly.event.raise`) and consumer (`flowly.handle`) span.
+
+```csharp
+public record SubmitOrderMessage(string OrderId, string CustomerId) : IOpenTelemetryTagsProvider
+{
+    public IEnumerable<KeyValuePair<string, object?>> GetOpenTelemetryTags() =>
+    [
+        new("order.id", OrderId),
+        new("customer.id", CustomerId),
+    ];
+}
+```
+
+Tags appear in Jaeger (and any OTel backend) and can be used as search filters. High-cardinality values like IDs are suitable for trace tags but **not** for metrics labels (would explode cardinality).
+
+This is opt-in and transport-agnostic. Supported on `MessageHandler<T>`, `EventHandlerBase<TEvent>`, `IMessageSender`, and `IEventSender`. Not applied to `BatchMessageHandler<T>` (ambiguous cardinality across a batch) or job handlers (user can call `Activity.Current?.SetTag()` inside `ExecuteJob`).
+
 ---
 
 ### 7. Job State Tracking

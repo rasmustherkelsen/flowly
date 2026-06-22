@@ -98,4 +98,29 @@ public static class FlowlyInstrumentationConstants
     public const string CallerCallDuration = "flowly.call.duration";
 
     internal static readonly ActivitySource ActivitySource = new(ActivitySourceName);
+
+    /// <summary>
+    ///     Resolves the <see cref="ActivityContext" /> to use as the parent for a producer (send/publish) span.
+    /// </summary>
+    /// <remarks>
+    ///     When <c>default(ActivityContext)</c> is passed to <c>ActivitySource.StartActivity</c>, the .NET
+    ///     runtime falls back to <c>Activity.Current.Context</c> before invoking OTel listeners. If
+    ///     <c>Activity.Current</c> is an unsampled activity — e.g. the ASP.NET Core request activity when
+    ///     <c>AddAspNetCoreInstrumentation()</c> is not registered — <c>ParentBasedSampler</c> propagates the
+    ///     "not sampled" decision and drops the Flowly span. Explicitly supplying a fresh context with a new
+    ///     <see cref="ActivityTraceId" /> bypasses the runtime's substitution and lets the sampler make an
+    ///     independent decision.
+    /// </remarks>
+    internal static ActivityContext ResolveProducerParentContext()
+    {
+        var current = Activity.Current;
+
+        if (current == null)
+            return default;
+
+        if (current.Recorded)
+            return current.Context;
+
+        return new ActivityContext(ActivityTraceId.CreateRandom(), default, ActivityTraceFlags.Recorded);
+    }
 }

@@ -21,6 +21,7 @@ internal class MessageSubmitter<TMessage>(
         var client = clientRegistry.GetClient(queueSettings.ProviderName);
         var messageId = Guid.NewGuid().ToString();
         using var activity = submitterInstrumentation.StartSending(queueSettings.QueueName, client.MessagingSystem, messageId);
+        activity.ApplyTagsFrom(message);
 
         try
         {

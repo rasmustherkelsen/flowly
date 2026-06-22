@@ -54,7 +54,7 @@ internal class RecurringJobHandlerBackgroundService<TRecurringJobHandler> : Back
         _executionLaneProcessor.ProcessMessage += OnProcessMessage;
         _executionLaneProcessor.ProcessError += OnHandleError;
 
-        _logger.LogInformation($"Recurring job {_handlerName} started. Cron expression: {_settings.CronExpression}");
+        _logger.LogInformation("Recurring job '{RecurringJobHandlerName}' started. Cron expression: '{CronExpression}'", _handlerName, _settings.CronExpression);
 
         await _executionLaneProcessor.StartProcessing(stoppingToken);
     }

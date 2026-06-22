@@ -99,6 +99,10 @@ Owned by the **message contract**, not the handler. Auto-generated: PascalCase �
 
 Apply `[RetryPolicy(maxRetries, delaySeconds)]` to any `MessageHandler<T>` or `JobHandler<T>`. On failure, Flowly re-publishes the message to the same queue with a scheduled enqueue time and increments a `flowly-retry-count` application property. After all retries are exhausted, normal handlers dead-letter the message; job handlers transition the job to `Failed`.
 
+### Custom OTel Tags
+
+Implement `IOpenTelemetryTagsProvider` on a message contract to attach business tags (e.g. `order.id`) to Flowly's OTel spans. Flowly calls `GetOpenTelemetryTags()` and sets each key-value pair on both the producer and consumer `Activity`.
+
 ### Job State Tracking (`Flowly.Jobs/`)
 
 SQL Server or PostgreSQL via EF Core. Tables: `Job`, `JobAliveStatus`, `CustomJobState`, `JobType`. Job lifecycle: `Created → Started → Completed / Failed`. The `Job` table includes a `RetryAttempt` column tracking the current retry number. Requires `.AddSqlServerJobStateTracking()` or `.AddPostgresJobStateTracking()`.

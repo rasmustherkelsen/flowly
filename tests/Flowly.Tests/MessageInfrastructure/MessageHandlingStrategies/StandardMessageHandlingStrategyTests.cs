@@ -100,18 +100,20 @@ public class StandardMessageHandlingStrategyTests
     public class OnMessageHandlingError
     {
         [Fact]
-        public async Task LogsExceptionMessageAtErrorLevel()
+        public async Task LogsExceptionAtErrorLevel()
         {
             var logger = new FakeLogger();
             var serviceProvider = new ServiceCollection().BuildServiceProvider();
-            var errorDetails = new ErrorDetails(new InvalidOperationException("broker error"), "test-endpoint");
+            var exception = new InvalidOperationException("broker error");
+            var errorDetails = new ErrorDetails(exception, "test-endpoint");
             var standardMessageHandlingStrategy = new StandardMessageHandlingStrategy<OrderMessage>();
 
             await standardMessageHandlingStrategy.OnMessageHandlingError(logger, serviceProvider, errorDetails);
 
             Assert.Single(logger.Messages);
             Assert.Equal(LogLevel.Error, logger.Messages[0].Level);
-            Assert.Equal("broker error", logger.Messages[0].Message);
+            Assert.Equal("Message processor error", logger.Messages[0].Message);
+            Assert.Same(exception, logger.Messages[0].Exception);
         }
     }
 
@@ -136,14 +138,14 @@ public class StandardMessageHandlingStrategyTests
 
     private sealed class FakeLogger : ILogger
     {
-        public List<(LogLevel Level, string Message)> Messages { get; } = [];
+        public List<(LogLevel Level, string Message, Exception? Exception)> Messages { get; } = [];
 
         IDisposable? ILogger.BeginScope<TState>(TState state) => null;
 
         public bool IsEnabled(LogLevel logLevel) => true;
 
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
-            => Messages.Add((logLevel, formatter(state, exception)));
+            => Messages.Add((logLevel, formatter(state, exception), exception));
     }
 
     private sealed class FakeReceivedMessage<T>(T body) : IReceivedMessage<T>

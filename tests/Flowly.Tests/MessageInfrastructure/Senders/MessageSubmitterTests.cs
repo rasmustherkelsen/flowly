@@ -111,7 +111,44 @@ public class MessageSubmitterTests
         }
     }
 
+    public class WhenMessageImplementsIOpenTelemetryTagsProvider
+    {
+        [Fact]
+        public async Task SetsTagsOnSpan()
+        {
+            var instrumentation = new ActivityReturningStubInstrumentation();
+            var client = new FakeMessageBusClient(new CapturingSender());
+            var registry = new SingleClientRegistry(client, "primary");
+            var queueSettings = new MessageSubmitter<TaggedOrder>.QueueSettings("orders", "primary");
+            var messageSubmitter = new MessageSubmitter<TaggedOrder>(registry, queueSettings, instrumentation);
+
+            await messageSubmitter.Submit(new TaggedOrder("order-123"), CancellationToken.None);
+
+            Assert.Equal("order-123", instrumentation.Activity.GetTagItem("order.id"));
+        }
+
+        [Fact]
+        public async Task WhenMessageDoesNotImplementInterface_SetsNoCustomTags()
+        {
+            var instrumentation = new ActivityReturningStubInstrumentation();
+            var client = new FakeMessageBusClient(new CapturingSender());
+            var registry = new SingleClientRegistry(client, "primary");
+            var queueSettings = new MessageSubmitter<OrderPlaced>.QueueSettings("order-placed", "primary");
+            var messageSubmitter = new MessageSubmitter<OrderPlaced>(registry, queueSettings, instrumentation);
+
+            await messageSubmitter.Submit(new OrderPlaced("x"), CancellationToken.None);
+
+            Assert.Null(instrumentation.Activity.GetTagItem("order.id"));
+        }
+    }
+
     private record OrderPlaced(string OrderId);
+
+    private record TaggedOrder(string OrderId) : IOpenTelemetryTagsProvider
+    {
+        public IEnumerable<KeyValuePair<string, object?>> GetOpenTelemetryTags() =>
+            [new("order.id", OrderId)];
+    }
 
     private sealed class SingleClientRegistry(IMessageBusClient client, string primary) : IMessageBusClientRegistry
     {
@@ -213,6 +250,19 @@ public class MessageSubmitterTests
         {
             return Task.CompletedTask;
         }
+    }
+
+    private sealed class ActivityReturningStubInstrumentation : ISubmitterInstrumentation
+    {
+        public Activity Activity { get; } = new Activity("flowly.send test").Start();
+
+        public bool IsEnabled => true;
+
+        public Activity? StartSending(string queueName, string messagingSystem, string messageId) => Activity;
+
+        public void RecordSent(string queueName, double durationMs) { }
+
+        public void RecordFailed(string queueName) { }
     }
 
     private sealed class StubSubmitterInstrumentation : ISubmitterInstrumentation
