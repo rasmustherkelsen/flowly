@@ -7,11 +7,6 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="FastEndpoints" Version="8.1.0"/>
-        <PackageReference Include="FastEndpoints.Swagger" Version="8.1.0"/>
-    </ItemGroup>
-
-    <ItemGroup>
         <ProjectReference Include="..\..\..\..\src\Flowly.Dashboard\Flowly.Dashboard.csproj"/>
         <ProjectReference Include="..\..\..\..\src\Flowly.DeadLetters.SQLite\Flowly.DeadLetters.SQLite.csproj"/>
         <ProjectReference Include="..\..\..\..\src\Flowly.InMemory\Flowly.InMemory.csproj"/>
