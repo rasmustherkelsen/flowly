@@ -8,7 +8,7 @@ namespace Flowly.MessageInfrastructure.Telemetry;
 ///     <see cref="FlowlyInstrumentationConstants.MeterName" />. Registered when
 ///     <see cref="FlowlyOptions.EnableTelemetry" /> is <see langword="true" />.
 /// </summary>
-public sealed class CallerInstrumentation : ICallerInstrumentation, IDisposable
+internal sealed class CallerInstrumentation : ICallerInstrumentation, IDisposable
 {
     private readonly Meter _meter;
     private readonly Counter<long> _succeeded;
@@ -25,16 +25,51 @@ public sealed class CallerInstrumentation : ICallerInstrumentation, IDisposable
     }
 
     /// <inheritdoc />
+    public Activity? StartCalling(string callQueueName, string messagingSystem, string messageId, string correlationId)
+        => FlowlyInstrumentationConstants.ActivitySource.StartActivity(
+            $"flowly.call {callQueueName}",
+            ActivityKind.Client,
+            FlowlyInstrumentationConstants.ResolveProducerParentContext(),
+            [
+                new KeyValuePair<string, object?>(FlowlyInstrumentationConstants.MessagingSystem, messagingSystem),
+                new KeyValuePair<string, object?>(FlowlyInstrumentationConstants.MessagingDestinationName, callQueueName),
+                new KeyValuePair<string, object?>(FlowlyInstrumentationConstants.MessagingMessageId, messageId),
+                new KeyValuePair<string, object?>(FlowlyInstrumentationConstants.MessagingMessageConversationId, correlationId),
+            ]);
+
+    /// <inheritdoc />
     public void RecordSucceeded(string callQueueName, double durationMs)
     {
+        Activity.Current?.SetTag("outcome", "success");
+
         var tags = new TagList { { FlowlyInstrumentationConstants.MessagingDestinationName, callQueueName } };
+
         _succeeded.Add(1, tags);
         _duration.Record(durationMs, tags);
     }
 
     /// <inheritdoc />
     public void RecordFailed(string callQueueName)
-        => _failed.Add(1, new TagList { { FlowlyInstrumentationConstants.MessagingDestinationName, callQueueName } });
+    {
+        Activity.Current?.SetStatus(ActivityStatusCode.Error);
+        Activity.Current?.SetTag("outcome", "failed");
+
+        _failed.Add(1, new TagList { { FlowlyInstrumentationConstants.MessagingDestinationName, callQueueName } });
+    }
+
+    /// <inheritdoc />
+    public Activity? StartReceivingResponse(string replyQueueName, string messagingSystem, ActivityContext parentContext, string messageId, string correlationId)
+        => FlowlyInstrumentationConstants.ActivitySource.StartActivity(
+            $"flowly.call.response {replyQueueName}",
+            ActivityKind.Consumer,
+            parentContext,
+            [
+                new KeyValuePair<string, object?>(FlowlyInstrumentationConstants.MessagingSystem, messagingSystem),
+                new KeyValuePair<string, object?>(FlowlyInstrumentationConstants.MessagingDestinationName, replyQueueName),
+                new KeyValuePair<string, object?>(FlowlyInstrumentationConstants.MessagingOperationType, "receive"),
+                new KeyValuePair<string, object?>(FlowlyInstrumentationConstants.MessagingMessageId, messageId),
+                new KeyValuePair<string, object?>(FlowlyInstrumentationConstants.MessagingMessageConversationId, correlationId),
+            ]);
 
     /// <summary>Disposes the underlying OTel <see cref="Meter" />.</summary>
     public void Dispose() => _meter.Dispose();

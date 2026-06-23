@@ -65,7 +65,8 @@ internal class RecurringJobHandlerBackgroundService<TRecurringJobHandler> : Back
 
         _handlerInstrumentation.RecordReceived(_handlerName, JobQueuesNames.RecurringJobs);
         var sw = Stopwatch.StartNew();
-        using var activity = _handlerInstrumentation.StartHandling(_handlerName, JobQueuesNames.RecurringJobs, _messagingSystem, receivedMessage.Properties);
+        var parentContext = ActivityContextParser.Parse(receivedMessage.Properties);
+        using var activity = _handlerInstrumentation.StartHandling(_handlerName, JobQueuesNames.RecurringJobs, _messagingSystem, receivedMessage.Properties, parentContext);
 
         var jobId = new JobId(Guid.Parse(receivedMessage.Properties.MessageId));
 

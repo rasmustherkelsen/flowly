@@ -40,9 +40,14 @@ internal class BatchProcessingBackgroundService<TMessage>(
 
                 handlerInstrumentation.RecordReceived(handlerName, handlerSettings.QueueName, receivedMessages.Count);
                 logger.LogInformation("{MessageHandlerName} received {ReceivedMessagesCount} messages", handlerName, receivedMessages.Count);
+                var links = receivedMessages
+                    .Select(m => ActivityContextParser.Parse(m.Properties))
+                    .Where(ctx => ctx != default)
+                    .Select(ctx => new ActivityLink(ctx))
+                    .ToList();
 
                 var sw = Stopwatch.StartNew();
-                using var activity = handlerInstrumentation.StartHandling(handlerName, handlerSettings.QueueName, messagingSystem, MessageProperties.Empty);
+                using var activity = handlerInstrumentation.StartHandling(handlerName, handlerSettings.QueueName, messagingSystem, receivedMessages.First().Properties, links);
 
                 if (handlerSettings.MaxRetries == 0)
                     await HandleAtMostOnce(messageHandler, handlerName, receivedMessages, receiver, sw, stoppingToken);

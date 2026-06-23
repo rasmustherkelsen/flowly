@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Flowly.MessageInfrastructure.BackgroundServices;
 using Flowly.MessageInfrastructure.Model;
 using Flowly.MessageInfrastructure.Telemetry;
@@ -15,7 +16,8 @@ public class BatchProcessingBackgroundServiceTests
         int maxRetries = 0,
         int retryDelaySeconds = 0,
         FakeReceivedMessage<TestMessage>[]? messages = null,
-        BatchMessageHandler<TestMessage>? handler = null)
+        BatchMessageHandler<TestMessage>? handler = null,
+        IHandlerInstrumentation? instrumentation = null)
     {
         var receiver = new FakeMessageBusReceiver(messages ?? [], messages is { Length: > 0 });
         var client = new FakeMessageBusClient(receiver);
@@ -24,7 +26,7 @@ public class BatchProcessingBackgroundServiceTests
             queueName, "azure-service-bus", "BatchHandler", false, 1, maxRetries, retryDelaySeconds, maxMessages, maxWaitTime == default ? TimeSpan.FromSeconds(1) : maxWaitTime);
         var scopeFactory = new FakeServiceScopeFactory<BatchMessageHandler<TestMessage>>(handler ?? new RecordingBatchHandler());
         var batchProcessingBackgroundService = new BatchProcessingBackgroundService<TestMessage>(
-            clientRegistry, settings, scopeFactory, NullLogger<BatchProcessingBackgroundService<TestMessage>>.Instance, new NullHandlerInstrumentation());
+            clientRegistry, settings, scopeFactory, NullLogger<BatchProcessingBackgroundService<TestMessage>>.Instance, instrumentation ?? new NullHandlerInstrumentation());
         return (batchProcessingBackgroundService, client, receiver);
     }
 
@@ -224,6 +226,103 @@ public class BatchProcessingBackgroundServiceTests
             Assert.NotNull(scheduled);
             Assert.True(scheduled >= before + TimeSpan.FromSeconds(10));
         }
+    }
+
+    public class Telemetry
+    {
+        [Fact]
+        public async Task WhenMessagesHaveTraceparent_StartsHandlingWithActivityLinksForEachMessage()
+        {
+            var traceId1 = ActivityTraceId.CreateRandom();
+            var spanId1 = ActivitySpanId.CreateRandom();
+            var traceId2 = ActivityTraceId.CreateRandom();
+            var spanId2 = ActivitySpanId.CreateRandom();
+            var traceparent1 = $"00-{traceId1}-{spanId1}-01";
+            var traceparent2 = $"00-{traceId2}-{spanId2}-01";
+
+            var instrumentation = new LinkCapturingHandlerInstrumentation();
+            var messages = new[]
+            {
+                new FakeReceivedMessage<TestMessage>(new TestMessage("a"), MessageProperties.Empty with { Traceparent = traceparent1 }),
+                new FakeReceivedMessage<TestMessage>(new TestMessage("b"), MessageProperties.Empty with { Traceparent = traceparent2 }),
+            };
+            var (batchProcessingBackgroundService, _, receiver) = Build(messages: messages, instrumentation: instrumentation);
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            await batchProcessingBackgroundService.StartAsync(cts.Token);
+            await receiver.BatchCompleted.WaitAsync(cts.Token);
+            await batchProcessingBackgroundService.StopAsync(CancellationToken.None);
+
+            Assert.NotNull(instrumentation.CapturedLinks);
+            Assert.Equal(2, instrumentation.CapturedLinks.Count);
+            Assert.Contains(instrumentation.CapturedLinks, l => l.Context.TraceId == traceId1);
+            Assert.Contains(instrumentation.CapturedLinks, l => l.Context.TraceId == traceId2);
+        }
+
+        [Fact]
+        public async Task WhenMessagesHaveNoTraceparent_StartsHandlingWithNoLinks()
+        {
+            var instrumentation = new LinkCapturingHandlerInstrumentation();
+            var messages = new[] { new FakeReceivedMessage<TestMessage>(new TestMessage("a")) };
+            var (batchProcessingBackgroundService, _, receiver) = Build(messages: messages, instrumentation: instrumentation);
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            await batchProcessingBackgroundService.StartAsync(cts.Token);
+            await receiver.BatchCompleted.WaitAsync(cts.Token);
+            await batchProcessingBackgroundService.StopAsync(CancellationToken.None);
+
+            Assert.NotNull(instrumentation.CapturedLinks);
+            Assert.Empty(instrumentation.CapturedLinks);
+        }
+
+        [Fact]
+        public async Task WhenSomeMessagesHaveTraceparent_OnlyLinksForTraceparentMessages()
+        {
+            var traceId = ActivityTraceId.CreateRandom();
+            var spanId = ActivitySpanId.CreateRandom();
+            var traceparent = $"00-{traceId}-{spanId}-01";
+
+            var instrumentation = new LinkCapturingHandlerInstrumentation();
+            var messages = new[]
+            {
+                new FakeReceivedMessage<TestMessage>(new TestMessage("a"), MessageProperties.Empty with { Traceparent = traceparent }),
+                new FakeReceivedMessage<TestMessage>(new TestMessage("b")),
+            };
+            var (batchProcessingBackgroundService, _, receiver) = Build(messages: messages, instrumentation: instrumentation);
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            await batchProcessingBackgroundService.StartAsync(cts.Token);
+            await receiver.BatchCompleted.WaitAsync(cts.Token);
+            await batchProcessingBackgroundService.StopAsync(CancellationToken.None);
+
+            Assert.NotNull(instrumentation.CapturedLinks);
+            Assert.Single(instrumentation.CapturedLinks);
+            Assert.Equal(traceId, instrumentation.CapturedLinks[0].Context.TraceId);
+        }
+    }
+
+    private sealed class LinkCapturingHandlerInstrumentation : IHandlerInstrumentation
+    {
+        public List<ActivityLink>? CapturedLinks { get; private set; }
+
+        public bool IsEnabled => true;
+
+        public Activity? StartHandling(string handlerName, string queueName, string messagingSystem, MessageProperties messageProperties, ActivityContext parentContext = default)
+            => null;
+
+        public Activity? StartHandling(string handlerName, string queueName, string messagingSystem, MessageProperties messageProperties, IEnumerable<ActivityLink> links)
+        {
+            CapturedLinks = links.ToList();
+            return null;
+        }
+
+        public void RecordReceived(string handlerName, string queueName, long count = 1) { }
+        public void RecordSucceeded(string handlerName, string queueName, double durationMs, long count = 1) { }
+        public void RecordFailed(string handlerName, string queueName, long count = 1) { }
+        public void RecordRetried(string handlerName, string queueName, long count = 1) { }
+        public Activity? StartSendingResponse(string callQueueName, string replyQueueName, string messagingSystem, string messageId, string correlationId) => null;
+        public void RecordResponseSent(string callQueueName, double durationMs) { }
+        public void RecordResponseFailed(string callQueueName) { }
     }
 
     private record TestMessage(string Value);

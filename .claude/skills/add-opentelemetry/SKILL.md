@@ -188,6 +188,41 @@ builder.Services.AddOpenTelemetry()
 
 Do not duplicate or replace the project's existing `.WithMetrics(...)`/`.WithTracing(...)` calls — add a second `AddOpenTelemetry()` block alongside them, as shown above, rather than editing the existing one.
 
+## ASP.NET Core projects and complete call-handler traces
+
+If the target project is an **ASP.NET Core WebApplication** (uses `WebApplication.CreateBuilder`) **and** registers `AddCallSubmitter<T>()`, the ASP.NET Core HTTP request activity becomes the ambient parent of `flowly.call` spans. Without `AddAspNetCoreInstrumentation()` in the TracerProvider, the HTTP parent is never exported and Jaeger shows the trace as `(incomplete)`.
+
+**Aspire** (`AddServiceDefaults()`): already includes `AddAspNetCoreInstrumentation()` — no extra step needed.
+
+**Worker-style projects** (no HTTP listener, `Host.CreateApplicationBuilder`): not affected.
+
+For all other ASP.NET Core projects with call submitters and Flowly OTel enabled, add the package to that project's `.csproj`:
+
+```xml
+<PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="*" />
+```
+
+Then chain `AddAspNetCoreInstrumentation()` into `.WithTracing(...)`.
+
+**Fresh setup** — add it to the second `AddOpenTelemetry()` call alongside the exporter:
+
+```csharp
+builder.Services.AddOpenTelemetry()
+    .WithTracing(t => t
+        .AddAspNetCoreInstrumentation()
+        .AddOtlpExporter()); // or .AddConsoleExporter()
+```
+
+**Compose into existing pipeline**:
+
+```csharp
+builder.Services.AddOpenTelemetry()
+    .WithMetrics(m => m.AddFlowlyInstrumentation())
+    .WithTracing(t => t
+        .AddFlowlyInstrumentation()
+        .AddAspNetCoreInstrumentation());
+```
+
 ## Step 6 — Repeat for additional target projects
 
 If more than one project was selected in Step 2, repeat Steps 3–5 for each remaining project before continuing.
@@ -243,4 +278,5 @@ Fix any errors before reporting the task as complete.
 - [ ] An exporter (console, OTLP, or Aspire dashboard) confirmed so metrics/traces are actually observable
 - [ ] If Jaeger was selected: `OTEL_EXPORTER_OTLP_ENDPOINT`/`OTEL_SERVICE_NAME` set per profile in each target project's `launchSettings.json`, and a Jaeger container is reachable (added to `docker-compose.yml` or started manually)
 - [ ] Repeated for every additional target project selected in Step 2
+- [ ] (ASP.NET Core + call submitter) `OpenTelemetry.Instrumentation.AspNetCore` added and `AddAspNetCoreInstrumentation()` wired into `.WithTracing(...)` so `flowly.call` traces are complete in Jaeger
 - [ ] `dotnet build` passes with no errors

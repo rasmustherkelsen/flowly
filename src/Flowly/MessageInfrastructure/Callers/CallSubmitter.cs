@@ -22,7 +22,9 @@ internal class CallSubmitter<TMessage, TReturn>(
 
     public async Task<TReturn> Submit(TMessage message, CancellationToken cancellationToken)
     {
+        var client = clientRegistry.GetClient(settings.ProviderName);
         var correlationId = Guid.NewGuid().ToString();
+        var messageId = Guid.NewGuid().ToString();
         var sw = Stopwatch.StartNew();
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -30,17 +32,16 @@ internal class CallSubmitter<TMessage, TReturn>(
 
         var responseTask = pendingCallRegistry.Register(correlationId, timeoutCts.Token);
 
+        using var activity = callerInstrumentation.StartCalling(settings.CallQueueName, client.MessagingSystem, messageId, correlationId);
+        activity.ApplyTagsFrom(message);
+
         try
         {
-            var client = clientRegistry.GetClient(settings.ProviderName);
             var sender = await client.CreateMessageBusSender(settings.CallQueueName);
 
             await sender.SendMessage(
                 message,
-                new MessageProperties(
-                    Guid.NewGuid().ToString(),
-                    correlationId,
-                    ReplyTo: settings.ReturnQueueName),
+                new MessageProperties(messageId, correlationId, ReplyTo: settings.ReturnQueueName),
                 cancellationToken);
 
             var response = await responseTask;

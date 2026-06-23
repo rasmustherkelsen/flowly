@@ -108,6 +108,48 @@ public class HandlerInstrumentationTests
 
             Assert.Equal(5, recorded);
         }
+
+        [Fact]
+        public void RecordResponseSent_IncrementsRepliedCounterAndRecordsDuration()
+        {
+            using var meterListener = new MeterListener();
+            long? repliedCount = null;
+            double? duration = null;
+            meterListener.InstrumentPublished = (instrument, listener) =>
+            {
+                if (instrument.Name is FlowlyInstrumentationConstants.CallHandlerReplied
+                    or FlowlyInstrumentationConstants.CallHandlerReplyDuration)
+                    listener.EnableMeasurementEvents(instrument);
+            };
+            meterListener.SetMeasurementEventCallback<long>((_, value, _, _) => repliedCount = value);
+            meterListener.SetMeasurementEventCallback<double>((_, value, _, _) => duration = value);
+            meterListener.Start();
+
+            using var handlerInstrumentation = new HandlerInstrumentation();
+            handlerInstrumentation.RecordResponseSent("ping", 33.0);
+
+            Assert.Equal(1, repliedCount);
+            Assert.Equal(33.0, duration);
+        }
+
+        [Fact]
+        public void RecordResponseFailed_IncrementsReplyFailedCounter()
+        {
+            using var meterListener = new MeterListener();
+            long? recorded = null;
+            meterListener.InstrumentPublished = (instrument, listener) =>
+            {
+                if (instrument.Name == FlowlyInstrumentationConstants.CallHandlerReplyFailed)
+                    listener.EnableMeasurementEvents(instrument);
+            };
+            meterListener.SetMeasurementEventCallback<long>((_, value, _, _) => recorded = value);
+            meterListener.Start();
+
+            using var handlerInstrumentation = new HandlerInstrumentation();
+            handlerInstrumentation.RecordResponseFailed("ping");
+
+            Assert.Equal(1, recorded);
+        }
     }
 
     public class WhenDisabled
@@ -153,6 +195,28 @@ public class HandlerInstrumentationTests
         {
             var handlerInstrumentation = new NullHandlerInstrumentation();
             handlerInstrumentation.RecordRetried("MyHandler", "my-queue");
+        }
+
+        [Fact]
+        public void StartSendingResponse_ReturnsNull()
+        {
+            var handlerInstrumentation = new NullHandlerInstrumentation();
+            var activity = handlerInstrumentation.StartSendingResponse("ping", "ping-reply-sender", "fake", "msg-1", "corr-1");
+            Assert.Null(activity);
+        }
+
+        [Fact]
+        public void RecordResponseSent_DoesNotThrow()
+        {
+            var handlerInstrumentation = new NullHandlerInstrumentation();
+            handlerInstrumentation.RecordResponseSent("ping", 33.0);
+        }
+
+        [Fact]
+        public void RecordResponseFailed_DoesNotThrow()
+        {
+            var handlerInstrumentation = new NullHandlerInstrumentation();
+            handlerInstrumentation.RecordResponseFailed("ping");
         }
     }
 

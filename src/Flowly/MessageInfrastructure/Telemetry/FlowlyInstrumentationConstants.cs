@@ -88,6 +88,15 @@ public static class FlowlyInstrumentationConstants
     /// <summary>Histogram: event publish duration in milliseconds.</summary>
     public const string EventPublisherRaiseDuration = "flowly.event.publisher.duration";
 
+    /// <summary>Counter: number of call responses successfully sent by call handlers.</summary>
+    public const string CallHandlerReplied = "flowly.call.handler.replied";
+
+    /// <summary>Counter: number of call response sends that failed.</summary>
+    public const string CallHandlerReplyFailed = "flowly.call.handler.reply.failed";
+
+    /// <summary>Histogram: call response send duration in milliseconds.</summary>
+    public const string CallHandlerReplyDuration = "flowly.call.handler.reply.duration";
+
     /// <summary>Counter: number of calls that completed successfully (response received before timeout).</summary>
     public const string CallerCallsSucceeded = "flowly.call.succeeded";
 

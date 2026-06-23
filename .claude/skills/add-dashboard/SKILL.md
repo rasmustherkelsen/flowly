@@ -195,6 +195,8 @@ app.UseFlowlyDashboard();
 app.Run();
 ```
 
+> **OpenTelemetry + call submitters:** If this Dashboard project has `Flowly.OpenTelemetry` enabled and registers `AddCallSubmitter<T>()`, add `OpenTelemetry.Instrumentation.AspNetCore` to the project's `.csproj` and chain `AddAspNetCoreInstrumentation()` into `.WithTracing(...)`. Without it, `flowly.call` spans appear `(incomplete)` in Jaeger — the ASP.NET Core HTTP request span that triggered the call is never exported. Aspire solutions using `AddServiceDefaults()` are already covered.
+
 ### Step 5a — AppHost wiring (Aspire only)
 
 If the solution uses Aspire, register the Dashboard project in the AppHost and wire it to the same transport and DB resources as the Receiver:
@@ -288,6 +290,8 @@ builder.AddMessageSubmitter<MyMessage>();
 > builder.AddFlowly<FlowlyConfiguration>(options => options.InstanceName = "my-app");
 > ```
 
+> **OpenTelemetry + call submitters:** If this project has `Flowly.OpenTelemetry` enabled and registers `AddCallSubmitter<T>()`, add `OpenTelemetry.Instrumentation.AspNetCore` to the project's `.csproj` and chain `AddAspNetCoreInstrumentation()` into `.WithTracing(...)`. Without it, `flowly.call` spans appear `(incomplete)` in Jaeger — the ASP.NET Core HTTP request span that triggered the call is never exported. Aspire solutions using `AddServiceDefaults()` are already covered.
+
 ---
 
 ## Step 6 — Optional: configure path prefix and title
@@ -350,4 +354,5 @@ Fix any errors before reporting the task as complete.
 - [ ] (Standalone, Aspire) `AddServiceDefaults()` and `MapDefaultEndpoints()` called in Dashboard's `Program.cs`
 - [ ] (Jobs / dead letters) Matching DB packages added to the Dashboard project
 - [ ] Dashboard opens at the expected URL and shows the expected tabs
+- [ ] (OTel + call submitter) `OpenTelemetry.Instrumentation.AspNetCore` added and `AddAspNetCoreInstrumentation()` wired into `.WithTracing(...)` for complete traces in Jaeger
 - [ ] `dotnet build` passes with no errors

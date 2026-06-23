@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using Flowly;
 using Flowly.MessageInfrastructure.BackgroundServices;
 using Flowly.MessageInfrastructure.MessageHandlingStrategies;
 using Flowly.MessageInfrastructure.Model;
@@ -289,6 +288,8 @@ public class MessageProcessingBackgroundServiceTests
 
         public Activity? StartHandling(string handlerName, string queueName, string messagingSystem, MessageProperties messageProperties, ActivityContext parentContext = default) => Activity;
 
+        public Activity? StartHandling(string handlerName, string queueName, string messagingSystem, MessageProperties messageProperties, IEnumerable<ActivityLink> links) => Activity;
+
         public void RecordReceived(string handlerName, string queueName, long count = 1) { }
 
         public void RecordSucceeded(string handlerName, string queueName, double durationMs, long count = 1) { }
@@ -296,6 +297,12 @@ public class MessageProcessingBackgroundServiceTests
         public void RecordFailed(string handlerName, string queueName, long count = 1) { }
 
         public void RecordRetried(string handlerName, string queueName, long count = 1) { }
+
+        public Activity? StartSendingResponse(string callQueueName, string replyQueueName, string messagingSystem, string messageId, string correlationId) => null;
+
+        public void RecordResponseSent(string callQueueName, double durationMs) { }
+
+        public void RecordResponseFailed(string callQueueName) { }
     }
 
     private class RecordingMessageHandler : MessageHandler<TestMessage>

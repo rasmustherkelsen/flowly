@@ -160,11 +160,5 @@ internal sealed class MessageProcessingBackgroundService<TMessage>(
     }
 
     private static ActivityContext ParseParentContext(MessageProperties properties)
-    {
-        if (properties.Traceparent is null) return default;
-
-        return ActivityContext.TryParse(properties.Traceparent, properties.Tracestate, true, out var context)
-            ? context
-            : default;
-    }
+        => ActivityContextParser.Parse(properties);
 }

@@ -9,6 +9,9 @@ internal sealed class NullHandlerInstrumentation : IHandlerInstrumentation
     public Activity? StartHandling(string handlerName, string queueName, string messagingSystem, MessageProperties messageProperties, ActivityContext parentContext = default)
         => null;
 
+    public Activity? StartHandling(string handlerName, string queueName, string messagingSystem, MessageProperties messageProperties, IEnumerable<ActivityLink> links)
+        => null;
+
     public void RecordReceived(string handlerName, string queueName, long count = 1) { }
 
     public void RecordSucceeded(string handlerName, string queueName, double durationMs, long count = 1) { }
@@ -16,4 +19,10 @@ internal sealed class NullHandlerInstrumentation : IHandlerInstrumentation
     public void RecordFailed(string handlerName, string queueName, long count = 1) { }
 
     public void RecordRetried(string handlerName, string queueName, long count = 1) { }
+
+    public Activity? StartSendingResponse(string callQueueName, string replyQueueName, string messagingSystem, string messageId, string correlationId) => null;
+
+    public void RecordResponseSent(string callQueueName, double durationMs) { }
+
+    public void RecordResponseFailed(string callQueueName) { }
 }
