@@ -19,9 +19,11 @@ This document gives an AI assistant the context needed to work effectively in th
 /
 ├── Flowly/                          # Core abstractions and infrastructure
 ├── Flowly.AzureServiceBus/          # Azure Service Bus transport implementation
+├── Flowly.AzureServiceBus.Aspire/   # .NET Aspire AppHost integration (emulator queue registration)
 ├── Flowly.RabbitMQ/                 # RabbitMQ transport implementation
 ├── Flowly.InMemory/                 # In-memory transport (channels; no broker required)
 ├── Flowly.OpenTelemetry/            # OpenTelemetry metrics and traces
+├── Flowly.Dashboard/                # Embedded ASP.NET Core middleware dashboard (management UI at /flowly)
 ├── Flowly.Jobs/                     # Job tracking, CRON scheduling, job state DB
 ├── Flowly.Jobs.SqlServer/           # SQL Server backend for job state tracking
 ├── Flowly.Jobs.Postgres/            # PostgreSQL backend for job state tracking
@@ -135,6 +137,8 @@ public class MyBatchHandler : BatchMessageHandler<MyMessage>
 
 Register: `.AddBatchMessageHandler<MyMessage, MyBatchHandler>()`
 
+**Delivery semantics:** default is **at-most-once** — messages are acknowledged before `Handle` is called. If the handler throws, they are gone. Add `[RetryPolicy]` to opt in to at-least-once delivery; the entire batch is republished on failure. **Handler must be idempotent when `[RetryPolicy]` is used.** Batch handlers do not support dead letter tracking.
+
 #### Job message handler (with state tracking)
 
 ```csharp
@@ -191,6 +195,19 @@ ReturnMessage response = await caller.Call<CallMessage, ReturnMessage>(new CallM
 ```
 
 **Important:** Attributes on `TReturn` (`[QueueName]`, `[RetryPolicy]`, `[ProviderAffinity]`, etc.) are **silently ignored** on the reply path. They only apply if `TReturn` is also registered as a normal handler elsewhere.
+
+**Call handler invariants — checklist for reviewing templates and skills:**
+
+These are easy to miss because each is a small, separate piece of wiring; a solution can build and even run partially while one of them is missing. Use this list whenever auditing `Flowly.Templates` content or `.claude/skills/*` for call-handler correctness:
+
+1. **Every project that calls `AddCallSubmitter<T>()` must set `InstanceName`.** `AddCallSubmitter` throws `InvalidOperationException` synchronously, at registration time, if `FlowlyOptions.InstanceName` is null/empty. This applies to the sender — but just as much to a Dashboard, an API project, or any other process that submits the call.
+2. **`InstanceName` must be unique per process across the whole solution**, not per message type. It names that process's reply queue (`{callQueue}.reply.{InstanceName}`), so two projects sharing a value collide. A project that already sets `InstanceName` for one call submitter reuses the same value for any other — don't add a second override.
+3. **A message type with only a `CallHandler<T, TReturn>` registration (no `MessageHandler<T>`) cannot be submitted with `AddMessageSubmitter<T>()`.** Any project that needs to submit it — including a Dashboard's Submit panel — must use `AddCallSubmitter<T>()` instead, mirroring whatever the receiver registered.
+4. **A Flowly Dashboard (standalone project or embedded) that should be able to submit a call message needs its own `AddCallSubmitter<T>()` + `InstanceName`**, exactly like a sender. Adding a call handler to a solution that already has a Dashboard, or adding a Dashboard to a solution that already has a call handler, are both easy to get half-wired — check both directions.
+5. **ASB emulator (`CreateTopology = false`) needs every reply queue declared in `sbconfig.json`** — one per `InstanceName` that registers a call submitter, including the Dashboard's if it submits calls. Regenerate with `flowly azure-service-bus emulator-config --project <each project>`, never hand-edit.
+6. **ASB + Aspire AppHost needs `azureServiceBus.AddFlowly(<project>)` called for every project with a call submitter**, not just the primary sender — otherwise that project's reply queue is never pre-registered and calls fail at runtime. Include the Dashboard project here too if it submits calls.
+7. **Restarting a running ASB emulator / Docker Compose stack is disruptive** — a skill that just regenerated `sbconfig.json` should ask the user before restarting it, not do so automatically.
+8. **Dashboard and ASP.NET Core sender projects with call submitters need `AddAspNetCoreInstrumentation()` for complete OTel traces.** When a project using `AddCallSubmitter<T>()` is an ASP.NET Core web app (has HTTP endpoints), `flowly.call` spans are automatically parented to the ambient HTTP request activity. If `AddAspNetCoreInstrumentation()` is missing from the `TracerProviderBuilder`, the HTTP parent span is never exported and Jaeger shows the trace as `(incomplete)`. Fix: add the `OpenTelemetry.Instrumentation.AspNetCore` package and chain `.AddAspNetCoreInstrumentation()` into `.WithTracing(...)`. Aspire solutions using `AddServiceDefaults()` already have this — no extra step needed. Worker-style projects (no HTTP listener) are not affected.
 
 ---
 
@@ -303,7 +320,7 @@ public class NightlyCleanupJob : RecurringJobHandler
 
 ### 6. Retry Policy
 
-Apply `[RetryPolicy(maxRetries, delaySeconds)]` to any `MessageHandler<T>` or `JobHandler<T>`. Alternatively, set via `Configure(HandlerQueueOptions options)`.
+Apply `[RetryPolicy(maxRetries, delaySeconds)]` to any `MessageHandler<T>`, `JobHandler<T>`, or `BatchMessageHandler<T>`. Alternatively, set via `Configure(HandlerQueueOptions options)`.
 
 **How it works:**
 - On exception: if `RetryCount < MaxRetries`, Flowly re-publishes the message to the same queue with `RetryCount + 1` in the `flowly-retry-count` application property and a `ScheduledEnqueueTime` of `now + delaySeconds`
@@ -313,6 +330,25 @@ Apply `[RetryPolicy(maxRetries, delaySeconds)]` to any `MessageHandler<T>` or `J
 **Job retry state:** The `Job` DB row stays in `Started` during retries. The `RetryAttempt` column is updated on each attempt. On exhaustion, the job transitions to `Failed`.
 
 Retry logic lives in the Flowly core layer (`ServiceBusMessageHandlerBackgroundServiceBase`) and is transport-agnostic. The transport is responsible for honoring `ScheduledEnqueueTime` on send (ASB: `ServiceBusMessage.ScheduledEnqueueTime`).
+
+### Custom OpenTelemetry Tags on Message Spans
+
+Implement `IOpenTelemetryTagsProvider` on a message contract to attach business-level tags to the Flowly OTel spans for that message. Flowly calls `GetOpenTelemetryTags()` and sets each key-value pair on the active `Activity` — both on the producer (`flowly.send` / `flowly.event.raise`) and consumer (`flowly.handle`) span.
+
+```csharp
+public record SubmitOrderMessage(string OrderId, string CustomerId) : IOpenTelemetryTagsProvider
+{
+    public IEnumerable<KeyValuePair<string, object?>> GetOpenTelemetryTags() =>
+    [
+        new("order.id", OrderId),
+        new("customer.id", CustomerId),
+    ];
+}
+```
+
+Tags appear in Jaeger (and any OTel backend) and can be used as search filters. High-cardinality values like IDs are suitable for trace tags but **not** for metrics labels (would explode cardinality).
+
+This is opt-in and transport-agnostic. Supported on `MessageHandler<T>`, `EventHandlerBase<TEvent>`, `IMessageSender`, and `IEventSender`. Not applied to `BatchMessageHandler<T>` (ambiguous cardinality across a batch) or job handlers (user can call `Activity.Current?.SetTag()` inside `ExecuteJob`).
 
 ---
 
@@ -400,6 +436,8 @@ builder.AddSQLiteDeadLetterTracking("Data Source=deadletters.db");
 builder.AddMessageHandler<MyMsg, MyHandler>()
        .WithDeadLetterTracking()
 ```
+
+The `connection` parameter accepts either a connection string name from `IConfiguration` (resolved under `ConnectionStrings:`) or a literal connection string — the same convention used by the Jobs backends and transport providers.
 
 Calling `.WithDeadLetterTracking()` without first registering a persistence layer throws `InvalidOperationException` at startup.
 
@@ -611,11 +649,11 @@ dotnet new flowlyaspireapp --transport <value> [options] -n <SolutionName>
 | `azureservicebus` | `asb` | same; AppHost uses `AddFlowly(receiver)` to discover queues |
 | `inmemory` | `inm` | AppHost + ServiceDefaults + `App/` (single-project, in-process) |
 
-Supports the same optional flags as `flowlyapp` — `--callhandler`/`--call`, `--jobtracking`/`--jobs`, `--deadlettertracking`/`--deadletter`, `--sqlserver`, `--postgres`, `--sqlite` — with these differences:
+Supports the same optional flags as `flowlyapp` — `--callhandler`/`--call`, `--jobtracking`/`--jobs`, `--deadlettertracking`/`--deadletter`, `--db sqlserver|postgres|sqlite`, `--dashboard` — with these differences:
 
 - Job/dead-letter tracking is embedded in the **Receiver** (no separate `JobTracker` project).
-- `--sqlserver` / `--postgres` causes the AppHost to provision the DB resource and pass it to the Receiver via `WithReference`.
-- `--sqlite` does not require an Aspire resource; the connection string is in `appsettings.Development.json`.
+- `--db sqlserver` / `--db postgres` causes the AppHost to provision the DB resource and pass it to the Receiver via `WithReference`.
+- `--db sqlite` does not require an Aspire resource; the connection string is in `appsettings.Development.json`.
 - For ASB, `CreateTopology = false` (Aspire creates queues via `azureServiceBus.AddFlowly(receiver)`).
 - For RabbitMQ, `CreateTopology = true` (Aspire Hosting does not manage RabbitMQ queue topology).
 - For `--call` with ASB, `azureServiceBus.AddFlowly(sender, instanceName: "sender")` is also called to register the reply queue. The `instanceName` must match `FlowlyOptions.InstanceName` set in the sender's `Program.cs`.
@@ -645,15 +683,16 @@ Optional flags:
 | Flag | Alias | Description |
 |---|---|---|
 | `--callhandler` | `--call` | Scaffold the main message as an RPC-style call/response. `MyMessage` implements `IReturns<MyReturnMessage>`; Sender uses `IMessageCaller.Call` and blocks for the response; Receiver uses `CallHandler<MyMessage, MyReturnMessage>`. Sender `Program.cs` sets `options.InstanceName = "sender"`. For ASB, `sbconfig.json` includes the reply queue `my.reply.sender`. |
-| `--jobtracking` | `--jobs` | Add job state tracking. Adds `ProcessJobMessage`/`ProcessJobHandler`/`JobSubmitterService` and a dedicated `JobTracker` infrastructure project (RabbitMQ/ASB). InMemory keeps everything in `App`. Requires `--sqlserver`, `--postgres`, or `--sqlite`. |
-| `--deadlettertracking` | `--deadletter` | Add dead-letter tracking. Adds `DeadLetterSampleMessage`/`DeadLetterSampleMessageHandler` (with `[RetryPolicy]`) and `FailingMessageSenderService`. Requires a DB flag. |
-| `--sqlserver` | | SQL Server backend |
-| `--postgres` | | PostgreSQL backend |
-| `--sqlite` | | SQLite backend |
+| `--jobtracking` | `--jobs` | Add job state tracking. Adds `ProcessJobMessage`/`ProcessJobHandler`/`JobSubmitterService` and a dedicated `JobTracker` infrastructure project (RabbitMQ/ASB). InMemory keeps everything in `App`. Requires `--db`. |
+| `--deadlettertracking` | `--deadletter` | Add dead-letter tracking. Adds `DeadLetterSampleMessage`/`DeadLetterSampleMessageHandler` (with `[RetryPolicy]`) and `FailingMessageSenderService`. Requires `--db`. |
+| `--dashboard` | | Scaffold a standalone `Dashboard/` project — a minimal `WebApplication` that calls `AddFlowlyDashboard()` / `UseFlowlyDashboard()` and serves the management UI at `/`. The Receiver stays a pure background worker. For InMemory the dashboard is embedded in `App/` instead. |
+| `--db sqlserver` | | SQL Server backend |
+| `--db postgres` | | PostgreSQL backend |
+| `--db sqlite` | | SQLite backend |
 
 Connection string names: `FlowlyJobs` (job tracking), `FlowlyDeadLetters` (dead-letter tracking).
 
-After scaffolding: `docker compose up -d` (skip for SQLite/InMemory), then `dotnet run --project Sender` / `dotnet run --project Receiver` / `dotnet run --project JobTracker` (when `--jobs`).
+After scaffolding: `docker compose up -d` (skip for SQLite/InMemory), then `dotnet run --project Sender` / `dotnet run --project Receiver` / `dotnet run --project JobTracker` (when `--jobs`) / `dotnet run --project Dashboard` (when `--dashboard`, non-InMemory).
 
 ---
 
@@ -671,8 +710,8 @@ Optional flags:
 
 | Flag | Alias | Description |
 |---|---|---|
-| `--jobtracking` | `--jobs` | Add job state tracking (also specify `--sqlserver`, `--postgres`, or `--sqlite`) |
-| `--deadlettertracking` | `--deadletter` | Add dead-letter tracking (also specify DB flag) |
+| `--jobtracking` | `--jobs` | Add job state tracking. Requires `--db sqlserver|postgres|sqlite`. |
+| `--deadlettertracking` | `--deadletter` | Add dead-letter tracking. Requires `--db sqlserver|postgres|sqlite`. |
 | `--opentelemetry` | `--otel` | Add `Flowly.OpenTelemetry`; wires up `builder.AddFlowlyOpenTelemetry()` |
 | `--inline` | | Wire Flowly inline in Program.cs instead of a config class |
 | `--no-http` | | Configure as a worker service with no HTTP listener; uses `Host.CreateApplicationBuilder` instead of `WebApplication.CreateBuilder` |
@@ -682,7 +721,7 @@ Optional flags:
 dotnet new flowly --transport rabbitmq -o Receiver
 
 # Full-featured ASB processor (class-based)
-dotnet new flowly --transport asb --jobs --sqlserver --deadletter --otel -o Processor
+dotnet new flowly --transport asb --jobs --db sqlserver --deadletter --otel -o Processor
 ```
 
 **Generated files:** `<ProjectName>.csproj`, `Program.cs`, `FlowlyConfiguration.cs` (omitted with `--inline`), `appsettings.json`, `appsettings.Development.json` with dev connection strings.
@@ -924,16 +963,68 @@ Rules:
 
 The Flowly repository ships skills under `.claude/skills/`. Each skill is a directory containing a `SKILL.md` file that provides step-by-step scaffolding guidance. Users can copy any skill directory into their own project's `.claude/skills/` folder to make it available as a slash command in Claude Code.
 
+#### Transport setup
+
 | Directory | Command | Purpose |
 |---|---|---|
-| `flowly-setup-azure-service-bus/` | `/flowly-setup-azure-service-bus` | Full project setup — NuGet packages, `FlowlyConfiguration`, `Program.cs` wiring, connection strings, optional extensions |
-| `create-message-handler/` | `/create-message-handler <MessageName>` | Scaffold message contract record, `MessageHandler<T>` subclass, registration in `FlowlyConfiguration`, and unit tests |
-| `create-recurring-job/` | `/create-recurring-job <HandlerName>` | Scaffold `RecurringJobHandler` subclass with `[RecurringJob]` attribute, registration, and unit tests |
-| `create-contracts-assembly/` | `/create-contracts-assembly` | Create a shared `*.Messages` / `*.Contracts` project for solutions where multiple deployable services share message types |
+| `flowly-setup-rabbitmq/` | `/flowly-setup-rabbitmq` | RabbitMQ setup — template-first for new projects, manual wiring for existing ones |
+| `flowly-setup-azure-service-bus/` | `/flowly-setup-azure-service-bus` | Azure Service Bus setup — template-first for new projects, includes emulator config and Aspire integration |
+| `flowly-setup-inmemory/` | `/flowly-setup-inmemory` | InMemory transport setup — no broker required; template-first for new projects |
+| `flowly-setup-aspire/` | `/flowly-setup-aspire` | Full .NET Aspire solution setup for any transport |
+
+#### Handler scaffolding
+
+| Directory | Command | Purpose |
+|---|---|---|
+| `create-message-handler/` | `/create-message-handler <MessageName>` | Scaffold message contract, `MessageHandler<T>` subclass, and registration |
+| `create-batch-handler/` | `/create-batch-handler <MessageName>` | Scaffold message contract, `BatchMessageHandler<T>` subclass, and registration. Supports optional `[RetryPolicy]` (handler must be idempotent). No dead letter tracking. |
+| `create-job-handler/` | `/create-job-handler <MessageName>` | Scaffold job message (`IJobMessage`), `JobHandler<T>` subclass, and registration. Requires job tracking. |
+| `create-event-handler/` | `/create-event-handler <EventName>` | Scaffold event contract, `EventHandlerBase<TEvent>` subclass, and registration |
+| `create-call-handler/` | `/create-call-handler <MessageName>` | Scaffold RPC call message (`IReturns<T>`), `CallHandler<T, TReturn>`, and sender/receiver registration |
+| `create-recurring-job/` | `/create-recurring-job <HandlerName>` | Scaffold `RecurringJobHandler` subclass with `[RecurringJob]` attribute and registration |
+
+#### Infrastructure
+
+| Directory | Command | Purpose |
+|---|---|---|
+| `add-jobtracking/` | `/add-jobtracking` | Add job state tracking — inline in a project's `FlowlyConfiguration` or as a standalone `JobTracker` project |
+| `add-deadletter/` | `/add-deadletter` | Add dead letter tracking — inline or as a standalone project |
+| `add-dashboard/` | `/add-dashboard` | Add the Flowly management Dashboard — standalone project or embedded in an existing web project |
+| `add-opentelemetry/` | `/add-opentelemetry` | Add Flowly OpenTelemetry metrics and tracing |
+| `create-contracts-assembly/` | `/create-contracts-assembly` | Create a shared `*.Messages` / `*.Contracts` project for multi-service solutions |
+
+> **Skills are deployed to user sites — they must be self-contained.**
+> Skills are synced into `src/Flowly.Templates/content/flowly-skills/` via the `SyncSkills` MSBuild target and shipped to end-users as part of the `Flowly.Templates` NuGet package. When a user runs `dotnet new flowlyskills`, only the contents of `.claude/skills/` land in their project — nothing from `.claude/rules/`, `docs/`, or anywhere else in this repository. Therefore:
+> - Skills must **not** reference files that only exist in this repository (e.g. `.claude/rules/*.md`, source projects, local tooling scripts).
+> - Any instruction a skill needs to give must be **embedded inline** in the `SKILL.md` itself.
+> - Tools like the `flowly` CLI must be installed from NuGet (`dotnet tool install --global Flowly.Tool`), not built from source — user sites do not have `Flowly.Tool/Flowly.Tool.csproj`.
+
+> **Design principle — setup skills prefer Flowly.Templates.**
+> Skills that set up a new Flowly project or solution use `dotnet new flowly`, `dotnet new flowlyapp`, or `dotnet new flowlyaspireapp` as the primary path rather than manually writing packages and configuration. The templates produce correct, tested, and version-consistent scaffolding; reimplementing it in a skill creates drift. The manual wiring path (add packages, write `FlowlyConfiguration`, wire `Program.cs`) is the fallback when a template is not applicable — specifically when adding Flowly to an existing project that was not created via a template.
+
+> **Maintenance note — keep setup skills in sync with templates:**
+> The `flowly-setup-rabbitmq`, `flowly-setup-azure-service-bus`, and `flowly-setup-inmemory` skills document both the template path and the manual path. When a template's flag set, generated file layout, or default wiring changes, update the corresponding setup skill's template step in the same change.
+
+> **Maintenance note — keep `add-jobtracking` in sync with the `flowlyapp` template:**
+> The `add-jobtracking` skill's standalone JobTracker option mirrors the `JobTracker/` project scaffolded by `dotnet new flowlyapp --jobs`. Whenever the template's `JobTracker/` project structure changes (new packages, changed connection string names, `Program.cs` wiring, `appsettings` layout, or `launchSettings.json`), update `.claude/skills/add-jobtracking/SKILL.md` in the same change so the skill stays consistent with what the template produces.
+
+> **Maintenance note — keep `add-opentelemetry` in sync with the `flowly-project` and `flowlyaspireapp` templates:**
+> The `add-opentelemetry` skill's wiring (`builder.AddFlowlyOpenTelemetry()` for fresh setups; `.WithMetrics(m => m.AddFlowlyInstrumentation()).WithTracing(t => t.AddFlowlyInstrumentation())` for composing into an existing pipeline or Aspire's `ServiceDefaults`) mirrors what `dotnet new flowly --opentelemetry` and `dotnet new flowlyaspireapp` generate. Whenever the templates' OpenTelemetry package set or registration calls change, update `.claude/skills/add-opentelemetry/SKILL.md` in the same change so the skill stays consistent with what the templates produce.
 
 When a user in a Flowly-based project asks you to add a handler, recurring job, or set up the transport, suggest the appropriate skill command if the skills are present in their `.claude/skills/` directory.
 
 Skills must be kept current: whenever a registration method, handler base class, or scaffold pattern changes, update the relevant `SKILL.md` in the same commit. See `.claude/rules/skills-conventions.md` for the full maintenance rules.
+
+#### `.claude/` folder audience split
+
+The `.claude/` folder serves two distinct audiences — keep them separate:
+
+| Directory | Audience | Contains |
+|---|---|---|
+| `.claude/rules/` | **Contributors** working on the Flowly source code | Coding conventions, test conventions, encapsulation rules, documentation requirements, etc. — things that govern how the Flowly library itself is written and maintained |
+| `.claude/skills/` | **Users** of Flowly building their own solutions | Step-by-step scaffolding guidance invoked as slash commands in Claude Code |
+
+Rules that describe how to *author or maintain* skills (contributor-facing meta-guidance) belong in `.claude/rules/skills-conventions.md` — not as standalone rule files alongside coding conventions. Transport-specific behavioral constraints that skills must account for (e.g. Azure Service Bus emulator not supporting topology creation) belong there too, since that is author guidance rather than end-user documentation.
 
 ---
 

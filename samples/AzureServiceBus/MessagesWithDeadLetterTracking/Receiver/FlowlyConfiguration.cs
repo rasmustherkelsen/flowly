@@ -12,7 +12,7 @@ internal class ReceiverFlowlyConfiguration : Configuration
         builder
             .UseAzureServiceBus()
             .AddSqlServerDeadLetterTracking(
-                builder.Configuration.GetConnectionString("FlowlyDeadLetters")!,
+                "FlowlyDeadLetters",
                 true,
                 options =>
                 {

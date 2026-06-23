@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Flowly.MessageInfrastructure.Events;
 using Flowly.MessageInfrastructure.Events.Telemetry;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.Transport;
 
 namespace Flowly.Tests.MessageInfrastructure.Events;
@@ -144,7 +145,44 @@ public class EventSubmitterTests
         }
     }
 
+    public class WhenEventImplementsIOpenTelemetryTagsProvider
+    {
+        [Fact]
+        public async Task SetsTagsOnSpan()
+        {
+            var publisher = new CapturingEventPublisher();
+            var instrumentation = new ActivityReturningStubInstrumentation();
+            var registry = new SingleClientRegistry(new FakeEventCapableClient(publisher), "primary");
+            var topicSettings = new EventSubmitter<TaggedOrderPlaced>.TopicSettings("order-placed", "primary");
+            var eventSubmitter = new EventSubmitter<TaggedOrderPlaced>(registry, topicSettings, instrumentation);
+
+            await eventSubmitter.Raise(new TaggedOrderPlaced("order-123"));
+
+            Assert.Equal("order-123", instrumentation.Activity.GetTagItem("order.id"));
+        }
+
+        [Fact]
+        public async Task WhenEventDoesNotImplementInterface_SetsNoCustomTags()
+        {
+            var publisher = new CapturingEventPublisher();
+            var instrumentation = new ActivityReturningStubInstrumentation();
+            var registry = new SingleClientRegistry(new FakeEventCapableClient(publisher), "primary");
+            var topicSettings = new EventSubmitter<OrderPlaced>.TopicSettings("order-placed", "primary");
+            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, topicSettings, instrumentation);
+
+            await eventSubmitter.Raise(new OrderPlaced("x"));
+
+            Assert.Null(instrumentation.Activity.GetTagItem("order.id"));
+        }
+    }
+
     private record OrderPlaced(string OrderId);
+
+    private record TaggedOrderPlaced(string OrderId) : IOpenTelemetryTagsProvider
+    {
+        public IEnumerable<KeyValuePair<string, object?>> GetOpenTelemetryTags() =>
+            [new("order.id", OrderId)];
+    }
 
     private class SingleClientRegistry(IMessageBusClient client, string primaryProviderName) : IMessageBusClientRegistry
     {
@@ -339,6 +377,19 @@ public class EventSubmitterTests
         {
             throw new NotSupportedException();
         }
+    }
+
+    private class ActivityReturningStubInstrumentation : IEventPublisherInstrumentation
+    {
+        public Activity Activity { get; } = new Activity("flowly.event.raise test").Start();
+
+        public bool IsEnabled => true;
+
+        public Activity? StartRaising(string topicName, string messagingSystem, string messageId) => Activity;
+
+        public void RecordRaised(string topicName, double durationMs) { }
+
+        public void RecordFailed(string topicName) { }
     }
 
     private class StubPublisherInstrumentation : IEventPublisherInstrumentation

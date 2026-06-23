@@ -1,5 +1,6 @@
 using Flowly.DeadLetters.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Flowly;
@@ -21,9 +22,12 @@ public static class SqlServerDeadLetterTrackingRegistrationExtension
     ///     </para>
     /// </summary>
     /// <param name="flowlyBuilder">The <see cref="IFlowlyBuilder"/> to configure.</param>
-    /// <param name="connectionString">
-    ///     The SQL Server connection string used to connect to the dead letter tracking database
+    /// <param name="connection">
+    ///     A connection string name from <c>IConfiguration</c> (resolved under <c>ConnectionStrings:</c>)
+    ///     or a literal SQL Server connection string
     ///     (e.g. <c>"Server=localhost;Database=Flowly;..."</c>).
+    ///     When a name is provided and found in configuration, the resolved value is used; otherwise the
+    ///     parameter value itself is used as the connection string.
     /// </param>
     /// <param name="enableMigrations">
     ///     When <see langword="true"/> (the default), a hosted service runs EF Core migrations automatically
@@ -40,12 +44,14 @@ public static class SqlServerDeadLetterTrackingRegistrationExtension
     /// <returns>The same <see cref="IFlowlyBuilder"/> instance so that calls can be chained.</returns>
     public static IFlowlyBuilder AddSqlServerDeadLetterTracking(
         this IFlowlyBuilder flowlyBuilder,
-        string connectionString,
+        string connection,
         bool enableMigrations = true,
         Action<DeadLetterTrackingOptions>? configure = null)
     {
         if (configure is not null)
             flowlyBuilder.Services.Configure(configure);
+
+        var connectionString = flowlyBuilder.Configuration.GetConnectionString(connection) ?? connection;
 
         flowlyBuilder.AddDeadLetterTracking(dbOptions =>
         {
@@ -60,6 +66,33 @@ public static class SqlServerDeadLetterTrackingRegistrationExtension
 
         if (enableMigrations)
             flowlyBuilder.Services.AddDeadLetterDatabaseMigrations();
+
+        return flowlyBuilder;
+    }
+
+    /// <summary>
+    ///     Adds a read-only dead letter tracking client backed by SQL Server.
+    ///     Registers only the EF Core data context, repository, and <see cref="Flowly.DeadLetters.IDeadLetterService"/> —
+    ///     no ingestion background services, no cleanup background service, no metrics background service, and no
+    ///     migration service. Use this in applications that need to query, requeue, or discard dead letters (e.g. a
+    ///     standalone Dashboard project) without participating in dead letter ingestion or processing.
+    /// </summary>
+    /// <param name="flowlyBuilder">The <see cref="IFlowlyBuilder"/> to configure.</param>
+    /// <param name="connection">
+    ///     The name of a connection string in <c>IConfiguration</c> (looked up under <c>ConnectionStrings:</c>),
+    ///     or a literal SQL Server connection string if no matching entry is found.
+    /// </param>
+    /// <returns>The same <see cref="IFlowlyBuilder"/> instance, for fluent chaining.</returns>
+    public static IFlowlyBuilder AddDeadLetterTrackingClient(
+        this IFlowlyBuilder flowlyBuilder,
+        string connection)
+    {
+        var connectionString = flowlyBuilder.Configuration.GetConnectionString(connection) ?? connection;
+
+        flowlyBuilder.AddDeadLetterReadAccess(dbOptions =>
+            dbOptions.UseSqlServer(
+                connectionString,
+                sql => sql.EnableRetryOnFailure(5, TimeSpan.FromSeconds(30), null)));
 
         return flowlyBuilder;
     }

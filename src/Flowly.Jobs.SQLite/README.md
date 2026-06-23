@@ -7,15 +7,14 @@ SQLite backend for [Flowly](https://rasmustherkelsen.github.io/flowly/) job stat
 ```csharp
 builder.AddFlowly(configure => configure
     .UseAzureServiceBus("AzureServiceBus")
-    .AddSQLiteJobStateTracking(
-        builder.Configuration.GetConnectionString("Jobs")!)
+    .AddSQLiteJobStateTracking("Jobs")
     .AddJobHandler<ProcessReportJob, ProcessReportJobHandler>());
 ```
 
 Migrations run at startup by default. To disable:
 
 ```csharp
-.AddSQLiteJobStateTracking(connectionString, enableMigrations: false)
+.AddSQLiteJobStateTracking("Jobs", enableMigrations: false)
 ```
 
 ## Documentation

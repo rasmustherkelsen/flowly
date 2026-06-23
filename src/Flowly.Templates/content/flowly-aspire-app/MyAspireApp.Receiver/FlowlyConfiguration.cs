@@ -36,15 +36,15 @@ internal class FlowlyConfiguration : Configuration
 #endif
 #if (UseDeadLetterTracking && UseSqlServer)
 
-        builder.AddSqlServerDeadLetterTracking(builder.Configuration.GetConnectionString("FlowlyDeadLetters")!, enableMigrations: true);
+        builder.AddSqlServerDeadLetterTracking("FlowlyDeadLetters",enableMigrations: true);
 #endif
 #if (UseDeadLetterTracking && UsePostgres)
 
-        builder.AddPostgresDeadLetterTracking(builder.Configuration.GetConnectionString("FlowlyDeadLetters")!, enableMigrations: true);
+        builder.AddPostgresDeadLetterTracking("FlowlyDeadLetters",enableMigrations: true);
 #endif
 #if (UseDeadLetterTracking && UseSQLite)
 
-        builder.AddSQLiteDeadLetterTracking(builder.Configuration.GetConnectionString("FlowlyDeadLetters")!, enableMigrations: true);
+        builder.AddSQLiteDeadLetterTracking("FlowlyDeadLetters",enableMigrations: true);
 #endif
 
 #if (UseCallHandler)

@@ -13,7 +13,7 @@ builder.AddFlowly(
     flowlyBuilder => flowlyBuilder
         .UseRabbitMq()
         .AddPostgresDeadLetterTracking(
-            builder.Configuration.GetConnectionString("FlowlyDeadLetters")!,
+            "FlowlyDeadLetters",
             true,
             deadLetterOptions =>
             {

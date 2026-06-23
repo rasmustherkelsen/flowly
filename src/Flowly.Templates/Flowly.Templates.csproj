@@ -14,17 +14,29 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <Content Include="content\**\*" Exclude="content\**\bin\**;content\**\obj\**" />
+        <Content Include="content\**\*"
+                 Exclude="content\**\bin\**;content\**\obj\**;content\flowly-skills\.claude\skills\**" />
         <Compile Remove="content\**\*" />
     </ItemGroup>
 
     <Target Name="SyncSkills" BeforeTargets="BeforeBuild">
         <ItemGroup>
-            <SkillFiles Include="$(MSBuildThisFileDirectory)..\..\\.claude\skills\**\*" />
+            <SkillFiles Include="$(MSBuildThisFileDirectory)..\..\\.claude\skills\**\*"
+                        Exclude="$(MSBuildThisFileDirectory)..\..\\.claude\skills\prepare-release\**\*" />
         </ItemGroup>
         <Copy SourceFiles="@(SkillFiles)"
               DestinationFolder="$(MSBuildThisFileDirectory)content\flowly-skills\.claude\skills\%(RecursiveDir)"
               SkipUnchangedFiles="true" />
+    </Target>
+
+    <!-- content\flowly-skills\.claude\skills is generated (gitignored) and may not exist when this
+         project is evaluated. Re-glob it right before NuGet collects package files so it's picked up
+         whether SyncSkills just ran in this same invocation, or ran earlier in a separate build step
+         before a no-build pack (which skips BeforeBuild entirely). -->
+    <Target Name="IncludeGeneratedSkillFiles" BeforeTargets="_GetPackageFiles">
+        <ItemGroup>
+            <Content Include="content\flowly-skills\.claude\skills\**\*" />
+        </ItemGroup>
     </Target>
 
 </Project>

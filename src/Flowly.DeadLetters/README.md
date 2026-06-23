@@ -11,8 +11,7 @@ Also install a database backend: `Flowly.DeadLetters.SqlServer` or `Flowly.DeadL
 ```csharp
 builder.AddFlowly(configure => configure
     .UseAzureServiceBus("AzureServiceBus")
-    .AddSqlServerDeadLetterTracking(
-        builder.Configuration.GetConnectionString("DeadLetters")!)
+    .AddSqlServerDeadLetterTracking("DeadLetters")
     .AddMessageHandler<OrderCreated, OrderCreatedHandler>()
     .WithDeadLetterTracking());    // opt-in per handler
 ```

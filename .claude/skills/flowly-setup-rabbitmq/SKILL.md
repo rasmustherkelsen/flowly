@@ -1,11 +1,95 @@
 ---
 name: flowly-setup-rabbitmq
-description: Set up Flowly with RabbitMQ in a .NET project — packages, FlowlyConfiguration, Program.cs wiring, connection strings, and optional extensions. Use when adding Flowly to a new project or service.
+description: Set up Flowly with RabbitMQ — template-first for new projects, manual wiring for existing ones. Use when adding Flowly to a project or solution that should use RabbitMQ as the message broker.
 ---
 
-Guide the user through a complete Flowly + RabbitMQ setup for the current project. Work through each step, ask where needed, and produce ready-to-use code for each file.
+Guide the user through a complete Flowly + RabbitMQ setup. Work through each step, ask where needed, and produce ready-to-use code for each file.
 
-## Step 1 — Add NuGet packages
+## Step 0 — New project or existing?
+
+Ask the user:
+
+> "Are you starting a new project from scratch, or adding Flowly RabbitMQ to an existing .NET project?"
+
+- **New project** → proceed to Step 1 (template path). This is the fastest option.
+- **Existing project** → skip to Step 4 (manual wiring path).
+
+---
+
+## Template path — New project
+
+### Step 1 — Choose the solution shape
+
+Ask the user what kind of project they want:
+
+> "Which shape fits your needs?
+> 1. **Complete solution** — Messages + Sender + Receiver + `docker-compose.yml`: `dotnet new flowlyapp --transport rabbitmq`
+> 2. **Aspire solution** — AppHost + ServiceDefaults + Messages + Sender + Receiver: `dotnet new flowlyaspireapp --transport rabbitmq`
+> 3. **Single project** — one `.csproj` to add to an existing solution: `dotnet new flowly --transport rabbitmq`"
+
+### Step 2 — Ask for optional features
+
+Ask which optional features are needed:
+
+| Feature | Flag | Requires |
+|---|---|---|
+| Job state tracking | `--jobs` | `--db sqlserver`, `--db postgres`, or `--db sqlite` |
+| Dead letter tracking | `--deadletter` | `--db sqlserver`, `--db postgres`, or `--db sqlite` |
+| Dashboard | `--dashboard` | — |
+| RPC call handler pattern | `--call` | — |
+| OpenTelemetry (Aspire only) | Always enabled | — |
+
+### Step 3 — Scaffold
+
+Ask for the solution/project name and run the appropriate command:
+
+**Complete solution:**
+
+```bash
+dotnet new flowlyapp --transport rabbitmq [--call] [--jobs --db <backend>] [--deadletter --db <backend>] [--dashboard] -n <Name>
+```
+
+Generated structure:
+```
+<Name>/
+├── <Name>.slnx
+├── <Name>.Messages/    — shared message contracts
+├── <Name>.Sender/      — sends messages
+├── <Name>.Receiver/    — handles messages
+├── docker-compose.yml  — starts RabbitMQ locally
+└── (Dashboard/ if --dashboard)
+```
+
+**Aspire solution:**
+
+```bash
+dotnet new flowlyaspireapp --transport rabbitmq [--call] [--jobs --db <backend>] [--deadletter --db <backend>] -n <Name>
+```
+
+**Single project:**
+
+```bash
+dotnet new flowly --transport rabbitmq [--jobs --db <backend>] [--deadletter --db <backend>] -n <Name> -o ./<Name>
+dotnet sln add ./<Name>/<Name>.csproj
+```
+
+After scaffolding a complete solution or single project, start RabbitMQ and run:
+
+```bash
+docker compose up -d
+dotnet run --project <Name>.Receiver &
+dotnet run --project <Name>.Sender
+```
+
+For Aspire: `dotnet run --project <Name>.AppHost`
+
+Then proceed to Step 9 (add handlers) or report as done. Skip the manual wiring steps below.
+
+---
+
+## Manual wiring path — Existing project
+
+### Step 4 — Add NuGet packages
 
 Always required:
 
@@ -29,7 +113,7 @@ Add based on the project's needs:
 
 Ask the user which optional packages apply before continuing.
 
-## Step 2 — Create FlowlyConfiguration
+### Step 5 — Create FlowlyConfiguration
 
 Create a `FlowlyConfiguration.cs` (or `<ProjectName>FlowlyConfiguration.cs` for clarity in multi-project solutions) at the project root:
 
@@ -54,7 +138,7 @@ internal class FlowlyConfiguration : Configuration
 Rules:
 - Inherit from `Configuration` (from the `Flowly` namespace — `Flowly.Configuration`).
 - `Configuration` combines runtime registration and design-time queue discovery.
-- `<ConnectionName>` is either a literal AMQP URI or a key under `ConnectionStrings` in `appsettings.json` (see Step 3).
+- `<ConnectionName>` is either a literal AMQP URI or a key under `ConnectionStrings` in `appsettings.json` (see Step 6).
 
 ### Connection method variants
 
@@ -76,7 +160,7 @@ builder.UseRabbitMq(
     maxMessageSizeBytes: 1_048_576);
 ```
 
-## Step 3 — Add connection strings to appsettings.json
+### Step 6 — Add connection strings to appsettings.json
 
 For local development:
 ```json
@@ -92,7 +176,7 @@ For production use environment variables:
 ConnectionStrings__RabbitMQ=amqp://user:password@rabbitmq.example.com:5672/
 ```
 
-## Step 4 — Wire Flowly in Program.cs
+### Step 7 — Wire Flowly in Program.cs
 
 ```csharp
 builder.AddFlowly<FlowlyConfiguration>();
@@ -110,13 +194,13 @@ Note: sender-only services typically **should** still create topology — doing 
 builder.AddFlowly();
 ```
 
-## Step 5 — Optional: job state tracking
+### Step 7a — Optional: job state tracking
 
 If the project uses `JobHandler<T>` or `RecurringJobHandler`, add state tracking after `UseRabbitMq`:
 
 ```csharp
 .AddSqlServerJobStateTracking(
-    builder.Configuration.GetConnectionString("FlowlyJobs")!,
+    "FlowlyJobs",
     enableMigrations: true,
     options =>
     {
@@ -129,16 +213,16 @@ For PostgreSQL replace with `.AddPostgresJobStateTracking(...)`, for SQLite `.Ad
 
 **Sender-only services** that only need to read job state (not process jobs) use the lighter client:
 ```csharp
-.AddJobStateTrackingClient(builder.Configuration.GetConnectionString("FlowlyJobs")!)
+.AddJobStateTrackingClient("FlowlyJobs")
 ```
 
-## Step 6 — Optional: dead letter tracking
+### Step 7b — Optional: dead letter tracking
 
 If any `MessageHandler<T>` or `EventHandlerBase<TEvent>` handlers use `.WithDeadLetterTracking()`, add tracking after `UseRabbitMq`:
 
 ```csharp
 .AddSqlServerDeadLetterTracking(
-    builder.Configuration.GetConnectionString("FlowlyDeadLetters")!,
+    "FlowlyDeadLetters",
     enableMigrations: true,
     options =>
     {
@@ -147,7 +231,7 @@ If any `MessageHandler<T>` or `EventHandlerBase<TEvent>` handlers use `.WithDead
     })
 ```
 
-## Step 7 — Optional: OpenTelemetry
+### Step 7c — Optional: OpenTelemetry
 
 ```csharp
 builder.Services.AddOpenTelemetry()
@@ -155,13 +239,13 @@ builder.Services.AddOpenTelemetry()
     .WithTracing(t => t.AddFlowlyInstrumentation());
 ```
 
-Requires `Flowly.OpenTelemetry` and an OpenTelemetry SDK already configured in the project.
+Requires `Flowly.OpenTelemetry` and an OpenTelemetry SDK already configured in the project. See `/add-opentelemetry` for full setup.
 
-## Step 8 — Optional: Aspire AppHost integration
+### Step 8 — Optional: Aspire AppHost integration
 
 If the solution uses .NET Aspire, use Aspire's built-in RabbitMQ resource — there is no separate `Flowly.RabbitMQ.Aspire` package. No queue pre-registration step is needed; Flowly creates topology at startup.
 
-### AppHost wiring
+**AppHost wiring:**
 
 ```csharp
 // AppHost Program.cs
@@ -180,7 +264,7 @@ builder.AddProject<Projects.MyProcessor_Sender>("sender")
     .WaitFor(rabbitMq);
 ```
 
-### Service project setup
+**Service project setup:**
 
 Use `CreateTopology = true` — Aspire Hosting does **not** create RabbitMQ queues; Flowly must create them at startup:
 
@@ -192,7 +276,7 @@ Each service project must also call `builder.AddServiceDefaults()` and `app.MapD
 
 Aspire injects the RabbitMQ connection string automatically via the resource name `"RabbitMQ"`, which matches `UseRabbitMq("RabbitMQ")` in `FlowlyConfiguration`.
 
-## Step 9 — Local development with Docker Compose
+### Local development with Docker Compose
 
 For projects not using Aspire, run RabbitMQ locally via Docker Compose:
 
@@ -207,18 +291,40 @@ services:
 
 Start with `docker compose up -d`. The management UI is available at `http://localhost:15672` (default credentials: `guest` / `guest`).
 
-## Step 10 — Verify
+> **Note:** Unlike Azure Service Bus, there is no `flowly` CLI topology command for RabbitMQ. Topology (queues, exchanges, DLX queues, retry queues) is created automatically by Flowly at startup.
 
-Run the application and confirm:
+---
 
-1. No topology creation errors at startup — Flowly declares queues, exchanges, DLX queues, and retry queues automatically.
-2. Messages are routed correctly through the declared queues.
-3. Management UI at `http://localhost:15672` shows the expected queues and exchanges.
+## Step 9 — Next steps
 
-> **Note:** Unlike Azure Service Bus, there is no `flowly` CLI topology command for RabbitMQ. Topology is created at runtime on startup.
+With Flowly wired up, add handlers and submitters:
+
+- `/create-message-handler` — add a queue-based message handler
+- `/create-event-handler` — add a fan-out event subscriber
+- `/create-job-handler` — add a tracked job handler
+- `/create-recurring-job` — add a CRON-scheduled background job
+- `/create-batch-handler` — add a batch message handler
+- `/add-jobtracking` — add job state tracking if not yet configured
+- `/add-deadletter` — add dead letter tracking if not yet configured
+- `/add-dashboard` — add the Flowly management Dashboard
+
+## Final step — Verify the build
+
+```bash
+dotnet build
+```
+
+Fix any errors before reporting the task as complete.
 
 ## Checklist
 
+**Template path:**
+- [ ] Template scaffolded (`dotnet new flowlyapp/flowlyaspireapp/flowly --transport rabbitmq`)
+- [ ] (Single project) `dotnet sln add` run
+- [ ] RabbitMQ started (`docker compose up -d` or via Aspire)
+- [ ] Project runs without errors
+
+**Manual wiring path:**
 - [ ] Packages added to `.csproj`
 - [ ] `FlowlyConfiguration.cs` created (inherits `Flowly.Configuration`)
 - [ ] `builder.AddFlowly<FlowlyConfiguration>()` in `Program.cs`
@@ -227,3 +333,4 @@ Run the application and confirm:
 - [ ] Job state tracking added if using `JobHandler` or `RecurringJobHandler`
 - [ ] Dead letter tracking added if any handlers use `.WithDeadLetterTracking()`
 - [ ] Aspire AppHost updated if project uses Aspire
+- [ ] `dotnet build` passes with no errors

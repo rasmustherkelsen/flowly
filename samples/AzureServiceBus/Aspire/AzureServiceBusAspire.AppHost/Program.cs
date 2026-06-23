@@ -33,19 +33,13 @@ backendFinanceProcessor
     .WaitFor(azureServiceBus)
     .WithReference(azureServiceBus);
 
-var api = builder.AddProject<Projects.Api>("api")
+var api = builder.AddProject<Projects.Dashboard>("Dashboard")
     .WithReference(azureServiceBus)
     .WithReference(flowlyJobsDatabase)
     .WithReference(flowlyDeadLettersDatabase)
     .WaitFor(azureServiceBus)
     .WaitFor(flowlyJobsDatabase)
-    .WaitFor(flowlyDeadLettersDatabase);
-
-builder.AddJavaScriptApp("dashboard", "../Dashboard")
-    .WithNpm()
-    .WithHttpEndpoint(env: "PORT")
-    .WithReference(api)
-    .WithExternalHttpEndpoints()
-    .WaitFor(api);
+    .WaitFor(flowlyDeadLettersDatabase)
+    .WithUrl("/flowly", "Flowly Dashboard");
 
 builder.Build().Run();

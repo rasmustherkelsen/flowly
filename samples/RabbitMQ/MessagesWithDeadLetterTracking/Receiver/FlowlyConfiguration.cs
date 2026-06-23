@@ -12,7 +12,7 @@ internal class ReceiverFlowlyConfiguration : Configuration
         builder
             .UseRabbitMq()
             .AddPostgresDeadLetterTracking(
-                builder.Configuration.GetConnectionString("FlowlyDeadLetters")!,
+                "FlowlyDeadLetters",
                 true,
                 options =>
                 {

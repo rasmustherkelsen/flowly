@@ -112,5 +112,24 @@ public static class DeadLetterTrackingRegistrationExtensions
         return builder;
     }
 
+    /// <summary>
+    ///     Registers only the EF Core data context, repository, and <see cref="IDeadLetterService"/> — no background
+    ///     services for ingestion, cleanup, or metrics. Used by read-only consumers such as a standalone Dashboard
+    ///     project that queries dead letter state but does not ingest or process it.
+    /// </summary>
+    /// <param name="flowlyBuilder">The <see cref="IFlowlyBuilder"/> to configure.</param>
+    /// <param name="dbContextOptions">A delegate that configures the <see cref="DbContextOptionsBuilder"/> for the dead letter data context.</param>
+    /// <returns>The same <see cref="IFlowlyBuilder"/> for chaining.</returns>
+    internal static IFlowlyBuilder AddDeadLetterReadAccess(
+        this IFlowlyBuilder flowlyBuilder,
+        Action<DbContextOptionsBuilder> dbContextOptions)
+    {
+        flowlyBuilder.Services.AddDbContextFactory<DeadLetterDataContext>(dbContextOptions);
+        flowlyBuilder.Services.AddScoped<IDeadLetterRepository, DeadLetterRepository>();
+        flowlyBuilder.Services.AddScoped<IDeadLetterService, DeadLetterService>();
+
+        return flowlyBuilder;
+    }
+
     private sealed class DeadLetterTrackingSentinel;
 }

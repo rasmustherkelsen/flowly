@@ -13,9 +13,6 @@ using Flowly.InMemory;
 #if (UseOpenTelemetry)
 using Flowly.OpenTelemetry;
 #endif
-#if (UseDatabase && !HasDatabaseBackend)
-#error Specify a database backend: --sqlserver, --postgres, or --sqlite
-#endif
 #if(!UseInline)
 using FlowlyApp;
 #endif
@@ -53,17 +50,17 @@ builder.AddFlowly(flowlyBuilder =>
 #endif
 #if (UseDeadLetterTracking && UseSqlServer)
     flowlyBuilder.AddSqlServerDeadLetterTracking(
-        builder.Configuration.GetConnectionString("FlowlyDeadLetters")!,
+        "FlowlyDeadLetters",
         enableMigrations: true);
 #endif
 #if (UseDeadLetterTracking && UsePostgres)
     flowlyBuilder.AddPostgresDeadLetterTracking(
-        builder.Configuration.GetConnectionString("FlowlyDeadLetters")!,
+        "FlowlyDeadLetters",
         enableMigrations: true);
 #endif
 #if (UseDeadLetterTracking && UseSQLite)
     flowlyBuilder.AddSQLiteDeadLetterTracking(
-        builder.Configuration.GetConnectionString("FlowlyDeadLetters")!,
+        "FlowlyDeadLetters",
         enableMigrations: true);
 #endif
 });

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Flowly.MessageInfrastructure.BackgroundServices;
 using Flowly.MessageInfrastructure.MessageHandlingStrategies;
 using Flowly.MessageInfrastructure.Model;
@@ -9,14 +10,15 @@ namespace Flowly.Tests.MessageInfrastructure.BackgroundServices;
 
 public class MessageProcessingBackgroundServiceTests
 {
-    private static (MessageProcessingBackgroundService<TestMessage> messageProcessingBackgroundService, FakeMessageBusClient client) Build(
+    private static (MessageProcessingBackgroundService<TestMessage> messageProcessingBackgroundService, FakeMessageBusClient<TestMessage> client) Build(
         string queueName = "test-queue",
         bool readAndDelete = false,
         int maxConcurrentCalls = 1,
         RecordingMessageHandler? handler = null,
-        FakeServiceScopeFactory<MessageHandler<TestMessage>>? scopeFactory = null)
+        FakeServiceScopeFactory<MessageHandler<TestMessage>>? scopeFactory = null,
+        IHandlerInstrumentation? instrumentation = null)
     {
-        var client = new FakeMessageBusClient();
+        var client = new FakeMessageBusClient<TestMessage>();
         var clientRegistry = new FakeMessageBusClientRegistry(client);
         var settings = new HandlerSettings<TestMessage>(queueName, "azure-service-bus", "TestHandler", readAndDelete, maxConcurrentCalls, 0, 0, 0, TimeSpan.Zero);
         var factory = scopeFactory ?? new FakeServiceScopeFactory<MessageHandler<TestMessage>>(handler ?? new RecordingMessageHandler());
@@ -25,9 +27,26 @@ public class MessageProcessingBackgroundServiceTests
             factory,
             settings,
             NullLogger<MessageProcessingBackgroundService<TestMessage>>.Instance,
-            new NullHandlerInstrumentation(),
+            instrumentation ?? new NullHandlerInstrumentation(),
             new StandardMessageHandlingStrategy<TestMessage>());
         return (messageProcessingBackgroundService, client);
+    }
+
+    private static (MessageProcessingBackgroundService<TaggedTestMessage> service, FakeMessageBusClient<TaggedTestMessage> client) BuildTagged(
+        IHandlerInstrumentation? instrumentation = null)
+    {
+        var client = new FakeMessageBusClient<TaggedTestMessage>();
+        var clientRegistry = new FakeMessageBusClientRegistry(client);
+        var settings = new HandlerSettings<TaggedTestMessage>("tagged-queue", "azure-service-bus", "TaggedTestHandler", false, 1, 0, 0, 0, TimeSpan.Zero);
+        var factory = new FakeServiceScopeFactory<MessageHandler<TaggedTestMessage>>(new NoOpTaggedHandler());
+        var service = new MessageProcessingBackgroundService<TaggedTestMessage>(
+            clientRegistry,
+            factory,
+            settings,
+            NullLogger<MessageProcessingBackgroundService<TaggedTestMessage>>.Instance,
+            instrumentation ?? new NullHandlerInstrumentation(),
+            new StandardMessageHandlingStrategy<TaggedTestMessage>());
+        return (service, client);
     }
 
     public class Execute
@@ -211,7 +230,80 @@ public class MessageProcessingBackgroundServiceTests
         }
     }
 
+    public class WhenMessageImplementsIOpenTelemetryTagsProvider
+    {
+        [Fact]
+        public async Task SetsTagsOnHandlerSpan()
+        {
+            var instrumentation = new ActivityReturningHandlerInstrumentation();
+            var (service, client) = BuildTagged(instrumentation);
+
+            await service.StartAsync(CancellationToken.None);
+            var processor = await client.ProcessorCreated;
+            await processor.Started;
+
+            await processor.FireProcessMessage(new FakeReceivedMessage<TaggedTestMessage>(new TaggedTestMessage("order-123")));
+
+            await service.StopAsync(CancellationToken.None);
+
+            Assert.Equal("order-123", instrumentation.Activity.GetTagItem("order.id"));
+        }
+
+        [Fact]
+        public async Task WhenMessageDoesNotImplementInterface_SetsNoCustomTags()
+        {
+            var instrumentation = new ActivityReturningHandlerInstrumentation();
+            var (service, client) = Build(instrumentation: instrumentation);
+
+            await service.StartAsync(CancellationToken.None);
+            var processor = await client.ProcessorCreated;
+            await processor.Started;
+
+            await processor.FireProcessMessage(new FakeReceivedMessage<TestMessage>(new TestMessage("hello")));
+
+            await service.StopAsync(CancellationToken.None);
+
+            Assert.Null(instrumentation.Activity.GetTagItem("order.id"));
+        }
+    }
+
     private record TestMessage(string Value);
+
+    private record TaggedTestMessage(string OrderId) : IOpenTelemetryTagsProvider
+    {
+        public IEnumerable<KeyValuePair<string, object?>> GetOpenTelemetryTags() =>
+            [new("order.id", OrderId)];
+    }
+
+    private class NoOpTaggedHandler : MessageHandler<TaggedTestMessage>
+    {
+        public override Task Handle(IMessageContext<TaggedTestMessage> ctx) => Task.CompletedTask;
+    }
+
+    private class ActivityReturningHandlerInstrumentation : IHandlerInstrumentation
+    {
+        public Activity Activity { get; } = new Activity("flowly.handle test").Start();
+
+        public bool IsEnabled => true;
+
+        public Activity? StartHandling(string handlerName, string queueName, string messagingSystem, MessageProperties messageProperties, ActivityContext parentContext = default) => Activity;
+
+        public Activity? StartHandling(string handlerName, string queueName, string messagingSystem, MessageProperties messageProperties, IEnumerable<ActivityLink> links) => Activity;
+
+        public void RecordReceived(string handlerName, string queueName, long count = 1) { }
+
+        public void RecordSucceeded(string handlerName, string queueName, double durationMs, long count = 1) { }
+
+        public void RecordFailed(string handlerName, string queueName, long count = 1) { }
+
+        public void RecordRetried(string handlerName, string queueName, long count = 1) { }
+
+        public Activity? StartSendingResponse(string callQueueName, string replyQueueName, string messagingSystem, string messageId, string correlationId) => null;
+
+        public void RecordResponseSent(string callQueueName, double durationMs) { }
+
+        public void RecordResponseFailed(string callQueueName) { }
+    }
 
     private class RecordingMessageHandler : MessageHandler<TestMessage>
     {
@@ -224,18 +316,18 @@ public class MessageProcessingBackgroundServiceTests
         }
     }
 
-    private class FakeMessageBusClient : IMessageBusClient
+    private class FakeMessageBusClient<TMsg> : IMessageBusClient where TMsg : class
     {
-        private readonly TaskCompletionSource<FakeMessageBusProcessor<TestMessage>> _processorCreated = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<FakeMessageBusProcessor<TMsg>> _processorCreated = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public Task<FakeMessageBusProcessor<TestMessage>> ProcessorCreated => _processorCreated.Task;
+        public Task<FakeMessageBusProcessor<TMsg>> ProcessorCreated => _processorCreated.Task;
 
         public string MessagingSystem => "fake";
 
         public Task<IMessageBusProcessor<TMessage>> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options)
         {
             var processor = new FakeMessageBusProcessor<TMessage>(queueName, options);
-            _processorCreated.SetResult((FakeMessageBusProcessor<TestMessage>)(object)processor);
+            _processorCreated.SetResult((FakeMessageBusProcessor<TMsg>)(object)processor);
             return Task.FromResult<IMessageBusProcessor<TMessage>>(processor);
         }
 

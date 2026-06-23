@@ -7,8 +7,7 @@ SQL Server backend for [Flowly](https://rasmustherkelsen.github.io/flowly/) dead
 ```csharp
 builder.AddFlowly(configure => configure
     .UseAzureServiceBus("AzureServiceBus")
-    .AddSqlServerDeadLetterTracking(
-        builder.Configuration.GetConnectionString("DeadLetters")!)
+    .AddSqlServerDeadLetterTracking("DeadLetters")
     .AddMessageHandler<OrderCreated, OrderCreatedHandler>()
     .WithDeadLetterTracking());
 ```
@@ -16,7 +15,7 @@ builder.AddFlowly(configure => configure
 Migrations run at startup by default. To disable:
 
 ```csharp
-.AddSqlServerDeadLetterTracking(connectionString, enableMigrations: false)
+.AddSqlServerDeadLetterTracking("DeadLetters", enableMigrations: false)
 ```
 
 ## Documentation

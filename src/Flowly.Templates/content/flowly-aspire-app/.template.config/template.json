@@ -49,7 +49,7 @@
       "datatype": "bool",
       "defaultValue": "false",
       "displayName": "Job tracking",
-      "description": "Add Flowly job state tracking. Also specify --sqlserver, --postgres, or --sqlite."
+      "description": "Add Flowly job state tracking. Requires --db sqlserver|postgres|sqlite."
     },
     "jobs": {
       "type": "parameter",
@@ -66,7 +66,7 @@
       "datatype": "bool",
       "defaultValue": "false",
       "displayName": "Dead-letter tracking",
-      "description": "Add Flowly dead-letter tracking. Also specify --sqlserver, --postgres, or --sqlite."
+      "description": "Add Flowly dead-letter tracking. Requires --db sqlserver|postgres|sqlite."
     },
     "deadletter": {
       "type": "parameter",
@@ -99,42 +99,42 @@
       "type": "computed",
       "value": "(UseJobTracking || UseDeadLetterTracking)"
     },
-    "sqlserver": {
+    "db": {
       "type": "parameter",
-      "datatype": "bool",
-      "defaultValue": "false",
-      "displayName": "SQL Server",
-      "description": "Use SQL Server as the database backend for job/dead-letter tracking."
+      "datatype": "choice",
+      "isEnabled": "(jobtracking || jobs || deadlettertracking || deadletter)",
+      "isRequired": true,
+      "defaultValue": "sqlserver",
+      "displayName": "Database backend",
+      "description": "Database backend for job tracking and/or dead-letter tracking. Required when --jobs or --deadletter is used.",
+      "choices": [
+        { "choice": "sqlserver", "description": "SQL Server" },
+        { "choice": "postgres",  "description": "PostgreSQL" },
+        { "choice": "sqlite",    "description": "SQLite" }
+      ]
     },
     "UseSqlServer": {
       "type": "computed",
-      "value": "sqlserver"
-    },
-    "postgres": {
-      "type": "parameter",
-      "datatype": "bool",
-      "defaultValue": "false",
-      "displayName": "PostgreSQL",
-      "description": "Use PostgreSQL as the database backend for job/dead-letter tracking."
+      "value": "db == \"sqlserver\""
     },
     "UsePostgres": {
       "type": "computed",
-      "value": "postgres"
-    },
-    "sqlite": {
-      "type": "parameter",
-      "datatype": "bool",
-      "defaultValue": "false",
-      "displayName": "SQLite",
-      "description": "Use SQLite as the database backend for job/dead-letter tracking."
+      "value": "db == \"postgres\""
     },
     "UseSQLite": {
       "type": "computed",
-      "value": "sqlite"
+      "value": "db == \"sqlite\""
     },
-    "HasDatabaseBackend": {
+    "dashboard": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "Dashboard",
+      "description": "Add the embedded Flowly Dashboard to the receiver (or App for InMemory). Mounts a management UI at /flowly."
+    },
+    "UseDashboard": {
       "type": "computed",
-      "value": "(UseSqlServer || UsePostgres || UseSQLite)"
+      "value": "dashboard"
     },
     "NeedsSqlServerInfrastructure": {
       "type": "computed",

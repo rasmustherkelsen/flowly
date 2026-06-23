@@ -7,15 +7,14 @@ PostgreSQL backend for [Flowly](https://rasmustherkelsen.github.io/flowly/) job 
 ```csharp
 builder.AddFlowly(configure => configure
     .UseRabbitMq("RabbitMQ")
-    .AddPostgresJobStateTracking(
-        builder.Configuration.GetConnectionString("Jobs")!)
+    .AddPostgresJobStateTracking("Jobs")
     .AddJobHandler<ProcessReportJob, ProcessReportJobHandler>());
 ```
 
 Migrations run at startup by default. To disable:
 
 ```csharp
-.AddPostgresJobStateTracking(connectionString, enableMigrations: false)
+.AddPostgresJobStateTracking("Jobs", enableMigrations: false)
 ```
 
 ## Documentation

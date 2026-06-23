@@ -30,6 +30,7 @@ dotnet test --filter "FullyQualifiedName~MessageQueueNameResolverTests+Resolve"
 - `Flowly.RabbitMQ/` — RabbitMQ transport
 - `Flowly.InMemory/` — In-memory transport (channels; no broker required)
 - `Flowly.OpenTelemetry/` — OpenTelemetry metrics and traces
+- `Flowly.Dashboard/` — embedded ASP.NET Core middleware dashboard (management UI at `/flowly`); feature-detects Jobs and DeadLetters via DI; SPA built with React + Vite and packed as EmbeddedResource
 - `Flowly.Jobs/` — job state tracking (EF Core) and CRON scheduling
 - `Flowly.Jobs.SqlServer/` — SQL Server backend for job state tracking
 - `Flowly.Jobs.Postgres/` — PostgreSQL backend for job state tracking
@@ -40,8 +41,8 @@ dotnet test --filter "FullyQualifiedName~MessageQueueNameResolverTests+Resolve"
 - `Flowly.DeadLetters.SQLite/` — SQLite backend for dead letter tracking
 - `Flowly.Tool/` — `flowly` CLI tool
 - `Flowly.Templates/` — `dotnet new` project templates (`Flowly.Templates` NuGet package); contains five templates:
-  - `flowlyapp` (`dotnet new flowlyapp --transport <rabbitmq|azureservicebus|inmemory> [--call] [--jobs] [--deadletter] [--sqlserver|--postgres|--sqlite] -n <Name>`) — scaffolds a complete solution (Messages + Sender + Receiver) matching the quickstart guides; includes `docker-compose.yml` and `sbconfig.json` for ASB; InMemory produces a single `App/` project; `--call` (alias `--callhandler`) replaces the default `MessageHandler`/`IMessageSender` pattern with RPC-style `CallHandler`/`IMessageCaller` — `MyMessage` implements `IReturns<MyReturnMessage>`, sender blocks on `IMessageCaller.Call`, `InstanceName = "sender"` is set automatically; `--jobs` adds `ProcessJobMessage`/`ProcessJobHandler`/`JobSubmitterService` and a dedicated `JobTracker` project (multi-project) or in-process job state (InMemory); `--deadletter` adds `DeadLetterSampleMessage`/`DeadLetterSampleMessageHandler` with `[RetryPolicy]` and `FailingMessageSenderService`
-  - `flowlyaspireapp` (`dotnet new flowlyaspireapp --transport <rabbitmq|azureservicebus|inmemory> [--call] [--jobs] [--deadletter] [--sqlserver|--postgres|--sqlite] -n <Name>`) — scaffolds a full .NET Aspire solution (AppHost + ServiceDefaults + Messages + Sender + Receiver); OpenTelemetry always enabled; Aspire provisions all infrastructure; no docker-compose; `--jobs`/`--deadletter` are embedded in the Receiver (no separate JobTracker project); InMemory produces a single `App/` project; for ASB the AppHost calls `azureServiceBus.AddFlowly(receiver)` to register queues
+  - `flowlyapp` (`dotnet new flowlyapp --transport <rabbitmq|azureservicebus|inmemory> [--call] [--jobs] [--deadletter] [--dashboard] [--db <sqlserver|postgres|sqlite>] -n <Name>`) — scaffolds a complete solution (Messages + Sender + Receiver) matching the quickstart guides; includes `docker-compose.yml` and `sbconfig.json` for ASB; InMemory produces a single `App/` project; `--call` (alias `--callhandler`) replaces the default `MessageHandler`/`IMessageSender` pattern with RPC-style `CallHandler`/`IMessageCaller` — `MyMessage` implements `IReturns<MyReturnMessage>`, sender blocks on `IMessageCaller.Call`, `InstanceName = "sender"` is set automatically; `--jobs` adds `ProcessJobMessage`/`ProcessJobHandler`/`JobSubmitterService` and a dedicated `JobTracker` project (multi-project) or in-process job state (InMemory); `--deadletter` adds `DeadLetterSampleMessage`/`DeadLetterSampleMessageHandler` with `[RetryPolicy]` and `FailingMessageSenderService`; `--db` is required when `--jobs` or `--deadletter` is used; `--dashboard` scaffolds a standalone `Dashboard/` project (minimal `WebApplication` with `AddFlowlyDashboard()` / `UseFlowlyDashboard()`) — Receiver stays a pure background worker; for InMemory the dashboard is embedded in `App/` instead
+  - `flowlyaspireapp` (`dotnet new flowlyaspireapp --transport <rabbitmq|azureservicebus|inmemory> [--call] [--jobs] [--deadletter] [--dashboard] [--db <sqlserver|postgres|sqlite>] -n <Name>`) — scaffolds a full .NET Aspire solution (AppHost + ServiceDefaults + Messages + Sender + Receiver); OpenTelemetry always enabled; Aspire provisions all infrastructure; no docker-compose; `--jobs`/`--deadletter` are embedded in the Receiver (no separate JobTracker project); InMemory produces a single `App/` project; for ASB the AppHost calls `azureServiceBus.AddFlowly(receiver)` to register queues; `--dashboard` embeds Flowly.Dashboard in the Receiver/App (no separate Aspire Dashboard project)
   - `flowly` (`dotnet new flowly --transport <rabbitmq|azureservicebus|inmemory> [options]`) — scaffolds a new Flowly ASP.NET Core project; ports are randomly assigned per instantiation (HTTP 5000–5300, HTTPS 7000–7300); pass `--no-http` to skip the HTTP listener entirely (produces a `Host.CreateApplicationBuilder`-based worker)
   - `flowlymessagelib` (`dotnet new flowlymessagelib [--jobs] [options]`) — scaffolds a Flowly message contracts class library
   - `flowlyskills` (`dotnet new flowlyskills`) — installs Flowly Claude Code skills into `.claude/skills/`
@@ -77,7 +78,7 @@ Registered in `Program.cs` via `builder.AddFlowly<MyConfig>()` or auto-discovery
 | Base class | Use when | Supports retry | Supports DLQ tracking | Registration |
 |---|---|---|---|---|
 | `MessageHandler<T>` | One message at a time | Yes | Yes | `.AddMessageHandler<T, TH>()` |
-| `BatchMessageHandler<T>` | Multiple messages together | No | No | `.AddBatchMessageHandler<T, TH>()` |
+| `BatchMessageHandler<T>` | Multiple messages together | Yes — opt-in via `[RetryPolicy]`; handler must be idempotent (whole batch redelivered on failure). Default is at-most-once (no retry). | No | `.AddBatchMessageHandler<T, TH>()` |
 | `JobHandler<T>` | Job with state tracking (`T : IJobMessage`) | Yes | No | `.AddJobHandler<T, TH>()` |
 | `RecurringJobHandler` | CRON-scheduled background job | No | No | `.AddRecurringJob<TH>()` |
 | `EventHandlerBase<TEvent>` | Fan-out event (all subscribers receive) | Yes | Yes — requeue re-publishes to the topic/exchange with `flowly-target-subscription` set; only the originating subscriber receives the requeued message. | `.AddEventHandler<TEvent, TH>()` |
@@ -97,6 +98,10 @@ Owned by the **message contract**, not the handler. Auto-generated: PascalCase �
 ### Retry Policy
 
 Apply `[RetryPolicy(maxRetries, delaySeconds)]` to any `MessageHandler<T>` or `JobHandler<T>`. On failure, Flowly re-publishes the message to the same queue with a scheduled enqueue time and increments a `flowly-retry-count` application property. After all retries are exhausted, normal handlers dead-letter the message; job handlers transition the job to `Failed`.
+
+### Custom OTel Tags
+
+Implement `IOpenTelemetryTagsProvider` on a message contract to attach business tags (e.g. `order.id`) to Flowly's OTel spans. Flowly calls `GetOpenTelemetryTags()` and sets each key-value pair on both the producer and consumer `Activity`.
 
 ### Job State Tracking (`Flowly.Jobs/`)
 

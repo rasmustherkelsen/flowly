@@ -1,8 +1,5 @@
 using Flowly;
 using Receiver;
-#if (UseDatabase && !HasDatabaseBackend)
-#error Specify a database backend: --sqlserver, --postgres, or --sqlite
-#endif
 
 var builder = Host.CreateApplicationBuilder(args);
 

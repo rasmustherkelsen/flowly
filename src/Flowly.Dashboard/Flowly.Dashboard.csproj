@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <PackageId>Flowly.Dashboard</PackageId>
+        <Description>Embedded web dashboard middleware for Flowly. Mounts a management UI at a configurable path prefix, providing live views of jobs, dead letters, recurring jobs, and dynamic message submission. Feature-detects Flowly.Jobs and Flowly.DeadLetters from the DI container automatically.</Description>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Flowly\Flowly.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- Jobs and DeadLetters are optional — referenced only for type resolution; not shipped as hard dependencies. -->
+        <ProjectReference Include="..\Flowly.Jobs\Flowly.Jobs.csproj" />
+        <ProjectReference Include="..\Flowly.DeadLetters\Flowly.DeadLetters.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <EmbeddedResource Include="wwwroot\**" />
+    </ItemGroup>
+
+    <Target Name="BuildDashboardUi" BeforeTargets="BeforeBuild" Condition="'$(SkipUiBuild)' != 'true' AND Exists('ui/package.json')">
+        <Exec Command="npm install" WorkingDirectory="$(MSBuildThisFileDirectory)ui" />
+        <Exec Command="npm run build" WorkingDirectory="$(MSBuildThisFileDirectory)ui" />
+    </Target>
+
+</Project>

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Flowly.MessageInfrastructure.Telemetry;
 
 namespace Flowly.Tests.MessageInfrastructure.Telemetry;
@@ -184,6 +185,61 @@ public class FlowlyInstrumentationConstantsTests
         public void EventPublisherRaiseDuration_UsesFlowlyPrefix()
         {
             Assert.Equal("flowly.event.publisher.duration", FlowlyInstrumentationConstants.EventPublisherRaiseDuration);
+        }
+    }
+
+    public class ResolveProducerParentContext
+    {
+        [Fact]
+        public void WithNoCurrentActivity_ReturnsDefault()
+        {
+            Activity.Current = null;
+
+            var result = FlowlyInstrumentationConstants.ResolveProducerParentContext();
+
+            Assert.Equal(default, result);
+        }
+
+        [Fact]
+        public void WithRecordedCurrentActivity_ReturnsCurrentContext()
+        {
+            using var source = new ActivitySource("test");
+            using var listener = new ActivityListener
+            {
+                ShouldListenTo = _ => true,
+                Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded
+            };
+            ActivitySource.AddActivityListener(listener);
+
+            using var activity = source.StartActivity("recorded");
+            Assert.NotNull(activity);
+            Assert.True(activity.Recorded);
+
+            var result = FlowlyInstrumentationConstants.ResolveProducerParentContext();
+
+            Assert.Equal(activity.Context, result);
+        }
+
+        [Fact]
+        public void WithUnrecordedCurrentActivity_ReturnsFreshContextWithRecordedFlag()
+        {
+            using var source = new ActivitySource("test");
+            using var listener = new ActivityListener
+            {
+                ShouldListenTo = _ => true,
+                Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllData
+            };
+            ActivitySource.AddActivityListener(listener);
+
+            using var activity = source.StartActivity("unrecorded");
+            Assert.NotNull(activity);
+            Assert.False(activity.Recorded);
+
+            var result = FlowlyInstrumentationConstants.ResolveProducerParentContext();
+
+            Assert.NotEqual(default, result);
+            Assert.True((result.TraceFlags & ActivityTraceFlags.Recorded) != 0);
+            Assert.NotEqual(activity.TraceId, result.TraceId);
         }
     }
 }

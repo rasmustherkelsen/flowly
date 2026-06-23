@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using Flowly.MessageInfrastructure.Model;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.Transport;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -8,7 +10,8 @@ namespace Flowly.MessageInfrastructure.MessageHandlingStrategies;
 
 internal class CallMessageHandlingStrategy<TMessage, TReturn>(
     IMessageBusClientRegistry clientRegistry,
-    IHandlerSettings<TMessage> handlerSettings) : IMessageHandlingStrategy<TMessage>
+    IHandlerSettings<TMessage> handlerSettings,
+    IHandlerInstrumentation handlerInstrumentation) : IMessageHandlingStrategy<TMessage>
     where TMessage : class, IReturns<TReturn>
     where TReturn : class
 {
@@ -26,11 +29,28 @@ internal class CallMessageHandlingStrategy<TMessage, TReturn>(
 
         var client = clientRegistry.GetClient(handlerSettings.ProviderName);
         var sender = await client.CreateMessageBusSender(replyTo);
+        var messageId = Guid.NewGuid().ToString();
+        var sw = Stopwatch.StartNew();
 
-        await sender.SendMessage(
-            returnMessage,
-            new MessageProperties(Guid.NewGuid().ToString(), receivedMessage.Properties.CorrelationId),
-            cancellationToken);
+        using var activity = handlerInstrumentation.StartSendingResponse(
+            handlerSettings.QueueName, replyTo, client.MessagingSystem,
+            messageId, receivedMessage.Properties.CorrelationId);
+        activity.ApplyTagsFrom(returnMessage);
+
+        try
+        {
+            await sender.SendMessage(
+                returnMessage,
+                new MessageProperties(messageId, receivedMessage.Properties.CorrelationId),
+                cancellationToken);
+
+            handlerInstrumentation.RecordResponseSent(handlerSettings.QueueName, sw.Elapsed.TotalMilliseconds);
+        }
+        catch
+        {
+            handlerInstrumentation.RecordResponseFailed(handlerSettings.QueueName);
+            throw;
+        }
     }
 
     public async Task OnRetriesExhausted(IReceivedMessage<TMessage> receivedMessage, Exception exception, IServiceProvider serviceProvider, CancellationToken cancellationToken)
@@ -40,7 +60,7 @@ internal class CallMessageHandlingStrategy<TMessage, TReturn>(
 
     public Task OnMessageHandlingError(ILogger logger, IServiceProvider serviceProvider, ErrorDetails errorDetails)
     {
-        logger.LogError("{Message}", errorDetails.Exception.Message);
+        logger.LogError(errorDetails.Exception, "Message processor error");
         return Task.CompletedTask;
     }
 }

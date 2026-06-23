@@ -10,13 +10,13 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Aspire.Hosting.RabbitMQ" Version="13.4.0" />
-        <PackageReference Include="Aspire.Hosting.PostgreSQL" Version="13.4.0" />
-        <PackageReference Include="Aspire.Hosting.JavaScript" Version="13.4.0" />
+        <PackageReference Include="Aspire.Hosting.RabbitMQ" Version="13.4.6" />
+        <PackageReference Include="Aspire.Hosting.PostgreSQL" Version="13.4.6" />
+        <PackageReference Include="Aspire.Hosting.JavaScript" Version="13.4.6" />
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\Api\Api.csproj" />
+        <ProjectReference Include="..\Dashboard\Dashboard.csproj" />
         <ProjectReference Include="..\BackendProcessor\BackendProcessor.csproj" />
         <ProjectReference Include="..\BackendFinanceProcessor\BackendFinanceProcessor.csproj" />
     </ItemGroup>

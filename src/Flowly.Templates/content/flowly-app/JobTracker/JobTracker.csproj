@@ -8,18 +8,18 @@
 
     <ItemGroup>
         <!--#if (UseRabbitMQ)-->
-        <PackageReference Include="Flowly.RabbitMQ" Version="1.1.0" />
+        <PackageReference Include="Flowly.RabbitMQ" Version="1.2.0" />
         <!--#else-->
-        <PackageReference Include="Flowly.AzureServiceBus" Version="1.1.0" />
+        <PackageReference Include="Flowly.AzureServiceBus" Version="1.2.0" />
         <!--#endif-->
         <!--#if (UseSqlServer)-->
-        <PackageReference Include="Flowly.Jobs.SqlServer" Version="1.1.0" />
+        <PackageReference Include="Flowly.Jobs.SqlServer" Version="1.2.0" />
         <!--#endif-->
         <!--#if (UsePostgres)-->
-        <PackageReference Include="Flowly.Jobs.Postgres" Version="1.1.0" />
+        <PackageReference Include="Flowly.Jobs.Postgres" Version="1.2.0" />
         <!--#endif-->
         <!--#if (UseSQLite)-->
-        <PackageReference Include="Flowly.Jobs.SQLite" Version="1.1.0" />
+        <PackageReference Include="Flowly.Jobs.SQLite" Version="1.2.0" />
         <!--#endif-->
     </ItemGroup>
 

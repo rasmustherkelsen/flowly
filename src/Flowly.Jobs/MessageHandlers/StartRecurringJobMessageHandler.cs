@@ -17,7 +17,7 @@ internal class StartRecurringJobMessageHandler(
         var recurringJob = jobs.SingleOrDefault(x => x.JobId == messageContext.Message.JobId);
         if (recurringJob == null)
         {
-            logger.LogError($"Unknown recurring job id: '{messageContext.Message.JobId}'. Stopping processing");
+            logger.LogError("Unknown recurring job id: '{JobId}'. Stopping processing", messageContext.Message.JobId);
             return;
         }
 

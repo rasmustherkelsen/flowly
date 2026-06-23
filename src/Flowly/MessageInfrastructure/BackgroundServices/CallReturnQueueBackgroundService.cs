@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using Flowly.MessageInfrastructure.Callers;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.Transport;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -10,14 +12,17 @@ internal sealed class CallReturnQueueBackgroundService<TReturn>(
     IMessageBusClientRegistry clientRegistry,
     CallReturnQueueSettings<TReturn> settings,
     IPendingCallRegistry<TReturn> pendingCallRegistry,
+    ICallerInstrumentation callerInstrumentation,
     ILogger<CallReturnQueueBackgroundService<TReturn>> logger) : BackgroundService
     where TReturn : class
 {
     private IMessageBusProcessor<TReturn>? _processor;
+    private string _messagingSystem = string.Empty;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var client = clientRegistry.GetClient(settings.ProviderName);
+        _messagingSystem = client.MessagingSystem;
 
         _processor = await client.CreateProcessor<TReturn>(
             settings.ReturnQueueName,
@@ -33,6 +38,11 @@ internal sealed class CallReturnQueueBackgroundService<TReturn>(
 
     private Task OnMessage(IReceivedMessage<TReturn> receivedMessage, CancellationToken cancellationToken)
     {
+        var parentContext = ParseParentContext(receivedMessage.Properties);
+        using var activity = callerInstrumentation.StartReceivingResponse(
+            settings.ReturnQueueName, _messagingSystem, parentContext,
+            receivedMessage.Properties.MessageId, receivedMessage.Properties.CorrelationId);
+
         var correlationId = receivedMessage.Properties.CorrelationId;
 
         if (!pendingCallRegistry.TryResolve(correlationId, receivedMessage.Body))
@@ -57,4 +67,7 @@ internal sealed class CallReturnQueueBackgroundService<TReturn>(
 
         await base.StopAsync(cancellationToken);
     }
+
+    private static ActivityContext ParseParentContext(MessageProperties properties)
+        => ActivityContextParser.Parse(properties);
 }

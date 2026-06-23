@@ -54,7 +54,7 @@ internal class RecurringJobHandlerBackgroundService<TRecurringJobHandler> : Back
         _executionLaneProcessor.ProcessMessage += OnProcessMessage;
         _executionLaneProcessor.ProcessError += OnHandleError;
 
-        _logger.LogInformation($"Recurring job {_handlerName} started. Cron expression: {_settings.CronExpression}");
+        _logger.LogInformation("Recurring job '{RecurringJobHandlerName}' started. Cron expression: '{CronExpression}'", _handlerName, _settings.CronExpression);
 
         await _executionLaneProcessor.StartProcessing(stoppingToken);
     }
@@ -65,7 +65,8 @@ internal class RecurringJobHandlerBackgroundService<TRecurringJobHandler> : Back
 
         _handlerInstrumentation.RecordReceived(_handlerName, JobQueuesNames.RecurringJobs);
         var sw = Stopwatch.StartNew();
-        using var activity = _handlerInstrumentation.StartHandling(_handlerName, JobQueuesNames.RecurringJobs, _messagingSystem, receivedMessage.Properties);
+        var parentContext = ActivityContextParser.Parse(receivedMessage.Properties);
+        using var activity = _handlerInstrumentation.StartHandling(_handlerName, JobQueuesNames.RecurringJobs, _messagingSystem, receivedMessage.Properties, parentContext);
 
         var jobId = new JobId(Guid.Parse(receivedMessage.Properties.MessageId));
 

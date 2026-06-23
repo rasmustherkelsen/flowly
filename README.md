@@ -60,6 +60,7 @@ All packages are published to [NuGet.org](https://www.nuget.org/packages?q=Flowl
 |---|---|
 | `Flowly` | Core abstractions: handlers, senders, queue topology, retry engine |
 | `Flowly.AzureServiceBus` | Azure Service Bus transport |
+| `Flowly.AzureServiceBus.Aspire` | .NET Aspire AppHost integration — automatically discovers and registers queue topology from a service project's `FlowlyConfiguration` for the Azure Service Bus emulator |
 | `Flowly.RabbitMQ` | RabbitMQ transport |
 | `Flowly.InMemory` | In-memory transport — no broker required; ideal for testing and local development |
 | `Flowly.Jobs` | Job state tracking and CRON scheduling core |
@@ -71,6 +72,7 @@ All packages are published to [NuGet.org](https://www.nuget.org/packages?q=Flowl
 | `Flowly.DeadLetters.Postgres` | PostgreSQL backend for dead letter tracking |
 | `Flowly.DeadLetters.SQLite` | SQLite backend for dead letter tracking |
 | `Flowly.OpenTelemetry` | OpenTelemetry metrics and traces for handlers and submitters |
+| `Flowly.Dashboard` | Embedded web dashboard middleware — submit messages, browse jobs, inspect dead letters, and trigger recurring jobs at `/flowly` |
 | `Flowly.Tool` | `flowly` CLI for queue discovery and code generation |
 | `Flowly.Templates` | `dotnet new flowlyapp` / `dotnet new flowlyaspireapp` / `dotnet new flowly` project templates |
 
@@ -224,6 +226,23 @@ Register:
 ```csharp
 builder.AddBatchMessageHandler<AnalyticsEvent, EventBatchHandler>();
 ```
+
+**Delivery semantics:** by default, batch handlers use **at-most-once** delivery — messages are acknowledged before `Handle` is called. If the handler throws, those messages are gone and will not be redelivered. This suits bulk-write workloads where a duplicate insert is worse than a dropped message.
+
+To opt in to **at-least-once** delivery with automatic retry, apply `[RetryPolicy]`:
+
+```csharp
+[BatchProcessing(maxMessages: 100, maxWaitTimeInSeconds: 30)]
+[RetryPolicy(maxRetries: 3, delaySeconds: 30)]
+public class EventBatchHandler : BatchMessageHandler<AnalyticsEvent>
+{
+    ...
+}
+```
+
+When `[RetryPolicy]` is configured and `Handle` throws, Flowly republishes the **entire batch** to the same queue with an incremented retry counter, then acknowledges the originals. After all retries are exhausted the batch is discarded (batch handlers do not support dead letter tracking).
+
+> **Important:** when `[RetryPolicy]` is used on a batch handler, the handler **must be idempotent** — the whole batch is redelivered on failure, so processing the same message twice must produce the same outcome.
 
 ### Queue configuration attributes
 
@@ -422,7 +441,7 @@ Event handlers support `.WithDeadLetterTracking()` the same way regular handlers
 
 ```csharp
 builder
-    .AddSqlServerDeadLetterTracking(connectionString)  // or AddPostgresDeadLetterTracking / AddSQLiteDeadLetterTracking
+    .AddSqlServerDeadLetterTracking("DeadLetters")  // or AddPostgresDeadLetterTracking / AddSQLiteDeadLetterTracking; accepts a connection name or literal connection string
     .AddEventHandler<OrderProcessed, OrderProcessedEventHandler>()
     .WithDeadLetterTracking();
 ```
@@ -524,7 +543,7 @@ public class OrderCreatedHandler : MessageHandler<OrderCreated>
 
 For job handlers, exhausted retries transition the job to `Failed` in the database — the message is completed rather than dead-lettered.
 
-Retry policy applies to `MessageHandler<T>` and `JobHandler<T>`. Batch handlers and recurring jobs do not support retry.
+Retry policy applies to `MessageHandler<T>`, `JobHandler<T>`, and `BatchMessageHandler<T>`. Recurring jobs do not support retry. See the [Batch handler](#batch-handler) section for delivery-semantics details specific to batch handlers.
 
 ---
 
@@ -538,7 +557,7 @@ Register the persistence layer once, then opt individual handlers in:
 
 ```csharp
 builder
-    .AddSqlServerDeadLetterTracking(connectionString)  // or AddPostgresDeadLetterTracking / AddSQLiteDeadLetterTracking
+    .AddSqlServerDeadLetterTracking("DeadLetters")  // or AddPostgresDeadLetterTracking / AddSQLiteDeadLetterTracking; accepts a connection name or literal connection string
     .AddMessageHandler<OrderCreated, OrderCreatedHandler>()
     .WithDeadLetterTracking();                          // this handler's DLQ is tracked
 ```
@@ -866,7 +885,7 @@ Generates a full .NET Aspire solution — AppHost, ServiceDefaults, Messages, Se
 dotnet new flowlyaspireapp --transport <rabbitmq|asb|inmemory> [options] -n <SolutionName>
 ```
 
-Supports the same `--callhandler`, `--jobs`, `--deadletter`, `--sqlserver`, `--postgres`, and `--sqlite` flags as `flowlyapp`. Run everything with:
+Supports the same `--callhandler`, `--jobs`, `--deadletter`, `--db`, and `--dashboard` flags as `flowlyapp`. Run everything with:
 
 ```bash
 dotnet run --project MyApp.AppHost
@@ -897,8 +916,9 @@ Optional features:
 | `--callhandler` | `--call` | Scaffold as RPC-style call/response — `MyMessage` implements `IReturns<MyReturnMessage>`; the sender uses `IMessageCaller.Call` and blocks for the response. |
 | `--jobtracking` | `--jobs` | Job state tracking — adds `ProcessJobMessage`, `ProcessJobHandler`, `JobSubmitterService`, and a `JobTracker` infrastructure project. Requires a DB flag. |
 | `--deadlettertracking` | `--deadletter` | Dead-letter tracking — adds `DeadLetterSampleMessage`, `DeadLetterSampleMessageHandler` with `[RetryPolicy]`, and `FailingMessageSenderService`. Requires a DB flag. |
+| `--dashboard` | | Scaffold a standalone `Dashboard/` project hosting the Flowly management UI at `/`. For InMemory transport the dashboard is embedded in `App/` instead. |
 
-Database backend (required when `--jobs` or `--deadletter` is used): `--sqlserver`, `--postgres`, `--sqlite`.
+Database backend (required when `--jobs` or `--deadletter` is used): `--db sqlserver|postgres|sqlite`.
 
 ```bash
 # Full RabbitMQ solution
@@ -914,10 +934,13 @@ dotnet new flowlyapp --transport inm -n MyApp
 dotnet new flowlyapp --transport rabbitmq --call -n MyApp
 
 # RabbitMQ with job tracking and dead-letter tracking (SQLite)
-dotnet new flowlyapp --transport rabbitmq --jobs --deadletter --sqlite -n MyApp
+dotnet new flowlyapp --transport rabbitmq --jobs --deadletter --db sqlite -n MyApp
 
 # ASB with job tracking using SQL Server
-dotnet new flowlyapp --transport asb --jobs --sqlserver -n MyApp
+dotnet new flowlyapp --transport asb --jobs --db sqlserver -n MyApp
+
+# RabbitMQ with standalone Dashboard project
+dotnet new flowlyapp --transport rabbitmq --dashboard -n MyApp
 ```
 
 **RabbitMQ / Azure Service Bus** generates:
@@ -929,11 +952,12 @@ MyApp/
 ├── Sender/              ← WebApplication; sends messages
 ├── Receiver/            ← worker; receives and handles messages
 ├── JobTracker/          ← only with --jobs: infrastructure service for job state persistence
+├── Dashboard/           ← only with --dashboard: standalone web app hosting the management UI at /flowly
 ├── docker-compose.yml   ← broker (+ SQL Server / Postgres when applicable)
 └── sbconfig.json        ← ASB only
 ```
 
-**InMemory** generates a single-project solution (`App/`) with sender, receiver, and optionally job/dead-letter tracking in the same process.
+**InMemory** generates a single-project solution (`App/`) with sender, receiver, and optionally job/dead-letter tracking in the same process. With `--dashboard`, the management UI is embedded in `App/`.
 
 ---
 
@@ -963,11 +987,11 @@ Optional feature flags:
 
 Database backend (required when `--jobs` or `--deadletter` is used):
 
-| Flag | Database |
+| Value | Database |
 |---|---|
-| `--sqlserver` | SQL Server |
-| `--postgres` | PostgreSQL |
-| `--sqlite` | SQLite |
+| `--db sqlserver` | SQL Server |
+| `--db postgres` | PostgreSQL |
+| `--db sqlite` | SQLite |
 
 #### Examples
 
@@ -979,10 +1003,10 @@ dotnet new flowly --transport rabbitmq -o Receiver
 dotnet new flowly --transport rabbitmq --no-http -o Worker
 
 # Azure Service Bus processor with job tracking, dead-letter tracking, and OTel
-dotnet new flowly --transport asb --jobs --sqlserver --deadletter --otel -o Processor
+dotnet new flowly --transport asb --jobs --db sqlserver --deadletter --otel -o Processor
 
 # InMemory transport, all features, inline wiring
-dotnet new flowly --transport inm --jobs --sqlite --deadletter --otel --inline -o TestWorker
+dotnet new flowly --transport inm --jobs --deadletter --db sqlite --otel --inline -o TestWorker
 ```
 
 ### `flowlymessagelib` — Scaffold a Flowly message contracts library
@@ -1022,8 +1046,7 @@ public class MyServiceConfiguration : Configuration
             .AddSqlServerJobStateTracking("Jobs")
 
             // Dead letter tracking (SQL Server)
-            .AddSqlServerDeadLetterTracking(
-                builder.Configuration.GetConnectionString("DeadLetters")!)
+            .AddSqlServerDeadLetterTracking("DeadLetters")
 
             // Regular handler with retry and dead letter tracking
             .AddMessageHandler<OrderCreated, OrderCreatedHandler>()
@@ -1255,6 +1278,23 @@ All metrics use the meter name `"Flowly"` and follow the `messaging.*` semantic 
 ### Traces
 
 Each message or event handled creates a span named `flowly.handle {queueName}` with kind `Consumer`. The span includes `handler`, `messaging.system`, `messaging.destination.name`, `messaging.message.id`, and `messaging.message.conversation_id` attributes.
+
+### Custom tags on spans
+
+Implement `IOpenTelemetryTagsProvider` on a message contract to attach business-level tags (e.g. `order.id`, `customer.id`) to Flowly spans:
+
+```csharp
+public record SubmitOrderMessage(string OrderId, string CustomerId) : IOpenTelemetryTagsProvider
+{
+    public IEnumerable<KeyValuePair<string, object?>> GetOpenTelemetryTags() =>
+    [
+        new("order.id", OrderId),
+        new("customer.id", CustomerId),
+    ];
+}
+```
+
+Flowly applies these tags to both the producer span (`flowly.send`) and the consumer span (`flowly.handle`) for that message type. Tags appear in Jaeger and any other OTel backend — they can be used as search filters to correlate traces by business values.
 
 ---
 

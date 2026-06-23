@@ -373,10 +373,17 @@ public class RecurringJobHandlerBackgroundServiceTests
         public List<string> FailedCalls { get; } = [];
 
         public Activity? StartHandling(string handlerName, string queueName, string messagingSystem, MessageProperties messageProperties, ActivityContext parentContext = default) => null;
+        public Activity? StartHandling(string handlerName, string queueName, string messagingSystem, MessageProperties messageProperties, IEnumerable<ActivityLink> links) => null;
         public void RecordReceived(string handlerName, string queueName, long count = 1) => ReceivedCalls.Add(handlerName);
         public void RecordSucceeded(string handlerName, string queueName, double durationMs, long count = 1) => SucceededCalls.Add(handlerName);
         public void RecordFailed(string handlerName, string queueName, long count = 1) => FailedCalls.Add(handlerName);
-        public void RecordRetried(string handlerName, string queueName) { }
+        public void RecordRetried(string handlerName, string queueName, long count = 1) { }
+
+        public Activity? StartSendingResponse(string callQueueName, string replyQueueName, string messagingSystem, string messageId, string correlationId) => null;
+
+        public void RecordResponseSent(string callQueueName, double durationMs) { }
+
+        public void RecordResponseFailed(string callQueueName) { }
     }
 
     private sealed class FakeReceivedMessage(MessageProperties properties) : IReceivedMessage

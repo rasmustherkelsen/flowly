@@ -35,7 +35,7 @@ public sealed class SubmitterInstrumentation : ISubmitterInstrumentation, IDispo
         => FlowlyInstrumentationConstants.ActivitySource.StartActivity(
             $"flowly.send {queueName}",
             ActivityKind.Producer,
-            default(ActivityContext),
+            FlowlyInstrumentationConstants.ResolveProducerParentContext(),
             [
                 new KeyValuePair<string, object?>(FlowlyInstrumentationConstants.MessagingSystem, messagingSystem),
                 new KeyValuePair<string, object?>(FlowlyInstrumentationConstants.MessagingDestinationName, queueName),

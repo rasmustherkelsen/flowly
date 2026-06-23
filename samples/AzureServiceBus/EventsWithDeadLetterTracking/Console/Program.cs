@@ -12,7 +12,7 @@ builder.AddFlowly(
     flowlyBuilder => flowlyBuilder
         .UseAzureServiceBus()
         .AddSqlServerDeadLetterTracking(
-            builder.Configuration.GetConnectionString("FlowlyDeadLetters")!,
+            "FlowlyDeadLetters"!,
             false));
 
 var host = builder.Build();

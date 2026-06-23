@@ -15,7 +15,7 @@ internal class BackendProcessorFlowlyConfiguration : Configuration
         builder
             .UseRabbitMq(connection: "RabbitMQ")
             .AddPostgresJobStateTracking(
-                builder.Configuration.GetConnectionString("FlowlyJobs")!,
+                "FlowlyJobs",
                 true,
                 options =>
                 {
@@ -23,7 +23,7 @@ internal class BackendProcessorFlowlyConfiguration : Configuration
                     options.DeleteFailedJobsAfter = TimeSpan.FromMinutes(10);
                 })
             .AddPostgresDeadLetterTracking(
-                builder.Configuration.GetConnectionString("FlowlyDeadLetters")!,
+                "FlowlyDeadLetters",
                 true,
                 options =>
                 {

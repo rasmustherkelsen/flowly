@@ -38,6 +38,9 @@ public static class EventSubmitterRegistrationExtensions
 
         flowlyBuilder.Services.TryAddSingleton<IEventSender, EventSender>();
 
+        FlowlySubmitterManifest.GetOrCreate(flowlyBuilder.Services)
+            .Add(new DeferredSubmitterRegistration(typeof(TEvent), topicName, SubmitterKind.Event));
+
         return flowlyBuilder;
     }
 }

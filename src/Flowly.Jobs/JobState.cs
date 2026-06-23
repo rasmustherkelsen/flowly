@@ -1,9 +1,12 @@
-﻿namespace Flowly.Jobs;
+﻿using System.Text.Json.Serialization;
+
+namespace Flowly.Jobs;
 
 /// <summary>
 ///     The lifecycle state of a tracked job, stored in the <c>Job</c> database table and surfaced via
 ///     <see cref="JobInfo.CurrentState" />.
 /// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum JobState
 {
     /// <summary>

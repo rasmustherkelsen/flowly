@@ -6,8 +6,7 @@ Full-featured Flowly sample using the in-memory transport and in-memory SQLite. 
 
 | Project | Purpose |
 |---|---|
-| `Api` | HTTP API, all message handlers, and Flowly configuration combined in one project |
-| `Dashboard` | Next.js (MUI) web app — submitting messages, monitoring jobs, managing dead letters, and triggering recurring jobs |
+| `Api` | HTTP API, all message handlers, and Flowly configuration in one project; hosts the embedded Flowly Dashboard at `/flowly` |
 
 ## What it demonstrates
 
@@ -21,27 +20,14 @@ Full-featured Flowly sample using the in-memory transport and in-memory SQLite. 
 ## Prerequisites
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)
-- [Node.js](https://nodejs.org/) (for the dashboard frontend)
 
 ## How to run
-
-**Terminal 1 — start the API:**
 
 ```bash
 dotnet run --project Api/Api.csproj
 ```
 
-The API starts on `http://localhost:5200`.
-
-**Terminal 2 — start the dashboard:**
-
-```bash
-cd Dashboard
-npm install
-npm run dev
-```
-
-Open `http://localhost:3000` in your browser.
+The API starts on `http://localhost:5200`. Open `http://localhost:5200/flowly` in your browser to access the dashboard.
 
 ## What to observe
 

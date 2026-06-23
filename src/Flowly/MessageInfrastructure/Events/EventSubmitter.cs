@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Flowly.MessageInfrastructure.Events.Telemetry;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.Transport;
 
 namespace Flowly.MessageInfrastructure.Events;
@@ -22,6 +23,7 @@ internal class EventSubmitter<TEvent>(
 
         var messageId = Guid.NewGuid().ToString();
         using var activity = publisherInstrumentation.StartRaising(topicSettings.TopicName, client.MessagingSystem, messageId);
+        activity.ApplyTagsFrom(@event);
 
         try
         {

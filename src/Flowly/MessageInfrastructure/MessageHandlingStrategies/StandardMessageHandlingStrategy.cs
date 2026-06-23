@@ -22,7 +22,7 @@ internal class StandardMessageHandlingStrategy<TMessage> : IMessageHandlingStrat
 
     public Task OnMessageHandlingError(ILogger logger, IServiceProvider serviceProvider, ErrorDetails errorDetails)
     {
-        logger.LogError("{Message}", errorDetails.Exception.Message);
+        logger.LogError(errorDetails.Exception, "Message processor error");
         return Task.CompletedTask;
     }
 }

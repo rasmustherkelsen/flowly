@@ -49,7 +49,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "AzureServiceBus", "AzureSer
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Aspire", "Aspire", "{2C7667CF-9706-4643-BFB0-3E56DB665214}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Api", "samples\AzureServiceBus\Aspire\Api\Api.csproj", "{B2D04A09-29DF-462C-B753-B22AB9633DFD}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Dashboard", "samples\AzureServiceBus\Aspire\Dashboard\Dashboard.csproj", "{B2D04A09-29DF-462C-B753-B22AB9633DFD}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AzureServiceBusAspire.AppHost", "samples\AzureServiceBus\Aspire\AzureServiceBusAspire.AppHost\AzureServiceBusAspire.AppHost.csproj", "{E984CFEE-171B-4AC4-8C89-7B446D97D1B8}"
 EndProject
@@ -109,7 +109,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "RabbitMQ", "RabbitMQ", "{F9
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Aspire", "Aspire", "{40878CB5-5DB1-4986-8C56-11DE26AA9E94}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Api", "samples\RabbitMQ\Aspire\Api\Api.csproj", "{153DBED4-7517-4D2B-A511-AB64D7BDE8C3}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Dashboard", "samples\RabbitMQ\Aspire\Dashboard\Dashboard.csproj", "{153DBED4-7517-4D2B-A511-AB64D7BDE8C3}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BackendFinanceProcessor", "samples\RabbitMQ\Aspire\BackendFinanceProcessor\BackendFinanceProcessor.csproj", "{5FDBFE6E-FB93-4AF8-94D6-F6A581BDAD2A}"
 EndProject
@@ -226,6 +226,8 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "RpcCalls", "RpcCalls", "{F831C896-8BB6-4EF3-98AE-DC28CFFF2C9A}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "App", "samples\InMemory\RpcCalls\App\App.csproj", "{B36DBD09-2C57-965E-1DD7-CBBCC0047F33}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Flowly.Dashboard", "src\Flowly.Dashboard\Flowly.Dashboard.csproj", "{A64A85C5-1682-42A4-B0A8-97350672A9BF}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -1269,6 +1271,18 @@ Global
 		{B36DBD09-2C57-965E-1DD7-CBBCC0047F33}.Release|x64.Build.0 = Release|Any CPU
 		{B36DBD09-2C57-965E-1DD7-CBBCC0047F33}.Release|x86.ActiveCfg = Release|Any CPU
 		{B36DBD09-2C57-965E-1DD7-CBBCC0047F33}.Release|x86.Build.0 = Release|Any CPU
+		{A64A85C5-1682-42A4-B0A8-97350672A9BF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A64A85C5-1682-42A4-B0A8-97350672A9BF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A64A85C5-1682-42A4-B0A8-97350672A9BF}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{A64A85C5-1682-42A4-B0A8-97350672A9BF}.Debug|x64.Build.0 = Debug|Any CPU
+		{A64A85C5-1682-42A4-B0A8-97350672A9BF}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{A64A85C5-1682-42A4-B0A8-97350672A9BF}.Debug|x86.Build.0 = Debug|Any CPU
+		{A64A85C5-1682-42A4-B0A8-97350672A9BF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A64A85C5-1682-42A4-B0A8-97350672A9BF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A64A85C5-1682-42A4-B0A8-97350672A9BF}.Release|x64.ActiveCfg = Release|Any CPU
+		{A64A85C5-1682-42A4-B0A8-97350672A9BF}.Release|x64.Build.0 = Release|Any CPU
+		{A64A85C5-1682-42A4-B0A8-97350672A9BF}.Release|x86.ActiveCfg = Release|Any CPU
+		{A64A85C5-1682-42A4-B0A8-97350672A9BF}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

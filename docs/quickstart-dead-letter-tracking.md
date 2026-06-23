@@ -77,7 +77,7 @@ internal class FlowlyConfiguration : Configuration
     public override void Configure(IFlowlyBuilder builder)
     {
         builder.UseRabbitMq(connection: "RabbitMQ")
-               .AddSqlServerDeadLetterTracking(builder.Configuration.GetConnectionString("DeadLettersDb")!)
+               .AddSqlServerDeadLetterTracking("DeadLettersDb")
                .AddMessageHandler<MyMessage, MyMessageHandler>()
                .WithDeadLetterTracking();
     }
@@ -110,7 +110,7 @@ internal class FlowlyConfiguration : Configuration
     public override void Configure(IFlowlyBuilder builder)
     {
         builder.UseAzureServiceBus(connection: "AzureServiceBus")
-               .AddSqlServerDeadLetterTracking(builder.Configuration.GetConnectionString("DeadLettersDb")!)
+               .AddSqlServerDeadLetterTracking("DeadLettersDb")
                .AddMessageHandler<MyMessage, MyMessageHandler>()
                .WithDeadLetterTracking();
     }
@@ -149,7 +149,7 @@ internal class FlowlyConfiguration : Configuration
     public override void Configure(IFlowlyBuilder builder)
     {
         builder.UseRabbitMq(connection: "RabbitMQ")
-               .AddPostgresDeadLetterTracking(builder.Configuration.GetConnectionString("DeadLettersDb")!)
+               .AddPostgresDeadLetterTracking("DeadLettersDb")
                .AddMessageHandler<MyMessage, MyMessageHandler>()
                .WithDeadLetterTracking();
     }
@@ -182,7 +182,7 @@ internal class FlowlyConfiguration : Configuration
     public override void Configure(IFlowlyBuilder builder)
     {
         builder.UseAzureServiceBus(connection: "AzureServiceBus")
-               .AddPostgresDeadLetterTracking(builder.Configuration.GetConnectionString("DeadLettersDb")!)
+               .AddPostgresDeadLetterTracking("DeadLettersDb")
                .AddMessageHandler<MyMessage, MyMessageHandler>()
                .WithDeadLetterTracking();
     }
@@ -223,7 +223,7 @@ internal class FlowlyConfiguration : Configuration
     public override void Configure(IFlowlyBuilder builder)
     {
         builder.UseRabbitMq(connection: "RabbitMQ")
-               .AddSQLiteDeadLetterTracking(builder.Configuration.GetConnectionString("DeadLettersDb")!)
+               .AddSQLiteDeadLetterTracking("DeadLettersDb")
                .AddMessageHandler<MyMessage, MyMessageHandler>()
                .WithDeadLetterTracking();
     }
@@ -245,7 +245,7 @@ internal class FlowlyConfiguration : Configuration
     public override void Configure(IFlowlyBuilder builder)
     {
         builder.UseAzureServiceBus(connection: "AzureServiceBus")
-               .AddSQLiteDeadLetterTracking(builder.Configuration.GetConnectionString("DeadLettersDb")!)
+               .AddSQLiteDeadLetterTracking("DeadLettersDb")
                .AddMessageHandler<MyMessage, MyMessageHandler>()
                .WithDeadLetterTracking();
     }
@@ -488,7 +488,7 @@ internal class FlowlyConfiguration : Configuration
     public override void Configure(IFlowlyBuilder builder)
     {
         builder.UseInMemory()
-               .AddSQLiteDeadLetterTracking(builder.Configuration.GetConnectionString("DeadLettersDb")!)
+               .AddSQLiteDeadLetterTracking("DeadLettersDb")
                .AddMessageSubmitter<MyMessage>()
                .AddMessageHandler<MyMessage, MyMessageHandler>()
                .WithDeadLetterTracking();
