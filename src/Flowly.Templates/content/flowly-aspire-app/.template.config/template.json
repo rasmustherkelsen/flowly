@@ -130,7 +130,7 @@
       "datatype": "bool",
       "defaultValue": "false",
       "displayName": "Dashboard",
-      "description": "Add the embedded Flowly Dashboard to the receiver (or App for InMemory). Mounts a management UI at /flowly."
+      "description": "Scaffold a standalone Dashboard project hosting the Flowly management UI at /. For InMemory transport the dashboard is embedded in App instead."
     },
     "UseDashboard": {
       "type": "computed",
@@ -215,6 +215,18 @@
       "generator": "port",
       "replaces": "7301",
       "parameters": { "low": 7300, "high": 7399 }
+    },
+    "DashboardFlowlyHttpPort": {
+      "type": "generated",
+      "generator": "port",
+      "replaces": "5401",
+      "parameters": { "low": 5400, "high": 5499 }
+    },
+    "DashboardFlowlyHttpsPort": {
+      "type": "generated",
+      "generator": "port",
+      "replaces": "7401",
+      "parameters": { "low": 7400, "high": 7499 }
     }
   },
   "sources": [
@@ -250,6 +262,10 @@
             "MyAspireApp.App/Handlers/DeadLetterSampleMessageHandler.cs",
             "MyAspireApp.App/Services/FailingMessageSenderService.cs"
           ]
+        },
+        {
+          "condition": "(!UseDashboard || UseInMemory)",
+          "exclude": [ "MyAspireApp.Dashboard/**" ]
         }
       ]
     }

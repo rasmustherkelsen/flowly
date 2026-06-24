@@ -149,7 +149,7 @@ dotnet new flowlyaspireapp --transport <transport> [options] -n <SolutionName>
 | `--callhandler` | `--call` | Scaffold the main message as an RPC-style call/response pair using `CallHandler` and `IMessageCaller`. |
 | `--jobtracking` | `--jobs` | Add job state tracking. Requires a DB flag. Job state is embedded in the Receiver (no separate project). |
 | `--deadlettertracking` | `--deadletter` | Add dead-letter tracking. Requires a DB flag. |
-| `--dashboard` | | Add the embedded Flowly Dashboard to the Receiver (or App for InMemory). Mounts a management UI at `/flowly`. No separate Aspire project needed. |
+| `--dashboard` | | Scaffold a standalone `Dashboard/` project hosting the Flowly management UI at `/`. Receiver stays a pure background worker. For InMemory transport the dashboard is embedded in `App/` instead. |
 
 #### Database backend (required when `--jobs` or `--deadletter` is used)
 
@@ -183,7 +183,7 @@ dotnet new flowlyaspireapp --transport asb --jobs --db sqlserver -n MyApp
 # InMemory with SQLite job tracking
 dotnet new flowlyaspireapp --transport inm --jobs --db sqlite -n MyApp
 
-# RabbitMQ with embedded management dashboard
+# RabbitMQ with standalone Dashboard project
 dotnet new flowlyaspireapp --transport rabbitmq --dashboard -n MyApp
 ```
 
@@ -198,7 +198,8 @@ MyApp/
 ├── MyApp.ServiceDefaults/   ← Standard Aspire OTel, health checks, service discovery
 ├── MyApp.Messages/          ← Shared message contracts
 ├── MyApp.Sender/            ← WebApplication; sends a message every second
-└── MyApp.Receiver/          ← WebApplication; receives and prints messages (+ job/DLQ tracking when requested)
+├── MyApp.Receiver/          ← WebApplication; receives and prints messages (+ job/DLQ tracking when requested)
+└── MyApp.Dashboard/         ← only with --dashboard: standalone web app hosting the management UI at /
 ```
 
 **InMemory:**
