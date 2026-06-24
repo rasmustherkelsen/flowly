@@ -28,3 +28,21 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_USER: postgres
 #endif
+#if (UseOtelExportJaeger)
+  jaeger:
+    image: cr.jaegertracing.io/jaegertracing/jaeger:2.19.0
+    container_name: jaeger
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "16686:16686"
+      - "5778:5778"
+      - "9411:9411"
+#endif
+#if (UseOtelExportZipkin)
+  zipkin:
+    image: openzipkin/zipkin:3
+    container_name: zipkin
+    ports:
+      - "9411:9411"
+#endif

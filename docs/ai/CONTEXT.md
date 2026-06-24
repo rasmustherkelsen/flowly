@@ -685,6 +685,8 @@ Optional flags:
 | `--callhandler` | `--call` | Scaffold the main message as an RPC-style call/response. `MyMessage` implements `IReturns<MyReturnMessage>`; Sender uses `IMessageCaller.Call` and blocks for the response; Receiver uses `CallHandler<MyMessage, MyReturnMessage>`. Sender `Program.cs` sets `options.InstanceName = "sender"`. For ASB, `sbconfig.json` includes the reply queue `my.reply.sender`. |
 | `--jobtracking` | `--jobs` | Add job state tracking. Adds `ProcessJobMessage`/`ProcessJobHandler`/`JobSubmitterService` and a dedicated `JobTracker` infrastructure project (RabbitMQ/ASB). InMemory keeps everything in `App`. Requires `--db`. |
 | `--deadlettertracking` | `--deadletter` | Add dead-letter tracking. Adds `DeadLetterSampleMessage`/`DeadLetterSampleMessageHandler` (with `[RetryPolicy]`) and `FailingMessageSenderService`. Requires `--db`. |
+| `--opentelemetry` | `--otel` | Add `Flowly.OpenTelemetry` instrumentation. No exporter — signals are collected but not emitted unless `--otel-export` is also specified. |
+| `--otel-export <value>` | `--oe` | Add `Flowly.OpenTelemetry` instrumentation **and** wire an exporter. Values: `default` (OTLP, activated when `OTEL_EXPORTER_OTLP_ENDPOINT` env var is set); `jaeger` (OTLP unconditional, sets `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317` in launchSettings and adds a Jaeger v2 container to `docker-compose.yml`); `zipkin` (Zipkin exporter, adds a Zipkin container to `docker-compose.yml`). Implies `--otel`. |
 | `--dashboard` | | Scaffold a standalone `Dashboard/` project — a minimal `WebApplication` that calls `AddFlowlyDashboard()` / `UseFlowlyDashboard()` and serves the management UI at `/`. The Receiver stays a pure background worker. For InMemory the dashboard is embedded in `App/` instead. |
 | `--db sqlserver` | | SQL Server backend |
 | `--db postgres` | | PostgreSQL backend |
@@ -712,7 +714,8 @@ Optional flags:
 |---|---|---|
 | `--jobtracking` | `--jobs` | Add job state tracking. Requires `--db sqlserver|postgres|sqlite`. |
 | `--deadlettertracking` | `--deadletter` | Add dead-letter tracking. Requires `--db sqlserver|postgres|sqlite`. |
-| `--opentelemetry` | `--otel` | Add `Flowly.OpenTelemetry`; wires up `builder.AddFlowlyOpenTelemetry()` |
+| `--opentelemetry` | `--otel` | Add `Flowly.OpenTelemetry`; wires up `builder.AddFlowlyOpenTelemetry()` with no exporter. |
+| `--otel-export <value>` | `--oe` | Add `Flowly.OpenTelemetry` and wire an exporter. Values: `default` (OTLP gated on env var), `jaeger` (OTLP unconditional, sets `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317` in launchSettings), `zipkin` (Zipkin). Implies `--otel`. |
 | `--inline` | | Wire Flowly inline in Program.cs instead of a config class |
 | `--no-http` | | Configure as a worker service with no HTTP listener; uses `Host.CreateApplicationBuilder` instead of `WebApplication.CreateBuilder` |
 
@@ -722,6 +725,9 @@ dotnet new flowly --transport rabbitmq -o Receiver
 
 # Full-featured ASB processor (class-based)
 dotnet new flowly --transport asb --jobs --db sqlserver --deadletter --otel -o Processor
+
+# RabbitMQ receiver with Jaeger export
+dotnet new flowly --transport rabbitmq --otel-export jaeger -o Receiver
 ```
 
 **Generated files:** `<ProjectName>.csproj`, `Program.cs`, `FlowlyConfiguration.cs` (omitted with `--inline`), `appsettings.json`, `appsettings.Development.json` with dev connection strings.
@@ -1008,8 +1014,8 @@ The Flowly repository ships skills under `.claude/skills/`. Each skill is a dire
 > **Maintenance note — keep `add-jobtracking` in sync with the `flowlyapp` template:**
 > The `add-jobtracking` skill's standalone JobTracker option mirrors the `JobTracker/` project scaffolded by `dotnet new flowlyapp --jobs`. Whenever the template's `JobTracker/` project structure changes (new packages, changed connection string names, `Program.cs` wiring, `appsettings` layout, or `launchSettings.json`), update `.claude/skills/add-jobtracking/SKILL.md` in the same change so the skill stays consistent with what the template produces.
 
-> **Maintenance note — keep `add-opentelemetry` in sync with the `flowly-project` and `flowlyaspireapp` templates:**
-> The `add-opentelemetry` skill's wiring (`builder.AddFlowlyOpenTelemetry()` for fresh setups; `.WithMetrics(m => m.AddFlowlyInstrumentation()).WithTracing(t => t.AddFlowlyInstrumentation())` for composing into an existing pipeline or Aspire's `ServiceDefaults`) mirrors what `dotnet new flowly --opentelemetry` and `dotnet new flowlyaspireapp` generate. Whenever the templates' OpenTelemetry package set or registration calls change, update `.claude/skills/add-opentelemetry/SKILL.md` in the same change so the skill stays consistent with what the templates produce.
+> **Maintenance note — keep `add-opentelemetry` in sync with the `flowly-project`, `flowlyapp`, and `flowlyaspireapp` templates:**
+> The `add-opentelemetry` skill's wiring (`builder.AddFlowlyOpenTelemetry()` for fresh setups; `.WithMetrics(m => m.AddFlowlyInstrumentation()).WithTracing(t => t.AddFlowlyInstrumentation())` for composing into an existing pipeline or Aspire's `ServiceDefaults`) mirrors what `dotnet new flowly --opentelemetry`, `dotnet new flowlyapp --otel-export <value>`, and `dotnet new flowlyaspireapp` generate. The exporter wiring (`UseOtlpExporter()` / `AddZipkinExporter()`) and the launchSettings env vars (`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAME`) produced by `--otel-export jaeger` must match what the skill documents under the Jaeger path. Whenever the templates' OpenTelemetry package set, registration calls, or exporter wiring change, update `.claude/skills/add-opentelemetry/SKILL.md` in the same change.
 
 When a user in a Flowly-based project asks you to add a handler, recurring job, or set up the transport, suggest the appropriate skill command if the skills are present in their `.claude/skills/` directory.
 

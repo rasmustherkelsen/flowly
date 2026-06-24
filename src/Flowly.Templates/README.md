@@ -33,6 +33,8 @@ dotnet new flowlyapp --transport <transport> [options] -n <SolutionName>
 | `--callhandler` | `--call` | Scaffold the main message as an RPC-style call/response pair using `CallHandler` and `IMessageCaller` instead of the default fire-and-forget `MessageHandler`. `MyMessage` implements `IReturns<MyReturnMessage>`; the sender blocks on `IMessageCaller.Call` and prints each response. |
 | `--jobtracking` | `--jobs` | Add job state tracking. Adds `ProcessJobMessage`, `ProcessJobHandler`, `JobSubmitterService`, and a dedicated `JobTracker` infrastructure project. Requires a DB flag. Not applicable to InMemory (job state runs in `App`). |
 | `--deadlettertracking` | `--deadletter` | Add dead-letter tracking. Adds `DeadLetterSampleMessage`, `DeadLetterSampleMessageHandler` with `[RetryPolicy]`, and `FailingMessageSenderService`. Requires a DB flag. |
+| `--opentelemetry` | `--otel` | Add Flowly.OpenTelemetry instrumentation (metrics and tracing). No exporter — signals are collected but not emitted unless `--otel-export` is also specified. |
+| `--otel-export <value>` | `--oe` | Add Flowly.OpenTelemetry instrumentation **and** wire an exporter. Implies `--otel`. Values: `default` — OTLP, activated when `OTEL_EXPORTER_OTLP_ENDPOINT` is set; `jaeger` — OTLP unconditional, sets `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317` in launchSettings and adds a Jaeger v2 container to `docker-compose.yml`; `zipkin` — Zipkin exporter, adds a Zipkin container to `docker-compose.yml`. |
 | `--dashboard` | | Scaffold a standalone `Dashboard/` project hosting the Flowly management UI at `/`. For InMemory transport the dashboard is embedded in `App/` instead. |
 
 #### Database backend (required when `--jobs` or `--deadletter` is used)
@@ -75,6 +77,12 @@ dotnet new flowlyapp --transport inm --jobs --deadletter --db sqlite -n MyApp
 
 # RabbitMQ with standalone Dashboard project
 dotnet new flowlyapp --transport rabbitmq --dashboard -n MyApp
+
+# RabbitMQ with Jaeger tracing (adds Jaeger to docker-compose, sets OTLP endpoint in launchSettings)
+dotnet new flowlyapp --transport rabbitmq --otel-export jaeger -n MyApp
+
+# RabbitMQ with Zipkin tracing
+dotnet new flowlyapp --transport rabbitmq --oe zipkin -n MyApp
 ```
 
 #### What's generated
@@ -235,7 +243,8 @@ Pass via `--transport <value>`, e.g. `--transport rabbitmq` or `--transport asb`
 |------|-------|-------------|
 | `--jobtracking` | `--jobs` | Add job state tracking. Requires a DB flag. |
 | `--deadlettertracking` | `--deadletter` | Add dead-letter tracking. Requires a DB flag. |
-| `--opentelemetry` | `--otel` | Add Flowly.OpenTelemetry metrics and tracing. Wires up `builder.AddFlowlyOpenTelemetry()`. |
+| `--opentelemetry` | `--otel` | Add Flowly.OpenTelemetry instrumentation. No exporter wired — signals are collected but not emitted unless `--otel-export` is also specified. |
+| `--otel-export <value>` | `--oe` | Add Flowly.OpenTelemetry instrumentation **and** wire an exporter. Implies `--otel`. Values: `default` — OTLP, activated when `OTEL_EXPORTER_OTLP_ENDPOINT` is set; `jaeger` — OTLP unconditional, sets `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317` in launchSettings; `zipkin` — Zipkin exporter. |
 | `--inline` | | Wire Flowly inline in Program.cs instead of a config class. |
 | `--no-http` | | Configure as a worker service with no HTTP listener. Use for projects that only process queue messages. |
 
@@ -261,6 +270,12 @@ dotnet new flowly --transport asb --jobs --db sqlserver --deadletter -o Processo
 
 # InMemory with all features, inline wiring
 dotnet new flowly --transport inm --jobs --deadletter --db sqlite --otel --inline -o TestWorker
+
+# RabbitMQ with Jaeger export (adds OTLP wiring and OTEL_EXPORTER_OTLP_ENDPOINT in launchSettings)
+dotnet new flowly --transport rabbitmq --otel-export jaeger -o Receiver
+
+# ASB with default OTLP export (gated on env var)
+dotnet new flowly --transport asb --oe default -o Processor
 ```
 
 #### What's generated
