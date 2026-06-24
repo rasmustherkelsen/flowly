@@ -7,6 +7,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <PackageReference Include="Flowly.Dashboard" Version="1.2.0" />
         <!--#if (UseRabbitMQ)-->
         <PackageReference Include="Flowly.RabbitMQ" Version="1.2.0" />
         <!--#else-->

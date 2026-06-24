@@ -65,6 +65,25 @@ receiver.WithReference(flowlyJobsDb).WaitFor(flowlyJobsDb);
 #if (UseDeadLetterTracking && (UseSqlServer || UsePostgres))
 receiver.WithReference(flowlyDeadLettersDb).WaitFor(flowlyDeadLettersDb);
 #endif
+#if (UseDashboard)
+var dashboard = builder.AddProject<Projects.MyAspireApp_Dashboard>("dashboard");
+
+#if (UseAzureServiceBus)
+azureServiceBus.AddFlowly(dashboard);
+#endif
+#if (UseRabbitMQ)
+dashboard.WithReference(rabbitMq).WaitFor(rabbitMq);
+#endif
+#if (UseAzureServiceBus)
+dashboard.WithReference(azureServiceBus).WaitFor(azureServiceBus);
+#endif
+#if (UseJobTracking && (UseSqlServer || UsePostgres))
+dashboard.WithReference(flowlyJobsDb).WaitFor(flowlyJobsDb);
+#endif
+#if (UseDeadLetterTracking && (UseSqlServer || UsePostgres))
+dashboard.WithReference(flowlyDeadLettersDb).WaitFor(flowlyDeadLettersDb);
+#endif
+#endif
 #endif
 #if (UseInMemory)
 var app = builder.AddProject<Projects.MyAspireApp_App>("app");
