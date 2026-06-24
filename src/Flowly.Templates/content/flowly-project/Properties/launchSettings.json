@@ -9,6 +9,12 @@
       "applicationUrl": "http://localhost:5195",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
+        //#if (UseOtelExportJaeger)
+        , "OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4317"
+        //#endif
+        //#if (UseOtelExport)
+        , "OTEL_SERVICE_NAME": "FlowlyApp"
+        //#endif
       }
     },
     "https": {
@@ -18,6 +24,12 @@
       "applicationUrl": "https://localhost:7176;http://localhost:5195",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
+        //#if (UseOtelExportJaeger)
+        , "OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4317"
+        //#endif
+        //#if (UseOtelExport)
+        , "OTEL_SERVICE_NAME": "FlowlyApp"
+        //#endif
       }
     }
 //#else
@@ -26,6 +38,12 @@
       "dotnetRunMessages": true,
       "environmentVariables": {
         "DOTNET_ENVIRONMENT": "Development"
+        //#if (UseOtelExportJaeger)
+        , "OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4317"
+        //#endif
+        //#if (UseOtelExport)
+        , "OTEL_SERVICE_NAME": "FlowlyApp"
+        //#endif
       }
     }
 //#endif

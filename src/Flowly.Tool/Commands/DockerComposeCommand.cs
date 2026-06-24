@@ -19,6 +19,11 @@ internal static class DockerComposeCommand
             Description = "Output path for sbconfig.json when Azure Service Bus is detected. Defaults to sbconfig.json next to --output."
         };
 
+        var otelExportOption = new Option<string?>("--otel-export")
+        {
+            Description = "Override auto-detected OTel export target (jaeger or zipkin). Auto-detection checks for localhost OTEL_EXPORTER_OTLP_ENDPOINT in launchSettings.json (Jaeger) and OpenTelemetry.Exporter.Zipkin.dll (Zipkin)."
+        };
+
         var command = new Command("docker-compose", "Generate a docker-compose.yml with local development dependencies based on the transports and database providers used by the project(s)");
         command.Add(shared.Assembly);
         command.Add(shared.Project);
@@ -30,6 +35,7 @@ internal static class DockerComposeCommand
         command.Add(shared.Output);
         command.Add(namespaceOption);
         command.Add(sbconfigOutputOption);
+        command.Add(otelExportOption);
         command.SetAction(parseResult => CommandExecutor.ExecuteSafely(() =>
         {
             var sources = ProjectAssemblyResolver.Resolve(parseResult, shared);
@@ -38,9 +44,11 @@ internal static class DockerComposeCommand
             var output = parseResult.GetValue(shared.Output);
             var @namespace = parseResult.GetValue(namespaceOption) ?? "sbemulatorns";
             var sbconfigOutput = parseResult.GetValue(sbconfigOutputOption);
+            var otelExportOverride = parseResult.GetValue(otelExportOption);
 
             var transportTypes = TransportDetector.Detect(sources);
             var databaseProviders = DatabaseProviderDetector.Detect(sources);
+            var otelExportTargets = ResolveOtelExportTargets(sources, otelExportOverride);
 
             var hasAsb = transportTypes.Contains("AzureServiceBus", StringComparer.OrdinalIgnoreCase);
 
@@ -67,7 +75,7 @@ internal static class DockerComposeCommand
                 ? $"./{resolvedSbconfigOutput.Name}"
                 : "./sbconfig.json";
 
-            var dockerCompose = DockerComposeGenerator.Generate(transportTypes, databaseProviders, sbconfigRelativePath);
+            var dockerCompose = DockerComposeGenerator.Generate(transportTypes, databaseProviders, sbconfigRelativePath, otelExportTargets);
             OutputWriter.Write(dockerCompose, output);
 
             if (sbconfigJson is not null)
@@ -84,5 +92,17 @@ internal static class DockerComposeCommand
         }));
 
         return command;
+    }
+
+    private static IReadOnlySet<string> ResolveOtelExportTargets(
+        IReadOnlyList<QueueDiscoverySource> sources,
+        string? otelExportOverride)
+    {
+        if (otelExportOverride is not null)
+        {
+            return new HashSet<string>(StringComparer.OrdinalIgnoreCase) { otelExportOverride };
+        }
+
+        return OtelExportDetector.Detect(sources);
     }
 }

@@ -6,6 +6,8 @@ arguments: []
 
 Set up Flowly OpenTelemetry metrics and tracing. Follow all steps below.
 
+> **Scaffolding a new project?** If the project hasn't been created yet, the templates handle this automatically: `dotnet new flowlyapp --otel-export jaeger -n MyApp` (or `--otel-export default`/`--oe zipkin`) wires instrumentation, the exporter, and launchSettings env vars in one step. For `jaeger` and `zipkin` it also adds the observability container to `docker-compose.yml`. Use this skill for existing projects that were not scaffolded with `--otel-export`.
+
 ## Step 0 — Verify Flowly is already configured
 
 Search the target project(s) for an existing Flowly registration:

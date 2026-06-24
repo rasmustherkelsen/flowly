@@ -141,7 +141,48 @@
     },
     "UseOpenTelemetry": {
       "type": "computed",
-      "value": "(opentelemetry || otel)"
+      "value": "(opentelemetry || otel || UseOtelExport)"
+    },
+    "otel-export": {
+      "type": "parameter",
+      "datatype": "choice",
+      "defaultValue": "none",
+      "displayName": "OpenTelemetry export",
+      "description": "Add an exporter. 'default' wires OTLP gated on OTEL_EXPORTER_OTLP_ENDPOINT; 'jaeger' wires OTLP unconditionally and adds a Jaeger container to docker-compose; 'zipkin' wires Zipkin and adds a Zipkin container. Implies --otel.",
+      "choices": [
+        { "choice": "none",    "description": "No exporter." },
+        { "choice": "default", "description": "OTLP export, gated on OTEL_EXPORTER_OTLP_ENDPOINT env var." },
+        { "choice": "jaeger",  "description": "OTLP export to a local Jaeger container." },
+        { "choice": "zipkin",  "description": "Zipkin export to a local Zipkin container." }
+      ]
+    },
+    "oe": {
+      "type": "parameter",
+      "datatype": "choice",
+      "defaultValue": "none",
+      "description": "Alias for --otel-export.",
+      "choices": [
+        { "choice": "none",    "description": "No exporter." },
+        { "choice": "default", "description": "OTLP export, gated on OTEL_EXPORTER_OTLP_ENDPOINT env var." },
+        { "choice": "jaeger",  "description": "OTLP export to a local Jaeger container." },
+        { "choice": "zipkin",  "description": "Zipkin export to a local Zipkin container." }
+      ]
+    },
+    "UseOtelExportDefault": {
+      "type": "computed",
+      "value": "(otel-export == \"default\" || oe == \"default\")"
+    },
+    "UseOtelExportJaeger": {
+      "type": "computed",
+      "value": "(otel-export == \"jaeger\" || oe == \"jaeger\")"
+    },
+    "UseOtelExportZipkin": {
+      "type": "computed",
+      "value": "(otel-export == \"zipkin\" || oe == \"zipkin\")"
+    },
+    "UseOtelExport": {
+      "type": "computed",
+      "value": "(UseOtelExportDefault || UseOtelExportJaeger || UseOtelExportZipkin)"
     },
     "inline": {
       "type": "parameter",

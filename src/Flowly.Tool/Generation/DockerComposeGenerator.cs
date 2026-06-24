@@ -12,12 +12,15 @@ internal static class DockerComposeGenerator
     public static string Generate(
         IReadOnlyCollection<string> transportTypes,
         IReadOnlyCollection<string> databaseProviders,
-        string sbconfigRelativePath = "./sbconfig.json")
+        string sbconfigRelativePath = "./sbconfig.json",
+        IReadOnlyCollection<string>? otelExportTargets = null)
     {
         var hasAsb = transportTypes.Contains(AzureServiceBus, StringComparer.OrdinalIgnoreCase);
         var hasRabbitMq = transportTypes.Contains(RabbitMq, StringComparer.OrdinalIgnoreCase);
         var hasSqlServer = databaseProviders.Contains(SqlServer, StringComparer.OrdinalIgnoreCase);
         var hasPostgres = databaseProviders.Contains(Postgres, StringComparer.OrdinalIgnoreCase);
+        var hasJaeger = otelExportTargets?.Contains("Jaeger", StringComparer.OrdinalIgnoreCase) ?? false;
+        var hasZipkin = otelExportTargets?.Contains("Zipkin", StringComparer.OrdinalIgnoreCase) ?? false;
 
         var rabbitMqHostPort = hasAsb && hasRabbitMq ? 5673 : 5672;
         var includeSqlServer = hasAsb || (hasSqlServer && !hasAsb);
@@ -55,6 +58,18 @@ internal static class DockerComposeGenerator
             }
 
             AppendPostgresService(sb);
+        }
+
+        if (hasJaeger)
+        {
+            sb.AppendLine();
+            AppendJaegerService(sb);
+        }
+
+        if (hasZipkin)
+        {
+            sb.AppendLine();
+            AppendZipkinService(sb);
         }
 
         return sb.ToString();
@@ -113,5 +128,27 @@ internal static class DockerComposeGenerator
         sb.AppendLine("      POSTGRES_DB: flowly");
         sb.AppendLine("      POSTGRES_USER: postgres");
         sb.AppendLine("      POSTGRES_PASSWORD: postgres");
+    }
+
+    private static void AppendJaegerService(StringBuilder sb)
+    {
+        sb.AppendLine("  jaeger:");
+        sb.AppendLine("    image: cr.jaegertracing.io/jaegertracing/jaeger:2.19.0");
+        sb.AppendLine("    container_name: jaeger");
+        sb.AppendLine("    ports:");
+        sb.AppendLine("      - \"4317:4317\"");
+        sb.AppendLine("      - \"4318:4318\"");
+        sb.AppendLine("      - \"16686:16686\"");
+        sb.AppendLine("      - \"5778:5778\"");
+        sb.AppendLine("      - \"9411:9411\"");
+    }
+
+    private static void AppendZipkinService(StringBuilder sb)
+    {
+        sb.AppendLine("  zipkin:");
+        sb.AppendLine("    image: openzipkin/zipkin:3");
+        sb.AppendLine("    container_name: zipkin");
+        sb.AppendLine("    ports:");
+        sb.AppendLine("      - \"9411:9411\"");
     }
 }

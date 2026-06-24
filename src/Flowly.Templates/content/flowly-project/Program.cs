@@ -13,6 +13,9 @@ using Flowly.InMemory;
 #if (UseOpenTelemetry)
 using Flowly.OpenTelemetry;
 #endif
+#if (UseOtelExportDefault || UseOtelExportJaeger)
+using OpenTelemetry;
+#endif
 #if(!UseInline)
 using FlowlyApp;
 #endif
@@ -74,6 +77,20 @@ builder.AddFlowly<FlowlyConfiguration>();
 #if (UseOpenTelemetry)
 
 builder.AddFlowlyOpenTelemetry();
+#endif
+#if (UseOtelExportDefault)
+
+var useOtlpExporter = !string.IsNullOrWhiteSpace(builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"]);
+if (useOtlpExporter)
+    builder.Services.AddOpenTelemetry().UseOtlpExporter();
+#endif
+#if (UseOtelExportJaeger)
+
+builder.Services.AddOpenTelemetry().UseOtlpExporter();
+#endif
+#if (UseOtelExportZipkin)
+
+builder.Services.AddOpenTelemetry().WithTracing(t => t.AddZipkinExporter());
 #endif
 #if (NoHttp)
 
