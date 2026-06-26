@@ -432,14 +432,21 @@ builder.AddPostgresDeadLetterTracking("ConnectionString");
 // or
 builder.AddSQLiteDeadLetterTracking("Data Source=deadletters.db");
 
-// 2. Opt individual handlers in
+// 2a. Opt individual handlers in (co-located with the handler registration)
 builder.AddMessageHandler<MyMsg, MyHandler>()
        .WithDeadLetterTracking()
+
+// 2b. Standalone tracker project (no consumer on main queue — only monitors the dead-letter sub-queue)
+builder.AddDeadLetterSource<MyMsg>();
 ```
 
 The `connection` parameter accepts either a connection string name from `IConfiguration` (resolved under `ConnectionStrings:`) or a literal connection string — the same convention used by the Jobs backends and transport providers.
 
-Calling `.WithDeadLetterTracking()` without first registering a persistence layer throws `InvalidOperationException` at startup.
+**`WithDeadLetterTracking()` vs `AddDeadLetterSource<T>()`:**
+- `.WithDeadLetterTracking()` is chained from `AddMessageHandler<T,H>()` — use it when dead letter ingestion runs in the same process as the handler.
+- `AddDeadLetterSource<T>()` is called directly on the builder — use it in a standalone `DeadLetterTracker` project where no handler is registered on the main queue. The tracker connects to the transport and monitors dead-letter sub-queues independently of the Receiver.
+
+Calling either method without first registering a persistence layer throws `InvalidOperationException` at startup.
 
 All three registration methods accept an optional `Action<DeadLetterTrackingOptions>` for automatic cleanup:
 
@@ -482,6 +489,18 @@ await deadLetterService.Discard(messageId);
 | `RequeuedBy` | `string(200)?` | Audit field |
 
 When `SubscriptionName` is set, the record is an event subscription dead letter. The `QueueName` field holds the topic name. On requeue, the message is re-published to the topic with `flowly-target-subscription` set to `SubscriptionName`, so only the originating subscription receives it. To distinguish event dead letters from queue dead letters in queries, check `SubscriptionName IS NOT NULL`.
+
+**OpenTelemetry instrumentation for dead letter operations (requires `EnableTelemetry = true`):**
+
+| Signal | Name | Kind | Tags | Notes |
+|---|---|---|---|---|
+| Span | `flowly.deadletter.requeue {queueName}` | Internal | `messaging.destination.name`, `messaging.message.id` | Carries an `ActivityLink` to the original message's trace when `traceparent` is present in the stored `MessageProperties` |
+| Span | `flowly.deadletter.discard {queueName}` | Internal | `messaging.destination.name`, `messaging.message.id` | Carries an `ActivityLink` to the original message's trace when `traceparent` is present |
+| Counter | `flowly.deadletter.requeued` | — | `messaging.destination.name` | Incremented on every successful requeue |
+| Counter | `flowly.deadletter.discarded` | — | `messaging.destination.name`, `reason` (`user_initiated` / `expired`) | Incremented on every successful discard |
+| Gauge | `flowly.deadletter.pending` | — | — | Current count of `Pending` dead letters; polled every 60 s |
+
+The `ActivityLink` on both span types lets you navigate from the management operation (e.g. a dashboard requeue) back to the original message processing trace. Multiple requeues all link to the original trace — they do not chain to each other.
 
 ---
 
@@ -651,10 +670,10 @@ dotnet new flowlyaspireapp --transport <value> [options] -n <SolutionName>
 
 Supports the same optional flags as `flowlyapp` — `--callhandler`/`--call`, `--jobtracking`/`--jobs`, `--deadlettertracking`/`--deadletter`, `--db sqlserver|postgres|sqlite`, `--dashboard` — with these differences:
 
-- Job/dead-letter tracking is embedded in the **Receiver** (no separate `JobTracker` project).
-- `--db sqlserver` / `--db postgres` causes the AppHost to provision the DB resource and pass it to the Receiver via `WithReference`.
-- `--db sqlite` does not require an Aspire resource; the connection string is in `appsettings.Development.json`.
-- For ASB, `CreateTopology = false` (Aspire creates queues via `azureServiceBus.AddFlowly(receiver)`).
+- `--jobs` and `--deadletter` each scaffold a **dedicated project** (`JobTracker`, `DeadLetterTracker`) that owns the DB persistence, mirroring `flowlyapp`. The Receiver stays a pure message-processing worker. InMemory keeps everything in `App`.
+- `--db sqlserver` / `--db postgres` causes the AppHost to provision the DB resource and pass it to the appropriate tracker project via `WithReference`.
+- `--db sqlite` does not require an Aspire resource; the connection string is in `appsettings.Development.json` of the relevant tracker project.
+- For ASB, `CreateTopology = false`; Aspire creates queues via `azureServiceBus.AddFlowly(receiver)`, `azureServiceBus.AddFlowly(jobTracker)`, and `azureServiceBus.AddFlowly(deadLetterTracker)` — one call per project.
 - For RabbitMQ, `CreateTopology = true` (Aspire Hosting does not manage RabbitMQ queue topology).
 - For `--call` with ASB, `azureServiceBus.AddFlowly(sender, instanceName: "sender")` is also called to register the reply queue. The `instanceName` must match `FlowlyOptions.InstanceName` set in the sender's `Program.cs`.
 
@@ -684,7 +703,7 @@ Optional flags:
 |---|---|---|
 | `--callhandler` | `--call` | Scaffold the main message as an RPC-style call/response. `MyMessage` implements `IReturns<MyReturnMessage>`; Sender uses `IMessageCaller.Call` and blocks for the response; Receiver uses `CallHandler<MyMessage, MyReturnMessage>`. Sender `Program.cs` sets `options.InstanceName = "sender"`. For ASB, `sbconfig.json` includes the reply queue `my.reply.sender`. |
 | `--jobtracking` | `--jobs` | Add job state tracking. Adds `ProcessJobMessage`/`ProcessJobHandler`/`JobSubmitterService` and a dedicated `JobTracker` infrastructure project (RabbitMQ/ASB). InMemory keeps everything in `App`. Requires `--db`. |
-| `--deadlettertracking` | `--deadletter` | Add dead-letter tracking. Adds `DeadLetterSampleMessage`/`DeadLetterSampleMessageHandler` (with `[RetryPolicy]`) and `FailingMessageSenderService`. Requires `--db`. |
+| `--deadlettertracking` | `--deadletter` | Add dead-letter tracking. Adds `DeadLetterSampleMessage`/`DeadLetterSampleMessageHandler` (with `[RetryPolicy]`), `FailingMessageSenderService`, and a dedicated `DeadLetterTracker` infrastructure project (RabbitMQ/ASB). The Receiver handles domain messages; `DeadLetterTracker` monitors dead-letter sub-queues and persists failed messages to the DB via `AddDeadLetterSource<T>()`. InMemory keeps everything in `App`. Requires `--db`. |
 | `--opentelemetry` | `--otel` | Add `Flowly.OpenTelemetry` instrumentation. No exporter — signals are collected but not emitted unless `--otel-export` is also specified. |
 | `--otel-export <value>` | `--oe` | Add `Flowly.OpenTelemetry` instrumentation **and** wire an exporter. Values: `default` (OTLP, activated when `OTEL_EXPORTER_OTLP_ENDPOINT` env var is set); `jaeger` (OTLP unconditional, sets `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317` in launchSettings and adds a Jaeger v2 container to `docker-compose.yml`); `zipkin` (Zipkin exporter, adds a Zipkin container to `docker-compose.yml`). Implies `--otel`. |
 | `--dashboard` | | Scaffold a standalone `Dashboard/` project — a minimal `WebApplication` that calls `AddFlowlyDashboard()` / `UseFlowlyDashboard()` and serves the management UI at `/`. The Receiver stays a pure background worker. For InMemory the dashboard is embedded in `App/` instead. |
@@ -694,7 +713,7 @@ Optional flags:
 
 Connection string names: `FlowlyJobs` (job tracking), `FlowlyDeadLetters` (dead-letter tracking).
 
-After scaffolding: `docker compose up -d` (skip for SQLite/InMemory), then `dotnet run --project Sender` / `dotnet run --project Receiver` / `dotnet run --project JobTracker` (when `--jobs`) / `dotnet run --project Dashboard` (when `--dashboard`, non-InMemory).
+After scaffolding: `docker compose up -d` (skip for SQLite/InMemory), then `dotnet run --project Sender` / `dotnet run --project Receiver` / `dotnet run --project JobTracker` (when `--jobs`) / `dotnet run --project DeadLetterTracker` (when `--deadletter`, non-InMemory) / `dotnet run --project Dashboard` (when `--dashboard`, non-InMemory).
 
 ---
 

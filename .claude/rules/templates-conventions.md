@@ -42,6 +42,15 @@ Database backend flags (required when jobs or dead-letter tracking is enabled): 
 
 The `SyncSkills` target in `Flowly.Templates.csproj` copies `.claude/skills/**` into `content/flowly-skills/.claude/skills/` at build time. Skills are therefore not committed directly under `content/flowly-skills/` — they are generated. Do not manually edit files under `content/flowly-skills/`; edit the source under `.claude/skills/` instead.
 
+## Template parity: flowlyapp ↔ flowlyaspireapp
+
+`flowlyapp` and `flowlyaspireapp` must maintain **architectural parity** for `--jobs` and `--deadletter`:
+
+- Both templates scaffold a dedicated `JobTracker` project (owns job state persistence) and a dedicated `DeadLetterTracker` project (monitors dead-letter sub-queues and persists failed messages). The Receiver in both templates is a pure message-processing worker.
+- InMemory transport is the only exception: both templates embed everything inline in a single `App/` project.
+
+**When changing either template's architecture for these features, apply the equivalent change to the other template.**
+
 ## Adding or removing a template parameter
 
 When a parameter is added, removed, or renamed in `content/flowly-project/.template.config/template.json`:

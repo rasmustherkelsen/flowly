@@ -5,13 +5,9 @@ using Flowly.RabbitMQ;
 using Flowly.AzureServiceBus;
 #endif
 using Flowly.OpenTelemetry;
-#if (UseJobTracking)
-using Flowly.Jobs;
-#endif
 using MyAspireApp.Messages;
-using MyAspireApp.Receiver.Handlers;
 
-namespace MyAspireApp.Receiver;
+namespace MyAspireApp.DeadLetterTracker;
 
 internal class FlowlyConfiguration : Configuration
 {
@@ -22,20 +18,20 @@ internal class FlowlyConfiguration : Configuration
 #else
         builder.UseAzureServiceBus(connection: "AzureServiceBus");
 #endif
+#if (UseSqlServer)
 
-#if (UseCallHandler)
-        builder.AddCallHandler<MyMessage, MyMessageHandler>();
-#else
-        builder.AddMessageHandler<MyMessage, MyMessageHandler>();
+        builder.AddSqlServerDeadLetterTracking("FlowlyDeadLetters", enableMigrations: true);
 #endif
-#if (UseJobTracking)
+#if (UsePostgres)
 
-        builder.AddJobHandler<ProcessJobMessage, ProcessJobHandler>();
+        builder.AddPostgresDeadLetterTracking("FlowlyDeadLetters", enableMigrations: true);
 #endif
-#if (UseDeadLetterTracking)
+#if (UseSQLite)
 
-        builder.AddMessageHandler<DeadLetterSampleMessage, DeadLetterSampleMessageHandler>();
+        builder.AddSQLiteDeadLetterTracking("FlowlyDeadLetters", enableMigrations: true);
 #endif
+
+        builder.AddDeadLetterSource<DeadLetterSampleMessage>();
 
         builder.Services.AddOpenTelemetry()
             .WithMetrics(m => m.AddFlowlyInstrumentation())

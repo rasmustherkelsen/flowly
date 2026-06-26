@@ -5,8 +5,10 @@ using Flowly.DeadLetters.Repositories;
 using Flowly.DeadLetters.Services;
 using Flowly.DeadLetters.Telemetry;
 using Flowly.MessageInfrastructure.Model;
+using Flowly.MessageInfrastructure.Registration;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Flowly;
 
@@ -15,6 +17,8 @@ namespace Flowly;
 ///     Call <c>AddSqlServerDeadLetterTracking</c> or <c>AddPostgresDeadLetterTracking</c> once on the builder to
 ///     enable the persistence layer, then chain <c>.WithDeadLetterTracking()</c> on individual handler or event
 ///     handler registrations to opt specific queues or subscriptions into dead letter ingestion.
+///     Use <c>AddDeadLetterSource&lt;TMessage&gt;()</c> in a standalone tracker project to monitor a queue's
+///     dead-letter sub-queue without registering a consumer on the main queue.
 /// </summary>
 public static class DeadLetterTrackingRegistrationExtensions
 {
@@ -45,6 +49,14 @@ public static class DeadLetterTrackingRegistrationExtensions
 
         flowlyBuilder.Services.AddSingleton<DeadLetterGaugeMetrics>();
         flowlyBuilder.Services.AddHostedService<DeadLetterMetricsBackgroundService>();
+
+        flowlyBuilder.Services.TryAddSingleton<IDeadLetterOperationInstrumentation>(sp =>
+        {
+            var options = sp.GetRequiredService<FlowlyOptions>();
+            return options.EnableTelemetry
+                ? new DeadLetterOperationInstrumentation()
+                : new NullDeadLetterOperationInstrumentation();
+        });
 
         return flowlyBuilder;
     }
@@ -113,6 +125,37 @@ public static class DeadLetterTrackingRegistrationExtensions
     }
 
     /// <summary>
+    ///     Registers dead letter ingestion for the queue derived from <typeparamref name="TMessage"/> without registering
+    ///     a consumer on the main queue. Use this in a standalone <c>DeadletterTracker</c> project that is responsible
+    ///     solely for reading dead-lettered messages from the broker and persisting them to the tracking store, while the
+    ///     Receiver continues to process the main queue independently.
+    ///     Requires <c>AddSqlServerDeadLetterTracking</c> or <c>AddPostgresDeadLetterTracking</c> to have been called first.
+    ///     Throws <see cref="InvalidOperationException"/> if the dead letter tracking infrastructure has not been registered.
+    /// </summary>
+    /// <typeparam name="TMessage">
+    ///     The message contract type whose queue name will be resolved and monitored for dead letters.
+    /// </typeparam>
+    /// <param name="flowlyBuilder">The <see cref="IFlowlyBuilder"/> to configure.</param>
+    /// <returns>The same <see cref="IFlowlyBuilder"/> for chaining.</returns>
+    public static IFlowlyBuilder AddDeadLetterSource<TMessage>(this IFlowlyBuilder flowlyBuilder)
+        where TMessage : class
+    {
+        if (flowlyBuilder.Services.All(s => s.ServiceType != SentinelType))
+            throw new InvalidOperationException("Dead letter tracking is not configured. Call AddSqlServerDeadLetterTracking() or AddPostgresDeadLetterTracking() before using AddDeadLetterSource().");
+
+        var queueName = flowlyBuilder.TopologyNameResolver.ResolveQueueName<TMessage>();
+        var providerName = ProviderNameResolver.Resolve(flowlyBuilder.Services, typeof(TMessage));
+
+        if (flowlyBuilder.Services.Any(s => s.ServiceType == typeof(DeadLetterIngestionSettings) && s.ImplementationInstance is DeadLetterIngestionSettings ds && ds.QueueName == queueName))
+            return flowlyBuilder;
+
+        flowlyBuilder.Services.AddSingleton(new DeadLetterIngestionSettings(queueName, providerName));
+        flowlyBuilder.Services.AddHostedService<DeadLetterIngestionBackgroundService>();
+
+        return flowlyBuilder;
+    }
+
+    /// <summary>
     ///     Registers only the EF Core data context, repository, and <see cref="IDeadLetterService"/> — no background
     ///     services for ingestion, cleanup, or metrics. Used by read-only consumers such as a standalone Dashboard
     ///     project that queries dead letter state but does not ingest or process it.
@@ -127,6 +170,14 @@ public static class DeadLetterTrackingRegistrationExtensions
         flowlyBuilder.Services.AddDbContextFactory<DeadLetterDataContext>(dbContextOptions);
         flowlyBuilder.Services.AddScoped<IDeadLetterRepository, DeadLetterRepository>();
         flowlyBuilder.Services.AddScoped<IDeadLetterService, DeadLetterService>();
+
+        flowlyBuilder.Services.TryAddSingleton<IDeadLetterOperationInstrumentation>(sp =>
+        {
+            var options = sp.GetRequiredService<FlowlyOptions>();
+            return options.EnableTelemetry
+                ? new DeadLetterOperationInstrumentation()
+                : new NullDeadLetterOperationInstrumentation();
+        });
 
         return flowlyBuilder;
     }

@@ -58,6 +58,12 @@ public static class FlowlyInstrumentationConstants
     /// <summary>Gauge: current number of pending dead-lettered messages across all tracked queues.</summary>
     public const string DeadLettersPending = "flowly.deadletter.pending";
 
+    /// <summary>Counter: number of dead-lettered messages that were successfully requeued.</summary>
+    public const string DeadLettersRequeued = "flowly.deadletter.requeued";
+
+    /// <summary>Counter: number of dead-lettered messages that were discarded.</summary>
+    public const string DeadLettersDiscarded = "flowly.deadletter.discarded";
+
     /// <summary>Gauge: current number of jobs in the <c>Failed</c> state.</summary>
     public const string JobsFailed = "flowly.job.failed";
 

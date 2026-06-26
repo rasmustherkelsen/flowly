@@ -23,9 +23,7 @@ var sqlServer = builder
 #endif
 #if (NeedsPostgresInfrastructure)
 var postgres = builder
-    .AddPostgres("Postgres", builder.AddParameter("postgres-password", secret: true, value: "Fl0wly_Dev_Pass!"))
-    .WithDataVolume()
-    .WithPgAdmin();
+    .AddPostgres("Postgres", null, builder.AddParameter("postgres-password", secret: true, value: "Fl0wly_Dev_Pass!"));
 #endif
 #if (UseJobTracking && UseSqlServer)
 var flowlyJobsDb = sqlServer.AddDatabase("FlowlyJobs");
@@ -43,34 +41,70 @@ var flowlyDeadLettersDb = postgres.AddDatabase("FlowlyDeadLetters");
 #if (!UseInMemory)
 var sender = builder.AddProject<Projects.MyAspireApp_Sender>("sender");
 var receiver = builder.AddProject<Projects.MyAspireApp_Receiver>("receiver");
-
+#if (UseJobTracking)
+var jobTracker = builder.AddProject<Projects.MyAspireApp_JobTracker>("job-tracker");
+#endif
+#if (UseDeadLetterTracking)
+var deadLetterTracker = builder.AddProject<Projects.MyAspireApp_DeadLetterTracker>("dead-letter-tracker");
+#endif
+#if (UseDashboard)
+var dashboard = builder.AddProject<Projects.MyAspireApp_Dashboard>("dashboard");
+#endif
 #if (UseAzureServiceBus)
+
 azureServiceBus.AddFlowly(receiver);
 #if (UseCallHandler)
 azureServiceBus.AddFlowly(sender);
+#endif
+#if (UseJobTracking)
+azureServiceBus.AddFlowly(jobTracker);
+#endif
+#if (UseDeadLetterTracking)
+azureServiceBus.AddFlowly(deadLetterTracker);
+#endif
+#if (UseDashboard)
+azureServiceBus.AddFlowly(dashboard);
 #endif
 #endif
 
 #if (UseRabbitMQ)
 sender.WithReference(rabbitMq).WaitFor(rabbitMq);
-receiver.WithReference(rabbitMq).WaitFor(rabbitMq);
 #endif
 #if (UseAzureServiceBus)
 sender.WithReference(azureServiceBus).WaitFor(azureServiceBus);
+#endif
+#if (UseRabbitMQ)
+receiver.WithReference(rabbitMq).WaitFor(rabbitMq);
+#endif
+#if (UseAzureServiceBus)
 receiver.WithReference(azureServiceBus).WaitFor(azureServiceBus);
 #endif
-#if (UseJobTracking && (UseSqlServer || UsePostgres))
-receiver.WithReference(flowlyJobsDb).WaitFor(flowlyJobsDb);
+#if (UseJobTracking)
+
+#if (UseRabbitMQ)
+jobTracker.WithReference(rabbitMq).WaitFor(rabbitMq);
 #endif
-#if (UseDeadLetterTracking && (UseSqlServer || UsePostgres))
-receiver.WithReference(flowlyDeadLettersDb).WaitFor(flowlyDeadLettersDb);
+#if (UseAzureServiceBus)
+jobTracker.WithReference(azureServiceBus).WaitFor(azureServiceBus);
+#endif
+#if (UseSqlServer || UsePostgres)
+jobTracker.WithReference(flowlyJobsDb).WaitFor(flowlyJobsDb);
+#endif
+#endif
+#if (UseDeadLetterTracking)
+
+#if (UseRabbitMQ)
+deadLetterTracker.WithReference(rabbitMq).WaitFor(rabbitMq);
+#endif
+#if (UseAzureServiceBus)
+deadLetterTracker.WithReference(azureServiceBus).WaitFor(azureServiceBus);
+#endif
+#if (UseSqlServer || UsePostgres)
+deadLetterTracker.WithReference(flowlyDeadLettersDb).WaitFor(flowlyDeadLettersDb);
+#endif
 #endif
 #if (UseDashboard)
-var dashboard = builder.AddProject<Projects.MyAspireApp_Dashboard>("dashboard");
 
-#if (UseAzureServiceBus)
-azureServiceBus.AddFlowly(dashboard);
-#endif
 #if (UseRabbitMQ)
 dashboard.WithReference(rabbitMq).WaitFor(rabbitMq);
 #endif

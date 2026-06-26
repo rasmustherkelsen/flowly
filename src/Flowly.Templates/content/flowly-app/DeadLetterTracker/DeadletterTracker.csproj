@@ -12,8 +12,14 @@
         <!--#else-->
         <PackageReference Include="Flowly.AzureServiceBus" Version="1.2.0" />
         <!--#endif-->
-        <!--#if (UseJobTracking)-->
-        <PackageReference Include="Flowly.Jobs" Version="1.2.0" />
+        <!--#if (UseSqlServer)-->
+        <PackageReference Include="Flowly.DeadLetters.SqlServer" Version="1.2.0" />
+        <!--#endif-->
+        <!--#if (UsePostgres)-->
+        <PackageReference Include="Flowly.DeadLetters.Postgres" Version="1.2.0" />
+        <!--#endif-->
+        <!--#if (UseSQLite)-->
+        <PackageReference Include="Flowly.DeadLetters.SQLite" Version="1.2.0" />
         <!--#endif-->
         <!--#if (UseOpenTelemetry)-->
         <PackageReference Include="Flowly.OpenTelemetry" Version="1.2.0" />

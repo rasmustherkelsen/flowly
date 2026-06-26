@@ -1,6 +1,7 @@
 using Flowly.DeadLetters.BackgroundServices;
 using Flowly.DeadLetters.DatabaseModel;
 using Flowly.DeadLetters.Services;
+using Flowly.DeadLetters.Telemetry;
 using Flowly.DeadLetters.Tests.Fakes;
 using Flowly.Transport;
 
@@ -10,7 +11,7 @@ public class DeadLetterServiceTests
 {
     private static DeadLetterService BuildService(FakeDeadLetterRepository repository, FakeMessageBusClient client)
     {
-        return new DeadLetterService(repository, new FakeMessageBusClientRegistry(client), [new DeadLetterIngestionSettings("test-queue", "azure-service-bus")], []);
+        return new DeadLetterService(repository, new FakeMessageBusClientRegistry(client), [new DeadLetterIngestionSettings("test-queue", "azure-service-bus")], [], new NullDeadLetterOperationInstrumentation());
     }
 
     private static DeadLetterService BuildServiceWithEventSubscription(
@@ -19,7 +20,7 @@ public class DeadLetterServiceTests
         string topicName,
         string subscriptionName)
     {
-        return new DeadLetterService(repository, new FakeMessageBusClientRegistry(client), [], [new EventSubscriptionDeadLetterIngestionSettings(topicName, subscriptionName, "azure-service-bus")]);
+        return new DeadLetterService(repository, new FakeMessageBusClientRegistry(client), [], [new EventSubscriptionDeadLetterIngestionSettings(topicName, subscriptionName, "azure-service-bus")], new NullDeadLetterOperationInstrumentation());
     }
 
     private static DeadLetter BuildDeadLetter(
@@ -252,7 +253,8 @@ public class DeadLetterServiceTests
                 repository,
                 new FakeMessageBusClientRegistry(nonEventCapableClient),
                 [],
-                [new EventSubscriptionDeadLetterIngestionSettings("order-placed", "notification-handler", "azure-service-bus")]);
+                [new EventSubscriptionDeadLetterIngestionSettings("order-placed", "notification-handler", "azure-service-bus")],
+                new NullDeadLetterOperationInstrumentation());
 
             await Assert.ThrowsAsync<InvalidOperationException>(() => deadLetterService.Requeue("msg-1"));
         }

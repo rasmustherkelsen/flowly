@@ -1,19 +1,14 @@
 using Flowly;
-using Flowly.Dashboard;
-using Dashboard;
+using DeadLetterTracker;
 #if (UseOpenTelemetry)
 using Flowly.OpenTelemetry;
 #endif
 #if (UseOtelExportDefault || UseOtelExportJaeger)
 using OpenTelemetry;
 #endif
-#if (UseOpenTelemetry)
-using OpenTelemetry.Trace;
-#endif
 
-var builder = WebApplication.CreateBuilder(args);
+var builder = Host.CreateApplicationBuilder(args);
 
-builder.Services.AddFlowlyDashboard(options => options.PathPrefix = string.Empty);
 #if (UseRabbitMQ && UseOpenTelemetry)
 builder.AddFlowly<FlowlyConfiguration>(options => { options.CreateTopology = true; options.EnableTelemetry = true; });
 #elif (UseRabbitMQ)
@@ -26,7 +21,6 @@ builder.AddFlowly<FlowlyConfiguration>(options => options.CreateTopology = false
 #if (UseOpenTelemetry)
 
 builder.AddFlowlyOpenTelemetry();
-builder.Services.AddOpenTelemetry().WithTracing(t => t.AddAspNetCoreInstrumentation());
 #endif
 #if (UseOtelExportDefault)
 
@@ -43,8 +37,6 @@ builder.Services.AddOpenTelemetry().UseOtlpExporter();
 builder.Services.AddOpenTelemetry().WithTracing(t => t.AddZipkinExporter());
 #endif
 
-var app = builder.Build();
+var host = builder.Build();
 
-app.UseFlowlyDashboard();
-
-app.Run();
+host.Run();

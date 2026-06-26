@@ -4,6 +4,12 @@
   <Project Path="MyAspireApp.Messages/MyAspireApp.Messages.csproj" />
   <Project Path="MyAspireApp.Sender/MyAspireApp.Sender.csproj" />
   <Project Path="MyAspireApp.Receiver/MyAspireApp.Receiver.csproj" />
+  <!--#if (UseJobTracking)-->
+  <Project Path="MyAspireApp.JobTracker/MyAspireApp.JobTracker.csproj" />
+  <!--#endif-->
+  <!--#if (UseDeadLetterTracking)-->
+  <Project Path="MyAspireApp.DeadLetterTracker/MyAspireApp.DeadLetterTracker.csproj" />
+  <!--#endif-->
   <!--#if (UseDashboard)-->
   <Project Path="MyAspireApp.Dashboard/MyAspireApp.Dashboard.csproj" />
   <!--#endif-->
