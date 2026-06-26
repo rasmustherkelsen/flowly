@@ -9,6 +9,12 @@
       "applicationUrl": "https://localhost:7080;http://localhost:5080",
       "environmentVariables": {
         "DOTNET_ENVIRONMENT": "Development"
+        //#if (UseOtelExportJaeger)
+        , "OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4317"
+        //#endif
+        //#if (UseOtelExport)
+        , "OTEL_SERVICE_NAME": "MyFlowlyApp.Dashboard"
+        //#endif
       }
     }
   }

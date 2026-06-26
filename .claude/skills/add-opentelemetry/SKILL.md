@@ -233,8 +233,9 @@ If more than one project was selected in Step 2, repeat Steps 3–5 for each rem
 
 Run the project(s) and confirm Flowly's instrumentation is active:
 
-- Meter name `"Flowly"` — metrics like `flowly.message.handler.received`, `flowly.message.handler.duration`, `flowly.event.handler.*`, `flowly.deadletter.pending`, `flowly.job.failed`/`flowly.job.running` (full list in the root `README.md` OpenTelemetry section)
+- Meter name `"Flowly"` — metrics like `flowly.message.handler.received`, `flowly.message.handler.duration`, `flowly.event.handler.*`, `flowly.deadletter.pending`, `flowly.deadletter.requeued`, `flowly.deadletter.discarded`, `flowly.job.failed`/`flowly.job.running` (full list in the root `README.md` OpenTelemetry section)
 - Spans named `flowly.handle {queueName}` with kind `Consumer`, carrying `handler`, `messaging.system`, `messaging.destination.name` attributes
+- Dead letter management spans: `flowly.deadletter.requeue {queueName}` and `flowly.deadletter.discard {queueName}` (kind `Internal`), each carrying an `ActivityLink` to the original message's trace when available
 
 Use whichever exporter was configured (console, OTLP collector, or Aspire dashboard) to confirm data is flowing after sending or handling a message.
 

@@ -553,8 +553,9 @@ When messages are dead-lettered (after retries are exhausted, or because they co
 
 ### Setup
 
-Register the persistence layer once, then opt individual handlers in:
+Register the persistence layer once, then opt individual handlers in. There are two patterns:
 
+**Co-located (same project as the handler):**
 ```csharp
 builder
     .AddSqlServerDeadLetterTracking("DeadLetters")  // or AddPostgresDeadLetterTracking / AddSQLiteDeadLetterTracking; accepts a connection name or literal connection string
@@ -562,7 +563,14 @@ builder
     .WithDeadLetterTracking();                          // this handler's DLQ is tracked
 ```
 
-Calling `.WithDeadLetterTracking()` without a persistence layer registered throws at startup.
+**Standalone tracker project** (separate deployable, no consumer on the main queue):
+```csharp
+// In a dedicated DeadLetterTracker project — connects to transport but registers no handler
+builder.AddSqlServerDeadLetterTracking("DeadLetters")
+builder.AddDeadLetterSource<OrderCreated>();            // monitors the dead-letter sub-queue only
+```
+
+Calling either method without a persistence layer registered throws at startup.
 
 ### What gets stored
 
@@ -885,7 +893,7 @@ Generates a full .NET Aspire solution — AppHost, ServiceDefaults, Messages, Se
 dotnet new flowlyaspireapp --transport <rabbitmq|asb|inmemory> [options] -n <SolutionName>
 ```
 
-Supports the same `--callhandler`, `--jobs`, `--deadletter`, `--db`, and `--dashboard` flags as `flowlyapp`. Run everything with:
+Supports the same `--callhandler`, `--jobs`, `--deadletter`, `--db`, and `--dashboard` flags as `flowlyapp`, with the same architecture: `--jobs` scaffolds a dedicated `JobTracker` project and `--deadletter` scaffolds a dedicated `DeadLetterTracker` project — the Receiver stays a pure message-processing worker. Run everything with:
 
 ```bash
 dotnet run --project MyApp.AppHost

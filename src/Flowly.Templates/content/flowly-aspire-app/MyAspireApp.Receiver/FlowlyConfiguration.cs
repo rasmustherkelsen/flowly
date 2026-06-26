@@ -22,30 +22,6 @@ internal class FlowlyConfiguration : Configuration
 #else
         builder.UseAzureServiceBus(connection: "AzureServiceBus");
 #endif
-#if (UseJobTracking && UseSqlServer)
-
-        builder.AddSqlServerJobStateTracking("FlowlyJobs", enableMigrations: true);
-#endif
-#if (UseJobTracking && UsePostgres)
-
-        builder.AddPostgresJobStateTracking("FlowlyJobs", enableMigrations: true);
-#endif
-#if (UseJobTracking && UseSQLite)
-
-        builder.AddSQLiteJobStateTracking("FlowlyJobs", enableMigrations: true);
-#endif
-#if (UseDeadLetterTracking && UseSqlServer)
-
-        builder.AddSqlServerDeadLetterTracking("FlowlyDeadLetters",enableMigrations: true);
-#endif
-#if (UseDeadLetterTracking && UsePostgres)
-
-        builder.AddPostgresDeadLetterTracking("FlowlyDeadLetters",enableMigrations: true);
-#endif
-#if (UseDeadLetterTracking && UseSQLite)
-
-        builder.AddSQLiteDeadLetterTracking("FlowlyDeadLetters",enableMigrations: true);
-#endif
 
 #if (UseCallHandler)
         builder.AddCallHandler<MyMessage, MyMessageHandler>();
@@ -58,8 +34,7 @@ internal class FlowlyConfiguration : Configuration
 #endif
 #if (UseDeadLetterTracking)
 
-        builder.AddMessageHandler<DeadLetterSampleMessage, DeadLetterSampleMessageHandler>()
-               .WithDeadLetterTracking();
+        builder.AddMessageHandler<DeadLetterSampleMessage, DeadLetterSampleMessageHandler>();
 #endif
 
         builder.Services.AddOpenTelemetry()

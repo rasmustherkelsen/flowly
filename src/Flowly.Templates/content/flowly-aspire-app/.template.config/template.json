@@ -227,6 +227,30 @@
       "generator": "port",
       "replaces": "7401",
       "parameters": { "low": 7400, "high": 7499 }
+    },
+    "JobTrackerHttpPort": {
+      "type": "generated",
+      "generator": "port",
+      "replaces": "5501",
+      "parameters": { "low": 5500, "high": 5599 }
+    },
+    "JobTrackerHttpsPort": {
+      "type": "generated",
+      "generator": "port",
+      "replaces": "7501",
+      "parameters": { "low": 7500, "high": 7599 }
+    },
+    "DeadLetterTrackerHttpPort": {
+      "type": "generated",
+      "generator": "port",
+      "replaces": "5601",
+      "parameters": { "low": 5600, "high": 5699 }
+    },
+    "DeadLetterTrackerHttpsPort": {
+      "type": "generated",
+      "generator": "port",
+      "replaces": "7601",
+      "parameters": { "low": 7600, "high": 7699 }
     }
   },
   "sources": [
@@ -262,6 +286,14 @@
             "MyAspireApp.App/Handlers/DeadLetterSampleMessageHandler.cs",
             "MyAspireApp.App/Services/FailingMessageSenderService.cs"
           ]
+        },
+        {
+          "condition": "(!UseJobTracking || UseInMemory)",
+          "exclude": [ "MyAspireApp.JobTracker/**" ]
+        },
+        {
+          "condition": "(!UseDeadLetterTracking || UseInMemory)",
+          "exclude": [ "MyAspireApp.DeadLetterTracker/**" ]
         },
         {
           "condition": "(!UseDashboard || UseInMemory)",

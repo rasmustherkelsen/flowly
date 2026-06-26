@@ -1,17 +1,21 @@
-import { useState } from 'react';
+import { useContext, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   AppBar, Box, Drawer, IconButton, List, ListItem, ListItemButton,
   ListItemIcon, ListItemText, Toolbar, Tooltip, Typography,
 } from '@mui/material';
+import { useTheme } from '@mui/material/styles';
 import MenuIcon from '@mui/icons-material/Menu';
 import WorkHistoryIcon from '@mui/icons-material/WorkHistory';
 import EventRepeatIcon from '@mui/icons-material/EventRepeat';
-import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutlined';
 import SendIcon from '@mui/icons-material/Send';
+import DarkModeIcon from '@mui/icons-material/DarkMode';
+import LightModeIcon from '@mui/icons-material/LightMode';
 import { useConfig } from '../hooks/useConfig';
 import type { DashboardConfig } from '../types';
 import FlowlyIcon from './FlowlyIcon';
+import { ColorModeContext } from '../App';
 
 const DRAWER_WIDTH = 220;
 
@@ -26,6 +30,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
   const config = useConfig();
+  const theme = useTheme();
+  const { toggleColorMode } = useContext(ColorModeContext);
   const NAV = ALL_NAV.filter(item => item.visible(config));
 
   const activeLabel = NAV.find((n) => location.hash.startsWith(`#${n.to}`))?.label ?? 'Dashboard';
@@ -34,7 +40,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     <Box>
       <Toolbar sx={{ gap: 1 }}>
         <FlowlyIcon size={28} />
-        <Typography variant="h6" fontWeight={700} color="primary">Flowly</Typography>
+        <Typography variant="h6" sx={{ fontWeight: 700 }} color="primary">Flowly</Typography>
       </Toolbar>
       <List disablePadding>
         {NAV.map((item) => (
@@ -79,7 +85,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <MenuIcon />
             </IconButton>
           </Tooltip>
-          <Typography variant="h6" fontWeight={600}>{activeLabel}</Typography>
+          <Typography variant="h6" sx={{ fontWeight: 600 }}>{activeLabel}</Typography>
+          <Box sx={{ flexGrow: 1 }} />
+          <Tooltip title={theme.palette.mode === 'dark' ? 'Light mode' : 'Dark mode'}>
+            <IconButton onClick={toggleColorMode} color="inherit">
+              {theme.palette.mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
+            </IconButton>
+          </Tooltip>
         </Toolbar>
       </AppBar>
 

@@ -271,7 +271,7 @@
         {
           "condition": "(UseInMemory)",
           "rename": { "MyFlowlyApp-single.slnx": "MyFlowlyApp.slnx" },
-          "exclude": [ "MyFlowlyApp.slnx", "docker-compose-rabbitmq.yml", "docker-compose-asb.yml", "sbconfig.json", "Messages/**", "Sender/**", "Receiver/**", "JobTracker/**", "Dashboard/**" ]
+          "exclude": [ "MyFlowlyApp.slnx", "docker-compose-rabbitmq.yml", "docker-compose-asb.yml", "sbconfig.json", "Messages/**", "Sender/**", "Receiver/**", "JobTracker/**", "DeadLetterTracker/**", "Dashboard/**" ]
         },
         {
           "condition": "(!UseJobTracking)",
@@ -288,6 +288,7 @@
         {
           "condition": "(!UseDeadLetterTracking)",
           "exclude": [
+            "DeadLetterTracker/**",
             "Messages/DeadLetterSampleMessage.cs",
             "Receiver/Handlers/DeadLetterSampleMessageHandler.cs",
             "Sender/Services/FailingMessageSenderService.cs",

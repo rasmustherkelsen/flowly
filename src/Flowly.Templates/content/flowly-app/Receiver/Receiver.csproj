@@ -15,15 +15,6 @@
         <!--#if (UseJobTracking)-->
         <PackageReference Include="Flowly.Jobs" Version="1.2.0" />
         <!--#endif-->
-        <!--#if (UseDeadLetterTracking && UseSqlServer)-->
-        <PackageReference Include="Flowly.DeadLetters.SqlServer" Version="1.2.0" />
-        <!--#endif-->
-        <!--#if (UseDeadLetterTracking && UsePostgres)-->
-        <PackageReference Include="Flowly.DeadLetters.Postgres" Version="1.2.0" />
-        <!--#endif-->
-        <!--#if (UseDeadLetterTracking && UseSQLite)-->
-        <PackageReference Include="Flowly.DeadLetters.SQLite" Version="1.2.0" />
-        <!--#endif-->
         <!--#if (UseOpenTelemetry)-->
         <PackageReference Include="Flowly.OpenTelemetry" Version="1.2.0" />
         <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.16.0" />

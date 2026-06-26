@@ -32,7 +32,7 @@ dotnet new flowlyapp --transport <transport> [options] -n <SolutionName>
 |------|-------|-------------|
 | `--callhandler` | `--call` | Scaffold the main message as an RPC-style call/response pair using `CallHandler` and `IMessageCaller` instead of the default fire-and-forget `MessageHandler`. `MyMessage` implements `IReturns<MyReturnMessage>`; the sender blocks on `IMessageCaller.Call` and prints each response. |
 | `--jobtracking` | `--jobs` | Add job state tracking. Adds `ProcessJobMessage`, `ProcessJobHandler`, `JobSubmitterService`, and a dedicated `JobTracker` infrastructure project. Requires a DB flag. Not applicable to InMemory (job state runs in `App`). |
-| `--deadlettertracking` | `--deadletter` | Add dead-letter tracking. Adds `DeadLetterSampleMessage`, `DeadLetterSampleMessageHandler` with `[RetryPolicy]`, and `FailingMessageSenderService`. Requires a DB flag. |
+| `--deadlettertracking` | `--deadletter` | Add dead-letter tracking. Adds `DeadLetterSampleMessage`, `DeadLetterSampleMessageHandler` with `[RetryPolicy]`, `FailingMessageSenderService`, and a dedicated `DeadLetterTracker` infrastructure project. The Receiver processes domain messages; `DeadLetterTracker` monitors the dead-letter sub-queue and persists failed messages to the DB. Requires a DB flag. Not applicable to InMemory (dead letter tracking runs in `App`). |
 | `--opentelemetry` | `--otel` | Add Flowly.OpenTelemetry instrumentation (metrics and tracing). No exporter — signals are collected but not emitted unless `--otel-export` is also specified. |
 | `--otel-export <value>` | `--oe` | Add Flowly.OpenTelemetry instrumentation **and** wire an exporter. Implies `--otel`. Values: `default` — OTLP, activated when `OTEL_EXPORTER_OTLP_ENDPOINT` is set; `jaeger` — OTLP unconditional, sets `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317` in launchSettings and adds a Jaeger v2 container to `docker-compose.yml`; `zipkin` — Zipkin exporter, adds a Zipkin container to `docker-compose.yml`. |
 | `--dashboard` | | Scaffold a standalone `Dashboard/` project hosting the Flowly management UI at `/`. For InMemory transport the dashboard is embedded in `App/` instead. |
@@ -99,7 +99,7 @@ MyApp/
 └── sbconfig.json        ← ASB only: emulator queue config
 ```
 
-With `--jobs`, `JobTracker/` is added and `ProcessJobMessage.cs` / `ProcessJobHandler.cs` / `JobSubmitterService.cs` are included in the respective projects. With `--deadletter`, `DeadLetterSampleMessage.cs` / `DeadLetterSampleMessageHandler.cs` / `FailingMessageSenderService.cs` are added. With `--dashboard`, a standalone `Dashboard/` project is added — a minimal ASP.NET Core web app that hosts the Flowly management UI at `/flowly`. The Receiver remains a pure background worker; wire in submitters and tracking connections yourself if you want those dashboard features active.
+With `--jobs`, `JobTracker/` is added and `ProcessJobMessage.cs` / `ProcessJobHandler.cs` / `JobSubmitterService.cs` are included in the respective projects. With `--deadletter`, `DeadLetterTracker/` is added alongside `DeadLetterSampleMessage.cs` / `DeadLetterSampleMessageHandler.cs` / `FailingMessageSenderService.cs` — the Receiver handles domain messages while `DeadLetterTracker` monitors dead-letter sub-queues and persists failed messages to the DB. With `--dashboard`, a standalone `Dashboard/` project is added — a minimal ASP.NET Core web app that hosts the Flowly management UI at `/flowly`. The Receiver remains a pure background worker; wire in submitters and tracking connections yourself if you want those dashboard features active.
 
 **InMemory:**
 
@@ -118,10 +118,11 @@ docker compose up -d
 Then run each project:
 
 ```bash
-dotnet run --project Sender       # or: dotnet run --project App
+dotnet run --project Sender            # or: dotnet run --project App
 dotnet run --project Receiver
-dotnet run --project JobTracker   # only when --jobs
-dotnet run --project Dashboard    # only when --dashboard (non-InMemory)
+dotnet run --project JobTracker        # only when --jobs
+dotnet run --project DeadLetterTracker # only when --deadletter (non-InMemory)
+dotnet run --project Dashboard         # only when --dashboard (non-InMemory)
 ```
 
 ---
@@ -147,9 +148,9 @@ dotnet new flowlyaspireapp --transport <transport> [options] -n <SolutionName>
 | Flag | Alias | Description |
 |------|-------|-------------|
 | `--callhandler` | `--call` | Scaffold the main message as an RPC-style call/response pair using `CallHandler` and `IMessageCaller`. |
-| `--jobtracking` | `--jobs` | Add job state tracking. Requires a DB flag. Job state is embedded in the Receiver (no separate project). |
-| `--deadlettertracking` | `--deadletter` | Add dead-letter tracking. Requires a DB flag. |
-| `--dashboard` | | Scaffold a standalone `Dashboard/` project hosting the Flowly management UI at `/`. Receiver stays a pure background worker. For InMemory transport the dashboard is embedded in `App/` instead. |
+| `--jobtracking` | `--jobs` | Add job state tracking. Scaffolds a dedicated `JobTracker` project that owns job state persistence. Receiver stays a pure message-processing worker. InMemory embeds tracking in `App`. Requires a DB flag. |
+| `--deadlettertracking` | `--deadletter` | Add dead-letter tracking. Scaffolds a dedicated `DeadLetterTracker` project that monitors dead-letter sub-queues and persists failed messages. Receiver stays a pure message-processing worker. InMemory embeds tracking in `App`. Requires a DB flag. |
+| `--dashboard` | | Scaffold a standalone `Dashboard/` project hosting the Flowly management UI at `/`. Receiver stays a pure message-processing worker. For InMemory transport the dashboard is embedded in `App/` instead. |
 
 #### Database backend (required when `--jobs` or `--deadletter` is used)
 
@@ -194,12 +195,14 @@ dotnet new flowlyaspireapp --transport rabbitmq --dashboard -n MyApp
 ```
 MyApp/
 ├── MyApp.slnx
-├── MyApp.AppHost/           ← Aspire orchestrator; provisions broker and optional DB
-├── MyApp.ServiceDefaults/   ← Standard Aspire OTel, health checks, service discovery
-├── MyApp.Messages/          ← Shared message contracts
-├── MyApp.Sender/            ← WebApplication; sends a message every second
-├── MyApp.Receiver/          ← WebApplication; receives and prints messages (+ job/DLQ tracking when requested)
-└── MyApp.Dashboard/         ← only with --dashboard: standalone web app hosting the management UI at /
+├── MyApp.AppHost/              ← Aspire orchestrator; provisions broker and optional DB
+├── MyApp.ServiceDefaults/      ← Standard Aspire OTel, health checks, service discovery
+├── MyApp.Messages/             ← Shared message contracts
+├── MyApp.Sender/               ← WebApplication; sends messages
+├── MyApp.Receiver/             ← WebApplication; processes messages (pure handler worker)
+├── MyApp.JobTracker/           ← only with --jobs: owns job state persistence
+├── MyApp.DeadLetterTracker/    ← only with --deadletter: monitors DLQs, persists failed messages
+└── MyApp.Dashboard/            ← only with --dashboard: standalone web app hosting the management UI at /
 ```
 
 **InMemory:**

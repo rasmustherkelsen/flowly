@@ -1,6 +1,8 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Flowly.DeadLetters.BackgroundServices;
 using Flowly.DeadLetters.Repositories;
+using Flowly.DeadLetters.Telemetry;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.Transport;
 
@@ -10,7 +12,8 @@ internal class DeadLetterService(
     IDeadLetterRepository repository,
     IMessageBusClientRegistry clientRegistry,
     IEnumerable<DeadLetterIngestionSettings> ingestionSettings,
-    IEnumerable<EventSubscriptionDeadLetterIngestionSettings> eventSubscriptionIngestionSettings) : IDeadLetterService
+    IEnumerable<EventSubscriptionDeadLetterIngestionSettings> eventSubscriptionIngestionSettings,
+    IDeadLetterOperationInstrumentation instrumentation) : IDeadLetterService
 {
     public async Task<IReadOnlyCollection<IDeadLetter>> GetDeadLetters(CancellationToken cancellationToken = default)
     {
@@ -36,12 +39,25 @@ internal class DeadLetterService(
         if (deadLetter.SubscriptionName is not null)
             applicationProperties[FlowlyMessageProperties.TargetSubscription] = deadLetter.SubscriptionName;
 
-        var providerName = ResolveProviderName(deadLetter.QueueName);
-        var client = clientRegistry.GetClient(providerName);
-        var sender = await ResolveSender(client, deadLetter, cancellationToken);
-        await sender.SendRawMessage(deadLetter.MessageBody, applicationProperties, cancellationToken);
+        var originalContext = ParseActivityContext(applicationProperties);
+        using var activity = instrumentation.StartRequeue(deadLetter.QueueName, messageId, originalContext);
 
-        await repository.MarkAsRequeued(messageId, requeuedBy, cancellationToken);
+        try
+        {
+            var providerName = ResolveProviderName(deadLetter.QueueName);
+            var client = clientRegistry.GetClient(providerName);
+            var sender = await ResolveSender(client, deadLetter, cancellationToken);
+            await sender.SendRawMessage(deadLetter.MessageBody, applicationProperties, cancellationToken);
+
+            await repository.MarkAsRequeued(messageId, requeuedBy, cancellationToken);
+
+            instrumentation.RecordRequeued(deadLetter.QueueName);
+        }
+        catch
+        {
+            activity?.SetStatus(ActivityStatusCode.Error);
+            throw;
+        }
     }
 
     public async Task Discard(string messageId, CancellationToken cancellationToken = default)
@@ -53,7 +69,20 @@ internal class DeadLetterService(
             throw new InvalidOperationException(
                 $"Dead letter '{messageId}' has already been requeued and cannot be discarded.");
 
-        await repository.Delete(messageId, cancellationToken);
+        var originalContext = ParseActivityContext(deadLetter.MessageProperties);
+        using var activity = instrumentation.StartDiscard(deadLetter.QueueName, messageId, originalContext);
+
+        try
+        {
+            await repository.Delete(messageId, cancellationToken);
+
+            instrumentation.RecordDiscarded(deadLetter.QueueName, DeadLetterDiscardReason.UserInitiated);
+        }
+        catch
+        {
+            activity?.SetStatus(ActivityStatusCode.Error);
+            throw;
+        }
     }
 
     private static Task<IMessageBusSender> ResolveSender(IMessageBusClient client, IDeadLetter deadLetter, CancellationToken cancellationToken)
@@ -82,6 +111,22 @@ internal class DeadLetterService(
             .FirstOrDefault(s => string.Equals(s.TopicName, queueOrTopicName, StringComparison.OrdinalIgnoreCase));
 
         return subscriptionSettings?.ProviderName ?? clientRegistry.PrimaryProviderName;
+    }
+
+    private static ActivityContext ParseActivityContext(Dictionary<string, object> applicationProperties)
+    {
+        if (!applicationProperties.TryGetValue("traceparent", out var raw) || raw is not string traceparent)
+            return default;
+
+        var tracestate = applicationProperties.TryGetValue("tracestate", out var tsRaw) && tsRaw is string ts ? ts : null;
+
+        return ActivityContext.TryParse(traceparent, tracestate, isRemote: true, out var context) ? context : default;
+    }
+
+    private static ActivityContext ParseActivityContext(string messagePropertiesJson)
+    {
+        var dict = JsonSerializer.Deserialize<Dictionary<string, object>>(messagePropertiesJson) ?? [];
+        return ParseActivityContext(dict.ToDictionary(kvp => kvp.Key, kvp => ConvertJsonElement(kvp.Value)));
     }
 
     private static object ConvertJsonElement(object value)

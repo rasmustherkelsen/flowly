@@ -5,6 +5,9 @@
   <!--#if (UseJobTracking)-->
   <Project Path="JobTracker/JobTracker.csproj" />
   <!--#endif-->
+  <!--#if (UseDeadLetterTracking)-->
+  <Project Path="DeadLetterTracker/DeadLetterTracker.csproj" />
+  <!--#endif-->
   <!--#if (UseDashboard)-->
   <Project Path="Dashboard/Dashboard.csproj" />
   <!--#endif-->

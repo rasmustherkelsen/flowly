@@ -4,6 +4,7 @@ using Flowly.RabbitMQ;
 #else
 using Flowly.AzureServiceBus;
 #endif
+using Flowly.OpenTelemetry;
 #if (UseJobTracking)
 using Flowly.Jobs;
 #endif
@@ -60,5 +61,9 @@ internal class FlowlyConfiguration : Configuration
 
         builder.AddDeadLetterTrackingClient("FlowlyDeadLetters");
 #endif
+
+        builder.Services.AddOpenTelemetry()
+            .WithMetrics(m => m.AddFlowlyInstrumentation())
+            .WithTracing(t => t.AddFlowlyInstrumentation());
     }
 }

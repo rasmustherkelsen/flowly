@@ -28,6 +28,12 @@
         <!--#if (!UseInMemory)-->
         <ProjectReference Include="..\MyAspireApp.Sender\MyAspireApp.Sender.csproj" />
         <ProjectReference Include="..\MyAspireApp.Receiver\MyAspireApp.Receiver.csproj" />
+        <!--#if (UseJobTracking)-->
+        <ProjectReference Include="..\MyAspireApp.JobTracker\MyAspireApp.JobTracker.csproj" />
+        <!--#endif-->
+        <!--#if (UseDeadLetterTracking)-->
+        <ProjectReference Include="..\MyAspireApp.DeadLetterTracker\MyAspireApp.DeadLetterTracker.csproj" />
+        <!--#endif-->
         <!--#if (UseDashboard)-->
         <ProjectReference Include="..\MyAspireApp.Dashboard\MyAspireApp.Dashboard.csproj" />
         <!--#endif-->
