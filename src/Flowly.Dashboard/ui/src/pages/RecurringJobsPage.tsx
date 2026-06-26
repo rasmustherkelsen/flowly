@@ -70,7 +70,7 @@ export default function RecurringJobsPage() {
                 )}
                 {(data ?? []).map((job) => (
                   <TableRow key={job.jobId} hover>
-                    <TableCell><Typography variant="body2" fontWeight={500}>{job.description || job.jobTypeName}</Typography></TableCell>
+                    <TableCell><Typography variant="body2" sx={{ fontWeight: 500 }}>{job.description || job.jobTypeName}</Typography></TableCell>
                     <TableCell><Typography variant="body2">{job.jobTypeName}</Typography></TableCell>
                     <TableCell><Typography variant="body2" sx={{ whiteSpace: 'nowrap', fontFamily: 'monospace' }}>{job.cronExpression}</Typography></TableCell>
                     <TableCell><Typography variant="body2" sx={{ whiteSpace: 'nowrap' }}>{formatDate(job.lastStarted)}</Typography></TableCell>

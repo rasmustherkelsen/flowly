@@ -73,7 +73,7 @@ export default function JobsPage() {
                 )}
                 {items.map((job) => (
                   <TableRow key={job.jobIdentifier} hover>
-                    <TableCell><Typography variant="body2" fontWeight={500}>{job.jobTypeName}</Typography></TableCell>
+                    <TableCell><Typography variant="body2" sx={{ fontWeight: 500 }}>{job.jobTypeName}</Typography></TableCell>
                     <TableCell>
                       <Typography variant="body2" sx={{ maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {job.description}

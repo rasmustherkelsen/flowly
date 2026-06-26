@@ -8,7 +8,7 @@ import { useTheme } from '@mui/material/styles';
 import MenuIcon from '@mui/icons-material/Menu';
 import WorkHistoryIcon from '@mui/icons-material/WorkHistory';
 import EventRepeatIcon from '@mui/icons-material/EventRepeat';
-import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutlined';
 import SendIcon from '@mui/icons-material/Send';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
@@ -40,7 +40,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     <Box>
       <Toolbar sx={{ gap: 1 }}>
         <FlowlyIcon size={28} />
-        <Typography variant="h6" fontWeight={700} color="primary">Flowly</Typography>
+        <Typography variant="h6" sx={{ fontWeight: 700 }} color="primary">Flowly</Typography>
       </Toolbar>
       <List disablePadding>
         {NAV.map((item) => (
@@ -85,7 +85,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <MenuIcon />
             </IconButton>
           </Tooltip>
-          <Typography variant="h6" fontWeight={600}>{activeLabel}</Typography>
+          <Typography variant="h6" sx={{ fontWeight: 600 }}>{activeLabel}</Typography>
           <Box sx={{ flexGrow: 1 }} />
           <Tooltip title={theme.palette.mode === 'dark' ? 'Light mode' : 'Dark mode'}>
             <IconButton onClick={toggleColorMode} color="inherit">

@@ -127,7 +127,7 @@ export default function SubmitPage() {
   if (submitters.length === 0) {
     return (
       <Box>
-        <Typography variant="h5" fontWeight={700} mb={3}>Submit</Typography>
+        <Typography variant="h5" sx={{ fontWeight: 700, mb: 3 }}>Submit</Typography>
         <Alert severity="info">No message submitters are registered in this application.</Alert>
       </Box>
     );
@@ -137,7 +137,7 @@ export default function SubmitPage() {
 
   return (
     <Box>
-      <Typography variant="h5" fontWeight={700} mb={3}>Submit</Typography>
+      <Typography variant="h5" sx={{ fontWeight: 700, mb: 3 }}>Submit</Typography>
 
       <Card sx={{ maxWidth: 600 }}>
         <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -192,7 +192,7 @@ export default function SubmitPage() {
 
           {response && (
             <Box>
-              <Typography variant="overline" color="text.secondary" display="block" gutterBottom>Response</Typography>
+              <Typography variant="overline" color="text.secondary" sx={{ display: 'block' }} gutterBottom>Response</Typography>
               <Box component="pre" sx={{ fontFamily: 'monospace', fontSize: '0.8rem', whiteSpace: 'pre-wrap', bgcolor: 'action.hover', borderRadius: 1, p: 1.5, m: 0 }}>
                 {(() => { try { return JSON.stringify(JSON.parse(response), null, 2); } catch { return response; } })()}
               </Box>

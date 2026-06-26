@@ -5,7 +5,7 @@ import {
   TableCell, TableContainer, TableHead, TableRow, Tooltip, Typography,
 } from '@mui/material';
 import ReplayIcon from '@mui/icons-material/Replay';
-import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined';
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
 import { DeadLetterStatusChip } from '../components/StatusChip';
 import PageHeader from '../components/PageHeader';
@@ -99,7 +99,7 @@ export default function DeadLettersPage() {
                 )}
                 {items.map((dl) => (
                   <TableRow key={dl.messageId} hover>
-                    <TableCell><Typography variant="body2" fontWeight={500}>{dl.queueName}</Typography></TableCell>
+                    <TableCell><Typography variant="body2" sx={{ fontWeight: 500 }}>{dl.queueName}</Typography></TableCell>
                     <TableCell>
                       <Typography variant="body2" sx={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {dl.deadLetterReason ?? '—'}
@@ -188,11 +188,11 @@ export default function DeadLettersPage() {
       <Dialog open={!!inspecting} onClose={() => setInspecting(null)} maxWidth="md" fullWidth>
         <DialogTitle>Payload — {inspecting?.queueName}</DialogTitle>
         <DialogContent dividers>
-          <Typography variant="overline" color="text.secondary" display="block" gutterBottom>Message Body</Typography>
+          <Typography variant="overline" color="text.secondary" sx={{ display: 'block' }} gutterBottom>Message Body</Typography>
           <Box component="pre" sx={{ fontFamily: 'monospace', fontSize: '0.8rem', whiteSpace: 'pre-wrap', wordBreak: 'break-all', bgcolor: 'action.hover', borderRadius: 1, p: 1.5, mb: 3, maxHeight: 300, overflow: 'auto' }}>
             {inspecting ? tryPrettyPrint(inspecting.messageBody) : ''}
           </Box>
-          <Typography variant="overline" color="text.secondary" display="block" gutterBottom>Message Properties</Typography>
+          <Typography variant="overline" color="text.secondary" sx={{ display: 'block' }} gutterBottom>Message Properties</Typography>
           <Box component="pre" sx={{ fontFamily: 'monospace', fontSize: '0.8rem', whiteSpace: 'pre-wrap', wordBreak: 'break-all', bgcolor: 'action.hover', borderRadius: 1, p: 1.5, maxHeight: 200, overflow: 'auto' }}>
             {inspecting ? tryPrettyPrint(inspecting.messageProperties) : ''}
           </Box>
