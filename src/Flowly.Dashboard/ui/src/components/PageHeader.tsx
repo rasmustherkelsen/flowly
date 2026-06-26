@@ -17,7 +17,7 @@ export default function PageHeader({
 }: PageHeaderProps) {
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', mb: 3, gap: 2, flexWrap: 'wrap' }}>
-      <Typography variant="h5" fontWeight={700} sx={{ flexGrow: 1 }}>{title}</Typography>
+      <Typography variant="h5" sx={{ flexGrow: 1, fontWeight: 700 }}>{title}</Typography>
       {children}
       {filterOptions && (
         <FormControl size="small" sx={{ minWidth: 160 }}>
