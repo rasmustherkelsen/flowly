@@ -452,7 +452,16 @@ When a dead-lettered event is requeued, Flowly re-publishes it to the topic with
 
 ## Topology Name Resolution
 
-Flowly resolves queue names, event topic names, and subscription names through an `ITopologyNameResolver`. The built-in implementation is `KebabCaseTopologyNameResolver`, which applies the kebab-case rules described in [Queue name auto-generation](#queue-name-auto-generation) and [Event and subscription naming](#event-and-subscription-naming).
+Flowly resolves queue names, event topic names, and subscription names through an `ITopologyNameResolver`. The built-in default is `KebabCaseTopologyNameResolver`, which applies the kebab-case rules described in [Queue name auto-generation](#queue-name-auto-generation) and [Event and subscription naming](#event-and-subscription-naming).
+
+### Built-in resolvers
+
+| Resolver | Separator | Example | Idiomatic for |
+|---|---|---|---|
+| `KebabCaseTopologyNameResolver` | `-` | `process-order` | Default; Azure Service Bus |
+| `DotCaseTopologyNameResolver` | `.` | `process.order` | RabbitMQ |
+
+Both are in the `Flowly.MessageInfrastructure` namespace. The RabbitMQ project templates (`flowlyapp --transport rabbitmq`, `flowlyaspireapp --transport rabbitmq`, `flowly --transport rabbitmq`) automatically register `DotCaseTopologyNameResolver`.
 
 ### Custom resolver
 

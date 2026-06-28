@@ -521,7 +521,16 @@ Examples of auto-generation:
 | `SomeQueryMessage` | `some-query` |
 | `RebuildSearchIndexMessage` | `rebuild-search-index` |
 
-`KebabCaseTopologyNameResolver` also resolves event topic names (`ResolveEventName<TEvent>()`) and subscription names (`ResolveSubscriptionName<THandler>()`). A custom resolver can be registered via `FlowlyOptions.WithTopologyNameResolver<TResolver>()`. The resolver is available via `IFlowlyBuilder.TopologyNameResolver`. **Resolvers must have a public parameterless constructor** — resolution happens at registration time, before the DI container exists, so constructor injection is not available.
+Both built-in resolvers also resolve event topic names (`ResolveEventName<TEvent>()`) and subscription names (`ResolveSubscriptionName<THandler>()`):
+
+| Resolver | Separator | Example | Idiomatic for |
+|---|---|---|---|
+| `KebabCaseTopologyNameResolver` | `-` | `process-order` | Default; Azure Service Bus |
+| `DotCaseTopologyNameResolver` | `.` | `process.order` | RabbitMQ |
+
+Both are in the `Flowly.MessageInfrastructure` namespace. The RabbitMQ project templates automatically register `DotCaseTopologyNameResolver` via `options.WithTopologyNameResolver<DotCaseTopologyNameResolver>()`.
+
+A custom resolver can be registered via `FlowlyOptions.WithTopologyNameResolver<TResolver>()`. The resolver is available via `IFlowlyBuilder.TopologyNameResolver`. **Resolvers must have a public parameterless constructor** — resolution happens at registration time, before the DI container exists, so constructor injection is not available.
 
 #### Handler-level queue attributes
 
@@ -674,7 +683,7 @@ Supports the same optional flags as `flowlyapp` — `--callhandler`/`--call`, `-
 - `--db sqlserver` / `--db postgres` causes the AppHost to provision the DB resource and pass it to the appropriate tracker project via `WithReference`.
 - `--db sqlite` does not require an Aspire resource; the connection string is in `appsettings.Development.json` of the relevant tracker project.
 - For ASB, `CreateTopology = false`; Aspire creates queues via `azureServiceBus.AddFlowly(receiver)`, `azureServiceBus.AddFlowly(jobTracker)`, and `azureServiceBus.AddFlowly(deadLetterTracker)` — one call per project.
-- For RabbitMQ, `CreateTopology = true` (Aspire Hosting does not manage RabbitMQ queue topology).
+- For RabbitMQ, `CreateTopology = true` (Aspire Hosting does not manage RabbitMQ queue topology) and `DotCaseTopologyNameResolver` is registered automatically.
 - For `--call` with ASB, `azureServiceBus.AddFlowly(sender, instanceName: "sender")` is also called to register the reply queue. The `instanceName` must match `FlowlyOptions.InstanceName` set in the sender's `Program.cs`.
 
 Run everything with: `dotnet run --project MyApp.AppHost`
@@ -712,6 +721,8 @@ Optional flags:
 | `--db sqlite` | | SQLite backend |
 
 Connection string names: `FlowlyJobs` (job tracking), `FlowlyDeadLetters` (dead-letter tracking).
+
+For RabbitMQ, `CreateTopology = true` and `DotCaseTopologyNameResolver` is registered automatically in each project's `Program.cs` (dot-case naming is idiomatic for RabbitMQ). For ASB and InMemory, `KebabCaseTopologyNameResolver` (the default) is used.
 
 After scaffolding: `docker compose up -d` (skip for SQLite/InMemory), then `dotnet run --project Sender` / `dotnet run --project Receiver` / `dotnet run --project JobTracker` (when `--jobs`) / `dotnet run --project DeadLetterTracker` (when `--deadletter`, non-InMemory) / `dotnet run --project Dashboard` (when `--dashboard`, non-InMemory).
 
