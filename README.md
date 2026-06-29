@@ -6,6 +6,15 @@ Flowly is a queue-based messaging abstraction for .NET. It sits between your app
 
 ---
 
+## Dashboard
+
+Flowly ships an embedded management dashboard at `/flowly` — inspect job history, browse dead letters, trigger recurring jobs, and submit messages directly from the browser.
+
+<img src="docs/assets/dashboard-screenshot-jobs.png" alt="Flowly Dashboard — Jobs" width="100%">
+<img src="docs/assets/dashboard-screenshot-call.png" alt="Flowly Dashboard — Submit (Call)" width="100%">
+
+---
+
 ## Quick Navigation
 
 - [RabbitMQ Quickstart](docs/quickstart-rabbitmq.md)
