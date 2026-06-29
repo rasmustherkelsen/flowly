@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using Flowly;
+using Flowly.MessageInfrastructure;
 using Flowly.Jobs.BackgroundServices;
 using Flowly.Jobs.Messages;
 using Flowly.Jobs.Model;
@@ -24,7 +26,7 @@ public class RecurringJobHandlerBackgroundServiceTests
 
             await service.ExecuteAsync(CancellationToken.None);
 
-            Assert.Equal(JobQueuesNames.RecurringJobs, client.CapturedQueueName);
+            Assert.Equal("flowlysys-recurring-jobs", client.CapturedQueueName);
             Assert.Equal("test-session", client.CapturedSessionName);
         }
 
@@ -38,7 +40,7 @@ public class RecurringJobHandlerBackgroundServiceTests
 
             await service.ExecuteAsync(CancellationToken.None);
 
-            var message = Assert.Single(messageSender.SentMessages.OfType<CreateRecurringJobState>());
+            var message = Assert.Single(messageSender.SentMessages.OfType<FlowlysysCreateRecurringJobStateMessage>());
             Assert.Equal("test-session", message.JobTypeName);
             Assert.Equal("Test job description", message.Description);
             Assert.Equal("* * * * *", message.CronExpression);
@@ -68,6 +70,7 @@ public class RecurringJobHandlerBackgroundServiceTests
                 registry,
                 provider.GetRequiredService<IServiceScopeFactory>(),
                 settings,
+                new KebabCaseTopologyNameResolver(),
                 NullLogger<RecurringJobHandlerBackgroundService<CapturingRecurringJobHandler>>.Instance,
                 new FakeHandlerInstrumentation());
         }
@@ -83,7 +86,7 @@ public class RecurringJobHandlerBackgroundServiceTests
 
             await processor.SimulateMessage(MakeReceivedMessage(Guid.NewGuid()));
 
-            Assert.Contains(messageSender.SentMessages.OfType<UpdateJobState>(), m => m.JobState == JobState.Started);
+            Assert.Contains(messageSender.SentMessages.OfType<FlowlysysUpdateJobStateMessage>(), m => m.JobState == JobState.Started);
         }
 
         [Fact]
@@ -105,7 +108,7 @@ public class RecurringJobHandlerBackgroundServiceTests
 
             await processor.SimulateMessage(MakeReceivedMessage(Guid.NewGuid()));
 
-            Assert.Contains(messageSender.SentMessages.OfType<UpdateJobState>(), m => m.JobState == JobState.Completed);
+            Assert.Contains(messageSender.SentMessages.OfType<FlowlysysUpdateJobStateMessage>(), m => m.JobState == JobState.Completed);
         }
 
         [Fact]
@@ -129,7 +132,7 @@ public class RecurringJobHandlerBackgroundServiceTests
 
             await Assert.ThrowsAsync<JobException>(() => processor.SimulateMessage(MakeReceivedMessage(Guid.NewGuid())));
 
-            Assert.DoesNotContain(messageSender.SentMessages.OfType<UpdateJobState>(), m => m.JobState == JobState.Completed);
+            Assert.DoesNotContain(messageSender.SentMessages.OfType<FlowlysysUpdateJobStateMessage>(), m => m.JobState == JobState.Completed);
         }
 
         [Fact]
@@ -162,6 +165,7 @@ public class RecurringJobHandlerBackgroundServiceTests
                 new FakeMessageBusClientRegistry(client),
                 provider.GetRequiredService<IServiceScopeFactory>(),
                 MakeSettings(),
+                new KebabCaseTopologyNameResolver(),
                 NullLogger<RecurringJobHandlerBackgroundService<CapturingRecurringJobHandler>>.Instance,
                 instrumentation ?? new FakeHandlerInstrumentation());
 
@@ -183,7 +187,7 @@ public class RecurringJobHandlerBackgroundServiceTests
             var jobId = new JobId(Guid.NewGuid());
             await processor.SimulateError(new ErrorDetails(new JobException(jobId, new Exception("cause")), "endpoint"));
 
-            var message = Assert.Single(messageSender.SentMessages.OfType<JobFailed>());
+            var message = Assert.Single(messageSender.SentMessages.OfType<FlowlysysJobFailedMessage>());
             Assert.Equal(jobId, message.JobId);
         }
 
@@ -208,7 +212,7 @@ public class RecurringJobHandlerBackgroundServiceTests
 
             await processor.SimulateError(new ErrorDetails(new Exception("transport error"), "endpoint"));
 
-            Assert.Empty(messageSender.SentMessages.OfType<JobFailed>());
+            Assert.Empty(messageSender.SentMessages.OfType<FlowlysysJobFailedMessage>());
         }
 
         private static (TestableService service, FakeExecutionLaneProcessor processor, FakeMessageSender messageSender)
@@ -227,6 +231,7 @@ public class RecurringJobHandlerBackgroundServiceTests
                 new FakeMessageBusClientRegistry(client),
                 provider.GetRequiredService<IServiceScopeFactory>(),
                 MakeSettings(),
+                new KebabCaseTopologyNameResolver(),
                 NullLogger<RecurringJobHandlerBackgroundService<CapturingRecurringJobHandler>>.Instance,
                 instrumentation ?? new FakeHandlerInstrumentation());
 
@@ -272,6 +277,7 @@ public class RecurringJobHandlerBackgroundServiceTests
                 new FakeMessageBusClientRegistry(client),
                 provider.GetRequiredService<IServiceScopeFactory>(),
                 MakeSettings(),
+                new KebabCaseTopologyNameResolver(),
                 NullLogger<RecurringJobHandlerBackgroundService<CapturingRecurringJobHandler>>.Instance,
                 new FakeHandlerInstrumentation());
 
@@ -286,9 +292,10 @@ public class RecurringJobHandlerBackgroundServiceTests
         Flowly.MessageInfrastructure.Registration.IMessageBusClientRegistry clientRegistry,
         IServiceScopeFactory serviceScopeFactory,
         RecurringJobHandlerBackgroundService<CapturingRecurringJobHandler>.RecurringJobSettings settings,
+        ITopologyNameResolver topologyNameResolver,
         ILogger<RecurringJobHandlerBackgroundService<CapturingRecurringJobHandler>> logger,
         IHandlerInstrumentation handlerInstrumentation)
-        : RecurringJobHandlerBackgroundService<CapturingRecurringJobHandler>(clientRegistry, serviceScopeFactory, settings, logger, handlerInstrumentation)
+        : RecurringJobHandlerBackgroundService<CapturingRecurringJobHandler>(clientRegistry, serviceScopeFactory, settings, topologyNameResolver, logger, handlerInstrumentation)
     {
         public new Task ExecuteAsync(CancellationToken cancellationToken) => base.ExecuteAsync(cancellationToken);
         public new Task StopAsync(CancellationToken cancellationToken) => base.StopAsync(cancellationToken);

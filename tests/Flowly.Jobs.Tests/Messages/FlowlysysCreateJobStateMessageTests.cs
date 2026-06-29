@@ -3,7 +3,7 @@ using Flowly.Jobs.Model;
 
 namespace Flowly.Jobs.Tests.Messages;
 
-public class CreateJobStateTests
+public class FlowlysysCreateJobStateMessageTests
 {
     public class Constructor
     {
@@ -13,7 +13,7 @@ public class CreateJobStateTests
             var jobId = new JobId();
             var timeStamp = new DateTime(2026, 4, 19, 12, 0, 0, DateTimeKind.Utc);
 
-            var createJobState = new CreateJobState(jobId, "OrderJob", "Processing order", timeStamp);
+            var createJobState = new FlowlysysCreateJobStateMessage(jobId, "OrderJob", "Processing order", timeStamp);
 
             Assert.Equal(jobId, createJobState.JobId);
             Assert.Equal("OrderJob", createJobState.JobTypeName);
@@ -30,8 +30,8 @@ public class CreateJobStateTests
             var jobId = new JobId();
             var timeStamp = new DateTime(2026, 4, 19, 12, 0, 0, DateTimeKind.Utc);
 
-            var first = new CreateJobState(jobId, "OrderJob", "desc", timeStamp);
-            var second = new CreateJobState(jobId, "OrderJob", "desc", timeStamp);
+            var first = new FlowlysysCreateJobStateMessage(jobId, "OrderJob", "desc", timeStamp);
+            var second = new FlowlysysCreateJobStateMessage(jobId, "OrderJob", "desc", timeStamp);
 
             Assert.Equal(first, second);
         }
@@ -42,8 +42,8 @@ public class CreateJobStateTests
             var jobId = new JobId();
             var timeStamp = new DateTime(2026, 4, 19);
 
-            var first = new CreateJobState(jobId, "A", "desc", timeStamp);
-            var second = new CreateJobState(jobId, "B", "desc", timeStamp);
+            var first = new FlowlysysCreateJobStateMessage(jobId, "A", "desc", timeStamp);
+            var second = new FlowlysysCreateJobStateMessage(jobId, "B", "desc", timeStamp);
 
             Assert.NotEqual(first, second);
         }

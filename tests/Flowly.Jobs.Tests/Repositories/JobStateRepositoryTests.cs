@@ -8,7 +8,7 @@ namespace Flowly.Jobs.Tests.Repositories;
 
 public class JobStateRepositoryTests
 {
-    public class CreateJobState
+    public class FlowlysysCreateJobStateMessage
     {
         [Fact]
         public async Task StoresJobWithCorrectProperties()
@@ -19,7 +19,7 @@ public class JobStateRepositoryTests
             var typeName = UniqueTypeName();
             var created = DateTime.UtcNow;
 
-            await repository.CreateJobState(new Flowly.Jobs.Messages.CreateJobState(jobId, typeName, "My description", created));
+            await repository.CreateJobState(new Flowly.Jobs.Messages.FlowlysysCreateJobStateMessage(jobId, typeName, "My description", created));
 
             await using var context = await factory.CreateDbContextAsync();
             var job = await context.Jobs.SingleAsync(j => j.JobIdentifier == jobId.InnerId);
@@ -35,7 +35,7 @@ public class JobStateRepositoryTests
             var repository = new JobStateRepository(factory);
             var jobId = new JobId();
 
-            await repository.CreateJobState(new Flowly.Jobs.Messages.CreateJobState(jobId, UniqueTypeName(), "desc", DateTime.UtcNow));
+            await repository.CreateJobState(new Flowly.Jobs.Messages.FlowlysysCreateJobStateMessage(jobId, UniqueTypeName(), "desc", DateTime.UtcNow));
 
             await using var context = await factory.CreateDbContextAsync();
             var job = await context.Jobs.SingleAsync(j => j.JobIdentifier == jobId.InnerId);
@@ -49,7 +49,7 @@ public class JobStateRepositoryTests
             var repository = new JobStateRepository(factory);
             var typeName = UniqueTypeName();
 
-            await repository.CreateJobState(new Flowly.Jobs.Messages.CreateJobState(new JobId(), typeName, "desc", DateTime.UtcNow));
+            await repository.CreateJobState(new Flowly.Jobs.Messages.FlowlysysCreateJobStateMessage(new JobId(), typeName, "desc", DateTime.UtcNow));
 
             await using var context = await factory.CreateDbContextAsync();
             var jobType = await context.JobTypes.SingleOrDefaultAsync(t => t.Name == typeName);
@@ -63,8 +63,8 @@ public class JobStateRepositoryTests
             var repository = new JobStateRepository(factory);
             var typeName = UniqueTypeName();
 
-            await repository.CreateJobState(new Flowly.Jobs.Messages.CreateJobState(new JobId(), typeName, "desc", DateTime.UtcNow));
-            await repository.CreateJobState(new Flowly.Jobs.Messages.CreateJobState(new JobId(), typeName, "desc", DateTime.UtcNow));
+            await repository.CreateJobState(new Flowly.Jobs.Messages.FlowlysysCreateJobStateMessage(new JobId(), typeName, "desc", DateTime.UtcNow));
+            await repository.CreateJobState(new Flowly.Jobs.Messages.FlowlysysCreateJobStateMessage(new JobId(), typeName, "desc", DateTime.UtcNow));
 
             await using var context = await factory.CreateDbContextAsync();
             var count = await context.JobTypes.CountAsync(t => t.Name == typeName);
@@ -72,7 +72,7 @@ public class JobStateRepositoryTests
         }
     }
 
-    public class CreateRecurringJobState
+    public class FlowlysysCreateRecurringJobStateMessage
     {
         [Fact]
         public async Task WhenJobTypeDoesNotExist_CreatesNewRecurringJob()
@@ -83,7 +83,7 @@ public class JobStateRepositoryTests
             var typeName = UniqueTypeName();
 
             await repository.CreateRecurringJobState(
-                new Flowly.Jobs.Messages.CreateRecurringJobState(typeName, "Recurring desc", DateTime.UtcNow, "0 2 * * *"),
+                new Flowly.Jobs.Messages.FlowlysysCreateRecurringJobStateMessage(typeName, "Recurring desc", DateTime.UtcNow, "0 2 * * *"),
                 jobId);
 
             await using var context = await factory.CreateDbContextAsync();
@@ -102,13 +102,13 @@ public class JobStateRepositoryTests
 
             var originalJobId = new JobId();
             await repository.CreateRecurringJobState(
-                new Flowly.Jobs.Messages.CreateRecurringJobState(typeName, "desc", DateTime.UtcNow, "0 1 * * *"),
+                new Flowly.Jobs.Messages.FlowlysysCreateRecurringJobStateMessage(typeName, "desc", DateTime.UtcNow, "0 1 * * *"),
                 originalJobId);
 
             await SetJobStarted(factory, originalJobId);
 
             await repository.CreateRecurringJobState(
-                new Flowly.Jobs.Messages.CreateRecurringJobState(typeName, "desc", DateTime.UtcNow, "0 3 * * *"),
+                new Flowly.Jobs.Messages.FlowlysysCreateRecurringJobStateMessage(typeName, "desc", DateTime.UtcNow, "0 3 * * *"),
                 new JobId());
 
             await using var context = await factory.CreateDbContextAsync();
@@ -121,7 +121,7 @@ public class JobStateRepositoryTests
         }
     }
 
-    public class UpdateJobState
+    public class FlowlysysUpdateJobStateMessage
     {
         [Fact]
         public async Task WithStarted_SetsStartedTimestampAndRetryAttempt()
@@ -130,7 +130,7 @@ public class JobStateRepositoryTests
             var repository = new JobStateRepository(factory);
             var jobId = await SeedJob(factory);
 
-            await repository.UpdateJobState(new Flowly.Jobs.Messages.UpdateJobState(jobId, JobState.Started, DateTime.UtcNow, RetryAttempt: 2));
+            await repository.UpdateJobState(new Flowly.Jobs.Messages.FlowlysysUpdateJobStateMessage(jobId, JobState.Started, DateTime.UtcNow, RetryAttempt: 2));
 
             await using var context = await factory.CreateDbContextAsync();
             var job = await context.Jobs.SingleAsync(j => j.JobIdentifier == jobId.InnerId);
@@ -146,7 +146,7 @@ public class JobStateRepositoryTests
             var repository = new JobStateRepository(factory);
             var jobId = await SeedJob(factory, completed: DateTimeOffset.UtcNow);
 
-            await repository.UpdateJobState(new Flowly.Jobs.Messages.UpdateJobState(jobId, JobState.Started, DateTime.UtcNow));
+            await repository.UpdateJobState(new Flowly.Jobs.Messages.FlowlysysUpdateJobStateMessage(jobId, JobState.Started, DateTime.UtcNow));
 
             await using var context = await factory.CreateDbContextAsync();
             var job = await context.Jobs.SingleAsync(j => j.JobIdentifier == jobId.InnerId);
@@ -160,7 +160,7 @@ public class JobStateRepositoryTests
             var repository = new JobStateRepository(factory);
             var jobId = await SeedJob(factory);
 
-            await repository.UpdateJobState(new Flowly.Jobs.Messages.UpdateJobState(jobId, JobState.Completed, DateTime.UtcNow));
+            await repository.UpdateJobState(new Flowly.Jobs.Messages.FlowlysysUpdateJobStateMessage(jobId, JobState.Completed, DateTime.UtcNow));
 
             await using var context = await factory.CreateDbContextAsync();
             var job = await context.Jobs.SingleAsync(j => j.JobIdentifier == jobId.InnerId);
@@ -175,7 +175,7 @@ public class JobStateRepositoryTests
             var repository = new JobStateRepository(factory);
             var jobId = await SeedJob(factory, faultReason: "previous error");
 
-            await repository.UpdateJobState(new Flowly.Jobs.Messages.UpdateJobState(jobId, JobState.Completed, DateTime.UtcNow));
+            await repository.UpdateJobState(new Flowly.Jobs.Messages.FlowlysysUpdateJobStateMessage(jobId, JobState.Completed, DateTime.UtcNow));
 
             await using var context = await factory.CreateDbContextAsync();
             var job = await context.Jobs.SingleAsync(j => j.JobIdentifier == jobId.InnerId);
@@ -190,7 +190,7 @@ public class JobStateRepositoryTests
             var jobId = await SeedJob(factory);
 
             await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                repository.UpdateJobState(new Flowly.Jobs.Messages.UpdateJobState(jobId, JobState.Failed, DateTime.UtcNow)));
+                repository.UpdateJobState(new Flowly.Jobs.Messages.FlowlysysUpdateJobStateMessage(jobId, JobState.Failed, DateTime.UtcNow)));
         }
     }
 
@@ -203,7 +203,7 @@ public class JobStateRepositoryTests
             var repository = new JobStateRepository(factory);
             var jobId = await SeedJob(factory);
 
-            await repository.UpdateJobFailed(new Flowly.Jobs.Messages.JobFailed(jobId, "something broke", DateTime.UtcNow));
+            await repository.UpdateJobFailed(new Flowly.Jobs.Messages.FlowlysysJobFailedMessage(jobId, "something broke", DateTime.UtcNow));
 
             await using var context = await factory.CreateDbContextAsync();
             var job = await context.Jobs.SingleAsync(j => j.JobIdentifier == jobId.InnerId);
@@ -217,7 +217,7 @@ public class JobStateRepositoryTests
             var repository = new JobStateRepository(factory);
             var jobId = await SeedJob(factory);
 
-            await repository.UpdateJobFailed(new Flowly.Jobs.Messages.JobFailed(jobId, "something broke", DateTime.UtcNow));
+            await repository.UpdateJobFailed(new Flowly.Jobs.Messages.FlowlysysJobFailedMessage(jobId, "something broke", DateTime.UtcNow));
 
             await using var context = await factory.CreateDbContextAsync();
             var job = await context.Jobs.SingleAsync(j => j.JobIdentifier == jobId.InnerId);
@@ -231,7 +231,7 @@ public class JobStateRepositoryTests
             var repository = new JobStateRepository(factory);
             var jobId = await SeedJob(factory);
 
-            await repository.UpdateJobFailed(new Flowly.Jobs.Messages.JobFailed(jobId, "err", DateTime.UtcNow));
+            await repository.UpdateJobFailed(new Flowly.Jobs.Messages.FlowlysysJobFailedMessage(jobId, "err", DateTime.UtcNow));
 
             await using var context = await factory.CreateDbContextAsync();
             var job = await context.Jobs.SingleAsync(j => j.JobIdentifier == jobId.InnerId);
@@ -431,7 +431,7 @@ public class JobStateRepositoryTests
             var typeName = UniqueTypeName();
             var jobId = new JobId();
             await repository.CreateRecurringJobState(
-                new Flowly.Jobs.Messages.CreateRecurringJobState(typeName, "Recurring desc", DateTime.UtcNow, "0 6 * * *"),
+                new Flowly.Jobs.Messages.FlowlysysCreateRecurringJobStateMessage(typeName, "Recurring desc", DateTime.UtcNow, "0 6 * * *"),
                 jobId);
 
             var results = await repository.GetRecurringJobs();

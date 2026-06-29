@@ -7,5 +7,5 @@ internal interface ICustomJobStateRepository
 {
     Task CreateCustomJobState(JobId jobId);
     
-    Task UpdateJobCustomState(UpdateCustomJobState updateCustomJobState);
+    Task UpdateJobCustomState(FlowlysysUpdateJobCustomStateMessage flowlysysUpdateJobCustomStateMessage);
 }

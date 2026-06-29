@@ -22,14 +22,14 @@ internal class CustomJobStateRepository(IDbContextFactory<JobStateDataContext> j
         await context.SaveChangesAsync();
     }
     
-    public async Task UpdateJobCustomState(UpdateCustomJobState updateCustomJobState)
+    public async Task UpdateJobCustomState(FlowlysysUpdateJobCustomStateMessage flowlysysUpdateJobCustomStateMessage)
     {
         await using var context = await jobStateDataContextFactory.CreateDbContextAsync();
 
-        var jsonState = JsonSerializer.Serialize(updateCustomJobState.CustomState);
+        var jsonState = JsonSerializer.Serialize(flowlysysUpdateJobCustomStateMessage.CustomState);
 
         await context.CustomJobStates
-            .Where(x => x.JobIdentifier == updateCustomJobState.JobId.InnerId)
+            .Where(x => x.JobIdentifier == flowlysysUpdateJobCustomStateMessage.JobId.InnerId)
             .ExecuteUpdateAsync(x => x.SetProperty(y => y.CustomState, jsonState));
     }
 }

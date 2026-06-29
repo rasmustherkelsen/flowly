@@ -13,6 +13,10 @@ public abstract class SeparatedCaseTopologyNameResolver : ITopologyNameResolver
 {
     private readonly string _separator;
 
+    private readonly Dictionary<Type, string> _queueNameCache = new();
+
+    private readonly Dictionary<Type, string> _eventNameCache = new();
+
     /// <summary>
     ///     Initialises the resolver with the given word separator.
     /// </summary>
@@ -20,10 +24,7 @@ public abstract class SeparatedCaseTopologyNameResolver : ITopologyNameResolver
     ///     The string inserted between words when converting PascalCase type names to lowercase separated form
     ///     (e.g. <c>"-"</c> produces kebab-case, <c>"."</c> produces dot-case).
     /// </param>
-    protected SeparatedCaseTopologyNameResolver(string separator)
-    {
-        _separator = separator;
-    }
+    protected SeparatedCaseTopologyNameResolver(string separator) => _separator = separator;
 
     /// <summary>
     ///     Resolves the queue name for <typeparamref name="TMessage" />. Returns the value of
@@ -35,8 +36,14 @@ public abstract class SeparatedCaseTopologyNameResolver : ITopologyNameResolver
     /// <returns>The resolved queue name in lowercase separated form.</returns>
     public string ResolveQueueName<TMessage>()
     {
-        var attribute = typeof(TMessage).GetCustomAttribute<QueueNameAttribute>();
-        return attribute?.QueueName ?? DeriveName(typeof(TMessage).Name, "Message");
+        if (!_queueNameCache.TryGetValue(typeof(TMessage), out var name))
+        {
+            var attribute = typeof(TMessage).GetCustomAttribute<QueueNameAttribute>();
+            name = attribute?.QueueName ?? DeriveName(typeof(TMessage).Name, "Message");
+            _queueNameCache.Add(typeof(TMessage), name);
+        }
+
+        return name;
     }
 
     /// <summary>
@@ -49,8 +56,14 @@ public abstract class SeparatedCaseTopologyNameResolver : ITopologyNameResolver
     /// <returns>The resolved topic or exchange name in lowercase separated form.</returns>
     public string ResolveEventName<TEvent>()
     {
-        var attribute = typeof(TEvent).GetCustomAttribute<EventNameAttribute>();
-        return attribute?.Name ?? DeriveName(typeof(TEvent).Name, "Event");
+        if (!_eventNameCache.TryGetValue(typeof(TEvent), out var eventName))
+        {
+            var attribute = typeof(TEvent).GetCustomAttribute<EventNameAttribute>();
+            eventName = attribute?.Name ?? DeriveName(typeof(TEvent).Name, "Event");
+            _eventNameCache.Add(typeof(TEvent), eventName);
+        }
+
+        return eventName;
     }
 
     /// <summary>

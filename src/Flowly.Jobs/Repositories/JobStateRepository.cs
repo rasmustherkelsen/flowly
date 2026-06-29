@@ -12,17 +12,17 @@ internal class JobStateRepository(IDbContextFactory<JobStateDataContext> jobStat
 
     private static readonly SemaphoreSlim ReadSemaphore = new(1, 1);
 
-    public async Task CreateJobState(CreateJobState createJobState)
+    public async Task CreateJobState(FlowlysysCreateJobStateMessage flowlysysCreateJobStateMessage)
     {
         await using var context = await jobStateDataContextFactory.CreateDbContextAsync();
 
         var job = new Job
         {
-            JobIdentifier = createJobState.JobId.InnerId,
-            Created = createJobState.TimeStamp,
-            JobTypeId = await GetOrCreateJobTypeId(context, createJobState.JobTypeName),
-            JobTypeName =  createJobState.JobTypeName,
-            Description = createJobState.Description
+            JobIdentifier = flowlysysCreateJobStateMessage.JobId.InnerId,
+            Created = flowlysysCreateJobStateMessage.TimeStamp,
+            JobTypeId = await GetOrCreateJobTypeId(context, flowlysysCreateJobStateMessage.JobTypeName),
+            JobTypeName =  flowlysysCreateJobStateMessage.JobTypeName,
+            Description = flowlysysCreateJobStateMessage.Description
         };
 
         await context.Jobs.AddAsync(job);
@@ -30,16 +30,16 @@ internal class JobStateRepository(IDbContextFactory<JobStateDataContext> jobStat
         await context.SaveChangesAsync();
     }
 
-    public async Task CreateRecurringJobState(CreateRecurringJobState createRecurringJobState, JobId jobId)
+    public async Task CreateRecurringJobState(FlowlysysCreateRecurringJobStateMessage flowlysysCreateRecurringJobStateMessage, JobId jobId)
     {
         await using var context = await jobStateDataContextFactory.CreateDbContextAsync();
 
-        if (await context.Jobs.AnyAsync(x => x.JobType!.Name == createRecurringJobState.JobTypeName))
+        if (await context.Jobs.AnyAsync(x => x.JobType!.Name == flowlysysCreateRecurringJobStateMessage.JobTypeName))
         {
-            var cronExpression = createRecurringJobState.CronExpression;
+            var cronExpression = flowlysysCreateRecurringJobStateMessage.CronExpression;
 
             await context.Jobs
-                .Where(x => x.JobType!.Name == createRecurringJobState.JobTypeName)
+                .Where(x => x.JobType!.Name == flowlysysCreateRecurringJobStateMessage.JobTypeName)
                 .ExecuteUpdateAsync(x => x
                     .SetProperty(p => p.CronExpression, _ => cronExpression)
                     .SetProperty(p => p.Completed, _ => null)
@@ -52,12 +52,12 @@ internal class JobStateRepository(IDbContextFactory<JobStateDataContext> jobStat
         var job = new Job
         {
             JobIdentifier = jobId.InnerId,
-            Created = createRecurringJobState.TimeStamp,
-            JobTypeId = await GetOrCreateJobTypeId(context, createRecurringJobState.JobTypeName),
-            JobTypeName =  createRecurringJobState.JobTypeName,
-            Description = createRecurringJobState.Description,
+            Created = flowlysysCreateRecurringJobStateMessage.TimeStamp,
+            JobTypeId = await GetOrCreateJobTypeId(context, flowlysysCreateRecurringJobStateMessage.JobTypeName),
+            JobTypeName =  flowlysysCreateRecurringJobStateMessage.JobTypeName,
+            Description = flowlysysCreateRecurringJobStateMessage.Description,
             IsRecurringJob = true,
-            CronExpression = createRecurringJobState.CronExpression
+            CronExpression = flowlysysCreateRecurringJobStateMessage.CronExpression
         };
 
         await context.Jobs.AddAsync(job);
@@ -65,43 +65,43 @@ internal class JobStateRepository(IDbContextFactory<JobStateDataContext> jobStat
         await context.SaveChangesAsync();
     }
 
-    public async Task UpdateJobState(UpdateJobState updateJobState)
+    public async Task UpdateJobState(FlowlysysUpdateJobStateMessage flowlysysUpdateJobStateMessage)
     {
         await using var context = await jobStateDataContextFactory.CreateDbContextAsync();
 
-        var job = await ResilientGetJob(context, updateJobState.JobId);
+        var job = await ResilientGetJob(context, flowlysysUpdateJobStateMessage.JobId);
 
-        job.CurrentState = updateJobState.JobState;
+        job.CurrentState = flowlysysUpdateJobStateMessage.JobState;
 
-        switch (updateJobState.JobState)
+        switch (flowlysysUpdateJobStateMessage.JobState)
         {
             case JobState.Started:
-                job.Started = updateJobState.TimeStamp;
+                job.Started = flowlysysUpdateJobStateMessage.TimeStamp;
                 job.Completed = null;
-                job.RetryAttempt = updateJobState.RetryAttempt;
+                job.RetryAttempt = flowlysysUpdateJobStateMessage.RetryAttempt;
                 break;
 
             case JobState.Completed:
-                job.Completed = updateJobState.TimeStamp;
+                job.Completed = flowlysysUpdateJobStateMessage.TimeStamp;
                 job.FaultReason = null;
                 break;
 
             default:
-                throw new InvalidOperationException($"Unsupported JobState: {updateJobState.JobState}");
+                throw new InvalidOperationException($"Unsupported JobState: {flowlysysUpdateJobStateMessage.JobState}");
         }
 
         await context.SaveChangesAsync();
     }
 
-    public async Task UpdateJobFailed(JobFailed jobFailed)
+    public async Task UpdateJobFailed(FlowlysysJobFailedMessage flowlysysJobFailedMessage)
     {
         await using var context = await jobStateDataContextFactory.CreateDbContextAsync();
 
-        var faultReason = jobFailed.FaultReason;
-        DateTimeOffset? completedAt = jobFailed.TimeStamp;
+        var faultReason = flowlysysJobFailedMessage.FaultReason;
+        DateTimeOffset? completedAt = flowlysysJobFailedMessage.TimeStamp;
 
         await context.Jobs
-            .Where(x => x.JobIdentifier == jobFailed.JobId.InnerId)
+            .Where(x => x.JobIdentifier == flowlysysJobFailedMessage.JobId.InnerId)
             .ExecuteUpdateAsync(x => x
                 .SetProperty(p => p.CurrentState, _ => JobState.Failed)
                 .SetProperty(p => p.FaultReason, _ => faultReason)

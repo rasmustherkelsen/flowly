@@ -14,9 +14,9 @@ public class UpdateCustomJobStateHandlerTests
         {
             var customJobStateRepository = new FakeCustomJobStateRepository();
             var updateCustomJobStateHandler = new UpdateCustomJobStateHandler(customJobStateRepository);
-            var message = new UpdateCustomJobState(new JobId(), new { Progress = 50 });
+            var message = new FlowlysysUpdateJobCustomStateMessage(new JobId(), new { Progress = 50 });
 
-            await updateCustomJobStateHandler.Handle(new TestMessageContext<UpdateCustomJobState>(message));
+            await updateCustomJobStateHandler.Handle(new TestMessageContext<FlowlysysUpdateJobCustomStateMessage>(message));
 
             Assert.Single(customJobStateRepository.Updates);
             Assert.Same(message, customJobStateRepository.Updates[0]);

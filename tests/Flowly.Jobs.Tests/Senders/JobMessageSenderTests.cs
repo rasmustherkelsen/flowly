@@ -48,7 +48,7 @@ public class JobMessageSenderTests
 
             await jobMessageSender.StartRecurringJob(jobId);
 
-            var sentMessage = Assert.IsType<StartRecurringJobMessage>(Assert.Single(fakeMessageSender.SentMessages));
+            var sentMessage = Assert.IsType<FlowlysysStartRecurringJobMessage>(Assert.Single(fakeMessageSender.SentMessages));
             Assert.Equal(jobId, sentMessage.JobId);
         }
     }

@@ -21,17 +21,20 @@ internal class RecurringJobHandlerBackgroundService<TRecurringJobHandler> : Back
     private readonly RecurringJobSettings _settings;
     private IExecutionLaneProcessor? _executionLaneProcessor;
     private string _messagingSystem = string.Empty;
+    private readonly string _recurringJobQueueName;
 
     public RecurringJobHandlerBackgroundService(
         IMessageBusClientRegistry clientRegistry,
         IServiceScopeFactory serviceScopeFactory,
         RecurringJobSettings settings,
+        ITopologyNameResolver topologyNameResolver,
         ILogger<RecurringJobHandlerBackgroundService<TRecurringJobHandler>> logger,
         IHandlerInstrumentation handlerInstrumentation)
     {
         _clientRegistry = clientRegistry;
         _serviceScopeFactory = serviceScopeFactory;
         _settings = settings;
+        _recurringJobQueueName = topologyNameResolver.ResolveQueueName<FlowlysysRecurringJobsMessage>();
         _logger = logger;
         _handlerInstrumentation = handlerInstrumentation;
     }
@@ -41,15 +44,15 @@ internal class RecurringJobHandlerBackgroundService<TRecurringJobHandler> : Back
         // Recurring jobs always run on the primary provider
         var client = _clientRegistry.GetClient(_clientRegistry.PrimaryProviderName);
         _messagingSystem = client.MessagingSystem;
-
+        
         _executionLaneProcessor = await client.CreateExecutionLaneProcessor(
-            JobQueuesNames.RecurringJobs,
+            _recurringJobQueueName,
             _settings.SessionName,
             new MessageBusProcessorOptions(1, MessageBusReceiveMode.ReceiveAndDelete));
 
         await using var scope = _serviceScopeFactory.CreateAsyncScope();
         var messageSender = scope.ServiceProvider.GetRequiredService<IMessageSender>();
-        await messageSender.Send(new CreateRecurringJobState(_settings.SessionName, _settings.JobDescription, DateTime.UtcNow, _settings.CronExpression), stoppingToken);
+        await messageSender.Send(new FlowlysysCreateRecurringJobStateMessage(_settings.SessionName, _settings.JobDescription, DateTime.UtcNow, _settings.CronExpression), stoppingToken);
 
         _executionLaneProcessor.ProcessMessage += OnProcessMessage;
         _executionLaneProcessor.ProcessError += OnHandleError;
@@ -63,17 +66,17 @@ internal class RecurringJobHandlerBackgroundService<TRecurringJobHandler> : Back
     {
         _logger.LogInformation("Running scheduled job '{RecurringJobHandlerName}'", _handlerName);
 
-        _handlerInstrumentation.RecordReceived(_handlerName, JobQueuesNames.RecurringJobs);
+        _handlerInstrumentation.RecordReceived(_handlerName, _recurringJobQueueName);
         var sw = Stopwatch.StartNew();
         var parentContext = ActivityContextParser.Parse(receivedMessage.Properties);
-        using var activity = _handlerInstrumentation.StartHandling(_handlerName, JobQueuesNames.RecurringJobs, _messagingSystem, receivedMessage.Properties, parentContext);
+        using var activity = _handlerInstrumentation.StartHandling(_handlerName, _recurringJobQueueName, _messagingSystem, receivedMessage.Properties, parentContext);
 
         var jobId = new JobId(Guid.Parse(receivedMessage.Properties.MessageId));
 
         await using var scope = _serviceScopeFactory.CreateAsyncScope();
         var messageSender = scope.ServiceProvider.GetRequiredService<IMessageSender>();
 
-        await messageSender.Send(new UpdateJobState(jobId, JobState.Started, DateTime.UtcNow), cancellationToken);
+        await messageSender.Send(new FlowlysysUpdateJobStateMessage(jobId, JobState.Started, DateTime.UtcNow), cancellationToken);
 
         try
         {
@@ -85,20 +88,20 @@ internal class RecurringJobHandlerBackgroundService<TRecurringJobHandler> : Back
             throw new JobException(jobId, ex);
         }
 
-        await messageSender.Send(new UpdateJobState(jobId, JobState.Completed, DateTime.UtcNow), cancellationToken);
+        await messageSender.Send(new FlowlysysUpdateJobStateMessage(jobId, JobState.Completed, DateTime.UtcNow), cancellationToken);
 
-        _handlerInstrumentation.RecordSucceeded(_handlerName, JobQueuesNames.RecurringJobs, sw.Elapsed.TotalMilliseconds);
+        _handlerInstrumentation.RecordSucceeded(_handlerName, _recurringJobQueueName, sw.Elapsed.TotalMilliseconds);
     }
 
     private async Task OnHandleError(ErrorDetails errorDetails)
     {
         if (errorDetails.Exception is JobException jobException)
         {
-            _handlerInstrumentation.RecordFailed(_handlerName, JobQueuesNames.RecurringJobs);
+            _handlerInstrumentation.RecordFailed(_handlerName, _recurringJobQueueName);
 
             await using var scope = _serviceScopeFactory.CreateAsyncScope();
             var messageSender = scope.ServiceProvider.GetRequiredService<IMessageSender>();
-            await messageSender.Send(new JobFailed(jobException.JobId, jobException.InnerException?.Message ?? jobException.Message, DateTime.UtcNow));
+            await messageSender.Send(new FlowlysysJobFailedMessage(jobException.JobId, jobException.InnerException?.Message ?? jobException.Message, DateTime.UtcNow));
         }
     }
 
