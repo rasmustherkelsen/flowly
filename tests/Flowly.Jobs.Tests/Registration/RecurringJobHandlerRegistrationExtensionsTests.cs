@@ -78,7 +78,7 @@ public class RecurringJobHandlerRegistrationExtensionsTests
 
             builder.AddRecurringJob<SomeRecurringJob>();
 
-            Assert.Contains(manifest.Queues, q => q.QueueName == JobQueuesNames.RecurringJobs && q.RequiresSession);
+            Assert.Contains(manifest.Queues, q => q.QueueName == "flowlysys-recurring-jobs" && q.RequiresSession);
         }
     }
 

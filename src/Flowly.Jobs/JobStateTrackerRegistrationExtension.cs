@@ -55,13 +55,13 @@ public static class JobStateTrackerRegistrationExtension
                 .AddScoped<IRecurringJobInvoker, RecurringJobInvoker>();
 
             flowlyBuilder
-                .AddMessageHandler<CreateJobState, CreateJobStateHandler>()
-                .AddMessageHandler<UpdateJobState, UpdateJobStateHandler>()
-                .AddMessageHandler<UpdateCustomJobState, UpdateCustomJobStateHandler>()
-                .AddMessageHandler<JobFailed, JobFailedHandler>()
-                .AddMessageHandler<StartRecurringJobMessage, StartRecurringJobMessageHandler>()
-                .AddMessageHandler<CreateRecurringJobState, CreateRecurringJobStateHandler>()
-                .AddMessageHandler<JobIsAlive, JobIsAliveMessageHandler>();
+                .AddMessageHandler<FlowlysysCreateJobStateMessage, CreateJobStateHandler>()
+                .AddMessageHandler<FlowlysysUpdateJobStateMessage, UpdateJobStateHandler>()
+                .AddMessageHandler<FlowlysysUpdateJobCustomStateMessage, UpdateCustomJobStateHandler>()
+                .AddMessageHandler<FlowlysysJobFailedMessage, JobFailedHandler>()
+                .AddMessageHandler<FlowlysysStartRecurringJobMessage, StartRecurringJobMessageHandler>()
+                .AddMessageHandler<FlowlysysCreateRecurringJobStateMessage, CreateRecurringJobStateHandler>()
+                .AddMessageHandler<FlowlysysJobIsAliveMessage, JobIsAliveMessageHandler>();
         }
 
         return flowlyBuilder;

@@ -3,7 +3,7 @@ using Flowly.Jobs.Model;
 
 namespace Flowly.Jobs.Tests.Messages;
 
-public class UpdateJobStateTests
+public class FlowlysysUpdateJobStateMessageTests
 {
     public class Constructor
     {
@@ -13,7 +13,7 @@ public class UpdateJobStateTests
             var jobId = new JobId();
             var timeStamp = new DateTime(2026, 4, 19, 12, 0, 0, DateTimeKind.Utc);
 
-            var updateJobState = new UpdateJobState(jobId, JobState.Started, timeStamp);
+            var updateJobState = new FlowlysysUpdateJobStateMessage(jobId, JobState.Started, timeStamp);
 
             Assert.Equal(jobId, updateJobState.JobId);
             Assert.Equal(JobState.Started, updateJobState.JobState);
@@ -26,7 +26,7 @@ public class UpdateJobStateTests
         {
             var jobId = new JobId();
 
-            var updateJobState = new UpdateJobState(jobId, JobState.Failed, DateTime.UtcNow, RetryAttempt: 3);
+            var updateJobState = new FlowlysysUpdateJobStateMessage(jobId, JobState.Failed, DateTime.UtcNow, RetryAttempt: 3);
 
             Assert.Equal(3, updateJobState.RetryAttempt);
         }
@@ -40,8 +40,8 @@ public class UpdateJobStateTests
             var jobId = new JobId();
             var timeStamp = new DateTime(2026, 4, 19);
 
-            var first = new UpdateJobState(jobId, JobState.Completed, timeStamp, 2);
-            var second = new UpdateJobState(jobId, JobState.Completed, timeStamp, 2);
+            var first = new FlowlysysUpdateJobStateMessage(jobId, JobState.Completed, timeStamp, 2);
+            var second = new FlowlysysUpdateJobStateMessage(jobId, JobState.Completed, timeStamp, 2);
 
             Assert.Equal(first, second);
         }

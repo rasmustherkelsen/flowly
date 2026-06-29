@@ -86,7 +86,7 @@ Registered in `Program.cs` via `builder.AddFlowly<MyConfig>()` or auto-discovery
 
 ### Queue Names
 
-Owned by the **message contract**, not the handler. Auto-generated: PascalCase → kebab-case, trailing `Message` stripped (`SomeQueryMessage` → `some-query`). Override with `[QueueName("name")]` on the message type.
+Owned by the **message contract**, not the handler. Auto-generated using the active `ITopologyNameResolver`. The default is `KebabCaseTopologyNameResolver` (PascalCase → kebab-case, trailing `Message` stripped: `SomeQueryMessage` → `some-query`). RabbitMQ project templates automatically register `DotCaseTopologyNameResolver` instead (`SomeQueryMessage` → `some.query`). Override a specific name with `[QueueName("name")]` on the message type.
 
 ### Sending
 

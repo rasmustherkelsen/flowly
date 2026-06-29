@@ -3,8 +3,8 @@ using Flowly.Jobs.Repositories;
 
 namespace Flowly.Jobs.MessageHandlers;
 
-internal class JobFailedHandler(IJobStateRepository jobStateRepository) : MessageHandler<JobFailed>
+internal class JobFailedHandler(IJobStateRepository jobStateRepository) : MessageHandler<FlowlysysJobFailedMessage>
 {
-    public override async Task Handle(IMessageContext<JobFailed> jobFailed)
+    public override async Task Handle(IMessageContext<FlowlysysJobFailedMessage> jobFailed)
         => await jobStateRepository.UpdateJobFailed(jobFailed.Message);
 }

@@ -14,9 +14,9 @@ public class JobFailedHandlerTests
         {
             var jobStateRepository = new FakeJobStateRepository();
             var jobFailedHandler = new JobFailedHandler(jobStateRepository);
-            var message = new JobFailed(new JobId(), "something broke", DateTime.UtcNow);
+            var message = new FlowlysysJobFailedMessage(new JobId(), "something broke", DateTime.UtcNow);
 
-            await jobFailedHandler.Handle(new TestMessageContext<JobFailed>(message));
+            await jobFailedHandler.Handle(new TestMessageContext<FlowlysysJobFailedMessage>(message));
 
             Assert.Single(jobStateRepository.FailedJobs);
             Assert.Same(message, jobStateRepository.FailedJobs[0]);

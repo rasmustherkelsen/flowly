@@ -109,6 +109,8 @@ MyApp/
 └── App/                 ← single worker; sends and receives in-process (+ DB tracking when --jobs / --deadletter)
 ```
 
+For RabbitMQ, each project's `Program.cs` automatically registers `DotCaseTopologyNameResolver` (dot-case naming is idiomatic in RabbitMQ, e.g. `process.order`). For ASB and InMemory, the default `KebabCaseTopologyNameResolver` (e.g. `process-order`) is used.
+
 After scaffolding, start the local infrastructure (RabbitMQ or ASB only, skip for SQLite):
 
 ```bash

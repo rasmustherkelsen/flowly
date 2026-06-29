@@ -10,6 +10,9 @@ using Flowly.AzureServiceBus;
 using Flowly.InMemory;
 #endif
 #endif
+#if (UseRabbitMQ)
+using Flowly.MessageInfrastructure;
+#endif
 #if (UseOpenTelemetry)
 using Flowly.OpenTelemetry;
 #endif
@@ -27,7 +30,11 @@ var builder = WebApplication.CreateBuilder(args);
 #endif
 
 #if (UseInline)
-#if (UseOpenTelemetry)
+#if (UseRabbitMQ && UseOpenTelemetry)
+builder.AddFlowly(options => { options.WithTopologyNameResolver<DotCaseTopologyNameResolver>(); options.EnableTelemetry = true; }, flowlyBuilder =>
+#elif (UseRabbitMQ)
+builder.AddFlowly(options => options.WithTopologyNameResolver<DotCaseTopologyNameResolver>(), flowlyBuilder =>
+#elif (UseOpenTelemetry)
 builder.AddFlowly(options => options.EnableTelemetry = true, flowlyBuilder =>
 #else
 builder.AddFlowly(flowlyBuilder =>
@@ -68,7 +75,11 @@ builder.AddFlowly(flowlyBuilder =>
 #endif
 });
 #else
-#if (UseOpenTelemetry)
+#if (UseRabbitMQ && UseOpenTelemetry)
+builder.AddFlowly<FlowlyConfiguration>(options => { options.WithTopologyNameResolver<DotCaseTopologyNameResolver>(); options.EnableTelemetry = true; });
+#elif (UseRabbitMQ)
+builder.AddFlowly<FlowlyConfiguration>(options => options.WithTopologyNameResolver<DotCaseTopologyNameResolver>());
+#elif (UseOpenTelemetry)
 builder.AddFlowly<FlowlyConfiguration>(options => options.EnableTelemetry = true);
 #else
 builder.AddFlowly<FlowlyConfiguration>();

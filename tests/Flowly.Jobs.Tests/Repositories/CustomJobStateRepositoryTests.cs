@@ -38,7 +38,7 @@ public class CustomJobStateRepositoryTests
             await repository.CreateCustomJobState(jobId);
 
             var state = new { Progress = 42, Status = "running" };
-            await repository.UpdateJobCustomState(new UpdateCustomJobState(jobId, state));
+            await repository.UpdateJobCustomState(new FlowlysysUpdateJobCustomStateMessage(jobId, state));
 
             await using var context = await factory.CreateDbContextAsync();
             var record = await context.CustomJobStates.SingleAsync(s => s.JobIdentifier == jobId.InnerId);
@@ -54,9 +54,9 @@ public class CustomJobStateRepositoryTests
             var repository = new CustomJobStateRepository(factory);
             var jobId = new JobId();
             await repository.CreateCustomJobState(jobId);
-            await repository.UpdateJobCustomState(new UpdateCustomJobState(jobId, new { Step = 1 }));
+            await repository.UpdateJobCustomState(new FlowlysysUpdateJobCustomStateMessage(jobId, new { Step = 1 }));
 
-            await repository.UpdateJobCustomState(new UpdateCustomJobState(jobId, new { Step = 2 }));
+            await repository.UpdateJobCustomState(new FlowlysysUpdateJobCustomStateMessage(jobId, new { Step = 2 }));
 
             await using var context = await factory.CreateDbContextAsync();
             var records = await context.CustomJobStates.Where(s => s.JobIdentifier == jobId.InnerId).ToListAsync();

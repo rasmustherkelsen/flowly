@@ -6,13 +6,13 @@ namespace Flowly.Jobs.Repositories;
 
 internal interface IJobStateRepository
 {
-    Task CreateJobState(CreateJobState createJobState);
+    Task CreateJobState(FlowlysysCreateJobStateMessage flowlysysCreateJobStateMessage);
 
-    Task CreateRecurringJobState(CreateRecurringJobState createRecurringJobState, JobId jobId);
+    Task CreateRecurringJobState(FlowlysysCreateRecurringJobStateMessage flowlysysCreateRecurringJobStateMessage, JobId jobId);
 
-    Task UpdateJobState(UpdateJobState updateJobState);
+    Task UpdateJobState(FlowlysysUpdateJobStateMessage flowlysysUpdateJobStateMessage);
 
-    Task UpdateJobFailed(JobFailed jobFailed);
+    Task UpdateJobFailed(FlowlysysJobFailedMessage flowlysysJobFailedMessage);
 
     Task RemoveCompletedJobsOlderThan(TimeSpan age);
 

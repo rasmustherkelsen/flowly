@@ -29,7 +29,7 @@ public class JobMessageHandlingStrategyTests
 
             await jobMessageHandlingStrategy.HandleMessage(receivedMessage, serviceProvider, CancellationToken.None);
 
-            var updates = fakeMessageSender.SentMessages.OfType<UpdateJobState>().ToList();
+            var updates = fakeMessageSender.SentMessages.OfType<FlowlysysUpdateJobStateMessage>().ToList();
             Assert.Equal(2, updates.Count);
             Assert.Equal(JobState.Started, updates[0].JobState);
             Assert.Equal(jobId, updates[0].JobId.InnerId);
@@ -74,7 +74,7 @@ public class JobMessageHandlingStrategyTests
 
             await jobMessageHandlingStrategy.HandleMessage(receivedMessage, serviceProvider, CancellationToken.None);
 
-            var startedUpdate = fakeMessageSender.SentMessages.OfType<UpdateJobState>().First();
+            var startedUpdate = fakeMessageSender.SentMessages.OfType<FlowlysysUpdateJobStateMessage>().First();
             Assert.Equal(4, startedUpdate.RetryAttempt);
         }
 
@@ -118,7 +118,7 @@ public class JobMessageHandlingStrategyTests
             await Assert.ThrowsAsync<JobException>(
                 () => jobMessageHandlingStrategy.HandleMessage(receivedMessage, serviceProvider, CancellationToken.None));
 
-            Assert.DoesNotContain(fakeMessageSender.SentMessages.OfType<UpdateJobState>(), u => u.JobState == JobState.Completed);
+            Assert.DoesNotContain(fakeMessageSender.SentMessages.OfType<FlowlysysUpdateJobStateMessage>(), u => u.JobState == JobState.Completed);
         }
 
         [Fact]
@@ -174,7 +174,7 @@ public class JobMessageHandlingStrategyTests
 
             await jobMessageHandlingStrategy.OnRetriesExhausted(receivedMessage, jobException, serviceProvider, CancellationToken.None);
 
-            var jobFailed = fakeMessageSender.SentMessages.OfType<JobFailed>().Single();
+            var jobFailed = fakeMessageSender.SentMessages.OfType<FlowlysysJobFailedMessage>().Single();
             Assert.Equal(jobId, jobFailed.JobId);
             Assert.Equal("inner reason", jobFailed.FaultReason);
         }
@@ -195,7 +195,7 @@ public class JobMessageHandlingStrategyTests
 
             await jobMessageHandlingStrategy.OnRetriesExhausted(receivedMessage, jobException, serviceProvider, CancellationToken.None);
 
-            var jobFailed = fakeMessageSender.SentMessages.OfType<JobFailed>().Single();
+            var jobFailed = fakeMessageSender.SentMessages.OfType<FlowlysysJobFailedMessage>().Single();
             Assert.Null(jobException.InnerException);
             Assert.Equal(jobException.Message, jobFailed.FaultReason);
         }
@@ -219,7 +219,7 @@ public class JobMessageHandlingStrategyTests
                 serviceProvider,
                 CancellationToken.None);
 
-            var jobFailed = fakeMessageSender.SentMessages.OfType<JobFailed>().Single();
+            var jobFailed = fakeMessageSender.SentMessages.OfType<FlowlysysJobFailedMessage>().Single();
             Assert.Equal(jobId, jobFailed.JobId.InnerId);
             Assert.Equal("raw failure", jobFailed.FaultReason);
         }

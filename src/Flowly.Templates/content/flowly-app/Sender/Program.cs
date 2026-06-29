@@ -1,6 +1,9 @@
 using Flowly;
 using Sender;
 using Sender.Services;
+#if (UseRabbitMQ)
+using Flowly.MessageInfrastructure;
+#endif
 #if (UseOpenTelemetry)
 using Flowly.OpenTelemetry;
 #endif
@@ -11,9 +14,9 @@ using OpenTelemetry;
 var builder = WebApplication.CreateBuilder(args);
 
 #if (UseRabbitMQ && UseOpenTelemetry)
-builder.AddFlowly<FlowlyConfiguration>(options => { options.CreateTopology = true; options.EnableTelemetry = true; });
+builder.AddFlowly<FlowlyConfiguration>(options => { options.CreateTopology = true; options.WithTopologyNameResolver<DotCaseTopologyNameResolver>(); options.EnableTelemetry = true; });
 #elif (UseRabbitMQ)
-builder.AddFlowly<FlowlyConfiguration>(options => options.CreateTopology = true);
+builder.AddFlowly<FlowlyConfiguration>(options => { options.CreateTopology = true; options.WithTopologyNameResolver<DotCaseTopologyNameResolver>(); });
 #elif (UseOpenTelemetry)
 builder.AddFlowly<FlowlyConfiguration>(options => { options.CreateTopology = false; options.EnableTelemetry = true; });
 #else

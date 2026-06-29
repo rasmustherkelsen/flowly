@@ -47,7 +47,7 @@ public class JobMessageContextTests
 
             await jobMessageContext.SaveState(customState);
 
-            var sentMessage = Assert.IsType<UpdateCustomJobState>(Assert.Single(fakeMessageSender.SentMessages));
+            var sentMessage = Assert.IsType<FlowlysysUpdateJobCustomStateMessage>(Assert.Single(fakeMessageSender.SentMessages));
             Assert.Equal(jobId, sentMessage.JobId);
             Assert.Same(customState, sentMessage.CustomState);
         }

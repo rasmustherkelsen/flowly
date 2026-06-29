@@ -14,7 +14,7 @@ internal class JobSubmitter<TMessage>(
     public async Task<JobId> SubmitJob(TMessage message, CancellationToken cancellationToken = default)
     {
         var jobId = new JobId(Guid.NewGuid());
-        var createJobState = new CreateJobState(jobId, message.JobTypeName, message.Description, DateTime.UtcNow);
+        var createJobState = new FlowlysysCreateJobStateMessage(jobId, message.JobTypeName, message.Description, DateTime.UtcNow);
 
         await messageSender.Send(createJobState, cancellationToken);
 

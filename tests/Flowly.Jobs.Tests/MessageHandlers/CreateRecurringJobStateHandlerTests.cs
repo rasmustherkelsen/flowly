@@ -14,9 +14,9 @@ public class CreateRecurringJobStateHandlerTests
             var jobStateRepository = new FakeJobStateRepository();
             var customJobStateRepository = new FakeCustomJobStateRepository();
             var createRecurringJobStateHandler = new CreateRecurringJobStateHandler(jobStateRepository, customJobStateRepository);
-            var message = new CreateRecurringJobState("JobType", "Description", DateTime.UtcNow, "* * * * *");
+            var message = new FlowlysysCreateRecurringJobStateMessage("JobType", "Description", DateTime.UtcNow, "* * * * *");
 
-            await createRecurringJobStateHandler.Handle(new TestMessageContext<CreateRecurringJobState>(message));
+            await createRecurringJobStateHandler.Handle(new TestMessageContext<FlowlysysCreateRecurringJobStateMessage>(message));
 
             Assert.Single(jobStateRepository.CreatedRecurringJobStates);
             Assert.Single(customJobStateRepository.CreatedFor);
@@ -29,9 +29,9 @@ public class CreateRecurringJobStateHandlerTests
             var jobStateRepository = new FakeJobStateRepository();
             var customJobStateRepository = new FakeCustomJobStateRepository();
             var createRecurringJobStateHandler = new CreateRecurringJobStateHandler(jobStateRepository, customJobStateRepository);
-            var message = new CreateRecurringJobState("JobType", "Description", DateTime.UtcNow, "* * * * *");
+            var message = new FlowlysysCreateRecurringJobStateMessage("JobType", "Description", DateTime.UtcNow, "* * * * *");
 
-            await createRecurringJobStateHandler.Handle(new TestMessageContext<CreateRecurringJobState>(message));
+            await createRecurringJobStateHandler.Handle(new TestMessageContext<FlowlysysCreateRecurringJobStateMessage>(message));
 
             Assert.Same(message, jobStateRepository.CreatedRecurringJobStates[0].Message);
         }

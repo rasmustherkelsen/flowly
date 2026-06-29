@@ -25,16 +25,18 @@ public static class RecurringJobHandlerRegistrationExtensions
     /// <param name="flowlyBuilder">The Flowly builder to register the recurring job with.</param>
     /// <typeparam name="TRecurringJob">The recurring job handler type. Must inherit <see cref="RecurringJobHandler" />.</typeparam>
     /// <returns>The same <see cref="IFlowlyBuilder" /> instance for further configuration.</returns>
-    public static IFlowlyBuilder AddRecurringJob<TRecurringJob>(
-        this IFlowlyBuilder flowlyBuilder) where TRecurringJob : RecurringJobHandler
+    public static IFlowlyBuilder AddRecurringJob<TRecurringJob>(this IFlowlyBuilder flowlyBuilder) where TRecurringJob : RecurringJobHandler
     {
         var resolvedOptions = RecurringJobHandlerOptionsResolver.Resolve<TRecurringJob>();
-
-        var primaryProviderName = ProviderNameResolver.GetRegistry(flowlyBuilder.Services).PrimaryProviderName;
-
+        
         using var serviceProvider = flowlyBuilder.Services.BuildServiceProvider();
         var queueRegistrar = serviceProvider.GetRequiredService<IQueueRegistrar>();
-        queueRegistrar.Register(flowlyBuilder.Services, JobQueuesNames.RecurringJobs, true, primaryProviderName);
+        
+        queueRegistrar.Register(
+            flowlyBuilder.Services, 
+            flowlyBuilder.TopologyNameResolver.ResolveQueueName<FlowlysysRecurringJobsMessage>(), 
+            true, 
+            ProviderNameResolver.GetRegistry(flowlyBuilder.Services).PrimaryProviderName);
 
         flowlyBuilder.Services
             .AddSingleton(new RecurringJobHandlerBackgroundService<TRecurringJob>.RecurringJobSettings(
@@ -44,7 +46,7 @@ public static class RecurringJobHandlerRegistrationExtensions
             .AddHostedService<RecurringJobHandlerBackgroundService<TRecurringJob>>()
             .AddScoped<TRecurringJob>();
 
-        flowlyBuilder.AddMessageSubmitter<CreateRecurringJobState>();
+        flowlyBuilder.AddMessageSubmitter<FlowlysysCreateRecurringJobStateMessage>();
         flowlyBuilder.AddJobStateSubmitters();
 
         return flowlyBuilder;

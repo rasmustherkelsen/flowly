@@ -3,7 +3,7 @@ using Flowly.Jobs.Model;
 
 namespace Flowly.Jobs.Tests.Messages;
 
-public class JobFailedTests
+public class FlowlysysJobFailedMessageTests
 {
     public class Constructor
     {
@@ -13,7 +13,7 @@ public class JobFailedTests
             var jobId = new JobId();
             var timeStamp = new DateTime(2026, 4, 19);
 
-            var jobFailed = new JobFailed(jobId, "handler threw", timeStamp);
+            var jobFailed = new FlowlysysJobFailedMessage(jobId, "handler threw", timeStamp);
 
             Assert.Equal(jobId, jobFailed.JobId);
             Assert.Equal("handler threw", jobFailed.FaultReason);
@@ -29,8 +29,8 @@ public class JobFailedTests
             var jobId = new JobId();
             var timeStamp = new DateTime(2026, 4, 19);
 
-            var first = new JobFailed(jobId, "reason a", timeStamp);
-            var second = new JobFailed(jobId, "reason b", timeStamp);
+            var first = new FlowlysysJobFailedMessage(jobId, "reason a", timeStamp);
+            var second = new FlowlysysJobFailedMessage(jobId, "reason b", timeStamp);
 
             Assert.NotEqual(first, second);
         }

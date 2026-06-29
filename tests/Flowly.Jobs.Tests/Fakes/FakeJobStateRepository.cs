@@ -7,10 +7,10 @@ namespace Flowly.Jobs.Tests.Fakes;
 
 internal class FakeJobStateRepository : IJobStateRepository
 {
-    public List<CreateJobState> CreatedJobStates { get; } = [];
-    public List<(CreateRecurringJobState Message, JobId JobId)> CreatedRecurringJobStates { get; } = [];
-    public List<UpdateJobState> UpdatedJobStates { get; } = [];
-    public List<JobFailed> FailedJobs { get; } = [];
+    public List<FlowlysysCreateJobStateMessage> CreatedJobStates { get; } = [];
+    public List<(FlowlysysCreateRecurringJobStateMessage Message, JobId JobId)> CreatedRecurringJobStates { get; } = [];
+    public List<FlowlysysUpdateJobStateMessage> UpdatedJobStates { get; } = [];
+    public List<FlowlysysJobFailedMessage> FailedJobs { get; } = [];
     public List<TimeSpan> CompletedJobsRemovedOlderThan { get; } = [];
     public List<TimeSpan> FailedJobsRemovedOlderThan { get; } = [];
     public List<TimeSpan> UncompletedFailedOlderThan { get; } = [];
@@ -20,27 +20,27 @@ internal class FakeJobStateRepository : IJobStateRepository
     public IReadOnlyCollection<JobInfo> JobInfosToReturn { get; set; } = [];
     public Action? OnGetRecurringJobsCalled { get; set; }
 
-    public Task CreateJobState(CreateJobState createJobState)
+    public Task CreateJobState(FlowlysysCreateJobStateMessage flowlysysCreateJobStateMessage)
     {
-        CreatedJobStates.Add(createJobState);
+        CreatedJobStates.Add(flowlysysCreateJobStateMessage);
         return Task.CompletedTask;
     }
 
-    public Task CreateRecurringJobState(CreateRecurringJobState createRecurringJobState, JobId jobId)
+    public Task CreateRecurringJobState(FlowlysysCreateRecurringJobStateMessage flowlysysCreateRecurringJobStateMessage, JobId jobId)
     {
-        CreatedRecurringJobStates.Add((createRecurringJobState, jobId));
+        CreatedRecurringJobStates.Add((flowlysysCreateRecurringJobStateMessage, jobId));
         return Task.CompletedTask;
     }
 
-    public Task UpdateJobState(UpdateJobState updateJobState)
+    public Task UpdateJobState(FlowlysysUpdateJobStateMessage flowlysysUpdateJobStateMessage)
     {
-        UpdatedJobStates.Add(updateJobState);
+        UpdatedJobStates.Add(flowlysysUpdateJobStateMessage);
         return Task.CompletedTask;
     }
 
-    public Task UpdateJobFailed(JobFailed jobFailed)
+    public Task UpdateJobFailed(FlowlysysJobFailedMessage flowlysysJobFailedMessage)
     {
-        FailedJobs.Add(jobFailed);
+        FailedJobs.Add(flowlysysJobFailedMessage);
         return Task.CompletedTask;
     }
 

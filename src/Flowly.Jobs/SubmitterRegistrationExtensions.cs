@@ -15,12 +15,12 @@ public static class SubmitterRegistrationExtensions
         internal IFlowlyBuilder AddJobStateSubmitters()
         {
             flowlyBuilder
-                .AddMessageSubmitter<CreateJobState>()
-                .AddMessageSubmitter<UpdateJobState>()
-                .AddMessageSubmitter<JobFailed>()
-                .AddMessageSubmitter<UpdateCustomJobState>()
-                .AddMessageSubmitter<StartRecurringJobMessage>()
-                .AddMessageSubmitter<JobIsAlive>();
+                .AddMessageSubmitter<FlowlysysCreateJobStateMessage>()
+                .AddMessageSubmitter<FlowlysysUpdateJobStateMessage>()
+                .AddMessageSubmitter<FlowlysysJobFailedMessage>()
+                .AddMessageSubmitter<FlowlysysUpdateJobCustomStateMessage>()
+                .AddMessageSubmitter<FlowlysysStartRecurringJobMessage>()
+                .AddMessageSubmitter<FlowlysysJobIsAliveMessage>();
 
             return flowlyBuilder;
         }

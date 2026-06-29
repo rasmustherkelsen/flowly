@@ -14,6 +14,6 @@ internal class JobMessageSender(IServiceProvider serviceProvider, IMessageSender
 
     public async Task StartRecurringJob(Guid jobId)
     {
-        await messageSender.Send(new StartRecurringJobMessage(jobId));
+        await messageSender.Send(new FlowlysysStartRecurringJobMessage(jobId));
     }
 }

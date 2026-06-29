@@ -34,7 +34,7 @@ public class JobSubmitterTests
 
             await jobSubmitter.SubmitJob(new SomeJobMessage());
 
-            var createJobState = Assert.IsType<CreateJobState>(Assert.Single(fakeMessageSender.SentMessages));
+            var createJobState = Assert.IsType<FlowlysysCreateJobStateMessage>(Assert.Single(fakeMessageSender.SentMessages));
             Assert.Equal("SomeJob", createJobState.JobTypeName);
             Assert.Equal("some description", createJobState.Description);
         }
@@ -83,7 +83,7 @@ public class JobSubmitterTests
 
             var jobId = await jobSubmitter.SubmitJob(new SomeJobMessage());
 
-            var createJobState = (CreateJobState)fakeMessageSender.SentMessages[0];
+            var createJobState = (FlowlysysCreateJobStateMessage)fakeMessageSender.SentMessages[0];
             Assert.Equal(jobId, createJobState.JobId);
         }
     }

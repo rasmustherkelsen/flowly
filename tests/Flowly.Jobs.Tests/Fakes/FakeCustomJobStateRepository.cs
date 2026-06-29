@@ -7,7 +7,7 @@ namespace Flowly.Jobs.Tests.Fakes;
 internal class FakeCustomJobStateRepository : ICustomJobStateRepository
 {
     public List<JobId> CreatedFor { get; } = [];
-    public List<UpdateCustomJobState> Updates { get; } = [];
+    public List<FlowlysysUpdateJobCustomStateMessage> Updates { get; } = [];
 
     public Task CreateCustomJobState(JobId jobId)
     {
@@ -15,9 +15,9 @@ internal class FakeCustomJobStateRepository : ICustomJobStateRepository
         return Task.CompletedTask;
     }
 
-    public Task UpdateJobCustomState(UpdateCustomJobState updateCustomJobState)
+    public Task UpdateJobCustomState(FlowlysysUpdateJobCustomStateMessage flowlysysUpdateJobCustomStateMessage)
     {
-        Updates.Add(updateCustomJobState);
+        Updates.Add(flowlysysUpdateJobCustomStateMessage);
         return Task.CompletedTask;
     }
 }

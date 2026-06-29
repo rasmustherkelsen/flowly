@@ -17,9 +17,9 @@ public class CreateJobStateHandlerTests
             var customJobStateRepository = new FakeCustomJobStateRepository();
             var createJobStateHandler = new CreateJobStateHandler(jobStateRepository, jobAliveStatusRepository, customJobStateRepository);
             var jobId = new JobId();
-            var message = new CreateJobState(jobId, "JobType", "Description", DateTime.UtcNow);
+            var message = new FlowlysysCreateJobStateMessage(jobId, "JobType", "Description", DateTime.UtcNow);
 
-            await createJobStateHandler.Handle(new TestMessageContext<CreateJobState>(message));
+            await createJobStateHandler.Handle(new TestMessageContext<FlowlysysCreateJobStateMessage>(message));
 
             Assert.Single(jobStateRepository.CreatedJobStates);
             Assert.Same(message, jobStateRepository.CreatedJobStates[0]);
@@ -34,9 +34,9 @@ public class CreateJobStateHandlerTests
             var createJobStateHandler = new CreateJobStateHandler(jobStateRepository, jobAliveStatusRepository, customJobStateRepository);
             var jobId = new JobId();
             var timestamp = new DateTime(2025, 1, 1, 12, 0, 0, DateTimeKind.Utc);
-            var message = new CreateJobState(jobId, "JobType", "Description", timestamp);
+            var message = new FlowlysysCreateJobStateMessage(jobId, "JobType", "Description", timestamp);
 
-            await createJobStateHandler.Handle(new TestMessageContext<CreateJobState>(message));
+            await createJobStateHandler.Handle(new TestMessageContext<FlowlysysCreateJobStateMessage>(message));
 
             Assert.Single(jobAliveStatusRepository.CreatedStatuses);
             Assert.Equal(jobId, jobAliveStatusRepository.CreatedStatuses[0].JobId);
@@ -51,9 +51,9 @@ public class CreateJobStateHandlerTests
             var customJobStateRepository = new FakeCustomJobStateRepository();
             var createJobStateHandler = new CreateJobStateHandler(jobStateRepository, jobAliveStatusRepository, customJobStateRepository);
             var jobId = new JobId();
-            var message = new CreateJobState(jobId, "JobType", "Description", DateTime.UtcNow);
+            var message = new FlowlysysCreateJobStateMessage(jobId, "JobType", "Description", DateTime.UtcNow);
 
-            await createJobStateHandler.Handle(new TestMessageContext<CreateJobState>(message));
+            await createJobStateHandler.Handle(new TestMessageContext<FlowlysysCreateJobStateMessage>(message));
 
             Assert.Single(customJobStateRepository.CreatedFor);
             Assert.Equal(jobId, customJobStateRepository.CreatedFor[0]);

@@ -2,7 +2,7 @@ using Flowly.Jobs.Messages;
 
 namespace Flowly.Jobs.Tests.Messages;
 
-public class StartRecurringJobMessageTests
+public class FlowlysysStartRecurringJobMessageTests
 {
     public class Constructor
     {
@@ -11,7 +11,7 @@ public class StartRecurringJobMessageTests
         {
             var jobId = Guid.NewGuid();
 
-            var startRecurringJobMessage = new StartRecurringJobMessage(jobId);
+            var startRecurringJobMessage = new FlowlysysStartRecurringJobMessage(jobId);
 
             Assert.Equal(jobId, startRecurringJobMessage.JobId);
         }

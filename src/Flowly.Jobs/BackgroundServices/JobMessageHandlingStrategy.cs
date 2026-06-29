@@ -15,7 +15,7 @@ internal class JobMessageHandlingStrategy<TMessage>(IServiceScopeFactory service
         var jobHandler = serviceProvider.GetRequiredService<JobHandler<TMessage>>();
         var messageSender = serviceProvider.GetRequiredService<IMessageSender>();
 
-        await messageSender.Send(new UpdateJobState(jobId, JobState.Started, DateTime.UtcNow, receivedMessage.Properties.RetryCount), cancellationToken);
+        await messageSender.Send(new FlowlysysUpdateJobStateMessage(jobId, JobState.Started, DateTime.UtcNow, receivedMessage.Properties.RetryCount), cancellationToken);
 
         using var aliveSignalCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var aliveSignalTask = SendAliveSignal(jobId, aliveSignalCts.Token);
@@ -40,7 +40,7 @@ internal class JobMessageHandlingStrategy<TMessage>(IServiceScopeFactory service
         await aliveSignalCts.CancelAsync();
         await aliveSignalTask;
 
-        await messageSender.Send(new UpdateJobState(jobId, JobState.Completed, DateTime.UtcNow), cancellationToken);
+        await messageSender.Send(new FlowlysysUpdateJobStateMessage(jobId, JobState.Completed, DateTime.UtcNow), cancellationToken);
     }
 
     public async Task OnRetriesExhausted(IReceivedMessage<TMessage> receivedMessage, Exception exception, IServiceProvider serviceProvider, CancellationToken cancellationToken)
@@ -49,7 +49,7 @@ internal class JobMessageHandlingStrategy<TMessage>(IServiceScopeFactory service
         var reason = exception is JobException je2 ? je2.InnerException?.Message ?? je2.Message : exception.Message;
 
         var messageSender = serviceProvider.GetRequiredService<IMessageSender>();
-        await messageSender.Send(new JobFailed(jobId, reason, DateTime.UtcNow), cancellationToken);
+        await messageSender.Send(new FlowlysysJobFailedMessage(jobId, reason, DateTime.UtcNow), cancellationToken);
         await receivedMessage.Complete(cancellationToken);
     }
 
@@ -68,7 +68,7 @@ internal class JobMessageHandlingStrategy<TMessage>(IServiceScopeFactory service
                 await Task.Delay(TimeSpan.FromSeconds(30), cancellationToken);
                 await using var scope = serviceScopeFactory.CreateAsyncScope();
                 var messageSender = scope.ServiceProvider.GetRequiredService<IMessageSender>();
-                await messageSender.Send(new JobIsAlive(jobId, DateTime.UtcNow), cancellationToken);
+                await messageSender.Send(new FlowlysysJobIsAliveMessage(jobId, DateTime.UtcNow), cancellationToken);
             }
         }
         catch (OperationCanceledException)
