@@ -30,7 +30,7 @@ dotnet test --filter "FullyQualifiedName~MessageQueueNameResolverTests+Resolve"
 - `Flowly.RabbitMQ/` — RabbitMQ transport
 - `Flowly.InMemory/` — In-memory transport (channels; no broker required)
 - `Flowly.OpenTelemetry/` — OpenTelemetry metrics and traces
-- `Flowly.Dashboard/` — embedded ASP.NET Core middleware dashboard (management UI at `/flowly`); feature-detects Jobs and DeadLetters via DI; SPA built with React + Vite and packed as EmbeddedResource
+- `Flowly.Dashboard/` — embedded ASP.NET Core middleware dashboard (management UI at `/flowly`); feature-detects Jobs and DeadLetters via DI; SPA built with React + Vite and packed as EmbeddedResource; opt-in OAuth2/OIDC auth via `OAuthAuthenticationOptions` (viewer and submitter role/policy tiers)
 - `Flowly.Jobs/` — job state tracking (EF Core) and CRON scheduling
 - `Flowly.Jobs.SqlServer/` — SQL Server backend for job state tracking
 - `Flowly.Jobs.Postgres/` — PostgreSQL backend for job state tracking

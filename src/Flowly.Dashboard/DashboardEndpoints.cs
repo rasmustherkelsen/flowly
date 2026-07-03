@@ -1,7 +1,10 @@
 using System.Reflection;
+using Flowly.Dashboard.Auth;
 using Flowly.DeadLetters;
 using Flowly.Jobs;
 using Flowly.MessageInfrastructure.Registration;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -13,28 +16,83 @@ internal static class DashboardEndpoints
 {
     internal static void Map(IEndpointRouteBuilder endpoints, FlowlyDashboardOptions options)
     {
-        endpoints.MapGet("/api/submitters",  GetSubmitters);
-        endpoints.MapPost("/api/submit",     PostSubmit);
+        var authEnabled = options.Authentication is not null;
+        var mutationPolicy = GetMutationPolicy(options);
 
-        endpoints.MapGet("/api/jobs",            GetJobs);
-        endpoints.MapGet("/api/recurring-jobs",  GetRecurringJobs);
-        endpoints.MapPost("/api/recurring-jobs/{jobId}/trigger", TriggerRecurringJob);
+        var configEp = endpoints.MapGet("/api/config", GetConfig);
+        var submittersEp = endpoints.MapGet("/api/submitters", GetSubmitters);
+        var jobsEp = endpoints.MapGet("/api/jobs", GetJobs);
+        var recurringEp = endpoints.MapGet("/api/recurring-jobs", GetRecurringJobs);
+        var deadEp = endpoints.MapGet("/api/dead-letters", GetDeadLetters);
 
-        endpoints.MapGet("/api/dead-letters",                            GetDeadLetters);
-        endpoints.MapPost("/api/dead-letters/{messageId}/requeue",       RequeueDeadLetter);
-        endpoints.MapDelete("/api/dead-letters/{messageId}/discard",     DiscardDeadLetter);
+        var submitEp = endpoints.MapPost("/api/submit", PostSubmit);
+        var triggerEp = endpoints.MapPost("/api/recurring-jobs/{jobId}/trigger", TriggerRecurringJob);
+        var requeueEp = endpoints.MapPost("/api/dead-letters/{messageId}/requeue", RequeueDeadLetter);
+        var discardEp = endpoints.MapDelete("/api/dead-letters/{messageId}/discard", DiscardDeadLetter);
 
-        endpoints.MapGet("/api/config", (HttpContext ctx) =>
+        var spaEp = endpoints.MapFallback("{**slug}", ServeStaticAsset);
+
+        if (authEnabled)
         {
-            var hasJobs = ctx.RequestServices.GetService<IJobTrackingService>() is not null;
-            var hasDeadLetters = ctx.RequestServices.GetService<IDeadLetterService>() is not null;
-            var manifest = ctx.RequestServices.GetService<FlowlySubmitterManifest>();
-            var hasSubmitters = manifest?.Submitters.Any(s => !s.QueueOrTopicName.StartsWith("flowlysys-")) ?? false;
+            configEp.RequireAuthorization(DashboardAuthConstants.ViewerPolicy);
+            submittersEp.RequireAuthorization(mutationPolicy);
+            jobsEp.RequireAuthorization(DashboardAuthConstants.ViewerPolicy);
+            recurringEp.RequireAuthorization(DashboardAuthConstants.ViewerPolicy);
+            deadEp.RequireAuthorization(DashboardAuthConstants.ViewerPolicy);
+            spaEp.RequireAuthorization(DashboardAuthConstants.ViewerPolicy);
 
+            submitEp.RequireAuthorization(mutationPolicy);
+            triggerEp.RequireAuthorization(mutationPolicy);
+            requeueEp.RequireAuthorization(mutationPolicy);
+            discardEp.RequireAuthorization(mutationPolicy);
+
+            endpoints.MapGet("/logout", async ctx =>
+            {
+                await ctx.SignOutAsync(DashboardAuthConstants.CookieScheme);
+                await ctx.SignOutAsync(
+                    DashboardAuthConstants.OidcScheme,
+                    new AuthenticationProperties { RedirectUri = options.PathPrefix + "/" });
+
+                if (!ctx.Response.HasStarted)
+                    ctx.Response.Redirect(options.PathPrefix + "/");
+            }).AllowAnonymous();
+        }
+    }
+
+    private static string GetMutationPolicy(FlowlyDashboardOptions options)
+    {
+        var auth = options.Authentication;
+        var hasSubmitterRestriction = (auth?.SubmitterRoles?.Count ?? 0) > 0 || (auth?.SubmitterPolicies?.Count ?? 0) > 0;
+
+        return hasSubmitterRestriction
+            ? DashboardAuthConstants.SubmitterPolicy
+            : DashboardAuthConstants.ViewerPolicy;
+    }
+
+    private static async Task<IResult> GetConfig(FlowlyDashboardOptions options, HttpContext ctx)
+    {
+        var hasJobs = ctx.RequestServices.GetService<IJobTrackingService>() is not null;
+        var hasDeadLetters = ctx.RequestServices.GetService<IDeadLetterService>() is not null;
+        var manifest = ctx.RequestServices.GetService<FlowlySubmitterManifest>();
+        var hasSubmitters = manifest?.Submitters.Any(s => !s.QueueOrTopicName.StartsWith("flowlysys-")) ?? false;
+
+        if (options.Authentication is null)
             return Results.Ok(new { options.Title, options.PathPrefix, hasJobs, hasDeadLetters, hasSubmitters });
-        });
 
-        endpoints.MapFallback("{**slug}", ServeStaticAsset);
+        var authService = ctx.RequestServices.GetRequiredService<IAuthorizationService>();
+        var canSubmit = (await authService.AuthorizeAsync(ctx.User, DashboardAuthConstants.SubmitterPolicy)).Succeeded;
+
+        return Results.Ok(new
+        {
+            options.Title,
+            options.PathPrefix,
+            hasJobs,
+            hasDeadLetters,
+            hasSubmitters,
+            authEnabled = true,
+            canSubmit,
+            logoutUrl = options.PathPrefix + "/logout"
+        });
     }
 
     private static IResult GetSubmitters(HttpContext ctx)
@@ -44,10 +102,10 @@ internal static class DashboardEndpoints
             .Where(s => !s.QueueOrTopicName.StartsWith("flowlysys-"))
             .Select(s => new
             {
-                typeName     = s.TypeName,
+                typeName = s.TypeName,
                 queueOrTopic = s.QueueOrTopicName,
-                kind         = s.Kind.ToString().ToLowerInvariant(),
-                schema       = s.JsonSchema
+                kind = s.Kind.ToString().ToLowerInvariant(),
+                schema = s.JsonSchema
             });
         return Results.Ok(result);
     }
@@ -56,7 +114,7 @@ internal static class DashboardEndpoints
     {
         var dispatcher = ctx.RequestServices.GetRequiredService<SubmitterDispatcher>();
 
-        using var reader = new System.IO.StreamReader(ctx.Request.Body);
+        using var reader = new StreamReader(ctx.Request.Body);
         var body = await reader.ReadToEndAsync(ct);
 
         var doc = System.Text.Json.JsonDocument.Parse(body);
@@ -198,7 +256,7 @@ internal static class DashboardEndpoints
 
         var assembly = Assembly.GetExecutingAssembly();
         var stream = assembly.GetManifestResourceStream(resourceName)
-            ?? assembly.GetManifestResourceStream("Flowly.Dashboard.wwwroot.index.html");
+                     ?? assembly.GetManifestResourceStream("Flowly.Dashboard.wwwroot.index.html");
 
         if (stream is null)
         {
@@ -214,12 +272,12 @@ internal static class DashboardEndpoints
         resourceName switch
         {
             _ when resourceName.EndsWith(".html") => "text/html; charset=utf-8",
-            _ when resourceName.EndsWith(".js")   => "application/javascript",
-            _ when resourceName.EndsWith(".css")  => "text/css",
+            _ when resourceName.EndsWith(".js") => "application/javascript",
+            _ when resourceName.EndsWith(".css") => "text/css",
             _ when resourceName.EndsWith(".json") => "application/json",
-            _ when resourceName.EndsWith(".svg")  => "image/svg+xml",
-            _ when resourceName.EndsWith(".png")  => "image/png",
-            _ when resourceName.EndsWith(".ico")  => "image/x-icon",
-            _                                     => "application/octet-stream"
+            _ when resourceName.EndsWith(".svg") => "image/svg+xml",
+            _ when resourceName.EndsWith(".png") => "image/png",
+            _ when resourceName.EndsWith(".ico") => "image/x-icon",
+            _ => "application/octet-stream"
         };
 }

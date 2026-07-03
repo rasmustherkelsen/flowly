@@ -1,3 +1,5 @@
+using Flowly.Dashboard.Auth;
+
 namespace Flowly.Dashboard;
 
 /// <summary>
@@ -16,4 +18,11 @@ public sealed class FlowlyDashboardOptions
     ///     Defaults to <c>Flowly Dashboard</c>.
     /// </summary>
     public string Title { get; set; } = "Flowly Dashboard";
+
+    /// <summary>
+    ///     When set, enables OAuth2/OIDC authentication for the dashboard. All requests are
+    ///     redirected to the configured identity provider until the user is authenticated.
+    ///     When <see langword="null" /> (the default), the dashboard allows anonymous access.
+    /// </summary>
+    public OAuthAuthenticationOptions? Authentication { get; set; }
 }

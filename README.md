@@ -8,7 +8,7 @@ Flowly is a queue-based messaging abstraction for .NET. It sits between your app
 
 ## Dashboard
 
-Flowly ships an embedded management dashboard at `/flowly` — inspect job history, browse dead letters, trigger recurring jobs, and submit messages directly from the browser.
+Flowly ships an embedded management dashboard at `/flowly` — inspect job history, browse dead letters, trigger recurring jobs, and submit messages directly from the browser. OAuth2/OIDC authentication (Azure Entra ID, Google, or any OpenID Connect provider) is opt-in via `AddFlowlyDashboard(options => options.Authentication = new OAuthAuthenticationOptions(...))`, with optional role and policy restrictions to separate read-only viewers from users who can submit messages. See the [Dashboard Authentication guide](docs/dashboard-authentication.md) for step-by-step Azure Entra ID and Google setup.
 
 <img src="docs/assets/dashboard-screenshot-jobs.png" alt="Flowly Dashboard — Jobs" width="100%">
 <img src="docs/assets/dashboard-screenshot-call.png" alt="Flowly Dashboard — Submit (Call)" width="100%">
@@ -20,6 +20,7 @@ Flowly ships an embedded management dashboard at `/flowly` — inspect job histo
 - [RabbitMQ Quickstart](docs/quickstart-rabbitmq.md)
 - [Azure Service Bus Quickstart](docs/quickstart-azure-service-bus.md)
 - [InMemory Quickstart](docs/quickstart-inmemory.md)
+- [Dashboard Authentication](docs/dashboard-authentication.md)
 - [Why Flowly?](#why-flowly)
 - [Packages](#packages)
 - [Installation](#installation)
@@ -81,7 +82,7 @@ All packages are published to [NuGet.org](https://www.nuget.org/packages?q=Flowl
 | `Flowly.DeadLetters.Postgres` | PostgreSQL backend for dead letter tracking |
 | `Flowly.DeadLetters.SQLite` | SQLite backend for dead letter tracking |
 | `Flowly.OpenTelemetry` | OpenTelemetry metrics and traces for handlers and submitters |
-| `Flowly.Dashboard` | Embedded web dashboard middleware — submit messages, browse jobs, inspect dead letters, and trigger recurring jobs at `/flowly` |
+| `Flowly.Dashboard` | Embedded web dashboard middleware — submit messages, browse jobs, inspect dead letters, and trigger recurring jobs at `/flowly`; opt-in OAuth2/OIDC authentication with role and policy authorization |
 | `Flowly.Tool` | `flowly` CLI for queue discovery and code generation |
 | `Flowly.Templates` | `dotnet new flowlyapp` / `dotnet new flowlyaspireapp` / `dotnet new flowly` project templates |
 

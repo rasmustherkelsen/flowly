@@ -312,7 +312,63 @@ builder.Services.AddFlowlyDashboard(options =>
 
 ---
 
-## Step 7 — Access the dashboard
+## Step 7 — Optional: configure OAuth2/OIDC authentication
+
+By default the dashboard allows anonymous access. To require login, set `Authentication` in `AddFlowlyDashboard()`. The dashboard registers its own isolated cookie and OIDC schemes so it does not interfere with the host app's existing authentication.
+
+```csharp
+builder.Services.AddFlowlyDashboard(options =>
+{
+    options.Authentication = new OAuthAuthenticationOptions(
+        clientId: "your-client-id",
+        authority: "https://login.microsoftonline.com/{tenantId}/v2.0",  // Entra ID
+        clientSecret: builder.Configuration["FlowlyDashboard:ClientSecret"]);
+        // or authority: "https://accounts.google.com" for Google
+});
+```
+
+**Client secret**: whether a secret is required depends on the provider and its configuration. **Azure Entra ID with a Web platform registration (confidential client) always requires one** — the server exchanges the authorization code for tokens in a direct server-to-server call to Entra ID's token endpoint, and Entra ID rejects the request without a secret. The secret is never transmitted to the browser. Generate it under *Certificates & secrets → Client secrets* in the Azure Portal and store it securely (user secrets, environment variable, or Azure Key Vault) — never in source control. For Google and other providers configured as public clients, `clientSecret` can be omitted (pass `null` or leave out).
+
+```bash
+# Store the secret locally with user secrets:
+dotnet user-secrets set "FlowlyDashboard:ClientSecret" "your-secret-value"
+```
+
+**With role/policy authorization** — separates read-only viewers from users who can submit messages:
+
+```csharp
+builder.Services.AddFlowlyDashboard(options =>
+{
+    options.Authentication = new OAuthAuthenticationOptions(
+        clientId: "your-client-id",
+        authority: "https://login.microsoftonline.com/{tenantId}/v2.0",
+        clientSecret: builder.Configuration["FlowlyDashboard:ClientSecret"],
+        viewerRoles: ["admin", "dashboard-viewer"],
+        submitterRoles: ["admin"]);
+});
+```
+
+The `viewerRoles`/`viewerPolicies` and `submitterRoles`/`submitterPolicies` parameters all use OR logic — a user satisfying any entry in a list is granted that access level. Named policies must be registered with `services.AddAuthorization(...)` before `UseFlowlyDashboard()` is called; Flowly validates this at startup and throws `InvalidOperationException` if a policy name is not found.
+
+The Submitter tier gates the entire submit feature as a single unit — not just `POST /api/submit`, but also `GET /api/submitters` (the list of available message types and their JSON schemas). A Viewer without the Submitter role cannot see what could be submitted either, even though "just listing types" is arguably read-only; this is a deliberate simplification so the whole submit area is treated as one modification-tier surface rather than splitting hairs between browsing and acting.
+
+An authenticated user who doesn't satisfy `viewerRoles`/`viewerPolicies` gets a plain `403` and never receives the dashboard UI or any `/api/*` data — the entire dashboard, not just individual actions, is unavailable to non-Viewers.
+
+Submitter access does not substitute for viewer access: a user who satisfies `submitterRoles`/`submitterPolicies` but not `viewerRoles`/`viewerPolicies` is blocked by the same `403` — they get no partial or submit-only access, since the SPA shell and all `/api/*` routes (including the submit endpoints) sit behind the Viewer policy first. Submitter is an additional tier layered on top of Viewer, not an independent one.
+
+**OAuth provider setup** — register these redirect URIs with the provider:
+- Redirect URI: `{baseUrl}{pathPrefix}/signin-oidc` (e.g. `https://myapp.com/flowly/signin-oidc`)
+- Post-logout redirect URI (if enforced): `{baseUrl}{pathPrefix}/`
+
+**API status codes**: requests to the dashboard's `/api/*` endpoints follow standard HTTP semantics — an unauthenticated request returns `401 Unauthorized`, and an authenticated request that doesn't satisfy the required role/policy returns `403 Forbidden`. Browser navigation to the dashboard UI itself (the SPA shell) is unaffected and still redirects to the identity provider for sign-in when unauthenticated.
+
+**Azure Entra ID**: register the app under *Azure Active Directory → App registrations*, add a **Web** platform redirect URI (not SPA — the code exchange is server-side). Set the authority to `https://login.microsoftonline.com/{tenantId}/v2.0`. Generate a client secret. Assign app roles in the manifest and grant them to users under *Enterprise applications → Users and groups*.
+
+**Google**: create an OAuth 2.0 Client ID under *APIs & Services → Credentials*, add the redirect URI. Authority is always `https://accounts.google.com`. Google does not emit role claims — use `viewerPolicies`/`submitterPolicies` pointing to custom policies that check the user's claims instead. Key policies off the stable `sub` claim (surfaced as `ClaimTypes.NameIdentifier`); a policy on `ClaimTypes.Email` only works when the `email` scope is granted, so verify the claim is present in the tokens before relying on it. Consumer `@gmail.com` accounts require the **External** consent-screen audience; while the app is in Testing status each account must also be added as a test user, otherwise Google rejects sign-in with `Error 403: access_denied`.
+
+---
+
+## Step 8 — Access the dashboard
 
 Start the project and open the dashboard in a browser:
 
@@ -355,4 +411,6 @@ Fix any errors before reporting the task as complete.
 - [ ] (Jobs / dead letters) Matching DB packages added to the Dashboard project
 - [ ] Dashboard opens at the expected URL and shows the expected tabs
 - [ ] (OTel + call submitter) `OpenTelemetry.Instrumentation.AspNetCore` added and `AddAspNetCoreInstrumentation()` wired into `.WithTracing(...)` for complete traces in Jaeger
+- [ ] (Auth) When `Authentication` is set, the redirect URI `{baseUrl}{pathPrefix}/signin-oidc` is registered with the OAuth provider
+- [ ] (Auth) Named policy strings in `viewerPolicies`/`submitterPolicies` are registered with `services.AddAuthorization(...)` before `UseFlowlyDashboard()` is called
 - [ ] `dotnet build` passes with no errors

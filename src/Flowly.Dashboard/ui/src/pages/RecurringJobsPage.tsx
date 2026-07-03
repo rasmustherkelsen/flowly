@@ -1,16 +1,19 @@
 import { useCallback, useState } from 'react';
 import {
-  Alert, Box, Card, CircularProgress, IconButton, Table, TableBody,
+  Alert, Box, Card, CircularProgress, IconButton, Snackbar, Table, TableBody,
   TableCell, TableContainer, TableHead, TableRow, Tooltip, Typography,
 } from '@mui/material';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import PageHeader from '../components/PageHeader';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
+import { useCanSubmit } from '../hooks/useCanSubmit';
 import { formatDate } from '../lib/formatters';
 import type { RecurringJobInfo } from '../types';
 
 export default function RecurringJobsPage() {
+  const canSubmit = useCanSubmit();
   const [triggering, setTriggering] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
   const fetchFn = useCallback(async () => {
     const res = await fetch('api/recurring-jobs');
@@ -26,7 +29,11 @@ export default function RecurringJobsPage() {
   const runNow = async (jobId: string) => {
     setTriggering(jobId);
     try {
-      await fetch(`api/recurring-jobs/${jobId}/trigger`, { method: 'POST' });
+      const res = await fetch(`api/recurring-jobs/${jobId}/trigger`, { method: 'POST' });
+      if (!res.ok) {
+        setToast(`Failed to trigger job (HTTP ${res.status}).`);
+        return;
+      }
       await refresh();
     } finally {
       setTriggering(null);
@@ -76,9 +83,9 @@ export default function RecurringJobsPage() {
                     <TableCell><Typography variant="body2" sx={{ whiteSpace: 'nowrap' }}>{formatDate(job.lastStarted)}</Typography></TableCell>
                     <TableCell><Typography variant="body2" sx={{ whiteSpace: 'nowrap' }}>{formatDate(job.lastCompleted)}</Typography></TableCell>
                     <TableCell align="right">
-                      <Tooltip title="Run now">
+                      <Tooltip title={canSubmit ? 'Run now' : 'You do not have permission to trigger jobs'}>
                         <span>
-                          <IconButton size="small" onClick={() => runNow(job.jobId)} disabled={triggering === job.jobId}>
+                          <IconButton size="small" onClick={() => runNow(job.jobId)} disabled={triggering === job.jobId || !canSubmit}>
                             {triggering === job.jobId ? <CircularProgress size={16} /> : <PlayArrowIcon fontSize="small" />}
                           </IconButton>
                         </span>
@@ -91,6 +98,10 @@ export default function RecurringJobsPage() {
           </TableContainer>
         )}
       </Card>
+
+      <Snackbar open={!!toast} autoHideDuration={4000} onClose={() => setToast(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+        <Alert severity="error" onClose={() => setToast(null)} variant="filled">{toast}</Alert>
+      </Snackbar>
     </Box>
   );
 }
