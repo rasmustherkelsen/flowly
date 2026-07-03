@@ -19,11 +19,19 @@
     </ItemGroup>
 
     <ItemGroup>
+        <InternalsVisibleTo Include="Flowly.Dashboard.Tests" />
+    </ItemGroup>
+
+    <ItemGroup>
         <FrameworkReference Include="Microsoft.AspNetCore.App" />
     </ItemGroup>
 
     <ItemGroup>
         <EmbeddedResource Include="wwwroot\**" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="10.0.9" />
     </ItemGroup>
 
     <Target Name="BuildDashboardUi" BeforeTargets="BeforeBuild" Condition="'$(SkipUiBuild)' != 'true' AND Exists('ui/package.json')">

@@ -5,6 +5,8 @@ import {
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import type { SubmitterInfo } from '../types';
+import { useConfig } from '../hooks/useConfig';
+import { useCanSubmit } from '../hooks/useCanSubmit';
 
 interface JsonSchemaProperty {
   type?: string | string[];
@@ -41,6 +43,8 @@ function buildDefaultPayload(schemaStr: string): Record<string, unknown> {
 }
 
 export default function SubmitPage() {
+  const config = useConfig();
+  const canSubmit = useCanSubmit();
   const [submitters, setSubmitters] = useState<SubmitterInfo[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selected, setSelected] = useState('');
@@ -52,6 +56,9 @@ export default function SubmitPage() {
   const [response, setResponse] = useState<string | null>(null);
 
   useEffect(() => {
+    if (config === null) return;
+    if (config.authEnabled && config.canSubmit === false) return;
+
     fetch('api/submitters')
       .then((r) => r.json())
       .then((data: SubmitterInfo[]) => {
@@ -62,7 +69,7 @@ export default function SubmitPage() {
         }
       })
       .catch((e) => setLoadError(e instanceof Error ? e.message : 'Failed to load submitters'));
-  }, []);
+  }, [config]);
 
   const handleTypeChange = useCallback((typeName: string) => {
     setSelected(typeName);
@@ -120,6 +127,15 @@ export default function SubmitPage() {
       setSubmitting(false);
     }
   };
+
+  if (!canSubmit) {
+    return (
+      <Box>
+        <Typography variant="h5" sx={{ fontWeight: 700, mb: 3 }}>Submit</Typography>
+        <Alert severity="error">You do not have permission to submit messages. Contact an administrator to request access.</Alert>
+      </Box>
+    );
+  }
 
   if (loadError) return <Alert severity="error">{loadError}</Alert>;
   if (!submitters) return <Box sx={{ display: 'flex', justifyContent: 'center', p: 6 }}><CircularProgress /></Box>;

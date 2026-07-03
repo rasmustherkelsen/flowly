@@ -10,6 +10,7 @@ import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
 import { DeadLetterStatusChip } from '../components/StatusChip';
 import PageHeader from '../components/PageHeader';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
+import { useCanSubmit } from '../hooks/useCanSubmit';
 import { formatDate, tryPrettyPrint } from '../lib/formatters';
 import type { DeadLetter } from '../types';
 
@@ -19,6 +20,7 @@ const STATUSES = ['', 'Pending', 'Requeued', 'Discarded'];
 interface Confirm { action: 'requeue' | 'discard'; messageId: string; queueName: string; }
 
 export default function DeadLettersPage() {
+  const canSubmit = useCanSubmit();
   const [filter, setFilter] = useState('');
   const [page, setPage] = useState(1);
   const [confirm, setConfirm] = useState<Confirm | null>(null);
@@ -134,15 +136,19 @@ export default function DeadLettersPage() {
                         </Tooltip>
                         {dl.status === 'Pending' && (
                           <>
-                            <Tooltip title="Requeue">
-                              <IconButton size="small" color="primary" onClick={() => setConfirm({ action: 'requeue', messageId: dl.messageId, queueName: dl.queueName })}>
-                                <ReplayIcon fontSize="small" />
-                              </IconButton>
+                            <Tooltip title={canSubmit ? 'Requeue' : 'You do not have permission to requeue messages'}>
+                              <span>
+                                <IconButton size="small" color="primary" disabled={!canSubmit} onClick={() => setConfirm({ action: 'requeue', messageId: dl.messageId, queueName: dl.queueName })}>
+                                  <ReplayIcon fontSize="small" />
+                                </IconButton>
+                              </span>
                             </Tooltip>
-                            <Tooltip title="Discard">
-                              <IconButton size="small" color="error" onClick={() => setConfirm({ action: 'discard', messageId: dl.messageId, queueName: dl.queueName })}>
-                                <DeleteOutlineIcon fontSize="small" />
-                              </IconButton>
+                            <Tooltip title={canSubmit ? 'Discard' : 'You do not have permission to discard messages'}>
+                              <span>
+                                <IconButton size="small" color="error" disabled={!canSubmit} onClick={() => setConfirm({ action: 'discard', messageId: dl.messageId, queueName: dl.queueName })}>
+                                  <DeleteOutlineIcon fontSize="small" />
+                                </IconButton>
+                              </span>
                             </Tooltip>
                           </>
                         )}

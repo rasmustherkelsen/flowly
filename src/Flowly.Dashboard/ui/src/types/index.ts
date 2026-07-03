@@ -47,4 +47,7 @@ export interface DashboardConfig {
   hasJobs: boolean;
   hasDeadLetters: boolean;
   hasSubmitters: boolean;
+  authEnabled?: boolean;
+  canSubmit?: boolean;
+  logoutUrl?: string;
 }

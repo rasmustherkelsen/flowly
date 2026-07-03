@@ -12,6 +12,7 @@ import ErrorOutlineIcon from '@mui/icons-material/ErrorOutlined';
 import SendIcon from '@mui/icons-material/Send';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
+import LogoutIcon from '@mui/icons-material/Logout';
 import { useConfig } from '../hooks/useConfig';
 import type { DashboardConfig } from '../types';
 import FlowlyIcon from './FlowlyIcon';
@@ -92,6 +93,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               {theme.palette.mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
             </IconButton>
           </Tooltip>
+          {config?.authEnabled && config.logoutUrl && (
+            <Tooltip title="Sign out">
+              <IconButton component="a" href={config.logoutUrl} color="inherit" aria-label="Sign out">
+                <LogoutIcon />
+              </IconButton>
+            </Tooltip>
+          )}
         </Toolbar>
       </AppBar>
 

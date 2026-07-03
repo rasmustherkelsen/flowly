@@ -23,7 +23,7 @@ This document gives an AI assistant the context needed to work effectively in th
 ├── Flowly.RabbitMQ/                 # RabbitMQ transport implementation
 ├── Flowly.InMemory/                 # In-memory transport (channels; no broker required)
 ├── Flowly.OpenTelemetry/            # OpenTelemetry metrics and traces
-├── Flowly.Dashboard/                # Embedded ASP.NET Core middleware dashboard (management UI at /flowly)
+├── Flowly.Dashboard/                # Embedded ASP.NET Core middleware dashboard (management UI at /flowly); opt-in OAuth2/OIDC auth (OAuthAuthenticationOptions); viewer/submitter role and policy tiers — end-user setup guide for Entra ID/Google: docs/dashboard-authentication.md
 ├── Flowly.Jobs/                     # Job tracking, CRON scheduling, job state DB
 ├── Flowly.Jobs.SqlServer/           # SQL Server backend for job state tracking
 ├── Flowly.Jobs.Postgres/            # PostgreSQL backend for job state tracking
