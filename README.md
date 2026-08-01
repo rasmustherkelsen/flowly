@@ -20,7 +20,6 @@ Flowly ships an embedded management dashboard at `/flowly` — inspect job histo
 - [RabbitMQ Quickstart](docs/quickstart-rabbitmq.md)
 - [Azure Service Bus Quickstart](docs/quickstart-azure-service-bus.md)
 - [InMemory Quickstart](docs/quickstart-inmemory.md)
-- [Dashboard Authentication](docs/dashboard-authentication.md)
 - [Why Flowly?](#why-flowly)
 - [Packages](#packages)
 - [Installation](#installation)
@@ -45,6 +44,8 @@ Flowly ships an embedded management dashboard at `/flowly` — inspect job histo
 - [OpenTelemetry](#opentelemetry)
 - [Samples](#samples)
 - [Claude Code Skills](#claude-code-skills)
+- [Dashboard Authentication](docs/dashboard-authentication.md)
+- [Attributes Reference](docs/attributes-reference.md)
 - [Contributing](#contributing)
 - [Repository](#repository)
 - [Status](#status)
@@ -265,6 +266,8 @@ These attributes go on the **handler** class:
 | `[DeadLetterOnMessageExpiration(true)]` | Dead-letter messages that exceed TTL | `true` |
 | `[RetryPolicy(maxRetries, delaySeconds)]` | Retry on handler failure | 0 retries |
 | `[MaxConcurrentCalls(n)]` | Number of messages processed in parallel | 1 |
+
+See the [Attributes Reference](docs/attributes-reference.md) for every attribute — handler and message/event contract alike — in one place.
 
 Or override `Configure` on the handler:
 

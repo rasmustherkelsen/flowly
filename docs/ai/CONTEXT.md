@@ -546,6 +546,8 @@ These attributes go on the **handler** class and control infrastructure settings
 | `[BatchProcessing(max, waitSec)]` | Enable batching | — |
 | `[RecurringJob("desc", "cron")]` | CRON expression | — |
 
+See [docs/attributes-reference.md](../attributes-reference.md) for every Flowly attribute — including the message/event contract ones (`QueueName`, `EventName`, `ProviderAffinity`) — in one consolidated table.
+
 Alternatively override `Configure(HandlerQueueOptions options)` in the handler class.
 
 **Queue topology creation** is batched via `DeferredQueueRegistration` singletons collected by `QueueManager`, then provisioned once by `IMessagingTopologyCreator` at startup. Conflicting settings for the same queue name throw `InvalidOperationException`.
