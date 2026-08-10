@@ -1,9 +1,10 @@
+using Flowly.MessageInfrastructure.Registration;
 using Flowly.Transport;
 using RabbitMQ.Client;
 
 namespace Flowly.RabbitMQ;
 
-internal class RabbitMqMessagingTopologyCreator(IRabbitMqConnectionPool connectionPool) : IMessagingTopologyCreator, IEventTopologyCreator
+internal class RabbitMqMessagingTopologyCreator(IRabbitMqConnectionPool connectionPool, StreamQueueManifest? streamQueueManifest = null) : IMessagingTopologyCreator, IEventTopologyCreator
 {
     public async Task CreateEventTopology(IReadOnlyCollection<IEventDescription> eventDescriptions, CancellationToken cancellationToken)
     {
@@ -23,8 +24,14 @@ internal class RabbitMqMessagingTopologyCreator(IRabbitMqConnectionPool connecti
             await DeclareQueueTopology(channel, queue, cancellationToken);
     }
 
-    private static async Task DeclareQueueTopology(IChannel channel, IQueueDescription queue, CancellationToken cancellationToken)
+    private async Task DeclareQueueTopology(IChannel channel, IQueueDescription queue, CancellationToken cancellationToken)
     {
+        if (streamQueueManifest != null && streamQueueManifest.TryGetRetention(queue.Name, out var retention))
+        {
+            await DeclareStreamQueue(channel, queue.Name, retention, cancellationToken);
+            return;
+        }
+
         if (queue is IReplyQueueDescription)
         {
             await channel.QueueDeclareAsync(queue.Name, true, false, false, cancellationToken: cancellationToken);
@@ -80,6 +87,28 @@ internal class RabbitMqMessagingTopologyCreator(IRabbitMqConnectionPool connecti
             false,
             false,
             mainQueueArgs,
+            cancellationToken: cancellationToken);
+    }
+
+    private static async Task DeclareStreamQueue(IChannel channel, string queueName, StreamRetentionSettings retention, CancellationToken cancellationToken)
+    {
+        var streamQueueArgs = new Dictionary<string, object?>
+        {
+            ["x-queue-type"] = "stream"
+        };
+
+        if (retention.MaxAgeSeconds is { } maxAgeSeconds)
+            streamQueueArgs["x-max-age"] = $"{maxAgeSeconds}s";
+
+        if (retention.MaxLengthBytes is { } maxLengthBytes)
+            streamQueueArgs["x-max-length-bytes"] = maxLengthBytes;
+
+        await channel.QueueDeclareAsync(
+            queueName,
+            true,
+            false,
+            false,
+            streamQueueArgs,
             cancellationToken: cancellationToken);
     }
 

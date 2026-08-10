@@ -16,6 +16,7 @@ internal sealed class HandlerInstrumentation : IHandlerInstrumentation, IDisposa
     private readonly Counter<long> _succeeded;
     private readonly Counter<long> _failed;
     private readonly Counter<long> _retried;
+    private readonly Counter<long> _halted;
     private readonly Histogram<double> _duration;
     private readonly Counter<long> _replied;
     private readonly Counter<long> _replyFailed;
@@ -31,6 +32,7 @@ internal sealed class HandlerInstrumentation : IHandlerInstrumentation, IDisposa
         _succeeded = _meter.CreateCounter<long>(FlowlyInstrumentationConstants.HandlerMessagesSucceeded);
         _failed = _meter.CreateCounter<long>(FlowlyInstrumentationConstants.HandlerMessagesFailed);
         _retried = _meter.CreateCounter<long>(FlowlyInstrumentationConstants.HandlerMessagesRetried);
+        _halted = _meter.CreateCounter<long>(FlowlyInstrumentationConstants.HandlerMessagesHalted);
         _duration = _meter.CreateHistogram<double>(FlowlyInstrumentationConstants.HandlerProcessingDuration, "ms");
         _replied = _meter.CreateCounter<long>(FlowlyInstrumentationConstants.CallHandlerReplied);
         _replyFailed = _meter.CreateCounter<long>(FlowlyInstrumentationConstants.CallHandlerReplyFailed);
@@ -102,6 +104,16 @@ internal sealed class HandlerInstrumentation : IHandlerInstrumentation, IDisposa
         Activity.Current?.SetTag("outcome", "retry");
 
         _retried.Add(count, new TagList { { "handler", handlerName }, { FlowlyInstrumentationConstants.MessagingDestinationName, queueName } });
+    }
+
+    /// <inheritdoc />
+    public void RecordHalted(string handlerName, string queueName, string reason)
+    {
+        Activity.Current?.SetStatus(ActivityStatusCode.Error);
+        Activity.Current?.SetTag("outcome", "halted");
+        Activity.Current?.AddEvent(new ActivityEvent("flowly.stream.halted", tags: new ActivityTagsCollection { { "reason", reason } }));
+
+        _halted.Add(1, new TagList { { "handler", handlerName }, { FlowlyInstrumentationConstants.MessagingDestinationName, queueName } });
     }
 
     /// <inheritdoc />

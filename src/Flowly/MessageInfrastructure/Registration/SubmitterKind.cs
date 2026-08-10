@@ -16,5 +16,8 @@ public enum SubmitterKind
     Call,
 
     /// <summary>Job enqueued via <c>IJobMessageSender</c>, returning a <c>JobId</c> that can be used to track execution progress.</summary>
-    Job
+    Job,
+
+    /// <summary>Stream message recorded via <see cref="IMessageRecorder" /> onto an append-only, replayable stream queue.</summary>
+    Stream
 }

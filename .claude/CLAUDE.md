@@ -83,6 +83,7 @@ Registered in `Program.cs` via `builder.AddFlowly<MyConfig>()` or auto-discovery
 | `RecurringJobHandler` | CRON-scheduled background job | No | No | `.AddRecurringJob<TH>()` |
 | `EventHandlerBase<TEvent>` | Fan-out event (all subscribers receive) | Yes | Yes — requeue re-publishes to the topic/exchange with `flowly-target-subscription` set; only the originating subscriber receives the requeued message. | `.AddEventHandler<TEvent, TH>()` |
 | `CallHandler<T, TReturn>` | RPC-style blocking call — `T : IReturns<TReturn>`. Caller awaits a typed response via `IMessageCaller.Call<T, TReturn>()`. Requires `FlowlyOptions.InstanceName` on sender side. | Yes | No | `.AddCallHandler<T, TH>()` (receiver) / `.AddCallSubmitter<T>()` (sender) |
+| `MessageStreamHandler<T>` | Append-only, replayable message stream — **RabbitMQ only** (requires `IStreamCapableMessageBusClient`; throws at startup on other transports) | Yes — in-process retry on the same batch, no requeue (would corrupt the replayable log); halts consumption entirely (does not advance the offset or skip) once exhausted | No | `.AddMessageStreamHandler<T, TH>()` (receiver) / `.AddMessageRecorder<T>()` (sender) |
 
 ### Queue Names
 
@@ -94,10 +95,11 @@ Owned by the **message contract**, not the handler. Auto-generated using the act
 - `IMessageCaller.Call<T, TReturn>(msg, ct)` — blocking RPC call, awaits response (requires `.AddCallSubmitter<T>()` and `FlowlyOptions.InstanceName`)
 - `IJobMessageSender.QueueJob(msg)` — returns `JobId` (requires `.AddJobSubmitter<T>()`)
 - `IEventSender.RaiseEvent<TEvent>(event)` — fan-out event publish (requires `.AddEventSubmitter<TEvent>()`)
+- `IMessageRecorder.Record<T>(msg, ct)` — records onto an append-only, replayable stream (requires `.AddMessageRecorder<T>()`; RabbitMQ only)
 
 ### Retry Policy
 
-Apply `[RetryPolicy(maxRetries, delaySeconds)]` to any `MessageHandler<T>` or `JobHandler<T>`. On failure, Flowly re-publishes the message to the same queue with a scheduled enqueue time and increments a `flowly-retry-count` application property. After all retries are exhausted, normal handlers dead-letter the message; job handlers transition the job to `Failed`.
+Apply `[RetryPolicy(maxRetries, delaySeconds)]` to any `MessageHandler<T>` or `JobHandler<T>`. On failure, Flowly re-publishes the message to the same queue with a scheduled enqueue time and increments a `flowly-retry-count` application property. After all retries are exhausted, normal handlers dead-letter the message; job handlers transition the job to `Failed`. `MessageStreamHandler<T>` also supports `[RetryPolicy]` but with a different mechanism — retries run in-process on the same in-memory batch (no requeue), and once exhausted the handler halts consumption of that queue entirely rather than dead-lettering or skipping.
 
 ### Custom OTel Tags
 

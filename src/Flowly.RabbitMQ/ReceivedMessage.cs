@@ -8,10 +8,15 @@ namespace Flowly.RabbitMQ;
 
 internal class RabbitMqReceivedMessage<TMessage>(IChannel channel, BasicDeliverEventArgs args, bool autoAck = false) : IReceivedMessage<TMessage>
 {
+    // RabbitMQ.Client only guarantees args.Body is valid for the duration of the ReceivedAsync callback that
+    // delivered it — it must be copied before use outside that scope. This type is read outside that scope
+    // whenever a consumer defers processing (e.g. MessageStreamProcessingBackgroundService accumulating a batch),
+    // so the bytes are copied eagerly here rather than read lazily from args.Body later.
+    private readonly byte[] _bodyBytes = args.Body.ToArray();
     private TMessage? _body;
 
     public TMessage Body => _body
-        ??= JsonSerializer.Deserialize<TMessage>(args.Body.Span)
+        ??= JsonSerializer.Deserialize<TMessage>(_bodyBytes)
             ?? throw new InvalidOperationException($"Deserialized message body is null for type {typeof(TMessage).FullName}.");
 
     public MessageProperties Properties { get; } = new(

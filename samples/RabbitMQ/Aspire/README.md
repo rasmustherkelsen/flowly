@@ -38,7 +38,7 @@ dotnet run --project RabbitMQAspire.AppHost
 
 Aspire starts RabbitMQ (with management plugin), PostgreSQL (with pgAdmin), BackendProcessor, BackendFinanceProcessor, and Api. Open the Aspire dashboard URL printed to the console to see logs, traces, and resource health.
 
-### What to observe
+## What to observe
 
 - Open the **Flowly Dashboard** by navigating to `<Api URL>/flowly` (the Api service URL is shown in the Aspire dashboard).
 - Use the **Submit** page to queue `ProcessOrder` jobs, send `RebuildIndex` batch messages, or send `SomeQuery` messages.

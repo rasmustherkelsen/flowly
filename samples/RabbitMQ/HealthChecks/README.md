@@ -22,8 +22,6 @@ Demonstrates how Flowly's built-in `IHealthCheck` for RabbitMQ surfaces the brok
 
 ## How to run
 
-### 1. Start everything with Docker Compose
-
 Run from this directory:
 
 ```bash
@@ -32,7 +30,7 @@ docker compose up --build
 
 Docker Compose starts RabbitMQ, waits for it to pass its own health check, then builds and starts the `Receiver` container.
 
-### 2. What to observe
+## What to observe
 
 Once both containers are running, poll the health endpoint from your host:
 

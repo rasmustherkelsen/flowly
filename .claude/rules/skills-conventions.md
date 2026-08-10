@@ -39,6 +39,7 @@ Common triggers:
 - `RecurringJobHandler` or `[RecurringJob]` behaviour changes → update `create-recurring-job/SKILL.md`
 - The contracts project pattern or `IJobMessage` contract changes → update `create-contracts-assembly/SKILL.md`
 - `Flowly.OpenTelemetry` registration pattern changes in the `flowly-project` or `flowlyaspireapp` templates → update `add-opentelemetry/SKILL.md` so the wiring stays consistent
+- `MessageStreamHandler<T>` gains new configuration options or `[StreamRetention]` changes → update `create-message-stream-handler/SKILL.md`
 - A previously documented step becomes wrong, redundant, or replaced by a better approach → fix or remove it
 
 ## Setup skills — prefer Flowly.Templates

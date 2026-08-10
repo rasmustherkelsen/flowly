@@ -46,6 +46,18 @@ public class RabbitMqReceivedMessageTests
 
             Assert.Same(first, second);
         }
+
+        [Fact]
+        public void WhenUnderlyingBufferIsMutatedAfterConstruction_StillDeserializesOriginalBytes()
+        {
+            var originalBytes = JsonSerializer.SerializeToUtf8Bytes(new TestMessage("original"));
+            var args = new BasicDeliverEventArgs("consumer", 1, false, "", "queue", new BasicProperties(), originalBytes);
+            var message = new RabbitMqReceivedMessage<TestMessage>(new ChannelStub(), args);
+
+            Array.Clear(originalBytes);
+
+            Assert.Equal("original", message.Body.Value);
+        }
     }
 
     public class Properties

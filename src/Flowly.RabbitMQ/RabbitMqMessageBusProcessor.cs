@@ -4,7 +4,11 @@ using RabbitMQ.Client.Events;
 
 namespace Flowly.RabbitMQ;
 
-internal class RabbitMqMessageBusProcessor<TMessage>(IChannel channel, string queueName, MessageBusProcessorOptions options) : IMessageBusProcessor<TMessage>
+internal class RabbitMqMessageBusProcessor<TMessage>(
+    IChannel channel,
+    string queueName,
+    MessageBusProcessorOptions options,
+    IDictionary<string, object?>? consumeArguments = null) : IMessageBusProcessor<TMessage>
 {
     private readonly List<Func<ErrorDetails, Task>> _processErrorHandlers = [];
     private readonly Lock _processErrorLock = new();
@@ -93,6 +97,10 @@ internal class RabbitMqMessageBusProcessor<TMessage>(IChannel channel, string qu
         _consumerTag = await channel.BasicConsumeAsync(
             queueName,
             autoAck,
+            string.Empty,
+            false,
+            false,
+            consumeArguments,
             consumer,
             cancellationToken);
     }

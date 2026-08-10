@@ -44,6 +44,89 @@ public class RabbitMqMessageBusClientTests
         }
     }
 
+    public class CreateStreamProcessor
+    {
+        private static (ConsumeCapturingChannel Channel, RabbitMqMessageBusClient Client, FakeRabbitMqConnectionPool Pool) BuildWithCapturingChannel()
+        {
+            var channel = new ConsumeCapturingChannel();
+            var pool = new FakeRabbitMqConnectionPool(
+                new FakeConnection(new FakeChannel()),
+                new FakeConnection(channel));
+
+            return (channel, new RabbitMqMessageBusClient(pool), pool);
+        }
+
+        [Fact]
+        public async Task UsesConsumerConnection()
+        {
+            var (_, client, pool) = BuildWithCapturingChannel();
+
+            await client.CreateStreamProcessor<TestMessage>("test-stream", StartPosition.First(), new MessageBusProcessorOptions(1, MessageBusReceiveMode.PeekLock));
+
+            Assert.Equal(1, pool.ConsumerConnection.CreateChannelCallCount);
+            Assert.Equal(0, pool.PublisherConnection.CreateChannelCallCount);
+        }
+
+        [Fact]
+        public async Task WithFirst_ConsumesWithFirstOffset()
+        {
+            var (channel, client, _) = BuildWithCapturingChannel();
+
+            var processor = await client.CreateStreamProcessor<TestMessage>("test-stream", StartPosition.First(), new MessageBusProcessorOptions(1, MessageBusReceiveMode.PeekLock));
+            await processor.StartProcessingMessages();
+
+            Assert.Equal("first", channel.ReceivedArguments?["x-stream-offset"]);
+        }
+
+        [Fact]
+        public async Task WithLast_ConsumesWithLastOffset()
+        {
+            var (channel, client, _) = BuildWithCapturingChannel();
+
+            var processor = await client.CreateStreamProcessor<TestMessage>("test-stream", StartPosition.Last(), new MessageBusProcessorOptions(1, MessageBusReceiveMode.PeekLock));
+            await processor.StartProcessingMessages();
+
+            Assert.Equal("last", channel.ReceivedArguments?["x-stream-offset"]);
+        }
+
+        [Fact]
+        public async Task WithOffset_ConsumesWithNumericOffset()
+        {
+            var (channel, client, _) = BuildWithCapturingChannel();
+
+            var processor = await client.CreateStreamProcessor<TestMessage>("test-stream", StartPosition.Offset(42), new MessageBusProcessorOptions(1, MessageBusReceiveMode.PeekLock));
+            await processor.StartProcessingMessages();
+
+            Assert.Equal(42L, channel.ReceivedArguments?["x-stream-offset"]);
+        }
+
+        [Fact]
+        public async Task WithTimestamp_ConsumesWithAmqpTimestampInUnixSeconds()
+        {
+            var (channel, client, _) = BuildWithCapturingChannel();
+            var timestamp = new DateTime(2026, 8, 1, 12, 0, 0, DateTimeKind.Utc);
+
+            var processor = await client.CreateStreamProcessor<TestMessage>("test-stream", StartPosition.Timestamp(timestamp), new MessageBusProcessorOptions(1, MessageBusReceiveMode.PeekLock));
+            await processor.StartProcessingMessages();
+
+            var amqpTimestamp = Assert.IsType<AmqpTimestamp>(channel.ReceivedArguments?["x-stream-offset"]);
+            Assert.Equal(new DateTimeOffset(timestamp).ToUnixTimeSeconds(), amqpTimestamp.UnixTime);
+        }
+
+        [Fact]
+        public async Task WithUnspecifiedKindTimestamp_TreatsItAsUtc()
+        {
+            var (channel, client, _) = BuildWithCapturingChannel();
+            var timestamp = new DateTime(2026, 8, 1, 12, 0, 0, DateTimeKind.Unspecified);
+
+            var processor = await client.CreateStreamProcessor<TestMessage>("test-stream", StartPosition.Timestamp(timestamp), new MessageBusProcessorOptions(1, MessageBusReceiveMode.PeekLock));
+            await processor.StartProcessingMessages();
+
+            var amqpTimestamp = Assert.IsType<AmqpTimestamp>(channel.ReceivedArguments?["x-stream-offset"]);
+            Assert.Equal(new DateTimeOffset(DateTime.SpecifyKind(timestamp, DateTimeKind.Utc)).ToUnixTimeSeconds(), amqpTimestamp.UnixTime);
+        }
+    }
+
     public class CreateExecutionLaneProcessor
     {
         [Fact]
@@ -138,6 +221,27 @@ public class RabbitMqMessageBusClientTests
     }
 
     private record TestMessage(string Value);
+
+    private sealed class ConsumeCapturingChannel : ChannelStub
+    {
+        public IDictionary<string, object?>? ReceivedArguments { get; private set; }
+
+        public override Task BasicQosAsync(uint prefetchSize, ushort prefetchCount, bool global, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public override Task<string> BasicConsumeAsync(
+            string queue,
+            bool autoAck,
+            string consumerTag,
+            bool noLocal,
+            bool exclusive,
+            IDictionary<string, object?>? arguments,
+            IAsyncBasicConsumer consumer,
+            CancellationToken cancellationToken = default)
+        {
+            ReceivedArguments = arguments;
+            return Task.FromResult("consumer-tag");
+        }
+    }
 
     private class FakeChannel : IChannel
     {

@@ -91,6 +91,47 @@ public class HandlerInstrumentationTests
         }
 
         [Fact]
+        public void RecordHalted_IncrementsHaltedCounter()
+        {
+            using var meterListener = new MeterListener();
+            long? recorded = null;
+            meterListener.InstrumentPublished = (instrument, listener) =>
+            {
+                if (instrument.Name == FlowlyInstrumentationConstants.HandlerMessagesHalted)
+                    listener.EnableMeasurementEvents(instrument);
+            };
+            meterListener.SetMeasurementEventCallback<long>((_, value, _, _) => recorded = value);
+            meterListener.Start();
+
+            using var handlerInstrumentation = new HandlerInstrumentation();
+            handlerInstrumentation.RecordHalted("MyHandler", "my-queue", "boom");
+
+            Assert.Equal(1, recorded);
+        }
+
+        [Fact]
+        public void RecordHalted_SetsErrorStatusAndHaltedEventOnCurrentActivity()
+        {
+            using var activityListener = new ActivityListener
+            {
+                ShouldListenTo = source => source.Name == FlowlyInstrumentationConstants.ActivitySourceName,
+                Sample = (ref _) => ActivitySamplingResult.AllData
+            };
+            ActivitySource.AddActivityListener(activityListener);
+
+            using var handlerInstrumentation = new HandlerInstrumentation();
+            using var activity = handlerInstrumentation.StartHandling("MyHandler", "my-queue", "rabbitmq", MessageProperties.Empty);
+
+            handlerInstrumentation.RecordHalted("MyHandler", "my-queue", "boom");
+
+            Assert.NotNull(activity);
+            Assert.Equal(ActivityStatusCode.Error, activity.Status);
+            Assert.Equal("halted", activity.GetTagItem("outcome"));
+            var haltedEvent = Assert.Single(activity.Events, e => e.Name == "flowly.stream.halted");
+            Assert.Contains(haltedEvent.Tags, tag => tag.Key == "reason" && Equals(tag.Value, "boom"));
+        }
+
+        [Fact]
         public void RecordReceived_WithCount_IncrementsCounterByCount()
         {
             using var meterListener = new MeterListener();
@@ -195,6 +236,13 @@ public class HandlerInstrumentationTests
         {
             var handlerInstrumentation = new NullHandlerInstrumentation();
             handlerInstrumentation.RecordRetried("MyHandler", "my-queue");
+        }
+
+        [Fact]
+        public void RecordHalted_DoesNotThrow()
+        {
+            var handlerInstrumentation = new NullHandlerInstrumentation();
+            handlerInstrumentation.RecordHalted("MyHandler", "my-queue", "boom");
         }
 
         [Fact]

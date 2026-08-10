@@ -30,6 +30,7 @@ Fan-out event publishing with two independent subscribers. One event type (`Orde
    ./GenerateSbConfig.ps1
    docker compose up -d
    ```
+   `GenerateSbConfig.ps1` builds and installs the `flowly` CLI, introspects `EventSender`, `ReceiverOne`, and `ReceiverTwo` to discover message contracts, and writes `sbconfig.json` — the queue configuration file the ASB emulator requires. Re-run it whenever message contracts change.
 
 2. Start all three projects (in separate terminals or via the Rider compound run config `Sample - Azure Service Bus - Events`):
    ```bash

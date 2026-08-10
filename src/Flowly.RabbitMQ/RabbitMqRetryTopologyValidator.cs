@@ -1,10 +1,14 @@
+using Flowly.MessageInfrastructure.Registration;
 using Flowly.Transport;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Exceptions;
 
 namespace Flowly.RabbitMQ;
 
-internal class RabbitMqRetryTopologyValidator(string providerName, IRabbitMqConnectionPool connectionPool) : IMessagingTopologyValidator
+internal class RabbitMqRetryTopologyValidator(
+    string providerName,
+    IRabbitMqConnectionPool connectionPool,
+    StreamQueueManifest? streamQueueManifest = null) : IMessagingTopologyValidator
 {
     public string ProviderName => providerName;
 
@@ -13,7 +17,12 @@ internal class RabbitMqRetryTopologyValidator(string providerName, IRabbitMqConn
         var connection = await connectionPool.GetConsumerConnection(cancellationToken);
 
         foreach (var queue in queueDescriptions)
+        {
+            if (streamQueueManifest?.IsStreamQueue(queue.Name) == true)
+                continue;
+
             await ValidateRetryQueue(connection, queue.Name, cancellationToken);
+        }
     }
 
     private static async Task ValidateRetryQueue(IConnection connection, string queueName, CancellationToken cancellationToken)

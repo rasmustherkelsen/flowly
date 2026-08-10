@@ -75,7 +75,8 @@ public static class RabbitMqRegistration
 
         var connectionPool = new RabbitMqConnectionPool(uri);
         var messageBusClient = new RabbitMqMessageBusClient(connectionPool, maxMessageSizeBytes);
-        var topologyCreator = new RabbitMqMessagingTopologyCreator(connectionPool);
+        var streamQueueManifest = StreamQueueManifest.GetOrCreate(services);
+        var topologyCreator = new RabbitMqMessagingTopologyCreator(connectionPool, streamQueueManifest);
 
         clientRegistry.Register(effectiveName, messageBusClient, createTopology);
 
@@ -90,7 +91,7 @@ public static class RabbitMqRegistration
         TransportRegistrationHelper.RegisterTopologyCreators(services, effectiveName, topologyCreator, topologyCreator);
 
         services.AddSingleton<IMessagingTopologyValidator>(
-            new RabbitMqRetryTopologyValidator(effectiveName, connectionPool));
+            new RabbitMqRetryTopologyValidator(effectiveName, connectionPool, streamQueueManifest));
 
         TransportRegistrationHelper.RegisterProviderManifest(services, clientRegistry, effectiveName, TransportType);
 

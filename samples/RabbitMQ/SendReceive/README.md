@@ -37,7 +37,7 @@ dotnet run --project Receiver
 dotnet run --project Sender
 ```
 
-### What to observe
+## What to observe
 
 - The Sender prints `Sent message with text: Hello, World! <timestamp>` once per second.
 - The Receiver prints `Received message with text: Hello, World! <timestamp>` for each message it handles.

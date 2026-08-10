@@ -22,8 +22,6 @@ Demonstrates how Flowly's built-in `IHealthCheck` for Azure Service Bus surfaces
 
 ## How to run
 
-### 1. Start everything with Docker Compose
-
 Run from this directory:
 
 ```bash
@@ -32,7 +30,7 @@ docker compose up --build
 
 Docker Compose starts SQL Server and the ASB emulator, waits for the emulator to become available, then builds and starts the `Receiver` container.
 
-### 2. What to observe
+## What to observe
 
 The `receiver` container starts immediately after the emulator container is created, but the emulator takes ~30 seconds to initialise (it waits for SQL Server internally). During that window you can watch the health status change in real time:
 
