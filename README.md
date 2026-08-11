@@ -20,7 +20,6 @@ Flowly ships an embedded management dashboard at `/flowly` — inspect job histo
 - [RabbitMQ Quickstart](docs/quickstart-rabbitmq.md)
 - [Azure Service Bus Quickstart](docs/quickstart-azure-service-bus.md)
 - [InMemory Quickstart](docs/quickstart-inmemory.md)
-- [Dashboard Authentication](docs/dashboard-authentication.md)
 - [Why Flowly?](#why-flowly)
 - [Packages](#packages)
 - [Installation](#installation)
@@ -28,6 +27,7 @@ Flowly ships an embedded management dashboard at `/flowly` — inspect job histo
 - [Defining Messages](#defining-messages)
 - [Message Handlers](#message-handlers)
 - [Sending Messages](#sending-messages)
+- [Message Streaming](#message-streaming)
 - [Events (Fan-Out)](#events-fan-out)
 - [Topology Name Resolution](#topology-name-resolution)
 - [Retry Policy](#retry-policy)
@@ -45,6 +45,8 @@ Flowly ships an embedded management dashboard at `/flowly` — inspect job histo
 - [OpenTelemetry](#opentelemetry)
 - [Samples](#samples)
 - [Claude Code Skills](#claude-code-skills)
+- [Dashboard Authentication](docs/dashboard-authentication.md)
+- [Attributes Reference](docs/attributes-reference.md)
 - [Contributing](#contributing)
 - [Repository](#repository)
 - [Status](#status)
@@ -266,6 +268,8 @@ These attributes go on the **handler** class:
 | `[RetryPolicy(maxRetries, delaySeconds)]` | Retry on handler failure | 0 retries |
 | `[MaxConcurrentCalls(n)]` | Number of messages processed in parallel | 1 |
 
+See the [Attributes Reference](docs/attributes-reference.md) for every attribute — handler and message/event contract alike — in one place.
+
 Or override `Configure` on the handler:
 
 ```csharp
@@ -375,6 +379,89 @@ public class MyService(IMessageCaller caller)
 Each sender gets a dedicated reply queue named `{callQueue}.reply.{instanceName}` (e.g. `call-message.reply.my-service`). Flowly creates this queue at startup, routes responses to it via `CorrelationId`, and resolves the waiting `Call` task.
 
 > **Note:** Attributes on the return message type (`[QueueName]`, `[RetryPolicy]`, `[ProviderAffinity]`, etc.) are **silently ignored** on the reply path. The response is delivered via the infrastructure reply queue and these attributes only apply if `ReturnMessage` is also independently registered as a normal handler or submitter elsewhere.
+
+---
+
+## Message Streaming
+
+> **RabbitMQ only.** Message streams use RabbitMQ's native stream queue type (`x-queue-type: stream`) — Azure Service Bus and the InMemory transport have no equivalent primitive. Registering a stream handler or recorder against a non-RabbitMQ provider throws `InvalidOperationException` at startup, not at first use.
+
+A message stream is an append-only, replayable log: unlike a regular queue, multiple independent consumers can each read the same stream from their own position — including consumers that didn't exist when a message was recorded. `IMessageRecorder.Record()` is a third sending verb alongside `IMessageSender.Send()` (fire-and-forget) and `IMessageCaller.Call()` (RPC).
+
+### Recording onto a stream
+
+```csharp
+public record TelemetryReading(string SensorId, double Value);
+
+builder.AddMessageRecorder<TelemetryReading>();
+```
+
+```csharp
+public class SensorService(IMessageRecorder messageRecorder)
+{
+    public Task Record(TelemetryReading reading, CancellationToken ct) => messageRecorder.Record(reading, ct);
+}
+```
+
+### Consuming a stream
+
+```csharp
+public class TelemetryStreamHandler : MessageStreamHandler<TelemetryReading>
+{
+    public override void Configure(MessageStreamHandlerOptions options)
+    {
+        options.StartPosition = StartPosition.Last();   // required — no default (see below)
+        options.MaxMessagesBeforeProcessing = 100;
+        options.MaxWaitTime = TimeSpan.FromSeconds(30);
+    }
+
+    public override async Task Handle(IMessageStreamContext<TelemetryReading> ctx)
+    {
+        foreach (var reading in ctx.Messages)
+            await Save(reading);
+    }
+}
+```
+
+Register:
+
+```csharp
+builder.AddMessageStreamHandler<TelemetryReading, TelemetryStreamHandler>();
+```
+
+> **Prefetch matches `MaxMessagesBeforeProcessing` automatically.** Messages accumulated into a batch aren't acknowledged until the whole batch is handled, so the RabbitMQ consumer's prefetch count is always sized to `MaxMessagesBeforeProcessing` — otherwise the broker would withhold messages beyond the prefetch limit until the in-flight (unacked) ones are acked, starving the accumulator down to one message per `MaxWaitTime` window regardless of publish rate. This isn't configurable — there is no `[MaxConcurrentCalls]` for stream handlers, since the batch loop only ever handles one batch at a time.
+
+### Start position
+
+Every stream handler **must** explicitly set `StartPosition` in `Configure` — there is no default, and registration throws `InvalidOperationException` if it's left unset:
+
+| Factory | Behavior |
+|---|---|
+| `StartPosition.First()` | Replay the entire retained stream from the beginning. The handler must be idempotent — every restart replays everything again. |
+| `StartPosition.Last()` | Consume only messages published after the handler attaches. Messages recorded while the process was down are missed after a restart. |
+| `StartPosition.Offset(n)` | Start at a specific numeric offset. |
+| `StartPosition.Timestamp(dt)` | Start at the first message at or after a point in time. |
+
+> **No offset persistence.** Flowly does not checkpoint stream offsets across restarts — `StartPosition` is re-evaluated fresh on every boot. Avoid values computed relative to the current time (e.g. `StartPosition.Timestamp(DateTime.UtcNow - TimeSpan.FromHours(2))`), which never converge across restarts.
+
+### Retention
+
+Set retention limits on the message contract with `[StreamRetention]` so the stream doesn't grow unbounded:
+
+```csharp
+[StreamRetention(maxAgeSeconds: 604800, maxLengthBytes: 500_000_000)]
+public record TelemetryReading(string SensorId, double Value);
+```
+
+Omitting both parameters means the stream retains every message forever — a broker disk exhaustion risk.
+
+### Retry and failure handling
+
+`[RetryPolicy(maxRetries, delaySeconds)]` on the handler class enables retry, but the mechanism is different from every other handler type: retries run **in-process**, re-invoking the handler on the same in-memory batch — messages are never re-published to the stream, which would permanently write retry noise into an immutable, replayable log.
+
+When retries are exhausted, the handler **halts consumption of that queue entirely** rather than skipping the failed batch: the stream offset never advances past it, a critical log entry and a `flowly.message.handler.halted` metric are emitted, and no further messages are processed until the process is fixed and restarted. Dead letter tracking is not supported for stream handlers.
+
+`MessageStreamHandlerOptions` does not inherit the queue options used by other handlers — `LockDuration`, `DeadLetterOnMessageExpiration`, and `Configure`-based retry settings don't apply to streams (there's no per-message peek-lock, and retention replaces TTL).
 
 ---
 

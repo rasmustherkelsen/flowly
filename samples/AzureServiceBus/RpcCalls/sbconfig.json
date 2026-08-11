@@ -17,17 +17,17 @@
               "RequiresDuplicateDetection": false,
               "RequiresSession": false
             }
-          }
-          ,{
-            "Name": "my.reply.sender",
+          },
+          {
+            "Name": "my-reply-sender",
             "Properties": {
-              "DeadLetteringOnMessageExpiration": false,
-              "DefaultMessageTimeToLive": "PT2M",
+              "DeadLetteringOnMessageExpiration": true,
+              "DefaultMessageTimeToLive": "PT1H",
               "DuplicateDetectionHistoryTimeWindow": "PT5M",
               "ForwardDeadLetteredMessagesTo": "",
               "ForwardTo": "",
               "LockDuration": "PT5M",
-              "MaxDeliveryCount": 1,
+              "MaxDeliveryCount": 10,
               "RequiresDuplicateDetection": false,
               "RequiresSession": false
             }

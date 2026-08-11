@@ -4,7 +4,8 @@ using RabbitMQ.Client;
 
 namespace Flowly.RabbitMQ;
 
-internal class RabbitMqMessageBusClient(IRabbitMqConnectionPool connectionPool, long? maxMessageSizeBytes = null) : IMessageBusClient, IEventCapableMessageBusClient
+internal class RabbitMqMessageBusClient(IRabbitMqConnectionPool connectionPool, long? maxMessageSizeBytes = null)
+    : IMessageBusClient, IEventCapableMessageBusClient, IStreamCapableMessageBusClient
 {
     private readonly SemaphoreSlim _senderLock = new(1, 1);
     private readonly ConcurrentDictionary<string, IMessageBusSender> _senders = new();
@@ -103,6 +104,37 @@ internal class RabbitMqMessageBusClient(IRabbitMqConnectionPool connectionPool, 
         var channel = await connection.CreateChannelAsync(channelOptions);
 
         return new RabbitMqMessageBusProcessor<TMessage>(channel, queueName, options);
+    }
+
+    public async Task<IMessageBusProcessor<TMessage>> CreateStreamProcessor<TMessage>(string queueName, StartPosition startPosition, MessageBusProcessorOptions options)
+    {
+        var connection = await connectionPool.GetConsumerConnection();
+        var channelOptions = new CreateChannelOptions(
+            false,
+            false,
+            consumerDispatchConcurrency: (ushort)Math.Max(1, options.MaxConcurrentCalls));
+
+        var channel = await connection.CreateChannelAsync(channelOptions);
+
+        var consumeArguments = new Dictionary<string, object?>
+        {
+            ["x-stream-offset"] = startPosition.Match<object>(
+                () => "first",
+                () => "last",
+                offset => offset,
+                timestamp => ToAmqpTimestamp(timestamp))
+        };
+
+        return new RabbitMqMessageBusProcessor<TMessage>(channel, queueName, options, consumeArguments);
+    }
+
+    private static AmqpTimestamp ToAmqpTimestamp(DateTime timestamp)
+    {
+        var utcTimestamp = timestamp.Kind == DateTimeKind.Unspecified
+            ? DateTime.SpecifyKind(timestamp, DateTimeKind.Utc)
+            : timestamp.ToUniversalTime();
+
+        return new AmqpTimestamp(new DateTimeOffset(utcTimestamp).ToUnixTimeSeconds());
     }
 
     public async Task<IExecutionLaneProcessor> CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options)

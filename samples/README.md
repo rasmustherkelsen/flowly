@@ -12,6 +12,7 @@ Each sample is self-contained and runnable. Pick the one matching your transport
 | [MessagesWithDeadLetterTracking](AzureServiceBus/MessagesWithDeadLetterTracking/README.md) | Point-to-point handler that crashes on half its messages; dead letters are persisted to SQL Server with a console to list, requeue, and discard them |
 | [EventsWithDeadLetterTracking](AzureServiceBus/EventsWithDeadLetterTracking/README.md) | Event subscriber that dead-letters failing messages, with a console app to list, requeue, and discard them |
 | [Aspire](AzureServiceBus/Aspire/README.md) | Full-featured: jobs, batch handlers, recurring jobs, dead letters, OpenTelemetry, embedded dashboard |
+| [RpcCalls](AzureServiceBus/RpcCalls/README.md) | RPC-style blocking call/response using `CallHandler` and `IMessageCaller` |
 
 ## RabbitMQ
 
@@ -24,6 +25,7 @@ Each sample is self-contained and runnable. Pick the one matching your transport
 | [EventsWithDeadLetterTracking](RabbitMQ/EventsWithDeadLetterTracking/README.md) | Event subscriber that dead-letters failing messages, with a console app to list, requeue, and discard them |
 | [Aspire](RabbitMQ/Aspire/README.md) | Full-featured: jobs, batch handlers, recurring jobs, dead letters, OpenTelemetry, embedded dashboard |
 | [RpcCalls](RabbitMQ/RpcCalls/README.md) | RPC-style blocking call/response using `CallHandler` and `IMessageCaller` |
+| [SendReceiveMessageStream](RabbitMQ/SendReceiveMessageStream/README.md) | Append-only, replayable message stream using `MessageStreamHandler<T>` and `IMessageRecorder` |
 
 ## InMemory
 
@@ -32,6 +34,9 @@ Each sample is self-contained and runnable. Pick the one matching your transport
 | [SendReceive](InMemory/SendReceive/README.md) | Minimal send/receive with no external broker — sender and handler run in the same process |
 | [Events](InMemory/Events/README.md) | Fan-out event publishing to two independent in-process subscribers |
 | [FullSample](InMemory/FullSample/README.md) | Full-featured: jobs, batch handlers, recurring jobs, dead letters, and fan-out events — no external broker or database required |
+| [RpcCalls](InMemory/RpcCalls/App/README.md) | RPC-style call/response with `CallHandler` and `IMessageCaller` in a single process |
+| [Mediator](InMemory/Mediator/AsMediator/README.md) | Using Flowly as an in-process mediator behind a minimal API |
+| [RecurringJobs](InMemory/RecurringJobs/Backend/README.md) | CRON-scheduled recurring job with in-memory SQLite job state tracking |
 
 ## MultiBus
 

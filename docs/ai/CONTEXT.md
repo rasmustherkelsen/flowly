@@ -209,6 +209,37 @@ These are easy to miss because each is a small, separate piece of wiring; a solu
 7. **Restarting a running ASB emulator / Docker Compose stack is disruptive** — a skill that just regenerated `sbconfig.json` should ask the user before restarting it, not do so automatically.
 8. **Dashboard and ASP.NET Core sender projects with call submitters need `AddAspNetCoreInstrumentation()` for complete OTel traces.** When a project using `AddCallSubmitter<T>()` is an ASP.NET Core web app (has HTTP endpoints), `flowly.call` spans are automatically parented to the ambient HTTP request activity. If `AddAspNetCoreInstrumentation()` is missing from the `TracerProviderBuilder`, the HTTP parent span is never exported and Jaeger shows the trace as `(incomplete)`. Fix: add the `OpenTelemetry.Instrumentation.AspNetCore` package and chain `.AddAspNetCoreInstrumentation()` into `.WithTracing(...)`. Aspire solutions using `AddServiceDefaults()` already have this — no extra step needed. Worker-style projects (no HTTP listener) are not affected.
 
+#### Message stream handler (RabbitMQ only — append-only, replayable log)
+
+`MessageStreamHandler<T>` requires the resolved provider's client to implement `IStreamCapableMessageBusClient` — only `RabbitMqMessageBusClient` does today. Registering against Azure Service Bus or InMemory throws `InvalidOperationException` at registration time (eager check, not a lazy runtime check like `IEventCapableMessageBusClient`).
+
+```csharp
+public class MyStreamHandler : MessageStreamHandler<MyMessage>
+{
+    public override void Configure(MessageStreamHandlerOptions options)
+    {
+        options.StartPosition = StartPosition.Last(); // required — no default, throws at registration if unset
+        options.MaxMessagesBeforeProcessing = 100;
+        options.MaxWaitTime = TimeSpan.FromSeconds(30);
+    }
+
+    public override async Task Handle(IMessageStreamContext<MyMessage> ctx)
+    {
+        foreach (var msg in ctx.Messages) { /* ... */ }
+    }
+}
+```
+
+Register: `.AddMessageStreamHandler<MyMessage, MyStreamHandler>()`
+
+Retention limits go on the **message contract**, not the handler: `[StreamRetention(maxAgeSeconds: 604800, maxLengthBytes: 500_000_000)]`. Omitting both means the stream grows unbounded.
+
+`[RetryPolicy]` works, but with a different mechanism than every other handler: retries are an **in-process loop over the same in-memory batch** — messages are never re-published to the stream (which would permanently corrupt an immutable, replayable log). When retries are exhausted the handler **halts consumption of that queue entirely**: the stream offset never advances past the failed batch, a `Critical` log entry and `flowly.message.handler.halted` metric are emitted, and no further messages are processed until the process is fixed and restarted. There is no skip-and-continue and no dead letter tracking for stream handlers.
+
+`MessageStreamHandlerOptions` does **not** inherit `HandlerQueueOptions` — `LockDuration`, `DeadLetterOnMessageExpiration`, `MaxRetries`/`RetryDelaySeconds` don't apply (no per-message peek-lock; retention replaces TTL; retry is in-process, not `Configure`-driven). It also has no `MaxConcurrentCalls` — the batch loop only ever handles one batch at a time, so the RabbitMQ consumer's prefetch count is always sized to `MaxMessagesBeforeProcessing` automatically (batched messages aren't acked until the whole batch is handled, so prefetch must cover the full batch or the broker starves the accumulator down to one message per `MaxWaitTime` window).
+
+**Offsets are not persisted across restarts.** `StartPosition` is re-evaluated fresh on every boot — avoid values computed relative to "now" (e.g. `StartPosition.Timestamp(DateTime.UtcNow - TimeSpan.FromHours(2))`), which never converge.
+
 ---
 
 ### 3. Sending Messages
@@ -232,6 +263,16 @@ var jobId = await jobSender.QueueJob(new MyJobMessage { ... }); // returns JobId
 ```
 
 Register: `.AddJobSubmitter<MyJobMessage>()`
+
+#### Recording onto a message stream (RabbitMQ only)
+
+Inject `IMessageRecorder`:
+
+```csharp
+await messageRecorder.Record(new MyMessage { ... });
+```
+
+Register: `.AddMessageRecorder<MyMessage>()`. Throws `InvalidOperationException` at registration time if the resolved provider isn't RabbitMQ.
 
 ---
 
@@ -545,6 +586,8 @@ These attributes go on the **handler** class and control infrastructure settings
 | `[MaxConcurrentCalls(n)]` | Messages processed in parallel | 1 |
 | `[BatchProcessing(max, waitSec)]` | Enable batching | — |
 | `[RecurringJob("desc", "cron")]` | CRON expression | — |
+
+See [docs/attributes-reference.md](../attributes-reference.md) for every Flowly attribute — including the message/event contract ones (`QueueName`, `EventName`, `ProviderAffinity`) — in one consolidated table.
 
 Alternatively override `Configure(HandlerQueueOptions options)` in the handler class.
 
@@ -884,6 +927,13 @@ Registration: `.UseInMemory()`. Optionally configure via `Action<InMemoryOptions
 | Retry republish | Re-publish to `{queue}.retry` with per-message TTL (`x-expiration`); DLX routes back to main queue on expiry |
 | Dead letter | `BasicNackAsync(requeue: false)` routes to `{queue}.dead-letter` via DLX exchange `{queue}.dlx` |
 | Connection pooling | Separate publisher and consumer connections (`IRabbitMqConnectionPool`) |
+| Stream handler | `AsyncEventingBasicConsumer` with `x-stream-offset` consume argument (`"first"`/`"last"`/numeric offset/`AmqpTimestamp`); in-process retry on the batch, no requeue; halts consumption (no ack, no skip) once retries are exhausted |
+
+#### Stream queue topology — no DLX, no retry queue
+
+`StreamQueueManifest` (populated by `AddMessageStreamHandler`/`AddMessageRecorder`) tells `RabbitMqMessagingTopologyCreator` and `RabbitMqRetryTopologyValidator` which queue names are streams, keyed by queue name. Kept as a RabbitMQ-side side-channel rather than a field on the shared, transport-agnostic `DeferredQueueRegistration` record — that record is also consumed by `Flowly.AzureServiceBus.Aspire`, which has no concept of stream queues.
+
+For a stream queue, `DeclareQueueTopology` short-circuits (same shape as the `IReplyQueueDescription` branch) and declares only the queue itself with `x-queue-type: stream` plus `x-max-age`/`x-max-length-bytes` when set via `[StreamRetention]` — no `.dlx` exchange, no `.dead-letter` queue, no `.retry` queue. `RabbitMqRetryTopologyValidator` correspondingly skips `.retry`-queue validation for any queue the manifest marks as a stream.
 
 #### Retry queue topology — DLX constraint
 
@@ -1075,6 +1125,8 @@ Rules that describe how to *author or maintain* skills (contributor-facing meta-
 | Add a batch handler | Inherit `BatchMessageHandler<T>`, add attributes, register with `.AddBatchMessageHandler<>()` |
 | Add a job handler | Inherit `JobHandler<T>`, register with `.AddJobHandler<>()` |
 | Add a recurring job | Inherit `RecurringJobHandler`, add `[RecurringJob]`, register with `.AddRecurringJob<>()` |
+| Add a stream handler (RabbitMQ only) | Inherit `MessageStreamHandler<T>`, set `StartPosition` in `Configure`, register with `.AddMessageStreamHandler<T, TH>()` |
+| Record onto a stream (RabbitMQ only) | Inject `IMessageRecorder`, call `.Record(msg)`; register with `.AddMessageRecorder<T>()` |
 | Configure job cleanup | Pass `configure: options => { options.DeleteCompletedJobsAfter = ...; }` to `AddSqlServerJobStateTracking` |
 | Control the queue name | Add `[QueueName("name")]` to the **message contract** — only needed when auto-generation is wrong |
 | Send a message | Inject `IMessageSender`, call `.Send(msg)` |

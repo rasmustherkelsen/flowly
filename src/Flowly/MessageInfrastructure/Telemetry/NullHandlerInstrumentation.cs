@@ -20,6 +20,8 @@ internal sealed class NullHandlerInstrumentation : IHandlerInstrumentation
 
     public void RecordRetried(string handlerName, string queueName, long count = 1) { }
 
+    public void RecordHalted(string handlerName, string queueName, string reason) { }
+
     public Activity? StartSendingResponse(string callQueueName, string replyQueueName, string messagingSystem, string messageId, string correlationId) => null;
 
     public void RecordResponseSent(string callQueueName, double durationMs) { }

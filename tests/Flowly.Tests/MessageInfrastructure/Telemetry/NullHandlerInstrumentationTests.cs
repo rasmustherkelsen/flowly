@@ -68,6 +68,17 @@ public class NullHandlerInstrumentationTests
         }
     }
 
+    public class RecordHalted
+    {
+        [Fact]
+        public void DoesNotThrow()
+        {
+            var nullHandlerInstrumentation = new NullHandlerInstrumentation();
+
+            nullHandlerInstrumentation.RecordHalted("MyHandler", "my-queue", "boom");
+        }
+    }
+
     public class RecordRetried
     {
         [Fact]

@@ -94,6 +94,18 @@ internal interface IHandlerInstrumentation
     void RecordRetried(string handlerName, string queueName, long count = 1);
 
     /// <summary>
+    ///     Increments the <c>flowly.message.handler.halted</c> counter, sets the current activity status to
+    ///     <see cref="ActivityStatusCode.Error" />, and records an activity event carrying the failure reason. Called
+    ///     when a <see cref="MessageStreamHandler{TMessage}" /> exhausts its in-process retries and stops consuming its
+    ///     stream queue entirely rather than skipping the failed batch — a critical signal requiring operator
+    ///     intervention.
+    /// </summary>
+    /// <param name="handlerName">The name of the handler class.</param>
+    /// <param name="queueName">The stream queue the handler stopped consuming.</param>
+    /// <param name="reason">The failure reason that caused the halt.</param>
+    void RecordHalted(string handlerName, string queueName, string reason);
+
+    /// <summary>
     ///     Starts a <see cref="ActivityKind.Producer" /> span named <c>flowly.call.reply {callQueueName}</c> for the
     ///     act of sending a response back to the caller. The activity becomes <c>Activity.Current</c> so the transport
     ///     can inject its <c>traceparent</c> into the outgoing response message, linking it as a child of the handler

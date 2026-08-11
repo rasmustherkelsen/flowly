@@ -32,6 +32,17 @@ Adding a new database backend package (e.g. a new provider for `Flowly.Jobs` or 
 
 The task is **not done** until all four are updated.
 
+### Adding, changing, or removing an attribute
+
+`docs/attributes-reference.md` is the single consolidated index of every Flowly attribute (handler-class, message/event contract, and job-specific). Whenever an attribute is added, its constructor/parameters change, its default changes, or it's removed, update **all** of the following in the same change:
+
+1. `docs/attributes-reference.md` — add/update/remove the row in the relevant table (Handler-class / Message & event contract / Job-specific), including purpose, applies-to, and default
+2. The attribute's XML doc comments on the `Attribute` class itself
+3. Its existing detailed section (e.g. `README.md` "Queue configuration attributes", `docs/ai/CONTEXT.md` "Handler-level queue attributes", or the attribute's own feature section) — these existing tables/prose are kept in parallel with the appendix, not replaced by it
+4. Any `SKILL.md` under `.claude/skills/` that references the attribute (e.g. `create-message-handler`, `create-batch-handler`, `create-recurring-job`)
+
+The task is **not done** until `docs/attributes-reference.md` and the other affected locations agree.
+
 ## Code Comments
 
 - All public and protected methods, field and properties in public classes or interfaces must be documented using XML documentation. Including parameters and return type preferably with a ref to the type being referenced. Be thourough so that the documentation is precise. The user should have a good experience using intellisense with the library. If existing information is provided please check if it still seems to convey the precise information or if it is not good enough or the underlying code has changed so it is plain wrong.

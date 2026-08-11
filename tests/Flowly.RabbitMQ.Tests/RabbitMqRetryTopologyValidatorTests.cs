@@ -1,3 +1,4 @@
+using Flowly.MessageInfrastructure.Registration;
 using Flowly.RabbitMQ.Tests.Fakes;
 using Flowly.Transport;
 using RabbitMQ.Client;
@@ -74,6 +75,35 @@ public class RabbitMqRetryTopologyValidatorTests
             await validator.Validate(
                 [new FakeQueueDescription("order-created"), new FakeQueueDescription("invoice-generated"), new FakeQueueDescription("catalog-updated")],
                 CancellationToken.None);
+        }
+    }
+
+    public class ValidateForStreamQueues
+    {
+        [Fact]
+        public async Task StreamQueue_SkipsRetryQueueValidation()
+        {
+            var pool = new FakeConnectionPool(new FailingChannel());
+            var streamQueueManifest = new StreamQueueManifest();
+            streamQueueManifest.MarkAsStream("telemetry", null, null);
+            var validator = new RabbitMqRetryTopologyValidator("rabbitmq", pool, streamQueueManifest);
+
+            await validator.Validate([new FakeQueueDescription("telemetry")], CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task NonStreamQueueAmongStreamQueues_StillValidated()
+        {
+            var pool = new FakeConnectionPool(new FailingChannel());
+            var streamQueueManifest = new StreamQueueManifest();
+            streamQueueManifest.MarkAsStream("telemetry", null, null);
+            var validator = new RabbitMqRetryTopologyValidator("rabbitmq", pool, streamQueueManifest);
+
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => validator.Validate(
+                [new FakeQueueDescription("telemetry"), new FakeQueueDescription("order-created")],
+                CancellationToken.None));
+
+            Assert.Contains("order-created.retry", exception.Message);
         }
     }
 

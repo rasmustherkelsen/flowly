@@ -1,6 +1,4 @@
-using System.Diagnostics;
 using System.Reflection;
-using System.Runtime.CompilerServices;
 
 namespace Flowly.MessageInfrastructure.Receivers;
 
@@ -73,50 +71,19 @@ internal static class MessageHandlerOptionsResolver
 
     private static void ApplyConfigure(Type handlerType, BatchMessageHandlerOptions options)
     {
-        var batchConfigureMethod = handlerType.GetMethod(nameof(BatchMessageHandler<object>.Configure), [typeof(BatchMessageHandlerOptions)]);
+        var batchConfigureMethod = handlerType.GetMethod(nameof(BatchMessageHandler<>.Configure), [typeof(BatchMessageHandlerOptions)]);
         if (batchConfigureMethod is not null && batchConfigureMethod.DeclaringType != typeof(BatchMessageHandler<>))
         {
-            if (CreateHandlerInstanceForConfigure(handlerType) is { } handlerInstance)
+            if (HandlerConfigureInvoker.CreateInstanceForConfigure(handlerType) is { } handlerInstance)
                 batchConfigureMethod.Invoke(handlerInstance, [options]);
 
             return;
         }
 
-        var configureMethod = handlerType.GetMethod(nameof(MessageHandler<object>.Configure), [typeof(HandlerQueueOptions)]);
+        var configureMethod = handlerType.GetMethod(nameof(MessageHandler<>.Configure), [typeof(HandlerQueueOptions)]);
         if (configureMethod is null || configureMethod.DeclaringType == typeof(MessageHandler<>)) return;
 
-        if (CreateHandlerInstanceForConfigure(handlerType) is { } instance)
+        if (HandlerConfigureInvoker.CreateInstanceForConfigure(handlerType) is { } instance)
             configureMethod.Invoke(instance, [options]);
-    }
-
-    private static object? CreateHandlerInstanceForConfigure(Type handlerType)
-    {
-        try
-        {
-            return Activator.CreateInstance(handlerType);
-        }
-        catch
-        {
-            try
-            {
-                var instance = RuntimeHelpers.GetUninitializedObject(handlerType);
-                Trace.TraceWarning(
-                    "Flowly: {0} has a Configure override but no parameterless constructor. " +
-                    "Configure was invoked on an uninitialized instance — constructor-injected state will be null/default. " +
-                    "Configure must not read fields set by the constructor.",
-                    handlerType.FullName);
-
-                return instance;
-            }
-            catch
-            {
-                Trace.TraceWarning(
-                    "Flowly: {0} has a Configure override but could not be instantiated. " +
-                    "Configure will be skipped and queue options will fall back to attribute defaults.",
-                    handlerType.FullName);
-
-                return null;
-            }
-        }
     }
 }

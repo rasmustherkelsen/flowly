@@ -56,6 +56,26 @@ public class RabbitMqRegistrationTests
 
             Assert.Equal("secondary", registry.GetAll()[0].Name);
         }
+
+        [Fact]
+        public void RegistersStreamCapableClient()
+        {
+            var (builder, registry) = CreateBuilder();
+
+            builder.UseRabbitMq();
+
+            Assert.IsAssignableFrom<IStreamCapableMessageBusClient>(Assert.Single(registry.Clients));
+        }
+
+        [Fact]
+        public void RegistersStreamQueueManifestSingleton()
+        {
+            var (builder, _) = CreateBuilder();
+
+            builder.UseRabbitMq();
+
+            Assert.Single(builder.Services, s => s.ImplementationInstance is StreamQueueManifest);
+        }
     }
 
     public class UseRabbitMqMultipleProviders
@@ -92,12 +112,15 @@ public class RabbitMqRegistrationTests
     {
         private readonly List<RegisteredTransport> _transports = [];
 
+        public List<IMessageBusClient> Clients { get; } = [];
+
         public string PrimaryProviderName => _transports.First(t => t.IsPrimary).Name;
 
         public void Register(string providerName, IMessageBusClient client, bool? createTopologyOverride)
         {
             var isPrimary = _transports.Count == 0;
             _transports.Add(new RegisteredTransport(providerName, isPrimary, createTopologyOverride));
+            Clients.Add(client);
         }
 
         public IMessageBusClient GetClient(string providerName)

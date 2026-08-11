@@ -38,7 +38,7 @@ dotnet run --project AzureServiceBusAspire.AppHost
 
 Aspire starts the ASB emulator, SQL Server, BackendProcessor, BackendFinanceProcessor, Api, and the dashboard. Open the Aspire dashboard URL printed to the console to see logs, traces, and resource health.
 
-### What to observe
+## What to observe
 
 - Open the **Flowly Dashboard** by navigating to `<Api URL>/flowly` (the Api service URL is shown in the Aspire dashboard).
 - Use the **Submit** page to queue `ProcessOrder` jobs, send `RebuildIndex` batch messages, or send `SomeQuery` messages.

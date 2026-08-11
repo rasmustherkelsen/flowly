@@ -43,6 +43,9 @@ public static class FlowlyInstrumentationConstants
     /// <summary>Counter: number of messages re-published for a retry attempt by handlers.</summary>
     public const string HandlerMessagesRetried = "flowly.message.handler.retried";
 
+    /// <summary>Counter: number of times a stream handler halted consumption after exhausting its in-process retries.</summary>
+    public const string HandlerMessagesHalted = "flowly.message.handler.halted";
+
     /// <summary>Histogram: message processing duration in milliseconds for handlers.</summary>
     public const string HandlerProcessingDuration = "flowly.message.handler.duration";
 

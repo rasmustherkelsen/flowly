@@ -17,6 +17,8 @@
         <InternalsVisibleTo Include="Flowly.Jobs.Postgres.Tests" />
         <InternalsVisibleTo Include="Flowly.Jobs.SQLite.Tests" />
         <InternalsVisibleTo Include="Flowly.DeadLetters" />
+        <InternalsVisibleTo Include="Flowly.RabbitMQ" />
+        <InternalsVisibleTo Include="Flowly.RabbitMQ.Tests" />
     </ItemGroup>
 
     <ItemGroup>

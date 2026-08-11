@@ -18,6 +18,7 @@ public static class FlowlyMeterProviderBuilderExtensions
     ///                 <see cref="FlowlyInstrumentationConstants.HandlerMessagesSucceeded" />,
     ///                 <see cref="FlowlyInstrumentationConstants.HandlerMessagesFailed" />,
     ///                 <see cref="FlowlyInstrumentationConstants.HandlerMessagesRetried" />,
+    ///                 <see cref="FlowlyInstrumentationConstants.HandlerMessagesHalted" />,
     ///                 <see cref="FlowlyInstrumentationConstants.HandlerProcessingDuration" />
     ///             </description>
     ///         </item>
