@@ -31,7 +31,7 @@ public class MessageStreamHandlerRegistrationExtensionsTests
 
             flowlyBuilder.AddMessageStreamHandler<TelemetryReading, TelemetryReadingHandler>();
 
-            var descriptor = flowlyBuilder.Services.Single(s => s.ServiceType == typeof(MessageStreamHandler<TelemetryReading>));
+            var descriptor = flowlyBuilder.Services.Single(s => s.ServiceType == typeof(TelemetryReadingHandler));
             Assert.Equal(ServiceLifetime.Scoped, descriptor.Lifetime);
             Assert.Equal(typeof(TelemetryReadingHandler), descriptor.ImplementationType);
         }
@@ -44,8 +44,8 @@ public class MessageStreamHandlerRegistrationExtensionsTests
             flowlyBuilder.AddMessageStreamHandler<TelemetryReading, TelemetryReadingHandler>();
 
             var handlerSettings = flowlyBuilder.Services
-                .Where(s => s.ServiceType == typeof(MessageStreamHandlerSettings<TelemetryReading>))
-                .Select(s => (MessageStreamHandlerSettings<TelemetryReading>)s.ImplementationInstance!)
+                .Where(s => s.ServiceType == typeof(MessageStreamHandlerSettings<TelemetryReading, TelemetryReadingHandler>))
+                .Select(s => (MessageStreamHandlerSettings<TelemetryReading, TelemetryReadingHandler>)s.ImplementationInstance!)
                 .Single();
 
             Assert.Equal("telemetry-reading", handlerSettings.QueueName);
@@ -63,7 +63,7 @@ public class MessageStreamHandlerRegistrationExtensionsTests
 
             var descriptor = flowlyBuilder.Services.FirstOrDefault(s =>
                 s.ServiceType == typeof(IHostedService) &&
-                s.ImplementationType == typeof(MessageStreamProcessingBackgroundService<TelemetryReading>));
+                s.ImplementationType == typeof(MessageStreamProcessingBackgroundService<TelemetryReading, TelemetryReadingHandler>));
 
             Assert.NotNull(descriptor);
         }
@@ -127,6 +127,39 @@ public class MessageStreamHandlerRegistrationExtensionsTests
 
             Assert.Same(flowlyBuilder, returned);
         }
+
+        [Fact]
+        public void WhenTwoHandlersRegisteredForSameMessageType_EachGetsIndependentRegistrations()
+        {
+            var flowlyBuilder = CreateBuilder("primary");
+
+            flowlyBuilder.AddMessageStreamHandler<TelemetryReading, TelemetryReadingHandler>();
+            flowlyBuilder.AddMessageStreamHandler<TelemetryReading, TelemetryReadingHandlerTwo>();
+
+            Assert.Single(flowlyBuilder.Services, s => s.ServiceType == typeof(TelemetryReadingHandler));
+            Assert.Single(flowlyBuilder.Services, s => s.ServiceType == typeof(TelemetryReadingHandlerTwo));
+
+            var settingsOne = flowlyBuilder.Services
+                .Where(s => s.ServiceType == typeof(MessageStreamHandlerSettings<TelemetryReading, TelemetryReadingHandler>))
+                .Select(s => (MessageStreamHandlerSettings<TelemetryReading, TelemetryReadingHandler>)s.ImplementationInstance!)
+                .Single();
+
+            var settingsTwo = flowlyBuilder.Services
+                .Where(s => s.ServiceType == typeof(MessageStreamHandlerSettings<TelemetryReading, TelemetryReadingHandlerTwo>))
+                .Select(s => (MessageStreamHandlerSettings<TelemetryReading, TelemetryReadingHandlerTwo>)s.ImplementationInstance!)
+                .Single();
+
+            Assert.Equal(nameof(TelemetryReadingHandler), settingsOne.HandlerName);
+            Assert.Equal(nameof(TelemetryReadingHandlerTwo), settingsTwo.HandlerName);
+
+            Assert.Contains(flowlyBuilder.Services, s =>
+                s.ServiceType == typeof(IHostedService) &&
+                s.ImplementationType == typeof(MessageStreamProcessingBackgroundService<TelemetryReading, TelemetryReadingHandler>));
+
+            Assert.Contains(flowlyBuilder.Services, s =>
+                s.ServiceType == typeof(IHostedService) &&
+                s.ImplementationType == typeof(MessageStreamProcessingBackgroundService<TelemetryReading, TelemetryReadingHandlerTwo>));
+        }
     }
 
     private sealed class StubFlowlyBuilder(IServiceCollection services) : IFlowlyBuilder
@@ -144,6 +177,13 @@ public class MessageStreamHandlerRegistrationExtensionsTests
     private class TelemetryReadingHandler : MessageStreamHandler<TelemetryReading>
     {
         public override void Configure(MessageStreamHandlerOptions options) => options.StartPosition = StartPosition.First();
+
+        public override Task Handle(IMessageStreamContext<TelemetryReading> messageContext) => Task.CompletedTask;
+    }
+
+    private class TelemetryReadingHandlerTwo : MessageStreamHandler<TelemetryReading>
+    {
+        public override void Configure(MessageStreamHandlerOptions options) => options.StartPosition = StartPosition.Last();
 
         public override Task Handle(IMessageStreamContext<TelemetryReading> messageContext) => Task.CompletedTask;
     }

@@ -3,7 +3,7 @@ namespace Flowly;
 /// <summary>
 ///     Base class for handlers that consume an append-only, replayable message stream. Register with
 ///     <c>AddMessageStreamHandler&lt;TMessage, THandler&gt;()</c>. Only supported on transports whose client implements
-///     <see cref="Transport.IStreamCapableMessageBusClient" /> (currently RabbitMQ) — registration throws
+///     <see cref="Transport.IStreamCapableMessageBusClient" /> (currently RabbitMQ or InMemory) — registration throws
 ///     <see cref="InvalidOperationException" /> at startup on any other transport.
 ///     <para>
 ///         Messages are delivered in batches shaped by <see cref="MessageStreamHandlerOptions.MaxMessagesBeforeProcessing" />
@@ -28,6 +28,13 @@ public abstract class MessageStreamHandler<TMessage>
     ///     <see cref="MessageStreamHandlerOptions.StartPosition" /> and any batching, concurrency, or retention
     ///     settings. Values set here take precedence over attribute-based configuration on the handler class and
     ///     message contract.
+    ///     <para>
+    ///         For <see cref="StartPosition.First" />/<see cref="StartPosition.Last" />, applying
+    ///         <see cref="StreamStartPositionAttribute" /> to the handler class is an alternative to setting
+    ///         <see cref="MessageStreamHandlerOptions.StartPosition" /> here — this override is only required when a
+    ///         handler needs <see cref="StartPosition.Offset" />, <see cref="StartPosition.Timestamp" />, or other
+    ///         settings that have no attribute equivalent.
+    ///     </para>
     /// </summary>
     /// <param name="options">The options to configure.</param>
     public virtual void Configure(MessageStreamHandlerOptions options)

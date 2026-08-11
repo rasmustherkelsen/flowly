@@ -21,7 +21,7 @@ public static class MessageStreamHandlerRegistrationExtensions
     ///     runs in-process; when retries are exhausted the handler halts consumption entirely rather than skipping the
     ///     failed batch. Throws <see cref="InvalidOperationException" /> at registration time when the resolved
     ///     provider's client does not implement <see cref="IStreamCapableMessageBusClient" /> (streams are currently
-    ///     RabbitMQ-only).
+    ///     supported on RabbitMQ and InMemory only).
     /// </summary>
     /// <param name="flowlyBuilder">The Flowly builder to register with.</param>
     /// <typeparam name="TMessage">The message contract type consumed from the stream.</typeparam>
@@ -45,8 +45,8 @@ public static class MessageStreamHandlerRegistrationExtensions
             .MarkAsStream(resolved.QueueName, resolved.MaxAgeSeconds, resolved.MaxLengthBytes);
 
         flowlyBuilder.Services
-            .AddScoped<MessageStreamHandler<TMessage>, THandler>()
-            .AddSingleton(new MessageStreamHandlerSettings<TMessage>(
+            .AddScoped<THandler>()
+            .AddSingleton(new MessageStreamHandlerSettings<TMessage, THandler>(
                 resolved.QueueName,
                 providerName,
                 typeof(THandler).Name,
@@ -55,7 +55,7 @@ public static class MessageStreamHandlerRegistrationExtensions
                 resolved.MaxWaitTime,
                 resolved.MaxRetries,
                 resolved.RetryDelaySeconds))
-            .AddHostedService<MessageStreamProcessingBackgroundService<TMessage>>();
+            .AddHostedService<MessageStreamProcessingBackgroundService<TMessage, THandler>>();
 
         return flowlyBuilder.AddQueueRegistration(resolved.QueueName, providerName: providerName);
     }

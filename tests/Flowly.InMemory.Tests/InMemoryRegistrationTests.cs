@@ -95,6 +95,68 @@ public class InMemoryRegistrationTests
         }
     }
 
+    public class RegistrationOrderIndependenceForStreamManifest
+    {
+        private static (IFlowlyBuilder builder, MessageBusClientRegistry registry) CreateRealBuilder()
+        {
+            var services = new ServiceCollection();
+            var registry = new MessageBusClientRegistry();
+
+            services.AddSingleton<IMessageBusClientRegistry>(registry);
+            services.AddSingleton<IMessagingTopologyCreatorRegistry>(new FakeMessagingTopologyCreatorRegistry());
+            services.AddSingleton<IEventTopologyCreatorRegistry>(new FakeEventTopologyCreatorRegistry());
+
+            var builder = new FakeFlowlyBuilder(services, new ConfigurationBuilder().Build());
+            return (builder, registry);
+        }
+
+        [Fact]
+        public async Task ManifestPopulatedByRecorderAfterUseInMemory_StillReachesTheBrokerCreatedByUseInMemory()
+        {
+            var (builder, registry) = CreateRealBuilder();
+
+            // UseInMemory() constructs InMemoryBroker (and captures a StreamQueueManifest reference) before any
+            // stream queue has been marked — AddMessageRecorder<T>() only marks "telemetry-reading" as a stream
+            // afterward. This proves the broker observes that later mutation rather than a stale/empty snapshot.
+            builder.UseInMemory();
+            builder.AddMessageRecorder<TelemetryReading>();
+
+            var client = (InMemoryMessageBusClient)registry.GetClient("in-memory");
+
+            var sender = await client.CreateMessageBusSender("telemetry-reading");
+            await sender.SendMessage(new TelemetryReading(), MessageProperties.Empty);
+
+            var processor = await client.CreateStreamProcessor<TelemetryReading>(
+                "telemetry-reading",
+                StartPosition.First(),
+                new MessageBusProcessorOptions(1, MessageBusReceiveMode.PeekLock));
+
+            TelemetryReading? received = null;
+            processor.ProcessMessage += (msg, _) =>
+            {
+                received = msg.Body;
+                return Task.CompletedTask;
+            };
+
+            await processor.StartProcessingMessages();
+            await WaitUntil(() => received is not null);
+            await processor.StopProcessing(CancellationToken.None);
+
+            Assert.NotNull(received);
+        }
+
+        private static async Task WaitUntil(Func<bool> condition, int timeoutMs = 5000)
+        {
+            var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+            while (!condition() && DateTime.UtcNow < deadline)
+                await Task.Delay(10);
+
+            Assert.True(condition(), "Condition was not met within timeout.");
+        }
+
+        private record TelemetryReading;
+    }
+
     private sealed class FakeFlowlyBuilder(IServiceCollection services, IConfiguration configuration) : IFlowlyBuilder
     {
         public IServiceCollection Services => services;

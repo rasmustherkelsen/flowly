@@ -12,7 +12,7 @@ public class MessageStreamProcessingBackgroundServiceTests
 {
     private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(10);
 
-    private static (MessageStreamProcessingBackgroundService<TestMessage> BackgroundService, FakeStreamProcessor Processor, SpyStreamHandler Handler, SpyHandlerInstrumentation Instrumentation)
+    private static (MessageStreamProcessingBackgroundService<TestMessage, SpyStreamHandler> BackgroundService, FakeStreamProcessor Processor, SpyStreamHandler Handler, SpyHandlerInstrumentation Instrumentation)
         CreateService(int maxMessages, int maxRetries, Func<IMessageStreamContext<TestMessage>, Task>? onHandle = null)
     {
         var processor = new FakeStreamProcessor();
@@ -22,14 +22,14 @@ public class MessageStreamProcessingBackgroundServiceTests
 
         var handler = new SpyStreamHandler(onHandle);
         var services = new ServiceCollection();
-        services.AddScoped<MessageStreamHandler<TestMessage>>(_ => handler);
+        services.AddScoped<SpyStreamHandler>(_ => handler);
         var serviceProvider = services.BuildServiceProvider();
 
         var instrumentation = new SpyHandlerInstrumentation();
 
-        var backgroundService = new MessageStreamProcessingBackgroundService<TestMessage>(
+        var backgroundService = new MessageStreamProcessingBackgroundService<TestMessage, SpyStreamHandler>(
             registry,
-            new MessageStreamHandlerSettings<TestMessage>(
+            new MessageStreamHandlerSettings<TestMessage, SpyStreamHandler>(
                 "telemetry-reading",
                 "primary",
                 nameof(SpyStreamHandler),
@@ -39,7 +39,7 @@ public class MessageStreamProcessingBackgroundServiceTests
                 maxRetries,
                 0),
             serviceProvider.GetRequiredService<IServiceScopeFactory>(),
-            NullLogger<MessageStreamProcessingBackgroundService<TestMessage>>.Instance,
+            NullLogger<MessageStreamProcessingBackgroundService<TestMessage, SpyStreamHandler>>.Instance,
             instrumentation);
 
         return (backgroundService, processor, handler, instrumentation);
@@ -53,11 +53,11 @@ public class MessageStreamProcessingBackgroundServiceTests
             var registry = new MessageBusClientRegistry();
             registry.Register("primary", new NonStreamClient(), null);
 
-            var backgroundService = new MessageStreamProcessingBackgroundService<TestMessage>(
+            var backgroundService = new MessageStreamProcessingBackgroundService<TestMessage, SpyStreamHandler>(
                 registry,
-                new MessageStreamHandlerSettings<TestMessage>("q", "primary", "H", StartPosition.First(), 1, TimeSpan.FromSeconds(1), 0, 0),
+                new MessageStreamHandlerSettings<TestMessage, SpyStreamHandler>("q", "primary", "H", StartPosition.First(), 1, TimeSpan.FromSeconds(1), 0, 0),
                 new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
-                NullLogger<MessageStreamProcessingBackgroundService<TestMessage>>.Instance,
+                NullLogger<MessageStreamProcessingBackgroundService<TestMessage, SpyStreamHandler>>.Instance,
                 new SpyHandlerInstrumentation());
 
             await Assert.ThrowsAsync<InvalidOperationException>(async () =>
@@ -188,11 +188,105 @@ public class MessageStreamProcessingBackgroundServiceTests
 
             await backgroundService.StopAsync(CancellationToken.None);
         }
+
+        [Fact]
+        public async Task WhenTwoBackgroundServicesRegisteredForDifferentHandlerTypes_EachResolvesItsOwnHandlerIndependently()
+        {
+            var processorOne = new FakeStreamProcessor();
+            var clientOne = new FakeStreamClient(processorOne);
+            var processorTwo = new FakeStreamProcessor();
+            var clientTwo = new FakeStreamClient(processorTwo);
+
+            var registry = new MessageBusClientRegistry();
+            registry.Register("primary-one", clientOne, null);
+            registry.Register("primary-two", clientTwo, null);
+
+            var handlerOne = new SpyStreamHandler(null);
+            var handlerTwo = new SpyStreamHandlerTwo(null);
+
+            var services = new ServiceCollection();
+            services.AddScoped<SpyStreamHandler>(_ => handlerOne);
+            services.AddScoped<SpyStreamHandlerTwo>(_ => handlerTwo);
+            var serviceProvider = services.BuildServiceProvider();
+
+            var backgroundServiceOne = new MessageStreamProcessingBackgroundService<TestMessage, SpyStreamHandler>(
+                registry,
+                new MessageStreamHandlerSettings<TestMessage, SpyStreamHandler>(
+                    "telemetry-reading", "primary-one", nameof(SpyStreamHandler), StartPosition.First(), 1, TimeSpan.FromSeconds(30), 0, 0),
+                serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+                NullLogger<MessageStreamProcessingBackgroundService<TestMessage, SpyStreamHandler>>.Instance,
+                new SpyHandlerInstrumentation());
+
+            var backgroundServiceTwo = new MessageStreamProcessingBackgroundService<TestMessage, SpyStreamHandlerTwo>(
+                registry,
+                new MessageStreamHandlerSettings<TestMessage, SpyStreamHandlerTwo>(
+                    "telemetry-reading", "primary-two", nameof(SpyStreamHandlerTwo), StartPosition.First(), 1, TimeSpan.FromSeconds(30), 0, 0),
+                serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+                NullLogger<MessageStreamProcessingBackgroundService<TestMessage, SpyStreamHandlerTwo>>.Instance,
+                new SpyHandlerInstrumentation());
+
+            await backgroundServiceOne.StartAsync(CancellationToken.None);
+            await backgroundServiceTwo.StartAsync(CancellationToken.None);
+            await processorOne.Started.Task.WaitAsync(TestTimeout);
+            await processorTwo.Started.Task.WaitAsync(TestTimeout);
+
+            await processorOne.Deliver(new FakeReceivedMessage(new TestMessage("a")));
+            await handlerOne.WaitForInvocations(1, TestTimeout);
+
+            await processorTwo.Deliver(new FakeReceivedMessage(new TestMessage("b")));
+            await handlerTwo.WaitForInvocations(1, TestTimeout);
+
+            Assert.Equal("a", Assert.Single(Assert.Single(handlerOne.Invocations)).Payload);
+            Assert.Equal("b", Assert.Single(Assert.Single(handlerTwo.Invocations)).Payload);
+
+            await backgroundServiceOne.StopAsync(CancellationToken.None);
+            await backgroundServiceTwo.StopAsync(CancellationToken.None);
+        }
     }
 
     private record TestMessage(string Payload);
 
     private sealed class SpyStreamHandler(Func<IMessageStreamContext<TestMessage>, Task>? onHandle) : MessageStreamHandler<TestMessage>
+    {
+        private readonly Lock _lock = new();
+        private readonly List<TaskCompletionSource> _waiters = [];
+
+        public List<IReadOnlyCollection<TestMessage>> Invocations { get; } = [];
+
+        public override async Task Handle(IMessageStreamContext<TestMessage> messageContext)
+        {
+            List<TaskCompletionSource> toSignal;
+            lock (_lock)
+            {
+                Invocations.Add(messageContext.Messages);
+                toSignal = [.._waiters];
+            }
+
+            foreach (var waiter in toSignal)
+                waiter.TrySetResult();
+
+            if (onHandle != null)
+                await onHandle(messageContext);
+        }
+
+        public async Task WaitForInvocations(int count, TimeSpan timeout)
+        {
+            while (true)
+            {
+                TaskCompletionSource waiter;
+                lock (_lock)
+                {
+                    if (Invocations.Count >= count) return;
+                    waiter = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                    _waiters.Add(waiter);
+                }
+
+                await waiter.Task.WaitAsync(timeout);
+            }
+        }
+    }
+
+    private sealed class SpyStreamHandlerTwo(Func<IMessageStreamContext<TestMessage>, Task>? onHandle) : MessageStreamHandler<TestMessage>
     {
         private readonly Lock _lock = new();
         private readonly List<TaskCompletionSource> _waiters = [];

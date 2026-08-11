@@ -1,9 +1,10 @@
 using System.Collections.Concurrent;
 using System.Threading.Channels;
+using Flowly.MessageInfrastructure.Registration;
 
 namespace Flowly.InMemory;
 
-internal class InMemoryBroker(InMemoryOptions options)
+internal class InMemoryBroker(InMemoryOptions options, StreamQueueManifest? streamQueueManifest = null)
 {
     private readonly int _channelCapacity = options.ChannelCapacity;
     private readonly ConcurrentDictionary<string, Channel<InMemoryEnvelope>> _queues = new();
@@ -11,12 +12,38 @@ internal class InMemoryBroker(InMemoryOptions options)
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, Channel<InMemoryEnvelope>>> _sessionChannels = new();
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, Channel<InMemoryEnvelope>>> _topicSubscriptions = new();
     private readonly ConcurrentDictionary<string, Channel<InMemoryEnvelope>> _eventDeadLetterQueues = new();
+    private readonly ConcurrentDictionary<string, InMemoryStreamLog> _streamLogs = new();
 
     private readonly Lock _scheduledLock = new();
     private readonly PriorityQueue<ScheduledEntry, DateTimeOffset> _scheduledMessages = new();
 
     public Channel<InMemoryEnvelope> GetQueue(string queueName)
         => _queues.GetOrAdd(queueName, static (_, self) => self.CreateBoundedChannel(), this);
+
+    public bool IsStreamQueue(string queueName) => streamQueueManifest?.IsStreamQueue(queueName) == true;
+
+    public InMemoryStreamLog GetOrCreateStreamLog(string queueName)
+        => _streamLogs.GetOrAdd(queueName, static (name, self) => self.CreateStreamLog(name), this);
+
+    public Task EnqueueOrAppend(string queueName, InMemoryEnvelope envelope, CancellationToken cancellationToken = default)
+    {
+        if (IsStreamQueue(queueName))
+        {
+            GetOrCreateStreamLog(queueName).Append(envelope);
+            return Task.CompletedTask;
+        }
+
+        return GetQueue(queueName).Writer.WriteAsync(envelope, cancellationToken).AsTask();
+    }
+
+    private InMemoryStreamLog CreateStreamLog(string queueName)
+    {
+        var retention = streamQueueManifest is not null && streamQueueManifest.TryGetRetention(queueName, out var settings)
+            ? settings
+            : default;
+
+        return new InMemoryStreamLog(retention, options.EnableReferencePassing);
+    }
 
     public Channel<InMemoryEnvelope> GetDeadLetterQueue(string queueName)
         => _deadLetterQueues.GetOrAdd(queueName, static (_, self) => self.CreateBoundedChannel(), this);
@@ -81,6 +108,12 @@ internal class InMemoryBroker(InMemoryOptions options)
                 _scheduledMessages.TryDequeue(out entry!, out _);
             }
 
+            if (entry.Type == ScheduledDestinationType.Queue && IsStreamQueue(entry.Destination))
+            {
+                GetOrCreateStreamLog(entry.Destination).Append(entry.Envelope);
+                continue;
+            }
+
             var channel = entry.Type switch
             {
                 ScheduledDestinationType.Queue => GetQueue(entry.Destination),
@@ -91,6 +124,12 @@ internal class InMemoryBroker(InMemoryOptions options)
 
             channel.Writer.TryWrite(entry.Envelope);
         }
+    }
+
+    public void TrimStreamRetention()
+    {
+        foreach (var log in _streamLogs.Values)
+            log.TrimRetention();
     }
 
     private Channel<InMemoryEnvelope> ResolveSessionChannel(ScheduledEntry entry)

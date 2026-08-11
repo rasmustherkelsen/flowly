@@ -9,6 +9,7 @@ internal class InMemoryScheduler(InMemoryBroker broker) : BackgroundService
         while (!stoppingToken.IsCancellationRequested)
         {
             broker.DeliverReadyScheduledMessages();
+            broker.TrimStreamRetention();
 
             try
             {

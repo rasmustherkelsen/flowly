@@ -1,4 +1,5 @@
 using System.Threading.Channels;
+using Flowly.MessageInfrastructure.Registration;
 using Flowly.Transport;
 
 namespace Flowly.InMemory.Tests;
@@ -237,6 +238,39 @@ public class InMemoryMessageBusSenderTests
 
             Assert.True(broker.GetEventSubscriptionChannel("events", "handler-a").Reader.TryRead(out _));
             Assert.False(broker.GetEventSubscriptionChannel("events", "handler-b").Reader.TryRead(out _));
+        }
+    }
+
+    public class StreamRouting
+    {
+        [Fact]
+        public async Task SendMessage_AppendsToStreamLogInsteadOfClassicQueue()
+        {
+            var options = new InMemoryOptions();
+            var manifest = new StreamQueueManifest();
+            manifest.MarkAsStream("orders-stream", null, null);
+            var broker = new InMemoryBroker(options, manifest);
+            var sender = new InMemoryMessageBusSender("orders-stream", broker, options, SenderMode.Queue);
+
+            await sender.SendMessage(new TestMessage("x"), MessageProperties.Empty);
+
+            Assert.Equal(1, broker.GetOrCreateStreamLog("orders-stream").TailOffset);
+            Assert.False(broker.GetQueue("orders-stream").Reader.TryRead(out _));
+        }
+
+        [Fact]
+        public async Task SendRawMessage_AppendsToStreamLogInsteadOfClassicQueue()
+        {
+            var options = new InMemoryOptions();
+            var manifest = new StreamQueueManifest();
+            manifest.MarkAsStream("orders-stream", null, null);
+            var broker = new InMemoryBroker(options, manifest);
+            var sender = new InMemoryMessageBusSender("orders-stream", broker, options, SenderMode.Queue);
+
+            await sender.SendRawMessage("{}", new Dictionary<string, object>());
+
+            Assert.Equal(1, broker.GetOrCreateStreamLog("orders-stream").TailOffset);
+            Assert.False(broker.GetQueue("orders-stream").Reader.TryRead(out _));
         }
     }
 

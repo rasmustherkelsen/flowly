@@ -1,6 +1,6 @@
 # RabbitMQ — Message Stream Send/Receive
 
-Append-only, replayable message stream using `MessageStreamHandler<T>` and `IMessageRecorder` — a RabbitMQ-only Flowly feature with no Azure Service Bus or InMemory equivalent. A `Sender` records an incrementing entry onto the stream roughly ten times per second; a `Receiver` replays the stream from the beginning and logs every entry.
+Append-only, replayable message stream using `MessageStreamHandler<T>` and `IMessageRecorder` against a real RabbitMQ broker — Azure Service Bus has no stream equivalent. `Flowly.InMemory` also supports this feature via an in-process log with no broker required (see [Message Streaming](../../../README.md#message-streaming) and the "Message streaming" subsection under [In-Memory Transport](../../../README.md#in-memory-transport) in the root README) — there is no dedicated InMemory streaming sample yet since the setup is a single `.UseInMemory()` call with no infrastructure to demonstrate. A `Sender` records an incrementing entry onto the stream roughly ten times per second; a `Receiver` replays the stream from the beginning and logs every entry.
 
 ## Projects
 

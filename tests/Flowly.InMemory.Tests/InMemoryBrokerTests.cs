@@ -1,8 +1,17 @@
+using Flowly.MessageInfrastructure.Registration;
+
 namespace Flowly.InMemory.Tests;
 
 public class InMemoryBrokerTests
 {
     private static InMemoryBroker CreateBroker() => new(new InMemoryOptions());
+
+    private static (InMemoryBroker broker, StreamQueueManifest manifest) CreateBrokerWithStreamManifest(InMemoryOptions? options = null)
+    {
+        var manifest = new StreamQueueManifest();
+        var broker = new InMemoryBroker(options ?? new InMemoryOptions(), manifest);
+        return (broker, manifest);
+    }
 
     public class GetQueue
     {
@@ -157,6 +166,118 @@ public class InMemoryBrokerTests
             broker.DeliverReadyScheduledMessages();
 
             Assert.True(broker.GetSessionChannel("jobs", "lane-1").Reader.TryRead(out _));
+        }
+
+        [Fact]
+        public void WithStreamQueueDestination_AppendsToStreamLogInsteadOfChannel()
+        {
+            var (broker, manifest) = CreateBrokerWithStreamManifest();
+            manifest.MarkAsStream("orders", null, null);
+            var envelope = new InMemoryEnvelope("msg-1", "{}", [], DateTimeOffset.UtcNow);
+
+            broker.EnqueueScheduled(envelope, "orders", ScheduledDestinationType.Queue, DateTimeOffset.UtcNow.AddSeconds(-1));
+
+            broker.DeliverReadyScheduledMessages();
+
+            Assert.Equal(1, broker.GetOrCreateStreamLog("orders").TailOffset);
+            Assert.False(broker.GetQueue("orders").Reader.TryRead(out _));
+        }
+    }
+
+    public class TrimStreamRetention
+    {
+        [Fact]
+        public void EvictsStaleEntriesAcrossAllStreamLogsWithoutRequiringAnAppend()
+        {
+            var (broker, manifest) = CreateBrokerWithStreamManifest();
+            manifest.MarkAsStream("orders", maxAgeSeconds: 60, maxLengthBytes: null);
+            var log = broker.GetOrCreateStreamLog("orders");
+            log.Append(new InMemoryEnvelope("stale", "{}", [], DateTimeOffset.UtcNow.AddSeconds(-120)));
+
+            broker.TrimStreamRetention();
+
+            Assert.Equal(1, log.BaseOffset);
+        }
+    }
+
+    public class IsStreamQueue
+    {
+        [Fact]
+        public void WithNoManifest_ReturnsFalse()
+        {
+            var broker = CreateBroker();
+
+            Assert.False(broker.IsStreamQueue("orders"));
+        }
+
+        [Fact]
+        public void WithUnmarkedQueue_ReturnsFalse()
+        {
+            var (broker, _) = CreateBrokerWithStreamManifest();
+
+            Assert.False(broker.IsStreamQueue("orders"));
+        }
+
+        [Fact]
+        public void WithMarkedQueue_ReturnsTrue()
+        {
+            var (broker, manifest) = CreateBrokerWithStreamManifest();
+            manifest.MarkAsStream("orders", null, null);
+
+            Assert.True(broker.IsStreamQueue("orders"));
+        }
+    }
+
+    public class GetOrCreateStreamLog
+    {
+        [Fact]
+        public void ReturnsSameLogForSameQueueName()
+        {
+            var broker = CreateBroker();
+
+            var first = broker.GetOrCreateStreamLog("orders");
+            var second = broker.GetOrCreateStreamLog("orders");
+
+            Assert.Same(first, second);
+        }
+
+        [Fact]
+        public void ReturnsDifferentLogsForDifferentQueueNames()
+        {
+            var broker = CreateBroker();
+
+            var orders = broker.GetOrCreateStreamLog("orders");
+            var payments = broker.GetOrCreateStreamLog("payments");
+
+            Assert.NotSame(orders, payments);
+        }
+    }
+
+    public class EnqueueOrAppend
+    {
+        [Fact]
+        public async Task WithStreamQueue_AppendsToStreamLogInsteadOfChannel()
+        {
+            var (broker, manifest) = CreateBrokerWithStreamManifest();
+            manifest.MarkAsStream("orders", null, null);
+            var envelope = new InMemoryEnvelope("1", "{}", [], DateTimeOffset.UtcNow);
+
+            await broker.EnqueueOrAppend("orders", envelope);
+
+            Assert.Equal(1, broker.GetOrCreateStreamLog("orders").TailOffset);
+            Assert.False(broker.GetQueue("orders").Reader.TryRead(out _));
+        }
+
+        [Fact]
+        public async Task WithClassicQueue_WritesToChannel()
+        {
+            var broker = CreateBroker();
+            var envelope = new InMemoryEnvelope("1", "{}", [], DateTimeOffset.UtcNow);
+
+            await broker.EnqueueOrAppend("orders", envelope);
+
+            Assert.True(broker.GetQueue("orders").Reader.TryRead(out var delivered));
+            Assert.Equal("1", delivered!.MessageId);
         }
     }
 

@@ -38,18 +38,4 @@ public class MessageStreamHandlerOptions
     ///     to 30 seconds.
     /// </summary>
     public TimeSpan? MaxWaitTime { get; set; }
-
-    /// <summary>
-    ///     The maximum age of messages retained in the stream, in seconds. Overrides the value from
-    ///     <see cref="StreamRetentionAttribute" /> on the message contract. When neither is set the stream retains
-    ///     messages indefinitely, bounded only by <see cref="MaxLengthBytes" />.
-    /// </summary>
-    public int? MaxAgeSeconds { get; set; }
-
-    /// <summary>
-    ///     The maximum total size of the stream in bytes. Overrides the value from
-    ///     <see cref="StreamRetentionAttribute" /> on the message contract. When neither this nor
-    ///     <see cref="MaxAgeSeconds" /> is set the stream grows unbounded — a broker disk exhaustion risk.
-    /// </summary>
-    public long? MaxLengthBytes { get; set; }
 }

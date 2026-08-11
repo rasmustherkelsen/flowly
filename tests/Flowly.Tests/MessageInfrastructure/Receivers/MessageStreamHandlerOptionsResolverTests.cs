@@ -69,13 +69,13 @@ public class MessageStreamHandlerOptionsResolverTests
         }
 
         [Fact]
-        public void ConfigureOverride_WinsOverAttributes()
+        public void ConfigureOverride_WinsOverBatchProcessingAttribute_RetentionStaysFromContract()
         {
             var resolved = MessageStreamHandlerOptionsResolver.Resolve<HandlerWithAttributesAndConfigure, RetainedMessage>(new KebabCaseTopologyNameResolver());
 
             Assert.Equal(7, resolved.MaxMessagesBeforeProcessing);
             Assert.Equal(TimeSpan.FromSeconds(3), resolved.MaxWaitTime);
-            Assert.Equal(60, resolved.MaxAgeSeconds);
+            Assert.Equal(3600, resolved.MaxAgeSeconds);
         }
 
         [Fact]
@@ -84,6 +84,22 @@ public class MessageStreamHandlerOptionsResolverTests
             var resolved = MessageStreamHandlerOptionsResolver.Resolve<HandlerWithQueueNameConfigure, SomeMessage>(new KebabCaseTopologyNameResolver());
 
             Assert.Equal("custom-stream", resolved.QueueName);
+        }
+
+        [Fact]
+        public void ReadsStreamStartPositionFromHandlerType()
+        {
+            var resolved = MessageStreamHandlerOptionsResolver.Resolve<HandlerWithStreamStartPositionAttribute, SomeMessage>(new KebabCaseTopologyNameResolver());
+
+            Assert.Equal(StartPosition.First(), resolved.StartPosition);
+        }
+
+        [Fact]
+        public void ConfigureOverride_WinsOverStreamStartPositionAttribute()
+        {
+            var resolved = MessageStreamHandlerOptionsResolver.Resolve<HandlerWithStreamStartPositionAttributeAndConfigure, SomeMessage>(new KebabCaseTopologyNameResolver());
+
+            Assert.Equal(StartPosition.Last(), resolved.StartPosition);
         }
     }
 
@@ -143,7 +159,6 @@ public class MessageStreamHandlerOptionsResolverTests
             options.StartPosition = StartPosition.First();
             options.MaxMessagesBeforeProcessing = 7;
             options.MaxWaitTime = TimeSpan.FromSeconds(3);
-            options.MaxAgeSeconds = 60;
         }
 
         public override Task Handle(IMessageStreamContext<RetainedMessage> messageContext) => Task.CompletedTask;
@@ -156,6 +171,20 @@ public class MessageStreamHandlerOptionsResolverTests
             options.StartPosition = StartPosition.First();
             options.QueueName = "custom-stream";
         }
+
+        public override Task Handle(IMessageStreamContext<SomeMessage> messageContext) => Task.CompletedTask;
+    }
+
+    [StreamStartPosition(StreamStartPositionKind.First)]
+    private class HandlerWithStreamStartPositionAttribute : MessageStreamHandler<SomeMessage>
+    {
+        public override Task Handle(IMessageStreamContext<SomeMessage> messageContext) => Task.CompletedTask;
+    }
+
+    [StreamStartPosition(StreamStartPositionKind.First)]
+    private class HandlerWithStreamStartPositionAttributeAndConfigure : MessageStreamHandler<SomeMessage>
+    {
+        public override void Configure(MessageStreamHandlerOptions options) => options.StartPosition = StartPosition.Last();
 
         public override Task Handle(IMessageStreamContext<SomeMessage> messageContext) => Task.CompletedTask;
     }
