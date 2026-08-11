@@ -22,6 +22,12 @@ public class InMemoryOptions
     ///     being serialised to JSON on send and deserialised on receive. Preserves object identity, supports
     ///     non-serialisable types, and removes the JSON round-trip overhead. <see cref="MaxMessageSizeBytes" /> is not
     ///     enforced when this option is enabled. Defaults to <see langword="false" />.
+    ///     <para>
+    ///         For message stream queues (<see cref="MessageStreamHandler{TMessage}" /> / <see cref="IMessageRecorder" />),
+    ///         enabling this also disables <see cref="StreamRetentionAttribute.MaxLengthBytes" /> retention —
+    ///         reference-passed messages are never serialised, so there is no byte size to account against. Only
+    ///         <see cref="StreamRetentionAttribute.MaxAgeSeconds" /> retention still applies to streams in this mode.
+    ///     </para>
     /// </summary>
     public bool EnableReferencePassing { get; set; } = false;
 }

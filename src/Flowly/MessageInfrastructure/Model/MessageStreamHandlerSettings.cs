@@ -1,6 +1,6 @@
 namespace Flowly.MessageInfrastructure.Model;
 
-internal sealed record MessageStreamHandlerSettings<TMessage>(
+internal sealed record MessageStreamHandlerSettings<TMessage, THandler>(
     string QueueName,
     string ProviderName,
     string HandlerName,

@@ -9,12 +9,14 @@ using Microsoft.Extensions.Logging;
 
 namespace Flowly.MessageInfrastructure.BackgroundServices;
 
-internal sealed class MessageStreamProcessingBackgroundService<TMessage>(
+internal sealed class MessageStreamProcessingBackgroundService<TMessage, THandler>(
     IMessageBusClientRegistry clientRegistry,
-    MessageStreamHandlerSettings<TMessage> handlerSettings,
+    MessageStreamHandlerSettings<TMessage, THandler> handlerSettings,
     IServiceScopeFactory serviceScopeFactory,
-    ILogger<MessageStreamProcessingBackgroundService<TMessage>> logger,
-    IHandlerInstrumentation handlerInstrumentation) : MessageProcessingBackgroundServiceBase<TMessage> where TMessage : class
+    ILogger<MessageStreamProcessingBackgroundService<TMessage, THandler>> logger,
+    IHandlerInstrumentation handlerInstrumentation) : MessageProcessingBackgroundServiceBase<TMessage>
+    where TMessage : class
+    where THandler : MessageStreamHandler<TMessage>
 {
     private readonly Channel<IReceivedMessage<TMessage>> _buffer = Channel.CreateUnbounded<IReceivedMessage<TMessage>>();
     private IMessageBusProcessor<TMessage>? _processor;
@@ -121,7 +123,7 @@ internal sealed class MessageStreamProcessingBackgroundService<TMessage>(
         for (var attempt = 0;; attempt++)
         {
             await using var scope = serviceScopeFactory.CreateAsyncScope();
-            var messageHandler = scope.ServiceProvider.GetRequiredService<MessageStreamHandler<TMessage>>();
+            var messageHandler = scope.ServiceProvider.GetRequiredService<THandler>();
 
             try
             {

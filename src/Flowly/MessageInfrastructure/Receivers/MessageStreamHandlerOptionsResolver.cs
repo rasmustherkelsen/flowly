@@ -17,17 +17,18 @@ internal static class MessageStreamHandlerOptionsResolver
             QueueName = topologyNameResolver.ResolveQueueName<TMessage>()
         };
 
-        ApplyContractAttributes(typeof(TMessage), options);
         ApplyHandlerAttributes(handlerType, options);
         ApplyConfigure(handlerType, options);
 
         if (options.StartPosition is null)
             throw new InvalidOperationException(
                 $"{handlerType.Name} does not set a start position. Stream handlers must explicitly choose where consumption begins — " +
-                $"override Configure(MessageStreamHandlerOptions) and set options.StartPosition to StartPosition.First(), " +
+                $"apply [StreamStartPosition(StreamStartPositionKind.First)] or [StreamStartPosition(StreamStartPositionKind.Last)] to the " +
+                $"handler class, or override Configure(MessageStreamHandlerOptions) and set options.StartPosition to StartPosition.First(), " +
                 $"StartPosition.Last(), StartPosition.Offset(n), or StartPosition.Timestamp(dt).");
 
         var retryPolicyAttribute = handlerType.GetCustomAttribute<RetryPolicyAttribute>();
+        var retentionAttribute = typeof(TMessage).GetCustomAttribute<StreamRetentionAttribute>();
 
         return new ResolvedMessageStreamHandlerOptions(
             options.QueueName!,
@@ -36,17 +37,8 @@ internal static class MessageStreamHandlerOptionsResolver
             options.MaxWaitTime ?? DefaultMaxWaitTime,
             retryPolicyAttribute?.MaxRetries ?? DefaultMaxRetries,
             retryPolicyAttribute?.DelaySeconds ?? DefaultRetryDelaySeconds,
-            options.MaxAgeSeconds,
-            options.MaxLengthBytes);
-    }
-
-    private static void ApplyContractAttributes(Type messageType, MessageStreamHandlerOptions options)
-    {
-        var retentionAttribute = messageType.GetCustomAttribute<StreamRetentionAttribute>();
-        if (retentionAttribute == null) return;
-
-        options.MaxAgeSeconds = retentionAttribute.MaxAgeSeconds;
-        options.MaxLengthBytes = retentionAttribute.MaxLengthBytes;
+            retentionAttribute?.MaxAgeSeconds,
+            retentionAttribute?.MaxLengthBytes);
     }
 
     private static void ApplyHandlerAttributes(Type handlerType, MessageStreamHandlerOptions options)
@@ -56,6 +48,17 @@ internal static class MessageStreamHandlerOptionsResolver
         {
             options.MaxMessagesBeforeProcessing = batchProcessingAttribute.MaxMessagesBeforeProcessing;
             options.MaxWaitTime = TimeSpan.FromSeconds(batchProcessingAttribute.MaxWaitTimeInSeconds);
+        }
+
+        var startPositionAttribute = handlerType.GetCustomAttribute<StreamStartPositionAttribute>();
+        if (startPositionAttribute != null)
+        {
+            options.StartPosition = startPositionAttribute.Kind switch
+            {
+                StreamStartPositionKind.First => StartPosition.First(),
+                StreamStartPositionKind.Last => StartPosition.Last(),
+                _ => throw new InvalidOperationException($"Unknown StreamStartPositionKind '{startPositionAttribute.Kind}'.")
+            };
         }
     }
 

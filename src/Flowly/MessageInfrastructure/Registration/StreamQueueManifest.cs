@@ -6,9 +6,11 @@ namespace Flowly.MessageInfrastructure.Registration;
 ///     A singleton that records which registered queues are stream queues, keyed by queue name, along with their
 ///     retention settings. Populated by <c>AddMessageStreamHandler&lt;TMessage, THandler&gt;()</c> and
 ///     <c>AddMessageRecorder&lt;TMessage&gt;()</c>; consumed by stream-capable transports (currently
-///     <c>Flowly.RabbitMQ</c>) to declare the queue with the broker's stream queue type instead of the classic
-///     queue-with-dead-letter topology. Kept separate from <see cref="DeferredQueueRegistration" /> so the shared,
-///     transport-agnostic registration record carries no stream-specific concepts.
+///     <c>Flowly.RabbitMQ</c>, which declares the queue with the broker's stream queue type instead of the classic
+///     queue-with-dead-letter topology, and <c>Flowly.InMemory</c>, which routes sends to an append-only
+///     <c>InMemoryStreamLog</c> instead of the classic destructive channel). Kept separate from
+///     <see cref="DeferredQueueRegistration" /> so the shared, transport-agnostic registration record carries no
+///     stream-specific concepts.
 /// </summary>
 public sealed class StreamQueueManifest
 {

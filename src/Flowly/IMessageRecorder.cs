@@ -4,7 +4,7 @@ namespace Flowly;
 ///     Use to record messages onto an append-only, replayable message stream. The third sending verb alongside
 ///     <see cref="IMessageSender" /> (fire-and-forget) and <see cref="IMessageCaller" /> (RPC-style call). Requires
 ///     <c>AddMessageRecorder&lt;TMessage&gt;()</c> registration and a transport whose client implements
-///     <see cref="Transport.IStreamCapableMessageBusClient" /> (currently RabbitMQ) — registration throws
+///     <see cref="Transport.IStreamCapableMessageBusClient" /> (currently RabbitMQ or InMemory) — registration throws
 ///     <see cref="InvalidOperationException" /> at startup on any other transport.
 /// </summary>
 public interface IMessageRecorder

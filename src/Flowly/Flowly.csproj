@@ -19,6 +19,8 @@
         <InternalsVisibleTo Include="Flowly.DeadLetters" />
         <InternalsVisibleTo Include="Flowly.RabbitMQ" />
         <InternalsVisibleTo Include="Flowly.RabbitMQ.Tests" />
+        <InternalsVisibleTo Include="Flowly.InMemory" />
+        <InternalsVisibleTo Include="Flowly.InMemory.Tests" />
     </ItemGroup>
 
     <ItemGroup>

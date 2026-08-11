@@ -1,6 +1,6 @@
 ---
 name: create-message-stream-handler
-description: Scaffold a new Flowly message stream handler — message contract, MessageStreamHandler<T> class, and registration snippet, optionally with an IMessageRecorder producer side. RabbitMQ only (Azure Service Bus and InMemory have no stream primitive). Use when the user asks to add a stream consumer/producer for an append-only, replayable message log.
+description: Scaffold a new Flowly message stream handler — message contract, MessageStreamHandler<T> class, and registration snippet, optionally with an IMessageRecorder producer side. RabbitMQ or InMemory (Azure Service Bus has no stream primitive). Use when the user asks to add a stream consumer/producer for an append-only, replayable message log.
 arguments:
   - name: messageName
     description: "PascalCase message class name, including the Message suffix. Example: TelemetryReadingMessage"
@@ -11,13 +11,13 @@ Scaffold a complete Flowly message stream handler (and, if needed, its producer 
 
 > **Important constraints to communicate upfront:**
 > `MessageStreamHandler<T>` consumes an append-only, replayable message stream. Key behaviours:
-> - **RabbitMQ only** — Azure Service Bus and the InMemory transport have no stream primitive. Registering against either throws `InvalidOperationException` at startup.
-> - **`StartPosition` is required, with no default** — the handler must explicitly choose `StartPosition.First()`, `.Last()`, `.Offset(n)`, or `.Timestamp(dt)` in `Configure`. Registration throws if it's left unset.
+> - **RabbitMQ or InMemory only** — Azure Service Bus has no stream primitive. Registering against it throws `InvalidOperationException` at startup. InMemory backs streams with an in-process append-only log instead of a broker — no cross-process sharing, and the log is gone entirely on restart (not just unindexed).
+> - **`StartPosition` is required, with no default** — the handler must explicitly choose `StartPosition.First()`, `.Last()`, `.Offset(n)`, or `.Timestamp(dt)` in `Configure`. Registration throws if it's left unset. For `First`/`Last`, `[StreamStartPosition(StreamStartPositionKind.First)]` / `[StreamStartPosition(StreamStartPositionKind.Last)]` on the handler class is an alternative to setting it in `Configure` — `Offset`/`Timestamp` still require `Configure`.
 > - **No offset persistence across restarts** — the start position is re-evaluated fresh on every process boot. Never compute it relative to "now" (e.g. `StartPosition.Timestamp(DateTime.UtcNow - TimeSpan.FromHours(2))`) — that never converges across restarts.
 > - **Retry is in-process, not a requeue** — `[RetryPolicy]` retries the same in-memory batch. When retries are exhausted the handler **halts consumption of that queue entirely** rather than skipping the failed batch or dead-lettering it. There is no dead letter tracking for stream handlers.
-> - **Set `[StreamRetention]` on the message contract** — without it, the stream retains every message forever (a broker disk exhaustion risk).
+> - **Set `[StreamRetention]` on the message contract** — without it, the stream retains every message forever (broker disk exhaustion on RabbitMQ, process memory growth on InMemory — InMemory applies no extra default cap of its own). On InMemory, `maxLengthBytes` is silently ignored when `EnableReferencePassing` is `true` (no serialized bytes to account against) — only `maxAgeSeconds` applies in that mode.
 
-## Step 1 — Confirm the transport is RabbitMQ
+## Step 1 — Confirm the transport is RabbitMQ or InMemory
 
 Detect the transport before doing anything else:
 
@@ -25,9 +25,10 @@ Detect the transport before doing anything else:
 grep -r "UseRabbitMq\|UseAzureServiceBus\|UseInMemory" --include="*.cs" .
 ```
 
-- **RabbitMQ found** (and no other transport in the target project) → proceed.
-- **A different transport found, or none found** → stop and tell the user: "Message streams require RabbitMQ — Azure Service Bus and InMemory have no stream primitive. This project uses `<detected transport>`. Do you want to add RabbitMQ as a provider, or is this the wrong project?" Do not scaffold a stream handler against a non-RabbitMQ provider.
+- **RabbitMQ or InMemory found** (and no Azure Service Bus in the target project) → proceed.
+- **Azure Service Bus found, or no transport found** → stop and tell the user: "Message streams require RabbitMQ or InMemory — Azure Service Bus has no stream primitive. This project uses `<detected transport>`. Do you want to add RabbitMQ or InMemory as a provider, or is this the wrong project?" Do not scaffold a stream handler against Azure Service Bus.
 - **Multiple transports found** → ask the user which provider the stream should attach to (relevant if `[ProviderAffinity]` is needed on the message contract).
+- **InMemory specifically** → mention this is primarily a local development/testing aid (also fine for small, single-instance production deployments where avoiding a broker is the point), and that the stream only lives in this one process's memory with no persistence.
 
 Ask the user where to add `$0Handler` (an existing project, or ask for the project/path) — this skill does not scaffold a new project, since no Flowly template currently sets up RabbitMQ-with-streams by default.
 
@@ -60,7 +61,7 @@ Rules:
 - Use `record` (not `class`).
 - Properties must be immutable (init-only or positional record syntax).
 - Only add `[QueueName("kebab-name")]` if the default convention (PascalCase → kebab-case, trailing `Message` stripped) is wrong.
-- **Ask the user for retention values** (`maxAgeSeconds`, `maxLengthBytes`) rather than guessing — these are operational decisions (how long data must be replayable, how much broker disk to budget). Omitting both is valid but means the stream never evicts anything; flag that tradeoff explicitly if the user doesn't specify.
+- **Ask the user for retention values** (`maxAgeSeconds`, `maxLengthBytes`) rather than guessing — these are operational decisions (how long data must be replayable, how much broker disk — or, on InMemory, process memory — to budget). Omitting both is valid but means the stream never evicts anything; flag that tradeoff explicitly if the user doesn't specify. On InMemory with `EnableReferencePassing` enabled, mention that `maxLengthBytes` won't have any effect (only `maxAgeSeconds` does).
 
 Auto-generated queue name examples:
 - `TelemetryReadingMessage` → `telemetry-reading`
@@ -103,7 +104,8 @@ Rules:
   - `StartPosition.First()` — replay the entire retained stream from the beginning on every restart. Handler must be idempotent.
   - `StartPosition.Last()` — only new messages from now on; messages recorded while the process was down are missed after a restart.
   - `StartPosition.Offset(n)` / `StartPosition.Timestamp(dt)` — a specific fixed point. Warn against computing a timestamp relative to "now" (never converges across restarts).
-- `options.MaxMessagesBeforeProcessing` / `options.MaxWaitTime` can also be set via a `[BatchProcessing]` attribute on the class instead of `Configure` — `Configure` wins if both are present. There is no `[MaxConcurrentCalls]` for stream handlers — the batch loop only ever handles one batch at a time, so RabbitMQ prefetch is always sized to `MaxMessagesBeforeProcessing` automatically.
+- For `First`/`Last` only, `[StreamStartPosition(StreamStartPositionKind.First)]` / `[StreamStartPosition(StreamStartPositionKind.Last)]` on the class is an alternative to setting `options.StartPosition` in `Configure` — `Configure` wins if both are present. `Offset`/`Timestamp` have no attribute equivalent and still require `Configure`.
+- `options.MaxMessagesBeforeProcessing` / `options.MaxWaitTime` can also be set via a `[BatchProcessing]` attribute on the class instead of `Configure` — `Configure` wins if both are present. There is no `[MaxConcurrentCalls]` for stream handlers — the batch loop only ever handles one batch at a time, so on RabbitMQ prefetch is always sized to `MaxMessagesBeforeProcessing` automatically (InMemory has no prefetch concept).
 - `IMessageStreamContext<T>` provides:
   - `messageContext.Messages` — `IReadOnlyCollection<T>` of the batch
   - `messageContext.CancellationToken`
@@ -131,7 +133,7 @@ public class MyService(IMessageRecorder messageRecorder)
 }
 ```
 
-Both `AddMessageStreamHandler` and `AddMessageRecorder` throw `InvalidOperationException` at registration time if the resolved provider isn't RabbitMQ — ask the user to confirm which project(s) need which side before registering.
+Both `AddMessageStreamHandler` and `AddMessageRecorder` throw `InvalidOperationException` at registration time if the resolved provider isn't RabbitMQ or InMemory — ask the user to confirm which project(s) need which side before registering.
 
 ## Final step — Verify the build
 
@@ -143,7 +145,7 @@ Fix any errors before reporting the task as complete.
 
 ## Checklist
 
-- [ ] Confirmed the target project(s) use RabbitMQ
+- [ ] Confirmed the target project(s) use RabbitMQ or InMemory
 - [ ] Message contract record created with `[StreamRetention]` (or existing contract confirmed) — retention values confirmed with the user, not guessed
 - [ ] Handler class created (`internal`, inherits `MessageStreamHandler<$0>`, `Configure` sets `StartPosition`)
 - [ ] Registered with `AddMessageStreamHandler` in the consumer's `FlowlyConfiguration`

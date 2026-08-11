@@ -384,7 +384,7 @@ Each sender gets a dedicated reply queue named `{callQueue}.reply.{instanceName}
 
 ## Message Streaming
 
-> **RabbitMQ only.** Message streams use RabbitMQ's native stream queue type (`x-queue-type: stream`) — Azure Service Bus and the InMemory transport have no equivalent primitive. Registering a stream handler or recorder against a non-RabbitMQ provider throws `InvalidOperationException` at startup, not at first use.
+> **RabbitMQ and InMemory only.** RabbitMQ uses its native stream queue type (`x-queue-type: stream`); the InMemory transport backs streams with an in-process append-only log instead — no broker required, ideal for local development and testing (also a reasonable fit for small, single-instance deployments where avoiding external broker infrastructure is the point, e.g. a self-hosted app on a home server/NAS or a single container). Azure Service Bus has no equivalent primitive. Registering a stream handler or recorder against a non-stream-capable provider throws `InvalidOperationException` at startup, not at first use.
 
 A message stream is an append-only, replayable log: unlike a regular queue, multiple independent consumers can each read the same stream from their own position — including consumers that didn't exist when a message was recorded. `IMessageRecorder.Record()` is a third sending verb alongside `IMessageSender.Send()` (fire-and-forget) and `IMessageCaller.Call()` (RPC).
 
@@ -429,7 +429,7 @@ Register:
 builder.AddMessageStreamHandler<TelemetryReading, TelemetryStreamHandler>();
 ```
 
-> **Prefetch matches `MaxMessagesBeforeProcessing` automatically.** Messages accumulated into a batch aren't acknowledged until the whole batch is handled, so the RabbitMQ consumer's prefetch count is always sized to `MaxMessagesBeforeProcessing` — otherwise the broker would withhold messages beyond the prefetch limit until the in-flight (unacked) ones are acked, starving the accumulator down to one message per `MaxWaitTime` window regardless of publish rate. This isn't configurable — there is no `[MaxConcurrentCalls]` for stream handlers, since the batch loop only ever handles one batch at a time.
+> **Prefetch matches `MaxMessagesBeforeProcessing` automatically (RabbitMQ).** Messages accumulated into a batch aren't acknowledged until the whole batch is handled, so the RabbitMQ consumer's prefetch count is always sized to `MaxMessagesBeforeProcessing` — otherwise the broker would withhold messages beyond the prefetch limit until the in-flight (unacked) ones are acked, starving the accumulator down to one message per `MaxWaitTime` window regardless of publish rate. This isn't configurable — there is no `[MaxConcurrentCalls]` for stream handlers, since the batch loop only ever handles one batch at a time. InMemory has no broker prefetch concept, so this concern doesn't apply there — its in-process log simply retains everything not yet trimmed by retention.
 
 ### Start position
 
@@ -442,6 +442,18 @@ Every stream handler **must** explicitly set `StartPosition` in `Configure` — 
 | `StartPosition.Offset(n)` | Start at a specific numeric offset. |
 | `StartPosition.Timestamp(dt)` | Start at the first message at or after a point in time. |
 
+For `First()`/`Last()`, an attribute is also available as an alternative to setting it in `Configure`:
+
+```csharp
+[StreamStartPosition(StreamStartPositionKind.Last)]
+internal class TelemetryReadingHandler : MessageStreamHandler<TelemetryReading>
+{
+    public override Task Handle(IMessageStreamContext<TelemetryReading> messageContext) => ...;
+}
+```
+
+`Offset`/`Timestamp` have no attribute equivalent and still require `Configure`. If a handler overrides `Configure` and also sets `options.StartPosition` there, the `Configure` value wins over the attribute — same precedence `[BatchProcessing]` has.
+
 > **No offset persistence.** Flowly does not checkpoint stream offsets across restarts — `StartPosition` is re-evaluated fresh on every boot. Avoid values computed relative to the current time (e.g. `StartPosition.Timestamp(DateTime.UtcNow - TimeSpan.FromHours(2))`), which never converge across restarts.
 
 ### Retention
@@ -453,7 +465,9 @@ Set retention limits on the message contract with `[StreamRetention]` so the str
 public record TelemetryReading(string SensorId, double Value);
 ```
 
-Omitting both parameters means the stream retains every message forever — a broker disk exhaustion risk.
+Omitting both parameters means the stream retains every message forever — a broker disk exhaustion risk (InMemory: unbounded process memory growth instead — InMemory intentionally applies no extra default cap of its own, so this risk is identical across both transports).
+
+> **InMemory and `EnableReferencePassing`.** When the InMemory transport is configured with [`EnableReferencePassing = true`](#reference-passing), messages are never JSON-serialized, so `MaxLengthBytes` has no byte count to enforce and is silently ignored — only `MaxAgeSeconds` retention applies in that mode.
 
 ### Retry and failure handling
 
@@ -1349,6 +1363,17 @@ builder.UseInMemory(options => options.EnableReferencePassing = true);
 Retries and scheduled delivery work normally — the object reference is preserved through the channel and scheduled-delivery paths. `MaxMessageSizeBytes` is not enforced when this option is enabled.
 
 > **Trade-off:** Serialisation fidelity is not tested in this mode. Any discrepancy between the in-memory and production behaviour — for example, a property that does not survive a JSON round-trip — will only surface when the real transport is used. Leave `EnableReferencePassing = false` (the default) when you want to validate serialisation as part of your test suite.
+
+### Message streaming
+
+The InMemory transport also implements `IStreamCapableMessageBusClient` (see [Message Streaming](#message-streaming) above), so `MessageStreamHandler<T>` and `IMessageRecorder` work without RabbitMQ. It's backed by an in-process append-only log (`InMemoryStreamLog`) per stream queue instead of a broker-side stream:
+
+- Every stream handler still gets its own independent full replay from its own `StartPosition` — the same log-style semantics as RabbitMQ, so handler code is portable between the two transports.
+- No cross-restart persistence, same as RabbitMQ streams — and, unlike RabbitMQ, no cross-process sharing either: the log only exists in the one process's memory.
+- Retention (`[StreamRetention]` / `MaxAgeSeconds` / `MaxLengthBytes`) works the same way, with one exception: `MaxLengthBytes` is silently ignored when `EnableReferencePassing` is `true`, since reference-passed messages are never serialized and have no byte size to account against — only `MaxAgeSeconds` applies in that mode.
+- No InMemory-specific default retention cap — an unconfigured stream grows unbounded in process memory, matching RabbitMQ's own "unbounded unless configured" behavior rather than a second default to learn.
+
+This is primarily a local development/testing aid, but it's also a reasonable choice for small, single-instance production deployments where avoiding external broker infrastructure is the point (e.g. a self-hosted app on a home server/NAS or a single container) — not "toy/demo only."
 
 ---
 

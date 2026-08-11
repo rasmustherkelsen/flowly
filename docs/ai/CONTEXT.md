@@ -209,9 +209,9 @@ These are easy to miss because each is a small, separate piece of wiring; a solu
 7. **Restarting a running ASB emulator / Docker Compose stack is disruptive** — a skill that just regenerated `sbconfig.json` should ask the user before restarting it, not do so automatically.
 8. **Dashboard and ASP.NET Core sender projects with call submitters need `AddAspNetCoreInstrumentation()` for complete OTel traces.** When a project using `AddCallSubmitter<T>()` is an ASP.NET Core web app (has HTTP endpoints), `flowly.call` spans are automatically parented to the ambient HTTP request activity. If `AddAspNetCoreInstrumentation()` is missing from the `TracerProviderBuilder`, the HTTP parent span is never exported and Jaeger shows the trace as `(incomplete)`. Fix: add the `OpenTelemetry.Instrumentation.AspNetCore` package and chain `.AddAspNetCoreInstrumentation()` into `.WithTracing(...)`. Aspire solutions using `AddServiceDefaults()` already have this — no extra step needed. Worker-style projects (no HTTP listener) are not affected.
 
-#### Message stream handler (RabbitMQ only — append-only, replayable log)
+#### Message stream handler (RabbitMQ or InMemory — append-only, replayable log)
 
-`MessageStreamHandler<T>` requires the resolved provider's client to implement `IStreamCapableMessageBusClient` — only `RabbitMqMessageBusClient` does today. Registering against Azure Service Bus or InMemory throws `InvalidOperationException` at registration time (eager check, not a lazy runtime check like `IEventCapableMessageBusClient`).
+`MessageStreamHandler<T>` requires the resolved provider's client to implement `IStreamCapableMessageBusClient` — `RabbitMqMessageBusClient` (real broker streams) and `InMemoryMessageBusClient` (an in-process append-only log, `InMemoryStreamLog`) both do. Registering against Azure Service Bus throws `InvalidOperationException` at registration time (eager check, not a lazy runtime check like `IEventCapableMessageBusClient`). See §14 for InMemory's stream internals.
 
 ```csharp
 public class MyStreamHandler : MessageStreamHandler<MyMessage>
@@ -232,13 +232,15 @@ public class MyStreamHandler : MessageStreamHandler<MyMessage>
 
 Register: `.AddMessageStreamHandler<MyMessage, MyStreamHandler>()`
 
-Retention limits go on the **message contract**, not the handler: `[StreamRetention(maxAgeSeconds: 604800, maxLengthBytes: 500_000_000)]`. Omitting both means the stream grows unbounded.
+For the two constant-expressible positions, `[StreamStartPosition(StreamStartPositionKind.First)]` / `[StreamStartPosition(StreamStartPositionKind.Last)]` on the handler class is an alternative to setting `options.StartPosition` in `Configure` — `Offset`/`Timestamp` still require `Configure` (a timestamp is routinely computed relative to "now", which can't be a compile-time attribute argument). `Configure` wins if it also sets `StartPosition`, same precedence as `[BatchProcessing]`. `Configure` itself stays `virtual`, not `abstract` — making it `abstract` would force every handler happy with the attribute shortcut and default batch settings to write a no-op override just to satisfy the compiler.
+
+Retention limits go on the **message contract**, not the handler: `[StreamRetention(maxAgeSeconds: 604800, maxLengthBytes: 500_000_000)]`. Omitting both means the stream grows unbounded — on RabbitMQ that's broker disk; on InMemory it's process memory, and InMemory deliberately applies no extra default cap of its own (matches RabbitMQ's own unbounded-unless-configured behavior instead of inventing a second default). On InMemory, `MaxLengthBytes` is silently ignored when `InMemoryOptions.EnableReferencePassing` is `true` — reference-passed messages are never serialized, so there's no byte size to enforce; only `MaxAgeSeconds` applies in that mode.
 
 `[RetryPolicy]` works, but with a different mechanism than every other handler: retries are an **in-process loop over the same in-memory batch** — messages are never re-published to the stream (which would permanently corrupt an immutable, replayable log). When retries are exhausted the handler **halts consumption of that queue entirely**: the stream offset never advances past the failed batch, a `Critical` log entry and `flowly.message.handler.halted` metric are emitted, and no further messages are processed until the process is fixed and restarted. There is no skip-and-continue and no dead letter tracking for stream handlers.
 
-`MessageStreamHandlerOptions` does **not** inherit `HandlerQueueOptions` — `LockDuration`, `DeadLetterOnMessageExpiration`, `MaxRetries`/`RetryDelaySeconds` don't apply (no per-message peek-lock; retention replaces TTL; retry is in-process, not `Configure`-driven). It also has no `MaxConcurrentCalls` — the batch loop only ever handles one batch at a time, so the RabbitMQ consumer's prefetch count is always sized to `MaxMessagesBeforeProcessing` automatically (batched messages aren't acked until the whole batch is handled, so prefetch must cover the full batch or the broker starves the accumulator down to one message per `MaxWaitTime` window).
+`MessageStreamHandlerOptions` does **not** inherit `HandlerQueueOptions` — `LockDuration`, `DeadLetterOnMessageExpiration`, `MaxRetries`/`RetryDelaySeconds` don't apply (no per-message peek-lock; retention replaces TTL; retry is in-process, not `Configure`-driven). It also has no `MaxConcurrentCalls` — the batch loop only ever handles one batch at a time, so on RabbitMQ the consumer's prefetch count is always sized to `MaxMessagesBeforeProcessing` automatically (batched messages aren't acked until the whole batch is handled, so prefetch must cover the full batch or the broker starves the accumulator down to one message per `MaxWaitTime` window). InMemory has no broker prefetch concept — its log simply holds everything not yet trimmed by retention.
 
-**Offsets are not persisted across restarts.** `StartPosition` is re-evaluated fresh on every boot — avoid values computed relative to "now" (e.g. `StartPosition.Timestamp(DateTime.UtcNow - TimeSpan.FromHours(2))`), which never converge.
+**Offsets are not persisted across restarts.** `StartPosition` is re-evaluated fresh on every boot — avoid values computed relative to "now" (e.g. `StartPosition.Timestamp(DateTime.UtcNow - TimeSpan.FromHours(2))`), which never converge. On InMemory there's also no cross-process sharing — the log exists only in the one process's memory, so it's gone entirely on restart, not just unindexed.
 
 ---
 
@@ -264,7 +266,7 @@ var jobId = await jobSender.QueueJob(new MyJobMessage { ... }); // returns JobId
 
 Register: `.AddJobSubmitter<MyJobMessage>()`
 
-#### Recording onto a message stream (RabbitMQ only)
+#### Recording onto a message stream (RabbitMQ or InMemory)
 
 Inject `IMessageRecorder`:
 
@@ -585,6 +587,7 @@ These attributes go on the **handler** class and control infrastructure settings
 | `[RetryPolicy(maxRetries, delaySeconds)]` | Retry on failure | 0 retries |
 | `[MaxConcurrentCalls(n)]` | Messages processed in parallel | 1 |
 | `[BatchProcessing(max, waitSec)]` | Enable batching | — |
+| `[StreamStartPosition(kind)]` | Sets `First`/`Last` start position for `MessageStreamHandler<T>` | — |
 | `[RecurringJob("desc", "cron")]` | CRON expression | — |
 
 See [docs/attributes-reference.md](../attributes-reference.md) for every Flowly attribute — including the message/event contract ones (`QueueName`, `EventName`, `ProviderAffinity`) — in one consolidated table.
@@ -906,13 +909,20 @@ For plain Docker Compose, use `Flowly.Tool` to generate `emulator-config.json` f
 | Dead letter | `InMemoryReceivedMessage.DeadLetter()` writes to a separate DLQ `Channel<InMemoryEnvelope>` |
 | Event fan-out | `InMemoryMessageBusSender` (SenderMode.Topic) writes to every registered subscription channel |
 | Targeted event requeue | `InMemoryMessageBusSender` (SenderMode.TopicRetry) reads `flowly-target-subscription` from app properties and routes to one subscription |
+| Stream handler | `InMemoryStreamProcessor<T>` polling `InMemoryStreamLog` from its own cursor; in-process retry on the batch, no requeue; halts consumption once retries are exhausted (same contract as RabbitMQ's stream handler, different storage) |
 
 Each `InMemoryBroker` instance (one per provider name) lazily creates channels on first access. No external broker connection is needed.
 
 Registration: `.UseInMemory()`. Optionally configure via `Action<InMemoryOptions>`:
 - `MaxMessageSizeBytes` (default 1 MB) — throws `MessageTooLargeException` when exceeded; not enforced when `EnableReferencePassing` is `true`.
 - `ChannelCapacity` (default 1000) — bounded channel capacity; writers block when full.
-- `EnableReferencePassing` (default `false`) — when `true`, messages bypass JSON serialisation: the sender stores the original object reference in the envelope (`InMemoryEnvelope.OriginalMessage`) and the receiver returns it directly via `is TMessage` pattern match. Useful as a mediator-style starting point before migrating to a real broker. Retries and scheduled delivery preserve the reference. Serialisation fidelity is not tested in this mode.
+- `EnableReferencePassing` (default `false`) — when `true`, messages bypass JSON serialisation: the sender stores the original object reference in the envelope (`InMemoryEnvelope.OriginalMessage`) and the receiver returns it directly via `is TMessage` pattern match. Useful as a mediator-style starting point before migrating to a real broker. Retries and scheduled delivery preserve the reference. Serialisation fidelity is not tested in this mode. For stream queues, also disables `MaxLengthBytes` retention (see below).
+
+#### Stream storage — `InMemoryStreamLog`
+
+`InMemoryBroker` holds one `InMemoryStreamLog` per stream queue name (`GetOrCreateStreamLog`), separate from the classic per-queue `Channel<InMemoryEnvelope>`. It's an append-only `List<InMemoryEnvelope>` behind a lock, addressed by a monotonically increasing offset (a running counter, not the list index — retention trimming shifts the list without renumbering surviving entries). `InMemoryMessageBusSender` routes a send/record to the log instead of the classic channel via `InMemoryBroker.EnqueueOrAppend`, which checks `IsStreamQueue(queueName)` against `StreamQueueManifest` (see below). Readers (`InMemoryStreamProcessor<T>`, one per `MessageStreamHandler` registration) each hold their own cursor and call `ReadFrom(offset)` — a non-destructive read, unlike the classic channel path — then wait on a broadcast `TaskCompletionSource` signal when caught up, so multiple readers can each replay the full log independently without stealing entries from one another.
+
+`StreamQueueManifest` (populated by `AddMessageStreamHandler`/`AddMessageRecorder`) is resolved once via `StreamQueueManifest.GetOrCreate(services)` inside `UseInMemory()` — mirroring exactly how `UseRabbitMq()` resolves it — and passed into `InMemoryBroker`'s constructor. `AddMessageStreamHandler`/`AddMessageRecorder` must still be called after `UseInMemory()` (the same requirement as every other handler/submitter registration — `ProviderNameResolver` needs a transport already registered), but within that order it doesn't matter that `UseInMemory()` constructs the broker/manifest before any queue has been marked as a stream: `GetOrCreate` returns the same singleton instance, so the later `MarkAsStream` call from the stream registration mutates the exact manifest the broker is already holding a reference to.
 
 ---
 
@@ -931,7 +941,7 @@ Registration: `.UseInMemory()`. Optionally configure via `Action<InMemoryOptions
 
 #### Stream queue topology — no DLX, no retry queue
 
-`StreamQueueManifest` (populated by `AddMessageStreamHandler`/`AddMessageRecorder`) tells `RabbitMqMessagingTopologyCreator` and `RabbitMqRetryTopologyValidator` which queue names are streams, keyed by queue name. Kept as a RabbitMQ-side side-channel rather than a field on the shared, transport-agnostic `DeferredQueueRegistration` record — that record is also consumed by `Flowly.AzureServiceBus.Aspire`, which has no concept of stream queues.
+`StreamQueueManifest` (populated by `AddMessageStreamHandler`/`AddMessageRecorder`) tells `RabbitMqMessagingTopologyCreator` and `RabbitMqRetryTopologyValidator` which queue names are streams, keyed by queue name — `Flowly.InMemory` reads the same manifest (via `InMemoryBroker.IsStreamQueue`/`GetOrCreateStreamLog`) to route sends to `InMemoryStreamLog` instead of the classic channel. Kept as a transport-side side-channel rather than a field on the shared, transport-agnostic `DeferredQueueRegistration` record — that record is also consumed by `Flowly.AzureServiceBus.Aspire`, which has no concept of stream queues.
 
 For a stream queue, `DeclareQueueTopology` short-circuits (same shape as the `IReplyQueueDescription` branch) and declares only the queue itself with `x-queue-type: stream` plus `x-max-age`/`x-max-length-bytes` when set via `[StreamRetention]` — no `.dlx` exchange, no `.dead-letter` queue, no `.retry` queue. `RabbitMqRetryTopologyValidator` correspondingly skips `.retry`-queue validation for any queue the manifest marks as a stream.
 
@@ -1023,6 +1033,8 @@ Rules:
 | InMemory wiring | `Flowly.InMemory/InMemoryRegistration.cs` |
 | InMemory broker (channel store) | `Flowly.InMemory/InMemoryBroker.cs` |
 | InMemory scheduler | `Flowly.InMemory/InMemoryScheduler.cs` |
+| InMemory stream log | `Flowly.InMemory/InMemoryStreamLog.cs` |
+| InMemory stream processor | `Flowly.InMemory/InMemoryStreamProcessor.cs` |
 | Job DB entities | `Flowly.Jobs/DatabaseModel/` |
 | Job domain models | `Flowly.Jobs/Model/` |
 | Job DI extensions | `Flowly.Jobs/Registration/` |
@@ -1125,8 +1137,8 @@ Rules that describe how to *author or maintain* skills (contributor-facing meta-
 | Add a batch handler | Inherit `BatchMessageHandler<T>`, add attributes, register with `.AddBatchMessageHandler<>()` |
 | Add a job handler | Inherit `JobHandler<T>`, register with `.AddJobHandler<>()` |
 | Add a recurring job | Inherit `RecurringJobHandler`, add `[RecurringJob]`, register with `.AddRecurringJob<>()` |
-| Add a stream handler (RabbitMQ only) | Inherit `MessageStreamHandler<T>`, set `StartPosition` in `Configure`, register with `.AddMessageStreamHandler<T, TH>()` |
-| Record onto a stream (RabbitMQ only) | Inject `IMessageRecorder`, call `.Record(msg)`; register with `.AddMessageRecorder<T>()` |
+| Add a stream handler (RabbitMQ or InMemory) | Inherit `MessageStreamHandler<T>`, set `StartPosition` in `Configure`, register with `.AddMessageStreamHandler<T, TH>()` |
+| Record onto a stream (RabbitMQ or InMemory) | Inject `IMessageRecorder`, call `.Record(msg)`; register with `.AddMessageRecorder<T>()` |
 | Configure job cleanup | Pass `configure: options => { options.DeleteCompletedJobsAfter = ...; }` to `AddSqlServerJobStateTracking` |
 | Control the queue name | Add `[QueueName("name")]` to the **message contract** — only needed when auto-generation is wrong |
 | Send a message | Inject `IMessageSender`, call `.Send(msg)` |

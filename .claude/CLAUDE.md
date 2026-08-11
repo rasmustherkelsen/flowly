@@ -28,7 +28,7 @@ dotnet test --filter "FullyQualifiedName~MessageQueueNameResolverTests+Resolve"
 - `Flowly.AzureServiceBus/` — Azure Service Bus transport
 - `Flowly.AzureServiceBus.Aspire/` — Aspire AppHost integration (emulator queue registration)
 - `Flowly.RabbitMQ/` — RabbitMQ transport
-- `Flowly.InMemory/` — In-memory transport (channels; no broker required)
+- `Flowly.InMemory/` — In-memory transport (channels; no broker required); also implements `IStreamCapableMessageBusClient` via an in-process append-only log (`InMemoryStreamLog`) for `MessageStreamHandler<T>`/`IMessageRecorder`
 - `Flowly.OpenTelemetry/` — OpenTelemetry metrics and traces
 - `Flowly.Dashboard/` — embedded ASP.NET Core middleware dashboard (management UI at `/flowly`); feature-detects Jobs and DeadLetters via DI; SPA built with React + Vite and packed as EmbeddedResource; opt-in OAuth2/OIDC auth via `OAuthAuthenticationOptions` (viewer and submitter role/policy tiers)
 - `Flowly.Jobs/` — job state tracking (EF Core) and CRON scheduling
@@ -83,7 +83,7 @@ Registered in `Program.cs` via `builder.AddFlowly<MyConfig>()` or auto-discovery
 | `RecurringJobHandler` | CRON-scheduled background job | No | No | `.AddRecurringJob<TH>()` |
 | `EventHandlerBase<TEvent>` | Fan-out event (all subscribers receive) | Yes | Yes — requeue re-publishes to the topic/exchange with `flowly-target-subscription` set; only the originating subscriber receives the requeued message. | `.AddEventHandler<TEvent, TH>()` |
 | `CallHandler<T, TReturn>` | RPC-style blocking call — `T : IReturns<TReturn>`. Caller awaits a typed response via `IMessageCaller.Call<T, TReturn>()`. Requires `FlowlyOptions.InstanceName` on sender side. | Yes | No | `.AddCallHandler<T, TH>()` (receiver) / `.AddCallSubmitter<T>()` (sender) |
-| `MessageStreamHandler<T>` | Append-only, replayable message stream — **RabbitMQ only** (requires `IStreamCapableMessageBusClient`; throws at startup on other transports) | Yes — in-process retry on the same batch, no requeue (would corrupt the replayable log); halts consumption entirely (does not advance the offset or skip) once exhausted | No | `.AddMessageStreamHandler<T, TH>()` (receiver) / `.AddMessageRecorder<T>()` (sender) |
+| `MessageStreamHandler<T>` | Append-only, replayable message stream — **RabbitMQ and InMemory only** (requires `IStreamCapableMessageBusClient`; throws at startup on Azure Service Bus). InMemory backs it with an in-process log (`InMemoryStreamLog`), not a broker — no cross-process sharing, no cross-restart persistence. | Yes — in-process retry on the same batch, no requeue (would corrupt the replayable log); halts consumption entirely (does not advance the offset or skip) once exhausted | No | `.AddMessageStreamHandler<T, TH>()` (receiver) / `.AddMessageRecorder<T>()` (sender) |
 
 ### Queue Names
 
@@ -95,7 +95,7 @@ Owned by the **message contract**, not the handler. Auto-generated using the act
 - `IMessageCaller.Call<T, TReturn>(msg, ct)` — blocking RPC call, awaits response (requires `.AddCallSubmitter<T>()` and `FlowlyOptions.InstanceName`)
 - `IJobMessageSender.QueueJob(msg)` — returns `JobId` (requires `.AddJobSubmitter<T>()`)
 - `IEventSender.RaiseEvent<TEvent>(event)` — fan-out event publish (requires `.AddEventSubmitter<TEvent>()`)
-- `IMessageRecorder.Record<T>(msg, ct)` — records onto an append-only, replayable stream (requires `.AddMessageRecorder<T>()`; RabbitMQ only)
+- `IMessageRecorder.Record<T>(msg, ct)` — records onto an append-only, replayable stream (requires `.AddMessageRecorder<T>()`; RabbitMQ or InMemory)
 
 ### Retry Policy
 

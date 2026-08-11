@@ -1,8 +1,18 @@
 # Message Streaming Conventions
 
-## RabbitMQ-only, no ASB equivalent
+## RabbitMQ and InMemory only, no ASB equivalent
 
-`MessageStreamHandler<T>` and `IMessageRecorder` are gated to RabbitMQ via `IStreamCapableMessageBusClient` (same marker-interface pattern as `IEventCapableMessageBusClient`), checked EAGERLY at registration time (`AddMessageStreamHandler`/`AddMessageRecorder`), not lazily inside a background service like the event marker is. Do not add an Azure Service Bus or InMemory implementation of `IStreamCapableMessageBusClient` unless the underlying transport gains an equivalent replayable-log primitive — RabbitMQ streams have no ASB/InMemory analogue today.
+`MessageStreamHandler<T>` and `IMessageRecorder` are gated via `IStreamCapableMessageBusClient` (same marker-interface pattern as `IEventCapableMessageBusClient`), checked EAGERLY at registration time (`AddMessageStreamHandler`/`AddMessageRecorder`), not lazily inside a background service like the event marker is. RabbitMQ implements it against real broker-side streams (`x-stream-offset`); `Flowly.InMemory` implements it against an in-process append-only log (`InMemoryStreamLog`) that gives the same log-style, offset-addressable, multi-independent-reader semantics without a broker — see "InMemory streaming" below. Do not add an Azure Service Bus implementation of `IStreamCapableMessageBusClient` unless the underlying transport gains an equivalent replayable-log primitive — ASB has no stream analogue today.
+
+## InMemory streaming
+
+`Flowly.InMemory` implements `IStreamCapableMessageBusClient` via `InMemoryStreamLog` — a per-queue, in-process, append-only log with monotonically increasing offsets (not list indices, so retention trimming never renumbers surviving entries). Key semantics, deliberately kept as close to the RabbitMQ behavior as possible so handler code is portable across transports:
+
+- **Independent replay per reader, not competing consumers.** Every `MessageStreamHandler` registration against the same InMemory stream queue gets its own cursor and its own full replay from its own `StartPosition` — exactly like RabbitMQ streams, never a shared/split cursor.
+- **No InMemory-specific default retention cap.** If neither `MaxAgeSeconds` nor `MaxLengthBytes` is set, the log grows unbounded — in process memory instead of RabbitMQ's disk — matching RabbitMQ's literal "unbounded unless configured" behavior rather than inventing a second, transport-specific default a developer would need to learn.
+- **`MaxLengthBytes` is ignored when `InMemoryOptions.EnableReferencePassing` is enabled.** Reference-passed messages are never serialized, so there is no byte size to account against. Only `MaxAgeSeconds` retention applies in that mode. This must stay documented wherever InMemory streaming or `EnableReferencePassing` is documented — do not silently let this drift out of the docs.
+- **No cross-restart persistence** — same limitation as RabbitMQ streams (see "No offset persistence across restarts" below), except for InMemory there is also no cross-process sharing: the log lives only in the one process's memory.
+- **Framing for users**: document InMemory streaming primarily as a local development/testing aid, but note it is also a legitimate choice for small, single-instance production deployments (e.g. a self-hosted app on a home server/NAS or a single container) where avoiding external broker infrastructure is the whole point — not "toy/demo only" framing.
 
 ## No offset persistence across restarts (v1)
 

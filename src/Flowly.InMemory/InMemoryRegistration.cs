@@ -41,7 +41,8 @@ public static class InMemoryRegistration
         var inMemoryOptions = new InMemoryOptions();
         configure?.Invoke(inMemoryOptions);
 
-        var broker = new InMemoryBroker(inMemoryOptions);
+        var streamQueueManifest = StreamQueueManifest.GetOrCreate(services);
+        var broker = new InMemoryBroker(inMemoryOptions, streamQueueManifest);
         var messageBusClient = new InMemoryMessageBusClient(broker, inMemoryOptions);
         var topologyCreator = new InMemoryTopologyCreator();
 

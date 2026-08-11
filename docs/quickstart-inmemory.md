@@ -165,4 +165,5 @@ Received: Hello at 04/20/2026 14:23:02
 - [Add retry policy](../README.md#retry-policy) — annotate your handler with `[RetryPolicy]`
 - [Track job state](quickstart-job-tracking.md) — add SQLite job tracking to the single-project setup
 - [Dead letter tracking](quickstart-dead-letter-tracking.md) — add SQLite dead letter tracking to the single-project setup
+- [Message streaming](../README.md#message-streaming) — `MessageStreamHandler<T>` and `IMessageRecorder` work on InMemory too, backed by an in-process append-only log instead of a broker
 - [Full user guide](../README.md)

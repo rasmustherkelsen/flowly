@@ -3,7 +3,8 @@ using Flowly.Transport;
 
 namespace Flowly.InMemory;
 
-internal class InMemoryMessageBusClient(InMemoryBroker broker, InMemoryOptions options) : IMessageBusClient, IEventCapableMessageBusClient
+internal class InMemoryMessageBusClient(InMemoryBroker broker, InMemoryOptions options)
+    : IMessageBusClient, IEventCapableMessageBusClient, IStreamCapableMessageBusClient
 {
     private readonly SemaphoreSlim _senderLock = new(1, 1);
     private readonly ConcurrentDictionary<string, IMessageBusSender> _senders = new();
@@ -20,6 +21,13 @@ internal class InMemoryMessageBusClient(InMemoryBroker broker, InMemoryOptions o
                 broker.GetDeadLetterQueue(queueName),
                 queueName,
                 processorOptions));
+
+    public Task<IMessageBusProcessor<TMessage>> CreateStreamProcessor<TMessage>(string queueName, StartPosition startPosition, MessageBusProcessorOptions processorOptions)
+    {
+        var log = broker.GetOrCreateStreamLog(queueName);
+        var startOffset = log.ResolveStartOffset(startPosition);
+        return Task.FromResult<IMessageBusProcessor<TMessage>>(new InMemoryStreamProcessor<TMessage>(log, startOffset, queueName));
+    }
 
     public Task<IExecutionLaneProcessor> CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions processorOptions)
         => Task.FromResult<IExecutionLaneProcessor>(new InMemoryExecutionLaneProcessor(broker.GetSessionChannel(queueName, laneFilter), queueName));
