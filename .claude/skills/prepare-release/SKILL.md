@@ -1,6 +1,6 @@
 ---
 name: prepare-release
-description: Pre-release verification for the Flowly repository — checks documentation currency, template Flowly package version consistency, third-party dependency freshness, and smoke-tests all template variants by scaffolding and building them against local packages.
+description: Pre-release verification for the Flowly repository — checks documentation currency, template Flowly package version consistency, third-party dependency freshness and known vulnerabilities (including template-only packages that dotnet list package can't see), dependency floor hygiene in src/, and smoke-tests all template variants by scaffolding and building them against local packages.
 ---
 
 Run every step below in order and report the outcome of each. All findings feed the final checklist.
@@ -43,7 +43,11 @@ Report any mismatch. If the template version does not match the latest tag, flag
 
 ---
 
-## Step 3 — Outdated third-party dependencies
+## Step 3 — Third-party dependency health
+
+`Flowly.sln` only contains `src/`, `tests/`, and `samples/`. Template content under `src/Flowly.Templates/content/**/*.csproj` is **never** part of that solution — it's plain text that only gets restored when a template is scaffolded (Step 4) — so `dotnet list package` run against the solution is blind to every package pinned only inside template content. Steps 3c and 3d below exist specifically to cover that blind spot; do not skip them because 3a/3b came back clean.
+
+### 3a — Outdated packages in the solution
 
 ```bash
 dotnet list Flowly.sln package --outdated
@@ -53,6 +57,34 @@ Report which packages have newer versions available. Classify each as:
 - **Patch** (safe to update now)
 - **Minor** (review changelog, generally safe)
 - **Major** (needs evaluation — may be breaking)
+
+### 3b — Known vulnerabilities in the resolved graph
+
+```bash
+dotnet restore Flowly.sln --force 2>&1 | grep NU1903 || echo "No NU1903 vulnerability warnings."
+```
+
+`NU1903`/`NU1902`/`NU1901` warnings mean a package version that's actually being restored — regardless of what floor any `.csproj` declares — has a known advisory against it. This has bitten this repo before: lowering `src/*.csproj` dependency floors to the lowest version that compiles is correct (see the dependency-floor design decision below), but for `Microsoft.EntityFrameworkCore.SqlServer` and `.Sqlite` specifically, the lowest `10.0.x` patch that ships without a known-vulnerable transitive `Microsoft.Data.SqlClient`/`SQLitePCLRaw` is `10.0.11` — earlier `10.0.x` patches resolve to a flagged version. Any `NU1903` here means either a floor was set too low, or a new advisory has been published against a version Flowly currently depends on; in the latter case this is a reason to cut a point release bumping the affected floor, not something to defer.
+
+### 3c — Dependency floor hygiene in `src/`
+
+`src/*.csproj` (the distributable NuGet packages, not `tests/`/`samples/`) should pin each `Microsoft.Extensions.*`/`Microsoft.EntityFrameworkCore.*`/`Microsoft.AspNetCore.*`/`Npgsql.EntityFrameworkCore.PostgreSQL` reference to the **lowest version within the current major .NET version that both compiles and has no NU1903 finding** — not the latest patch. A high floor forces every consumer's restore up to that version even if they need nothing from it; see Step 3b for why "lowest" isn't always version `x.0.0`. If a bump to `src/` touched any of these packages, confirm the new version is still the lowest clean one (repeat 3b after the bump) rather than reflexively jumping to latest.
+
+### 3d — Template-only third-party packages
+
+These packages exist only inside `src/Flowly.Templates/content/**/*.csproj` and are invisible to 3a/3b:
+
+```bash
+grep -rn 'PackageReference Include=' src/Flowly.Templates/content --include="*.csproj" | grep -v 'Include="Flowly' | grep -oE '(Include|Version)="[^"]*"' | paste - - | sort -u
+```
+
+For each package listed, check the latest stable version on NuGet (`https://api.nuget.org/v3-flatcontainer/<lowercase-id>/index.json`) and classify like 3a. Then run the OpenTelemetry sync check specifically — this exact command also runs in CI (`.gitea/workflows/ci.yaml`) as a hard gate, but running it here catches drift before a push:
+
+```bash
+grep -rn "OpenTelemetry\.\|Microsoft\.Extensions\.Http\.Resilience\|Microsoft\.Extensions\.ServiceDiscovery" src/Flowly.OpenTelemetry/Flowly.OpenTelemetry.csproj src/Flowly.Templates/content --include="*.csproj" | grep "Version="
+```
+
+Per `.claude/rules/template-otel-versions.md`: `OpenTelemetry.Extensions.Hosting`, `OpenTelemetry.Exporter.OpenTelemetryProtocol`, and `OpenTelemetry.Exporter.Zipkin` in template content must exactly match `Flowly.OpenTelemetry.csproj`; `OpenTelemetry.Instrumentation.*` packages must match `OpenTelemetry.Extensions.Hosting`'s version. Report any mismatch as a blocking finding, not just a freshness note — CI will already fail the build on this, so it must be fixed before the release branch is tagged.
 
 ---
 
@@ -146,7 +178,11 @@ Report the status of every item:
 
 - [ ] All documentation files are current and internally consistent
 - [ ] Template `Flowly.*` version references match the latest git tag
-- [ ] No critical outdated third-party dependencies (or updates applied)
+- [ ] No critical outdated third-party dependencies in `Flowly.sln` (or updates applied)
+- [ ] No `NU1903`/`NU1902`/`NU1901` vulnerability warnings on `dotnet restore Flowly.sln --force`
+- [ ] `src/*.csproj` dependency floors are the lowest version that is both compiling and vulnerability-clean, not just the latest patch
+- [ ] Template-only third-party packages (Aspire.Hosting.*, Microsoft.Extensions.Http.Resilience/ServiceDiscovery, OpenTelemetry.*) are current
+- [ ] Template OpenTelemetry package versions match `Flowly.OpenTelemetry.csproj` per `.claude/rules/template-otel-versions.md`
 - [ ] All 8 template variants scaffold and build successfully
 - [ ] `dotnet build Flowly.sln` passes
 - [ ] `dotnet test Flowly.sln` passes
