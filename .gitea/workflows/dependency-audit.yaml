@@ -39,5 +39,5 @@ jobs:
           password: ${{ secrets.MAIL_PASSWORD }}
           subject: "Flowly: dependency vulnerability detected"
           to: ${{ vars.MAIL_TO }}
-          from: Flowly CI <${{ secrets.MAIL_USERNAME }}>
+          from: 'Flowly CI <${{ secrets.MAIL_USERNAME }}>'
           body_file: vulnerabilities.txt
