@@ -1,8 +1,7 @@
 var builder = DistributedApplication.CreateBuilder(args);
 
 var postgres = builder
-    .AddPostgres("Postgres", builder.AddParameter("postgres-password", secret: true, value: "Flowly_Postgres_Pass!"))
-    .WithPgAdmin();
+    .AddPostgres("Postgres", builder.AddParameter("postgres-password", secret: true, value: "Flowly_Postgres_Pass!"));
 
 var flowlyJobsDatabase = postgres.AddDatabase("FlowlyJobs");
 var flowlyDeadLettersDatabase = postgres.AddDatabase("FlowlyDeadLetters");

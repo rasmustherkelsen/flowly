@@ -31,7 +31,7 @@
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="10.0.9" />
+      <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="10.0.0" />
     </ItemGroup>
 
     <Target Name="BuildDashboardUi" BeforeTargets="BeforeBuild" Condition="'$(SkipUiBuild)' != 'true' AND Exists('ui/package.json')">

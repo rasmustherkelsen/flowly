@@ -21,6 +21,37 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      - name: Check template OpenTelemetry version sync
+        run: |
+          set -euo pipefail
+          CANONICAL=$(grep -oP '(?<=Include="OpenTelemetry.Extensions.Hosting" Version=")[^"]+' src/Flowly.OpenTelemetry/Flowly.OpenTelemetry.csproj)
+          echo "Canonical OpenTelemetry version (src/Flowly.OpenTelemetry/Flowly.OpenTelemetry.csproj): $CANONICAL"
+
+          PACKAGES=(
+            "OpenTelemetry.Extensions.Hosting"
+            "OpenTelemetry.Exporter.OpenTelemetryProtocol"
+            "OpenTelemetry.Exporter.Zipkin"
+            "OpenTelemetry.Instrumentation.AspNetCore"
+            "OpenTelemetry.Instrumentation.Http"
+            "OpenTelemetry.Instrumentation.Runtime"
+          )
+
+          FAIL=0
+          for pkg in "${PACKAGES[@]}"; do
+            MISMATCHES=$(grep -rn "Include=\"$pkg\" Version=\"" src/Flowly.Templates/content --include="*.csproj" | grep -v "Version=\"$CANONICAL\"" || true)
+            if [ -n "$MISMATCHES" ]; then
+              echo "::error::Template package $pkg does not match canonical version $CANONICAL:"
+              echo "$MISMATCHES"
+              FAIL=1
+            fi
+          done
+
+          if [ "$FAIL" -ne 0 ]; then
+            echo "See .claude/rules/template-otel-versions.md"
+            exit 1
+          fi
+          echo "All template OpenTelemetry package versions match $CANONICAL"
+
       - name: Build
         run: dotnet build --configuration Release
 
