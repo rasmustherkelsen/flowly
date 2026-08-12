@@ -33,11 +33,11 @@ jobs:
         if: failure()
         uses: dawidd6/action-send-mail@v3
         with:
-          server_address: smtp-mail.outlook.com
+          server_address: ${{ vars.MAIL_SERVER }}
           server_port: 587
           username: ${{ secrets.MAIL_USERNAME }}
           password: ${{ secrets.MAIL_PASSWORD }}
           subject: "Flowly: dependency vulnerability detected"
-          to: ${{ secrets.MAIL_TO }}
+          to: ${{ vars.MAIL_TO }}
           from: Flowly CI <${{ secrets.MAIL_USERNAME }}>
           body_file: vulnerabilities.txt
