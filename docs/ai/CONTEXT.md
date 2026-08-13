@@ -23,7 +23,7 @@ This document gives an AI assistant the context needed to work effectively in th
 ├── Flowly.RabbitMQ/                 # RabbitMQ transport implementation
 ├── Flowly.InMemory/                 # In-memory transport (channels; no broker required)
 ├── Flowly.OpenTelemetry/            # OpenTelemetry metrics and traces
-├── Flowly.Dashboard/                # Embedded ASP.NET Core middleware dashboard (management UI at /flowly); opt-in OAuth2/OIDC auth (OAuthAuthenticationOptions); viewer/submitter role and policy tiers — end-user setup guide for Entra ID/Google: docs/dashboard-authentication.md
+├── Flowly.Dashboard/                # Embedded ASP.NET Core middleware dashboard (management UI at /flowly); opt-in OAuth2/OIDC auth (OAuthAuthenticationOptions); viewer/submitter role and policy tiers — end-user setup guide for Entra ID/Google: docs/dashboard-authentication.md. No fixed default port: embedded mode uses the host app's own Kestrel port; standalone (--dashboard) templates randomly assign one per instantiation (see below)
 ├── Flowly.Jobs/                     # Job tracking, CRON scheduling, job state DB
 ├── Flowly.Jobs.SqlServer/           # SQL Server backend for job state tracking
 ├── Flowly.Jobs.Postgres/            # PostgreSQL backend for job state tracking
@@ -761,7 +761,7 @@ Optional flags:
 | `--deadlettertracking` | `--deadletter` | Add dead-letter tracking. Adds `DeadLetterSampleMessage`/`DeadLetterSampleMessageHandler` (with `[RetryPolicy]`), `FailingMessageSenderService`, and a dedicated `DeadLetterTracker` infrastructure project (RabbitMQ/ASB). The Receiver handles domain messages; `DeadLetterTracker` monitors dead-letter sub-queues and persists failed messages to the DB via `AddDeadLetterSource<T>()`. InMemory keeps everything in `App`. Requires `--db`. |
 | `--opentelemetry` | `--otel` | Add `Flowly.OpenTelemetry` instrumentation. No exporter — signals are collected but not emitted unless `--otel-export` is also specified. |
 | `--otel-export <value>` | `--oe` | Add `Flowly.OpenTelemetry` instrumentation **and** wire an exporter. Values: `default` (OTLP, activated when `OTEL_EXPORTER_OTLP_ENDPOINT` env var is set); `jaeger` (OTLP unconditional, sets `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317` in launchSettings and adds a Jaeger v2 container to `docker-compose.yml`); `zipkin` (Zipkin exporter, adds a Zipkin container to `docker-compose.yml`). Implies `--otel`. |
-| `--dashboard` | | Scaffold a standalone `Dashboard/` project — a minimal `WebApplication` that calls `AddFlowlyDashboard()` / `UseFlowlyDashboard()` and serves the management UI at `/`. The Receiver stays a pure background worker. For InMemory the dashboard is embedded in `App/` instead. |
+| `--dashboard` | | Scaffold a standalone `Dashboard/` project — a minimal `WebApplication` that calls `AddFlowlyDashboard()` / `UseFlowlyDashboard()` and serves the management UI at `/`. Port is randomly assigned per instantiation (HTTP 5000–5300, HTTPS 7000–7300 for `flowlyapp`; HTTP 5400–5499, HTTPS 7400–7499 for `flowlyaspireapp`) via `Dashboard/Properties/launchSettings.json` — there is no fixed default. The Receiver stays a pure background worker. For InMemory the dashboard is embedded in `App/` instead. |
 | `--db sqlserver` | | SQL Server backend |
 | `--db postgres` | | PostgreSQL backend |
 | `--db sqlite` | | SQLite backend |

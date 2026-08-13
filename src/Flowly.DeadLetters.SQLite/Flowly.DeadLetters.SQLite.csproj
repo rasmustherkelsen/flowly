@@ -9,6 +9,7 @@
     <ItemGroup>
         <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.11" PrivateAssets="all" />
         <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.11" />
+        <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.50.3" />
     </ItemGroup>
 
     <ItemGroup>
