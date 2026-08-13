@@ -10,6 +10,8 @@ Flowly is a queue-based messaging abstraction for .NET. It sits between your app
 
 Flowly ships an embedded management dashboard at `/flowly` — inspect job history, browse dead letters, trigger recurring jobs, and submit messages directly from the browser. OAuth2/OIDC authentication (Azure Entra ID, Google, or any OpenID Connect provider) is opt-in via `AddFlowlyDashboard(options => options.Authentication = new OAuthAuthenticationOptions(...))`, with optional role and policy restrictions to separate read-only viewers from users who can submit messages. See the [Dashboard Authentication guide](docs/dashboard-authentication.md) for step-by-step Azure Entra ID and Google setup.
 
+There is no fixed default port. When embedded in an existing app, the dashboard runs on whatever port that app's Kestrel/`launchSettings.json` already uses. When scaffolded standalone via `--dashboard` (see [Project Templates](#project-templates)), each `dotnet new` invocation gets its own randomly assigned port — HTTP 5000–5300 / HTTPS 7000–7300 for `flowlyapp`, HTTP 5400–5499 / HTTPS 7400–7499 for `flowlyaspireapp` — recorded in that project's `Properties/launchSettings.json`.
+
 <img src="docs/assets/dashboard-screenshot-jobs.png" alt="Flowly Dashboard — Jobs" width="100%">
 <img src="docs/assets/dashboard-screenshot-call.png" alt="Flowly Dashboard — Submit (Call)" width="100%">
 
@@ -1046,7 +1048,7 @@ Optional features:
 | `--deadlettertracking` | `--deadletter` | Dead-letter tracking — adds `DeadLetterSampleMessage`, `DeadLetterSampleMessageHandler` with `[RetryPolicy]`, and `FailingMessageSenderService`. Requires a DB flag. |
 | `--opentelemetry` | `--otel` | Add Flowly.OpenTelemetry instrumentation. No exporter — signals are collected but not emitted unless `--otel-export` is also specified. |
 | `--otel-export <value>` | `--oe` | Add Flowly.OpenTelemetry instrumentation **and** wire an exporter. Values: `default` (OTLP, gated on `OTEL_EXPORTER_OTLP_ENDPOINT`), `jaeger` (OTLP unconditional + Jaeger in docker-compose), `zipkin` (Zipkin + Zipkin in docker-compose). Implies `--otel`. |
-| `--dashboard` | | Scaffold a standalone `Dashboard/` project hosting the Flowly management UI at `/`. For InMemory transport the dashboard is embedded in `App/` instead. |
+| `--dashboard` | | Scaffold a standalone `Dashboard/` project hosting the Flowly management UI at `/`. Its port is randomly assigned per instantiation (HTTP 5000–5300, HTTPS 7000–7300 for `flowlyapp`; HTTP 5400–5499, HTTPS 7400–7499 for `flowlyaspireapp`) — see `Dashboard/Properties/launchSettings.json`. For InMemory transport the dashboard is embedded in `App/` instead. |
 
 Database backend (required when `--jobs` or `--deadletter` is used): `--db sqlserver|postgres|sqlite`.
 
