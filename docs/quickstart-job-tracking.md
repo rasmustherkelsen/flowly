@@ -421,7 +421,7 @@ using Messages;
 
 namespace Sender.Services;
 
-internal class JobSubmitterService(IServiceScopeFactory serviceScopeFactory) : BackgroundService
+internal class JobSubmitterService(IServiceScopeFactory serviceScopeFactory, ILogger<JobSubmitterService> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -432,7 +432,7 @@ internal class JobSubmitterService(IServiceScopeFactory serviceScopeFactory) : B
             var jobId = await sender.QueueJob(
                 new ProcessJobMessage($"Task at {DateTime.Now}"),
                 stoppingToken);
-            Console.WriteLine($"Queued job {jobId}");
+            logger.LogInformation("Queued job {JobId}", jobId);
             await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken);
         }
     }
@@ -669,7 +669,7 @@ using App.Messages;
 
 namespace App.Services;
 
-internal class JobSubmitterService(IServiceScopeFactory serviceScopeFactory) : BackgroundService
+internal class JobSubmitterService(IServiceScopeFactory serviceScopeFactory, ILogger<JobSubmitterService> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -680,7 +680,7 @@ internal class JobSubmitterService(IServiceScopeFactory serviceScopeFactory) : B
             var jobId = await sender.QueueJob(
                 new ProcessJobMessage($"Task at {DateTime.Now}"),
                 stoppingToken);
-            Console.WriteLine($"Queued job {jobId}");
+            logger.LogInformation("Queued job {JobId}", jobId);
             await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken);
         }
     }

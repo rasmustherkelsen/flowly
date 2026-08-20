@@ -60,11 +60,11 @@ using App.Messages;
 
 namespace App.Handlers;
 
-internal class MyMessageHandler : MessageHandler<MyMessage>
+internal class MyMessageHandler(ILogger<MyMessageHandler> logger) : MessageHandler<MyMessage>
 {
     public override Task Handle(IMessageContext<MyMessage> messageContext)
     {
-        Console.WriteLine($"Received: {messageContext.Message.Text}");
+        logger.LogInformation("Received: {Text}", messageContext.Message.Text);
         return Task.CompletedTask;
     }
 }

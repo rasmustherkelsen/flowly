@@ -40,6 +40,13 @@ public static class MessageRecorderRegistrationExtensions
 
         ThrowIfNotStreamCapable(flowlyBuilder.Services, providerName);
 
+        var partitionsAttribute = typeof(TMessage).GetCustomAttribute<StreamPartitionsAttribute>();
+        if (partitionsAttribute != null &&
+            ProviderNameResolver.GetRegistry(flowlyBuilder.Services).GetClient(providerName) is not IPartitionedStreamCapableMessageBusClient)
+            throw new InvalidOperationException(
+                $"{typeof(TMessage).Name} carries [StreamPartitions], but the message bus client for provider '{providerName}' does not " +
+                $"support partitioned message streaming. The client must implement {nameof(IPartitionedStreamCapableMessageBusClient)}.");
+
         flowlyBuilder.Services
             .AddSingleton(new MessageSubmitter<TMessage>.QueueSettings(queueName, providerName))
             .AddSingleton<IMessageSubmitter<TMessage>, MessageSubmitter<TMessage>>();
@@ -48,7 +55,7 @@ public static class MessageRecorderRegistrationExtensions
 
         var retention = typeof(TMessage).GetCustomAttribute<StreamRetentionAttribute>();
         StreamQueueManifest.GetOrCreate(flowlyBuilder.Services)
-            .MarkAsStream(queueName, retention?.MaxAgeSeconds, retention?.MaxLengthBytes);
+            .MarkAsStream(queueName, retention?.MaxAgeSeconds, retention?.MaxLengthBytes, partitionsAttribute?.Count);
 
         FlowlySubmitterManifest.GetOrCreate(flowlyBuilder.Services)
             .Add(new DeferredSubmitterRegistration(typeof(TMessage), queueName, SubmitterKind.Stream));

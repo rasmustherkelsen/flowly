@@ -110,10 +110,11 @@ internal class InMemoryStreamProcessor<TMessage>(
                     continue;
                 }
 
+                var batchStartOffset = nextOffset - batch.Count;
                 offset = nextOffset;
 
-                foreach (var envelope in batch)
-                    await DispatchToHandlers(envelope, cancellationToken);
+                for (var i = 0; i < batch.Count; i++)
+                    await DispatchToHandlers(batch[i], batchStartOffset + i, cancellationToken);
             }
         }
         catch (OperationCanceledException)
@@ -122,11 +123,11 @@ internal class InMemoryStreamProcessor<TMessage>(
         }
     }
 
-    private async Task DispatchToHandlers(InMemoryEnvelope envelope, CancellationToken cancellationToken)
+    private async Task DispatchToHandlers(InMemoryEnvelope envelope, long offset, CancellationToken cancellationToken)
     {
         try
         {
-            var received = new InMemoryStreamReceivedMessage<TMessage>(envelope);
+            var received = new InMemoryStreamReceivedMessage<TMessage>(envelope, offset);
             List<Func<IReceivedMessage<TMessage>, CancellationToken, Task>> handlers;
 
             lock (_processMessageLock)
@@ -153,11 +154,11 @@ internal class InMemoryStreamProcessor<TMessage>(
     }
 }
 
-internal class InMemoryStreamReceivedMessage<TMessage>(InMemoryEnvelope envelope) : IReceivedMessage<TMessage>
+internal class InMemoryStreamReceivedMessage<TMessage>(InMemoryEnvelope envelope, long? offset = null) : IReceivedMessage<TMessage>
 {
     public TMessage Body => field ??= InMemoryReceivedMessage<TMessage>.DeserializeBody(envelope);
 
-    public MessageProperties Properties { get; } = InMemoryReceivedMessage<TMessage>.BuildProperties(envelope);
+    public MessageProperties Properties { get; } = InMemoryReceivedMessage<TMessage>.BuildProperties(envelope, offset);
 
     public Task Complete(CancellationToken cancellationToken = default) => Task.CompletedTask;
 

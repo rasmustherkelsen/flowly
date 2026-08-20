@@ -18,4 +18,11 @@ public interface IMessageStreamContext<T>
     ///     A cancellation token that is signaled when the host is shutting down and processing should stop.
     /// </summary>
     CancellationToken CancellationToken { get; }
+
+    /// <summary>
+    ///     The partition this batch was read from, for a stream partitioned via <see cref="StreamPartitionsAttribute" />
+    ///     — <see langword="null" /> for a non-partitioned stream. Every message in <see cref="Messages" /> is from
+    ///     this same partition; batches never mix partitions, since ordering guarantees only hold within one.
+    /// </summary>
+    int? Partition { get; }
 }

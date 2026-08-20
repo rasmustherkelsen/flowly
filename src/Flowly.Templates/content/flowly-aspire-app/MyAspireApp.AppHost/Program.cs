@@ -10,6 +10,12 @@ var rabbitMq = builder
         userName: builder.AddParameter("rabbitmq-username", value: "guest"),
         password: builder.AddParameter("rabbitmq-password", secret: true, value: "guest"))
     .WithManagementPlugin();
+#if (UseRabbitMqStreamPartitions)
+rabbitMq
+    .WithBindMount("enabled_plugins", "/etc/rabbitmq/enabled_plugins")
+    .WithBindMount("rabbitmq.conf", "/etc/rabbitmq/rabbitmq.conf")
+    .WithEndpoint(name: "stream", port: 5552, targetPort: 5552);
+#endif
 #endif
 #if (UseAzureServiceBus)
 var azureServiceBus = builder

@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="Messages/Messages.csproj" />
+  <Project Path="Sender/Sender.csproj" />
+  <Project Path="Receiver/Receiver.csproj" />
+</Solution>

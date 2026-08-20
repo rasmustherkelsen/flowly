@@ -279,6 +279,60 @@ public class InMemoryBrokerTests
             Assert.True(broker.GetQueue("orders").Reader.TryRead(out var delivered));
             Assert.Equal("1", delivered!.MessageId);
         }
+
+        [Fact]
+        public async Task WithPartitionedStream_AppendsToPartitionLogNotTheUnpartitionedLog()
+        {
+            var (broker, manifest) = CreateBrokerWithStreamManifest();
+            manifest.MarkAsStream("orders", null, null, partitionCount: 4);
+            var envelope = new InMemoryEnvelope("1", "{}", [], DateTimeOffset.UtcNow);
+
+            await broker.EnqueueOrAppend("orders", envelope, partitionKey: "customer-1");
+
+            Assert.Equal(0, broker.GetOrCreateStreamLog("orders").TailOffset);
+        }
+
+        [Fact]
+        public async Task WithPartitionedStream_SameKeyAlwaysRoutesToSamePartition()
+        {
+            var (broker, manifest) = CreateBrokerWithStreamManifest();
+            manifest.MarkAsStream("orders", null, null, partitionCount: 4);
+
+            for (var i = 0; i < 10; i++)
+                await broker.EnqueueOrAppend("orders", new InMemoryEnvelope(i.ToString(), "{}", [], DateTimeOffset.UtcNow), partitionKey: "customer-1");
+
+            var nonEmptyPartitions = Enumerable.Range(0, 4)
+                .Select(p => broker.GetOrCreatePartitionedStreamLog("orders", p).TailOffset)
+                .Count(tailOffset => tailOffset > 0);
+
+            Assert.Equal(1, nonEmptyPartitions);
+        }
+
+        [Fact]
+        public async Task WithPartitionedStream_NoKeyDistributesRoundRobin()
+        {
+            var (broker, manifest) = CreateBrokerWithStreamManifest();
+            manifest.MarkAsStream("orders", null, null, partitionCount: 4);
+
+            for (var i = 0; i < 8; i++)
+                await broker.EnqueueOrAppend("orders", new InMemoryEnvelope(i.ToString(), "{}", [], DateTimeOffset.UtcNow));
+
+            for (var partition = 0; partition < 4; partition++)
+                Assert.Equal(2, broker.GetOrCreatePartitionedStreamLog("orders", partition).TailOffset);
+        }
+
+        [Fact]
+        public async Task WithPartitionedStream_DifferentPartitionsAreIndependentLogs()
+        {
+            var (broker, manifest) = CreateBrokerWithStreamManifest();
+            manifest.MarkAsStream("orders", null, null, partitionCount: 2);
+
+            await broker.EnqueueOrAppend("orders", new InMemoryEnvelope("1", "{}", [], DateTimeOffset.UtcNow), partitionKey: null);
+
+            Assert.NotSame(
+                broker.GetOrCreatePartitionedStreamLog("orders", 0),
+                broker.GetOrCreatePartitionedStreamLog("orders", 1));
+        }
     }
 
     public class GetDeadLetterCount

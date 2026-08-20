@@ -28,6 +28,15 @@ public class MessageStreamHandlerOptions
     public StartPosition? StartPosition { get; set; }
 
     /// <summary>
+    ///     The logical name identifying this reader, used as part of the key when a <see cref="MessageStreamCheckpoint{TMessage}" />
+    ///     is registered — disambiguates independent readers of the same stream (e.g. two different services each
+    ///     replaying the stream independently) so their stored positions don't collide. If not set, defaults to the
+    ///     handler's type name. Pin this explicitly if the handler class may be renamed later, since the default
+    ///     would otherwise silently orphan a previously stored position.
+    /// </summary>
+    public string? ConsumerName { get; set; }
+
+    /// <summary>
     ///     The number of messages to accumulate before invoking the handler. If not set, defaults to 100.
     /// </summary>
     public int? MaxMessagesBeforeProcessing { get; set; }

@@ -74,8 +74,8 @@ public static class RabbitMqRegistration
             "Secondary RabbitMQ providers must have an explicit name. Pass name: \"...\" to UseRabbitMq().");
 
         var connectionPool = new RabbitMqConnectionPool(uri);
-        var messageBusClient = new RabbitMqMessageBusClient(connectionPool, maxMessageSizeBytes);
         var streamQueueManifest = StreamQueueManifest.GetOrCreate(services);
+        var messageBusClient = new RabbitMqMessageBusClient(connectionPool, maxMessageSizeBytes, streamQueueManifest);
         var topologyCreator = new RabbitMqMessagingTopologyCreator(connectionPool, streamQueueManifest);
 
         clientRegistry.Register(effectiveName, messageBusClient, createTopology);

@@ -152,10 +152,72 @@ public class RabbitMqMessagingTopologyCreatorTests
         }
     }
 
+    public class CreateTopologyForPartitionedStreamQueues
+    {
+        private static (DeclareCapturingChannel Channel, RabbitMqMessagingTopologyCreator Creator) Build(StreamQueueManifest streamQueueManifest)
+        {
+            var channel = new DeclareCapturingChannel();
+            return (channel, new RabbitMqMessagingTopologyCreator(new StreamConnectionPool(channel), streamQueueManifest));
+        }
+
+        [Fact]
+        public async Task DeclaresOnePartitionStreamPerPartition()
+        {
+            var streamQueueManifest = new StreamQueueManifest();
+            streamQueueManifest.MarkAsStream("orders", null, null, partitionCount: 3);
+            var (channel, creator) = Build(streamQueueManifest);
+
+            await creator.CreateTopology([new FakeQueueDescription("orders")], CancellationToken.None);
+
+            Assert.Equal(
+                ["orders-0", "orders-1", "orders-2"],
+                channel.DeclaredQueues.Select(q => q.Queue).OrderBy(q => q));
+            Assert.All(channel.DeclaredQueues, q => Assert.Equal("stream", q.Arguments?["x-queue-type"]));
+        }
+
+        [Fact]
+        public async Task DeclaresDirectExchangeNamedAfterTheQueue()
+        {
+            var streamQueueManifest = new StreamQueueManifest();
+            streamQueueManifest.MarkAsStream("orders", null, null, partitionCount: 2);
+            var (channel, creator) = Build(streamQueueManifest);
+
+            await creator.CreateTopology([new FakeQueueDescription("orders")], CancellationToken.None);
+
+            Assert.Contains("orders", channel.DeclaredExchanges);
+        }
+
+        [Fact]
+        public async Task BindsEachPartitionStreamWithItsIndexAsRoutingKey()
+        {
+            var streamQueueManifest = new StreamQueueManifest();
+            streamQueueManifest.MarkAsStream("orders", null, null, partitionCount: 2);
+            var (channel, creator) = Build(streamQueueManifest);
+
+            await creator.CreateTopology([new FakeQueueDescription("orders")], CancellationToken.None);
+
+            Assert.Contains(channel.Bindings, b => b.Queue == "orders-0" && b.Exchange == "orders" && b.RoutingKey == "0");
+            Assert.Contains(channel.Bindings, b => b.Queue == "orders-1" && b.Exchange == "orders" && b.RoutingKey == "1");
+        }
+
+        [Fact]
+        public async Task AppliesRetentionToEveryPartitionStream()
+        {
+            var streamQueueManifest = new StreamQueueManifest();
+            streamQueueManifest.MarkAsStream("orders", 3600, null, partitionCount: 2);
+            var (channel, creator) = Build(streamQueueManifest);
+
+            await creator.CreateTopology([new FakeQueueDescription("orders")], CancellationToken.None);
+
+            Assert.All(channel.DeclaredQueues, q => Assert.Equal("3600s", q.Arguments?["x-max-age"]));
+        }
+    }
+
     private sealed class DeclareCapturingChannel : ChannelStub
     {
         public List<(string Queue, IDictionary<string, object?>? Arguments)> DeclaredQueues { get; } = [];
         public List<string> DeclaredExchanges { get; } = [];
+        public List<(string Queue, string Exchange, string RoutingKey)> Bindings { get; } = [];
 
         public override Task ExchangeDeclareAsync(
             string exchange, string type, bool durable, bool autoDelete,
@@ -163,6 +225,15 @@ public class RabbitMqMessagingTopologyCreatorTests
             CancellationToken cancellationToken = default)
         {
             DeclaredExchanges.Add(exchange);
+            return Task.CompletedTask;
+        }
+
+        public override Task QueueBindAsync(
+            string queue, string exchange, string routingKey,
+            IDictionary<string, object?>? arguments = null, bool noWait = false,
+            CancellationToken cancellationToken = default)
+        {
+            Bindings.Add((queue, exchange, routingKey));
             return Task.CompletedTask;
         }
 
@@ -174,12 +245,6 @@ public class RabbitMqMessagingTopologyCreatorTests
             DeclaredQueues.Add((queue, arguments));
             return Task.FromResult(new QueueDeclareOk(queue, 0, 0));
         }
-
-        public override Task QueueBindAsync(
-            string queue, string exchange, string routingKey,
-            IDictionary<string, object?>? arguments = null, bool noWait = false,
-            CancellationToken cancellationToken = default)
-            => Task.CompletedTask;
     }
 
     private sealed class StreamConnectionPool(IChannel channel) : IRabbitMqConnectionPool
@@ -187,6 +252,8 @@ public class RabbitMqMessagingTopologyCreatorTests
         public Task<IConnection> GetPublisherConnection(CancellationToken cancellationToken = default) => throw new NotImplementedException();
 
         public Task<IConnection> GetConsumerConnection(CancellationToken cancellationToken = default) => Task.FromResult<IConnection>(new StreamConnection(channel));
+
+        public Task<global::RabbitMQ.Stream.Client.StreamSystem> GetStreamSystem(CancellationToken cancellationToken = default) => throw new NotImplementedException();
     }
 
     private sealed class StreamConnection(IChannel channel) : IConnection
@@ -246,6 +313,11 @@ public class RabbitMqMessagingTopologyCreatorTests
         {
             ReceivedCancellationToken = cancellationToken;
             return Task.FromResult<IConnection>(Connection);
+        }
+
+        public Task<global::RabbitMQ.Stream.Client.StreamSystem> GetStreamSystem(CancellationToken cancellationToken = default)
+        {
+            throw new NotImplementedException();
         }
     }
 

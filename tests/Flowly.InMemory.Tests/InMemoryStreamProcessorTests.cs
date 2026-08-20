@@ -114,6 +114,37 @@ public class InMemoryStreamProcessorTests
         }
 
         [Fact]
+        public async Task DeliveredMessagesCarryTheirStreamOffset()
+        {
+            var log = new InMemoryStreamLog(default, referencePassingEnabled: false);
+            log.Append(CreateEnvelope("already-there"));
+
+            var processor = CreateProcessor(log, startOffset: 0);
+            var offsets = new List<long?>();
+
+            processor.ProcessMessage += (msg, _) =>
+            {
+                lock (offsets)
+                {
+                    offsets.Add(msg.Properties.StreamOffset);
+                }
+
+                return Task.CompletedTask;
+            };
+
+            using var cts = new CancellationTokenSource();
+            await processor.StartProcessingMessages(cts.Token);
+
+            log.Append(CreateEnvelope("second"));
+            log.Append(CreateEnvelope("third"));
+
+            await WaitUntil(() => offsets.Count == 3);
+            await processor.StopProcessing(CancellationToken.None);
+
+            Assert.Equal([0L, 1L, 2L], offsets);
+        }
+
+        [Fact]
         public async Task InvokesProcessErrorHandlerWhenMessageHandlerThrows()
         {
             var log = new InMemoryStreamLog(default, referencePassingEnabled: false);

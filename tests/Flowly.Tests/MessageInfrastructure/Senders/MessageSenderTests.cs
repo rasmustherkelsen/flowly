@@ -91,7 +91,7 @@ public class MessageSenderTests
         public TMessage? Submitted { get; private set; }
         public CancellationToken ReceivedToken { get; private set; }
 
-        public Task Submit(TMessage message, CancellationToken cancellationToken = default)
+        public Task Submit(TMessage message, CancellationToken cancellationToken = default, string? partitionKey = null)
         {
             Submitted = message;
             ReceivedToken = cancellationToken;
@@ -101,6 +101,6 @@ public class MessageSenderTests
 
     private class ThrowingSubmitter<TMessage>(Exception exception) : IMessageSubmitter<TMessage>
     {
-        public Task Submit(TMessage message, CancellationToken cancellationToken = default) => Task.FromException(exception);
+        public Task Submit(TMessage message, CancellationToken cancellationToken = default, string? partitionKey = null) => Task.FromException(exception);
     }
 }

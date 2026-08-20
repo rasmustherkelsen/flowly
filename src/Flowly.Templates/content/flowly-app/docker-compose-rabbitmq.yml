@@ -5,9 +5,17 @@ services:
     ports:
       - "5672:5672"
       - "15672:15672"
+#if (UseRabbitMqStreamPartitions)
+      - "5552:5552"
+#endif
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
+#if (UseRabbitMqStreamPartitions)
+    volumes:
+      - ./enabled_plugins:/etc/rabbitmq/enabled_plugins
+      - ./rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf
+#endif
 #if (NeedsSqlServerInfrastructure)
   sqlserver:
     image: mcr.microsoft.com/mssql/server:2022-latest

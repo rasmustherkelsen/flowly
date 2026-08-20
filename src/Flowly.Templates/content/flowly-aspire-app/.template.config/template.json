@@ -95,6 +95,41 @@
       "type": "computed",
       "value": "(callhandler || call)"
     },
+    "streamhandler": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "Stream handler",
+      "description": "Scaffold the main message as an append-only, replayable stream using MessageStreamHandler<T> and IMessageRecorder instead of the default fire-and-forget MessageHandler. RabbitMQ or InMemory only; incompatible with --call.",
+      "isEnabled": "(!callhandler && !call && transport != \"azureservicebus\" && transport != \"asb\")"
+    },
+    "stream": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "description": "Alias for --streamhandler.",
+      "isEnabled": "(!callhandler && !call && transport != \"azureservicebus\" && transport != \"asb\")"
+    },
+    "UseStream": {
+      "type": "computed",
+      "value": "(streamhandler || stream)"
+    },
+    "partitions": {
+      "type": "parameter",
+      "datatype": "integer",
+      "defaultValue": "0",
+      "displayName": "Stream partitions",
+      "description": "Number of partitions for the stream via [StreamPartitions(n)] on the message contract. 0 (default) = non-partitioned. Requires --stream.",
+      "replaces": "424242"
+    },
+    "UseStreamPartitions": {
+      "type": "computed",
+      "value": "(partitions > 0)"
+    },
+    "UseRabbitMqStreamPartitions": {
+      "type": "computed",
+      "value": "(UseRabbitMQ && UseStreamPartitions)"
+    },
     "UseDatabase": {
       "type": "computed",
       "value": "(UseJobTracking || UseDeadLetterTracking)"
@@ -298,6 +333,10 @@
         {
           "condition": "(!UseDashboard || UseInMemory)",
           "exclude": [ "MyAspireApp.Dashboard/**" ]
+        },
+        {
+          "condition": "(!UseRabbitMqStreamPartitions)",
+          "exclude": [ "MyAspireApp.AppHost/enabled_plugins", "MyAspireApp.AppHost/rabbitmq.conf" ]
         }
       ]
     }

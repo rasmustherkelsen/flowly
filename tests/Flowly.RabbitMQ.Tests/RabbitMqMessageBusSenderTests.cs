@@ -1,3 +1,4 @@
+using Flowly.MessageInfrastructure.Registration;
 using Flowly.Transport;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
@@ -68,7 +69,80 @@ public class RabbitMqMessageBusSenderTests
         }
     }
 
+    public class PartitionedStreamRouting
+    {
+        [Fact]
+        public async Task PublishesToExchangeNamedAfterTheQueueWithPartitionIndexAsRoutingKey()
+        {
+            var streamQueueManifest = new StreamQueueManifest();
+            streamQueueManifest.MarkAsStream("orders", null, null, partitionCount: 4);
+            var channel = new CapturingChannel();
+            var sender = new RabbitMqMessageBusSender("orders", channel, null, streamQueueManifest);
+
+            await sender.SendMessage(new TestMessage("x"), new MessageProperties("id", "corr", PartitionKey: "customer-1"));
+
+            var published = Assert.Single(channel.Published);
+            Assert.Equal("orders", published.Exchange);
+            Assert.True(int.TryParse(published.RoutingKey, out var partition));
+            Assert.InRange(partition, 0, 3);
+        }
+
+        [Fact]
+        public async Task SameKeyAlwaysRoutesToSameRoutingKey()
+        {
+            var streamQueueManifest = new StreamQueueManifest();
+            streamQueueManifest.MarkAsStream("orders", null, null, partitionCount: 4);
+            var channel = new CapturingChannel();
+            var sender = new RabbitMqMessageBusSender("orders", channel, null, streamQueueManifest);
+
+            for (var i = 0; i < 5; i++)
+                await sender.SendMessage(new TestMessage(i.ToString()), new MessageProperties("id", "corr", PartitionKey: "customer-1"));
+
+            Assert.Single(channel.Published.Select(p => p.RoutingKey).Distinct());
+        }
+
+        [Fact]
+        public async Task WithoutPartitionKey_DistributesAcrossPartitionsRoundRobin()
+        {
+            var streamQueueManifest = new StreamQueueManifest();
+            streamQueueManifest.MarkAsStream("orders", null, null, partitionCount: 4);
+            var channel = new CapturingChannel();
+            var sender = new RabbitMqMessageBusSender("orders", channel, null, streamQueueManifest);
+
+            for (var i = 0; i < 8; i++)
+                await sender.SendMessage(new TestMessage(i.ToString()), new MessageProperties("id", "corr"));
+
+            var routingKeys = channel.Published.Select(p => p.RoutingKey).ToList();
+            Assert.Equal(4, routingKeys.Distinct().Count());
+            Assert.All(Enumerable.Range(0, 4), partition => Assert.Equal(2, routingKeys.Count(k => k == partition.ToString())));
+        }
+
+        [Fact]
+        public async Task NonPartitionedQueue_PublishesToDefaultExchangeWithQueueNameAsRoutingKey()
+        {
+            var channel = new CapturingChannel();
+            var sender = new RabbitMqMessageBusSender("orders", channel, null);
+
+            await sender.SendMessage(new TestMessage("x"), MessageProperties.Empty);
+
+            var published = Assert.Single(channel.Published);
+            Assert.Equal("", published.Exchange);
+            Assert.Equal("orders", published.RoutingKey);
+        }
+    }
+
     private record TestMessage(string Value);
+
+    private class CapturingChannel : SpyChannel
+    {
+        public List<(string Exchange, string RoutingKey)> Published { get; } = [];
+
+        public override ValueTask BasicPublishAsync<TProperties>(string exchange, string routingKey, bool mandatory, TProperties basicProperties, ReadOnlyMemory<byte> body, CancellationToken cancellationToken = default)
+        {
+            Published.Add((exchange, routingKey));
+            return ValueTask.CompletedTask;
+        }
+    }
 
     private class SpyChannel : IChannel
     {
@@ -136,7 +210,7 @@ public class RabbitMqMessageBusSenderTests
             return Task.CompletedTask;
         }
 
-        public ValueTask BasicPublishAsync<TProperties>(string exchange, string routingKey, bool mandatory, TProperties basicProperties, ReadOnlyMemory<byte> body, CancellationToken cancellationToken = default)
+        public virtual ValueTask BasicPublishAsync<TProperties>(string exchange, string routingKey, bool mandatory, TProperties basicProperties, ReadOnlyMemory<byte> body, CancellationToken cancellationToken = default)
             where TProperties : IReadOnlyBasicProperties, IAmqpHeader
         {
             return ValueTask.CompletedTask;

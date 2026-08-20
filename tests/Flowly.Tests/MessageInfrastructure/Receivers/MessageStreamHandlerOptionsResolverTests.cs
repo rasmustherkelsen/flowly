@@ -13,6 +13,7 @@ public class MessageStreamHandlerOptionsResolverTests
             var resolved = MessageStreamHandlerOptionsResolver.Resolve<MinimalHandler, SomeMessage>(new KebabCaseTopologyNameResolver());
 
             Assert.Equal("some", resolved.QueueName);
+            Assert.Equal(nameof(MinimalHandler), resolved.ConsumerName);
             Assert.Equal(StartPosition.First(), resolved.StartPosition);
             Assert.Equal(100, resolved.MaxMessagesBeforeProcessing);
             Assert.Equal(TimeSpan.FromSeconds(30), resolved.MaxWaitTime);
@@ -101,6 +102,30 @@ public class MessageStreamHandlerOptionsResolverTests
 
             Assert.Equal(StartPosition.Last(), resolved.StartPosition);
         }
+
+        [Fact]
+        public void ConfigureOverride_CanSetConsumerName()
+        {
+            var resolved = MessageStreamHandlerOptionsResolver.Resolve<HandlerWithConsumerNameConfigure, SomeMessage>(new KebabCaseTopologyNameResolver());
+
+            Assert.Equal("custom-consumer", resolved.ConsumerName);
+        }
+
+        [Fact]
+        public void ReadsStreamPartitionsFromMessageContract()
+        {
+            var resolved = MessageStreamHandlerOptionsResolver.Resolve<MinimalPartitionedHandler, PartitionedMessage>(new KebabCaseTopologyNameResolver());
+
+            Assert.Equal(4, resolved.PartitionCount);
+        }
+
+        [Fact]
+        public void WithoutStreamPartitions_PartitionCountIsNull()
+        {
+            var resolved = MessageStreamHandlerOptionsResolver.Resolve<MinimalHandler, SomeMessage>(new KebabCaseTopologyNameResolver());
+
+            Assert.Null(resolved.PartitionCount);
+        }
     }
 
     private record SomeMessage;
@@ -187,5 +212,26 @@ public class MessageStreamHandlerOptionsResolverTests
         public override void Configure(MessageStreamHandlerOptions options) => options.StartPosition = StartPosition.Last();
 
         public override Task Handle(IMessageStreamContext<SomeMessage> messageContext) => Task.CompletedTask;
+    }
+
+    private class HandlerWithConsumerNameConfigure : MessageStreamHandler<SomeMessage>
+    {
+        public override void Configure(MessageStreamHandlerOptions options)
+        {
+            options.StartPosition = StartPosition.First();
+            options.ConsumerName = "custom-consumer";
+        }
+
+        public override Task Handle(IMessageStreamContext<SomeMessage> messageContext) => Task.CompletedTask;
+    }
+
+    [StreamPartitions(4)]
+    private record PartitionedMessage;
+
+    private class MinimalPartitionedHandler : MessageStreamHandler<PartitionedMessage>
+    {
+        public override void Configure(MessageStreamHandlerOptions options) => options.StartPosition = StartPosition.First();
+
+        public override Task Handle(IMessageStreamContext<PartitionedMessage> messageContext) => Task.CompletedTask;
     }
 }

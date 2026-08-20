@@ -11,5 +11,5 @@ internal class InMemoryUntypedReceivedMessage(InMemoryEnvelope envelope) : IRece
             : JsonSerializer.Deserialize<TBody>(envelope.RawBody)
                ?? throw new InvalidOperationException($"Deserialized message body is null for type {typeof(TBody).FullName}.");
 
-    public MessageProperties Properties => InMemoryReceivedMessage<object>.BuildProperties(envelope);
+    public MessageProperties Properties => InMemoryReceivedMessage<object>.BuildProperties(envelope, null);
 }

@@ -82,6 +82,42 @@
     }
   ```
 
+- Always use brackets around a `while` loop body, regardless of what the body is — a single statement, a `try` statement, an `if`, whatever (a single statement is still syntactically "one statement," so it's easy to drop the loop's own braces — don't).
+
+  Example:
+
+  Not ok:
+
+  ```C#
+    while (!stoppingToken.IsCancellationRequested)
+        try
+        {
+            var batch = await AccumulateBatch(stoppingToken);
+            if (batch.Count == 0) continue;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Batch processing failed");
+        }
+  ```
+
+  Ok:
+
+  ```C#
+    while (!stoppingToken.IsCancellationRequested)
+    {
+        try
+        {
+            var batch = await AccumulateBatch(stoppingToken);
+            if (batch.Count == 0) continue;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Batch processing failed");
+        }
+    }
+  ```
+
 ## Line Spacing
 
 - Make line spacing to ensure code readability

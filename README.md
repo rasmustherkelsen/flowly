@@ -365,13 +365,13 @@ builder.AddCallSubmitter<CallMessage>(opts => opts.Timeout = TimeSpan.FromSecond
 Inject `IMessageCaller` and call:
 
 ```csharp
-public class MyService(IMessageCaller caller)
+public class MyService(IMessageCaller caller, ILogger<MyService> logger)
 {
     public async Task DoWork(CancellationToken ct)
     {
         ReturnMessage response = await caller.Call<CallMessage, ReturnMessage>(
             new CallMessage("hello"), ct);
-        Console.WriteLine(response.ReturnValue);
+        logger.LogInformation("{ReturnValue}", response.ReturnValue);
     }
 }
 ```
@@ -388,7 +388,7 @@ Each sender gets a dedicated reply queue named `{callQueue}.reply.{instanceName}
 
 > **RabbitMQ and InMemory only.** RabbitMQ uses its native stream queue type (`x-queue-type: stream`); the InMemory transport backs streams with an in-process append-only log instead — no broker required, ideal for local development and testing (also a reasonable fit for small, single-instance deployments where avoiding external broker infrastructure is the point, e.g. a self-hosted app on a home server/NAS or a single container). Azure Service Bus has no equivalent primitive. Registering a stream handler or recorder against a non-stream-capable provider throws `InvalidOperationException` at startup, not at first use.
 
-A message stream is an append-only, replayable log: unlike a regular queue, multiple independent consumers can each read the same stream from their own position — including consumers that didn't exist when a message was recorded. `IMessageRecorder.Record()` is a third sending verb alongside `IMessageSender.Send()` (fire-and-forget) and `IMessageCaller.Call()` (RPC).
+A message stream is an append-only, replayable log: unlike a regular queue, multiple independent consumers can each read the same stream from their own position — including consumers that didn't exist when a message was recorded. `IMessageRecorder.Record()` is a third sending verb alongside `IMessageSender.Send()` (fire-and-forget) and `IMessageCaller.Call()` (RPC). A stream can optionally be [partitioned](#partitioned-streams) into independent, ordered sub-logs for horizontal scale-out on RabbitMQ.
 
 ### Recording onto a stream
 
@@ -456,7 +456,7 @@ internal class TelemetryReadingHandler : MessageStreamHandler<TelemetryReading>
 
 `Offset`/`Timestamp` have no attribute equivalent and still require `Configure`. If a handler overrides `Configure` and also sets `options.StartPosition` there, the `Configure` value wins over the attribute — same precedence `[BatchProcessing]` has.
 
-> **No offset persistence.** Flowly does not checkpoint stream offsets across restarts — `StartPosition` is re-evaluated fresh on every boot. Avoid values computed relative to the current time (e.g. `StartPosition.Timestamp(DateTime.UtcNow - TimeSpan.FromHours(2))`), which never converge across restarts.
+> **No offset persistence by default.** Flowly does not checkpoint stream offsets across restarts unless you opt in — see [Position persistence](#position-persistence) below. `StartPosition` is re-evaluated fresh on every boot otherwise. Avoid values computed relative to the current time (e.g. `StartPosition.Timestamp(DateTime.UtcNow - TimeSpan.FromHours(2))`), which never converge across restarts.
 
 ### Retention
 
@@ -478,6 +478,88 @@ Omitting both parameters means the stream retains every message forever — a br
 When retries are exhausted, the handler **halts consumption of that queue entirely** rather than skipping the failed batch: the stream offset never advances past it, a critical log entry and a `flowly.message.handler.halted` metric are emitted, and no further messages are processed until the process is fixed and restarted. Dead letter tracking is not supported for stream handlers.
 
 `MessageStreamHandlerOptions` does not inherit the queue options used by other handlers — `LockDuration`, `DeadLetterOnMessageExpiration`, and `Configure`-based retry settings don't apply to streams (there's no per-message peek-lock, and retention replaces TTL).
+
+### Position persistence
+
+Register a `MessageStreamCheckpoint<TMessage>` to restore restart-survival — an opt-in, transport-agnostic extension point you implement against whatever storage you already have (a database, typically):
+
+```csharp
+internal class TelemetryReadingCheckpoint(MyDbContext dbContext) : MessageStreamCheckpoint<TelemetryReading>
+{
+    protected internal override async Task InitializeCheckpoint(MessageStreamCheckpointContext context, CancellationToken cancellationToken)
+    {
+        if (await dbContext.StreamPositions.AnyAsync(p => p.ConsumerName == context.ConsumerName && p.Partition == context.Partition, cancellationToken))
+            return;
+
+        dbContext.StreamPositions.Add(new StreamPosition(context.ConsumerName, context.Partition));
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    protected internal override Task<long?> GetStreamPosition(MessageStreamCheckpointContext context, CancellationToken cancellationToken)
+        => dbContext.StreamPositions
+            .Where(p => p.ConsumerName == context.ConsumerName && p.Partition == context.Partition)
+            .Select(p => p.Position)
+            .SingleOrDefaultAsync(cancellationToken);
+
+    protected internal override Task SaveStreamPosition(MessageStreamCheckpointSaveContext context, CancellationToken cancellationToken)
+        => dbContext.StreamPositions
+            .Where(p => p.ConsumerName == context.ConsumerName && p.Partition == context.Partition)
+            .ExecuteUpdateAsync(s => s.SetProperty(p => p.Position, context.Position), cancellationToken);
+}
+```
+
+```csharp
+services.AddSingleton<MessageStreamCheckpoint<TelemetryReading>, TelemetryReadingCheckpoint>();
+```
+
+Flowly feature-detects the registration — no separate builder call is needed. Once registered:
+
+- `InitializeCheckpoint` runs once before the processing loop starts (per reader), so `SaveStreamPosition` — called after every successfully processed batch — can be a plain update with no existence check on the hot path.
+- `GetStreamPosition` returning `null` means this reader has never completed a batch — Flowly falls back to the `StartPosition` configured in `Configure`, which becomes a bootstrap value only.
+- The position saved is never for a batch still retrying or that failed — a crash mid-batch replays at most the last unsaved batch on restart, consistent with the in-process retry model above.
+
+**Checkpoint identity.** Two different key fields on `MessageStreamCheckpointContext` disambiguate readers: `ConsumerName` (defaults to the handler type name; override with `options.ConsumerName` in `Configure` if the handler class might be renamed later) separates independent readers of the same stream — e.g. two different services each replaying it independently — and `Partition` (`null` for a non-partitioned stream; the owning partition index for a [partitioned](#partitioned-streams) one).
+
+**RabbitMQ only.** Registering a checkpoint against an InMemory-backed stream throws `InvalidOperationException` at registration time — the underlying log has no cross-restart persistence of its own, so a persisted position would point at data that no longer exists after a restart.
+
+**Run at most one live instance** of a given non-partitioned handler registration against a shared checkpoint store at a time. Flowly does not coordinate exclusive access across processes — running more than one concurrently will corrupt the stored position. (Partitioned streams are unaffected by this constraint — see below.)
+
+### Partitioned streams
+
+Divide a stream into `N` independent, ordered sub-logs with `[StreamPartitions(count)]` on the message contract:
+
+```csharp
+[StreamPartitions(4)]
+public record TelemetryReading(string SensorId, double Value);
+```
+
+Recording onto a partitioned stream takes an optional partition key — messages recorded with the same key always land in the same partition (an ordering guarantee they wouldn't otherwise have); omitting it distributes round-robin:
+
+```csharp
+await messageRecorder.Record(reading, ct, partitionKey: reading.SensorId);
+```
+
+The handler is unchanged — `MessageStreamHandler<T>` and `Configure` work exactly as for a non-partitioned stream. `IMessageStreamContext<T>.Partition` reports which partition the current batch came from (`null` for non-partitioned streams):
+
+```csharp
+public override async Task Handle(IMessageStreamContext<TelemetryReading> ctx)
+{
+    logger.LogInformation("Processing partition {Partition}", ctx.Partition);
+    foreach (var reading in ctx.Messages)
+        await Save(reading);
+}
+```
+
+**Supported on RabbitMQ and InMemory** — both implement `IPartitionedStreamCapableMessageBusClient`; registering against Azure Service Bus throws `InvalidOperationException` at registration time, same as non-partitioned streams.
+
+**Flowly does not implement its own cross-instance partition-assignment protocol.** Each transport owns partition ownership and rebalancing using its own native mechanism:
+
+- **RabbitMQ** uses [Super Streams](https://www.rabbitmq.com/docs/streams#super-streams) with broker-coordinated **Single Active Consumer** — only one of your running instances is ever actively reading a given partition at a time, and RabbitMQ hands ownership off automatically as instances join or leave. This needs the `RabbitMQ.Stream.Client` package (pulled in automatically by `Flowly.RabbitMQ`) alongside the classic AMQP client Flowly already uses for everything else — only partitioned *consumption* needs it; topology creation and producing both stay on plain AMQP.
+- **InMemory** assigns every partition to the one process immediately and keeps it forever — there's no cross-instance ownership to hand off in a single process. This makes InMemory partitioned streams useful for developing and testing partition-aware handler code without a broker, but it does **not** give you the throughput/scale-out benefit partitioning exists for on RabbitMQ — that fundamentally needs more than one process.
+
+A halted partition (retries exhausted, per [Retry and failure handling](#retry-and-failure-handling)) only stops consumption of that partition — other partitions, and the handler process itself, keep running.
+
+> **RabbitMQ partitioned consumption uses a separate connection port from AMQP** (the Stream protocol, port `5552` by default, distinct from AMQP's `5672`) on the same broker host. There is currently no way to configure a different port if your deployment needs one.
 
 ---
 
@@ -1015,7 +1097,7 @@ Generates a full .NET Aspire solution — AppHost, ServiceDefaults, Messages, Se
 dotnet new flowlyaspireapp --transport <rabbitmq|asb|inmemory> [options] -n <SolutionName>
 ```
 
-Supports the same `--callhandler`, `--jobs`, `--deadletter`, `--db`, and `--dashboard` flags as `flowlyapp`, with the same architecture: `--jobs` scaffolds a dedicated `JobTracker` project and `--deadletter` scaffolds a dedicated `DeadLetterTracker` project — the Receiver stays a pure message-processing worker. Run everything with:
+Supports the same `--callhandler`, `--streamhandler`, `--partitions`, `--jobs`, `--deadletter`, `--db`, and `--dashboard` flags as `flowlyapp`, with the same architecture: `--jobs` scaffolds a dedicated `JobTracker` project and `--deadletter` scaffolds a dedicated `DeadLetterTracker` project — the Receiver stays a pure message-processing worker. For RabbitMQ, `--partitions` also makes the AppHost bind-mount the plugin/config files and pin the Stream protocol port to `5552` on the RabbitMQ container, mirroring what `flowlyapp`'s `docker-compose.yml` does. Run everything with:
 
 ```bash
 dotnet run --project MyApp.AppHost
@@ -1044,6 +1126,8 @@ Optional features:
 | Flag | Alias | Description |
 |---|---|---|
 | `--callhandler` | `--call` | Scaffold as RPC-style call/response — `MyMessage` implements `IReturns<MyReturnMessage>`; the sender uses `IMessageCaller.Call` and blocks for the response. |
+| `--streamhandler` | `--stream` | Scaffold the main message as an append-only, replayable stream — `MyMessage` gets `[StreamRetention]`, the Receiver's handler becomes a `MessageStreamHandler<T>`, and the sender uses `IMessageRecorder.Record`. RabbitMQ or InMemory only; incompatible with `--call`. |
+| `--partitions <n>` | | Partition the stream into `n` independent, ordered sub-logs via `[StreamPartitions(n)]`. `0` (default) = non-partitioned. Requires `--stream`. On RabbitMQ, the generated `docker-compose.yml` also publishes the Stream protocol port (`5552`) and enables the `rabbitmq_stream` plugin needed for partitioned consumption. |
 | `--jobtracking` | `--jobs` | Job state tracking — adds `ProcessJobMessage`, `ProcessJobHandler`, `JobSubmitterService`, and a `JobTracker` infrastructure project. Requires a DB flag. |
 | `--deadlettertracking` | `--deadletter` | Dead-letter tracking — adds `DeadLetterSampleMessage`, `DeadLetterSampleMessageHandler` with `[RetryPolicy]`, and `FailingMessageSenderService`. Requires a DB flag. |
 | `--opentelemetry` | `--otel` | Add Flowly.OpenTelemetry instrumentation. No exporter — signals are collected but not emitted unless `--otel-export` is also specified. |
@@ -1064,6 +1148,9 @@ dotnet new flowlyapp --transport inm -n MyApp
 
 # RPC-style call/response (RabbitMQ)
 dotnet new flowlyapp --transport rabbitmq --call -n MyApp
+
+# Partitioned message stream (RabbitMQ, scales across instances)
+dotnet new flowlyapp --transport rabbitmq --stream --partitions 4 -n MyApp
 
 # RabbitMQ with job tracking and dead-letter tracking (SQLite)
 dotnet new flowlyapp --transport rabbitmq --jobs --deadletter --db sqlite -n MyApp

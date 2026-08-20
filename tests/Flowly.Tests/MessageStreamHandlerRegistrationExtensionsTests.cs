@@ -6,6 +6,7 @@ using Flowly.Transport;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace Flowly.Tests;
 
@@ -16,6 +17,28 @@ public class MessageStreamHandlerRegistrationExtensionsTests
         var services = new ServiceCollection();
         var registry = new MessageBusClientRegistry();
         registry.Register(providerName, streamCapable ? new StreamCapableStubClient() : new StubMessageBusClient(), null);
+        services.AddSingleton<IMessageBusClientRegistry>(registry);
+        services.AddSingleton(new ProviderQueueManifest(providerName, true, "Stub"));
+
+        return new StubFlowlyBuilder(services);
+    }
+
+    private static IFlowlyBuilder CreateInMemoryBuilder(string providerName)
+    {
+        var services = new ServiceCollection();
+        var registry = new MessageBusClientRegistry();
+        registry.Register(providerName, new InMemoryStubClient(), null);
+        services.AddSingleton<IMessageBusClientRegistry>(registry);
+        services.AddSingleton(new ProviderQueueManifest(providerName, true, "in-memory"));
+
+        return new StubFlowlyBuilder(services);
+    }
+
+    private static IFlowlyBuilder CreatePartitionedBuilder(string providerName, bool partitionedCapable = true)
+    {
+        var services = new ServiceCollection();
+        var registry = new MessageBusClientRegistry();
+        registry.Register(providerName, partitionedCapable ? new PartitionedStreamCapableStubClient() : new StreamCapableStubClient(), null);
         services.AddSingleton<IMessageBusClientRegistry>(registry);
         services.AddSingleton(new ProviderQueueManifest(providerName, true, "Stub"));
 
@@ -160,6 +183,157 @@ public class MessageStreamHandlerRegistrationExtensionsTests
                 s.ServiceType == typeof(IHostedService) &&
                 s.ImplementationType == typeof(MessageStreamProcessingBackgroundService<TelemetryReading, TelemetryReadingHandlerTwo>));
         }
+
+        [Fact]
+        public void WhenSameHandlerTypeRegisteredTwice_Throws()
+        {
+            var flowlyBuilder = CreateBuilder("primary");
+
+            flowlyBuilder.AddMessageStreamHandler<TelemetryReading, TelemetryReadingHandler>();
+
+            var exception = Assert.Throws<InvalidOperationException>(() =>
+                flowlyBuilder.AddMessageStreamHandler<TelemetryReading, TelemetryReadingHandler>());
+
+            Assert.Contains(nameof(TelemetryReadingHandler), exception.Message);
+        }
+
+        [Fact]
+        public void ConsumerNameDefaultsToHandlerTypeName()
+        {
+            var flowlyBuilder = CreateBuilder("primary");
+
+            flowlyBuilder.AddMessageStreamHandler<TelemetryReading, TelemetryReadingHandler>();
+
+            var handlerSettings = flowlyBuilder.Services
+                .Where(s => s.ServiceType == typeof(MessageStreamHandlerSettings<TelemetryReading, TelemetryReadingHandler>))
+                .Select(s => (MessageStreamHandlerSettings<TelemetryReading, TelemetryReadingHandler>)s.ImplementationInstance!)
+                .Single();
+
+            Assert.Equal(nameof(TelemetryReadingHandler), handlerSettings.ConsumerName);
+        }
+
+        [Fact]
+        public void ConsumerNameCanBeOverriddenInConfigure()
+        {
+            var flowlyBuilder = CreateBuilder("primary");
+
+            flowlyBuilder.AddMessageStreamHandler<TelemetryReading, HandlerWithCustomConsumerName>();
+
+            var handlerSettings = flowlyBuilder.Services
+                .Where(s => s.ServiceType == typeof(MessageStreamHandlerSettings<TelemetryReading, HandlerWithCustomConsumerName>))
+                .Select(s => (MessageStreamHandlerSettings<TelemetryReading, HandlerWithCustomConsumerName>)s.ImplementationInstance!)
+                .Single();
+
+            Assert.Equal("custom-consumer", handlerSettings.ConsumerName);
+        }
+
+        [Fact]
+        public void WhenCheckpointRegisteredAgainstInMemoryProvider_Throws()
+        {
+            var flowlyBuilder = CreateInMemoryBuilder("primary");
+            flowlyBuilder.Services.AddSingleton<MessageStreamCheckpoint<TelemetryReading>>(new FakeCheckpoint());
+
+            var exception = Assert.Throws<InvalidOperationException>(() =>
+                flowlyBuilder.AddMessageStreamHandler<TelemetryReading, TelemetryReadingHandler>());
+
+            Assert.Contains(nameof(MessageStreamCheckpoint<TelemetryReading>), exception.Message);
+        }
+
+        [Fact]
+        public void WhenNoCheckpointRegisteredAgainstInMemoryProvider_DoesNotThrow()
+        {
+            var flowlyBuilder = CreateInMemoryBuilder("primary");
+
+            var returned = flowlyBuilder.AddMessageStreamHandler<TelemetryReading, TelemetryReadingHandler>();
+
+            Assert.Same(flowlyBuilder, returned);
+        }
+
+        [Fact]
+        public void WhenMessageContractHasStreamPartitions_RegistersPartitionedBackgroundService()
+        {
+            var flowlyBuilder = CreatePartitionedBuilder("primary");
+
+            flowlyBuilder.AddMessageStreamHandler<PartitionedReading, PartitionedReadingHandler>();
+
+            Assert.Contains(flowlyBuilder.Services, s =>
+                s.ServiceType == typeof(IHostedService) &&
+                s.ImplementationType == typeof(PartitionedMessageStreamProcessingBackgroundService<PartitionedReading, PartitionedReadingHandler>));
+
+            Assert.DoesNotContain(flowlyBuilder.Services, s =>
+                s.ServiceType == typeof(IHostedService) &&
+                s.ImplementationType == typeof(MessageStreamProcessingBackgroundService<PartitionedReading, PartitionedReadingHandler>));
+        }
+
+        [Fact]
+        public void WhenMessageContractHasStreamPartitions_RegistersPartitionedSettingsWithPartitionCount()
+        {
+            var flowlyBuilder = CreatePartitionedBuilder("primary");
+
+            flowlyBuilder.AddMessageStreamHandler<PartitionedReading, PartitionedReadingHandler>();
+
+            var settings = flowlyBuilder.Services
+                .Where(s => s.ServiceType == typeof(PartitionedMessageStreamHandlerSettings<PartitionedReading, PartitionedReadingHandler>))
+                .Select(s => (PartitionedMessageStreamHandlerSettings<PartitionedReading, PartitionedReadingHandler>)s.ImplementationInstance!)
+                .Single();
+
+            Assert.Equal(4, settings.PartitionCount);
+            Assert.Equal("partitioned-reading", settings.QueueName);
+        }
+
+        [Fact]
+        public void MarksQueueAsStreamWithPartitionCountFromContract()
+        {
+            var flowlyBuilder = CreatePartitionedBuilder("primary");
+
+            flowlyBuilder.AddMessageStreamHandler<PartitionedReading, PartitionedReadingHandler>();
+
+            var streamQueueManifest = StreamQueueManifest.GetOrCreate(flowlyBuilder.Services);
+            Assert.Equal(4, streamQueueManifest.GetPartitionCount("partitioned-reading"));
+        }
+
+        [Fact]
+        public void WhenStreamPartitionsButClientNotPartitionedCapable_Throws()
+        {
+            var flowlyBuilder = CreatePartitionedBuilder("primary", partitionedCapable: false);
+
+            var exception = Assert.Throws<InvalidOperationException>(() =>
+                flowlyBuilder.AddMessageStreamHandler<PartitionedReading, PartitionedReadingHandler>());
+
+            Assert.Contains(nameof(IPartitionedStreamCapableMessageBusClient), exception.Message);
+        }
+    }
+
+    private sealed class FakeCheckpoint : MessageStreamCheckpoint<TelemetryReading>
+    {
+        protected internal override Task InitializeCheckpoint(MessageStreamCheckpointContext context, CancellationToken cancellationToken)
+            => Task.CompletedTask;
+
+        protected internal override Task<long?> GetStreamPosition(MessageStreamCheckpointContext context, CancellationToken cancellationToken)
+            => Task.FromResult<long?>(null);
+
+        protected internal override Task SaveStreamPosition(MessageStreamCheckpointSaveContext context, CancellationToken cancellationToken)
+            => Task.CompletedTask;
+    }
+
+    private sealed class InMemoryStubClient : IMessageBusClient, IStreamCapableMessageBusClient
+    {
+        public string MessagingSystem => "in-memory";
+
+        public Task<IMessageBusProcessor<TMessage>> CreateStreamProcessor<TMessage>(string queueName, StartPosition startPosition, MessageBusProcessorOptions options)
+            => throw new NotImplementedException();
+
+        public Task<IMessageBusReceiver> CreateReceiver(string queueName) => throw new NotImplementedException();
+
+        public Task<IMessageBusProcessor<TMessage>> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options) => throw new NotImplementedException();
+
+        public Task<IExecutionLaneProcessor> CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options) => throw new NotImplementedException();
+
+        public Task<IMessageBusSender> CreateMessageBusSender(string queueName) => throw new NotImplementedException();
+
+        public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName) => throw new NotImplementedException();
+
+        public Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default) => throw new NotImplementedException();
     }
 
     private sealed class StubFlowlyBuilder(IServiceCollection services) : IFlowlyBuilder
@@ -184,6 +358,17 @@ public class MessageStreamHandlerRegistrationExtensionsTests
     private class TelemetryReadingHandlerTwo : MessageStreamHandler<TelemetryReading>
     {
         public override void Configure(MessageStreamHandlerOptions options) => options.StartPosition = StartPosition.Last();
+
+        public override Task Handle(IMessageStreamContext<TelemetryReading> messageContext) => Task.CompletedTask;
+    }
+
+    private class HandlerWithCustomConsumerName : MessageStreamHandler<TelemetryReading>
+    {
+        public override void Configure(MessageStreamHandlerOptions options)
+        {
+            options.StartPosition = StartPosition.First();
+            options.ConsumerName = "custom-consumer";
+        }
 
         public override Task Handle(IMessageStreamContext<TelemetryReading> messageContext) => Task.CompletedTask;
     }
@@ -217,9 +402,27 @@ public class MessageStreamHandlerRegistrationExtensionsTests
         public Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default) => throw new NotImplementedException();
     }
 
-    private sealed class StreamCapableStubClient : StubMessageBusClient, IStreamCapableMessageBusClient
+    private class StreamCapableStubClient : StubMessageBusClient, IStreamCapableMessageBusClient
     {
         public Task<IMessageBusProcessor<TMessage>> CreateStreamProcessor<TMessage>(string queueName, StartPosition startPosition, MessageBusProcessorOptions options)
+            => throw new NotImplementedException();
+    }
+
+    [StreamPartitions(4)]
+    private record PartitionedReading;
+
+    private class PartitionedReadingHandler : MessageStreamHandler<PartitionedReading>
+    {
+        public override void Configure(MessageStreamHandlerOptions options) => options.StartPosition = StartPosition.First();
+
+        public override Task Handle(IMessageStreamContext<PartitionedReading> messageContext) => Task.CompletedTask;
+    }
+
+    private sealed class PartitionedStreamCapableStubClient : StreamCapableStubClient, IPartitionedStreamCapableMessageBusClient
+    {
+        public Task<IPartitionedStreamConsumer<TMessage>> CreatePartitionedStreamConsumer<TMessage>(
+            string queueName, int partitionCount, Func<int, CancellationToken, Task<StartPosition>> resolveStartPosition, MessageBusProcessorOptions options,
+            ILogger logger)
             => throw new NotImplementedException();
     }
 }
