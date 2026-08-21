@@ -559,7 +559,7 @@ public override async Task Handle(IMessageStreamContext<TelemetryReading> ctx)
 
 A halted partition (retries exhausted, per [Retry and failure handling](#retry-and-failure-handling)) only stops consumption of that partition — other partitions, and the handler process itself, keep running.
 
-> **RabbitMQ partitioned consumption uses a separate connection port from AMQP** (the Stream protocol, port `5552` by default, distinct from AMQP's `5672`) on the same broker host. There is currently no way to configure a different port if your deployment needs one.
+> **RabbitMQ partitioned consumption uses a separate connection port from AMQP** (the Stream protocol, port `5552` by default, distinct from AMQP's `5672`) on the same broker host. Configure a different port via `UseRabbitMq(..., streamPort: <port>)` — the stream protocol is always assumed to be on the same host as the AMQP connection, only the port is configurable. If you change your deployment's published stream port, pass the matching `streamPort` value.
 
 ---
 

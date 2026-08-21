@@ -76,6 +76,16 @@ public class RabbitMqRegistrationTests
 
             Assert.Single(builder.Services, s => s.ImplementationInstance is StreamQueueManifest);
         }
+
+        [Fact]
+        public void WithExplicitStreamPort_RegistersSuccessfully()
+        {
+            var (builder, registry) = CreateBuilder();
+
+            builder.UseRabbitMq(streamPort: 15552);
+
+            Assert.Single(registry.GetAll());
+        }
     }
 
     public class UseRabbitMqMultipleProviders

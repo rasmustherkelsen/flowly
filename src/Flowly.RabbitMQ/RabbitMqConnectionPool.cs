@@ -1,16 +1,11 @@
+using System.Net;
 using RabbitMQ.Client;
 using RabbitMQ.Stream.Client;
 
 namespace Flowly.RabbitMQ;
 
-internal sealed class RabbitMqConnectionPool(string uri) : IRabbitMqConnectionPool
+internal sealed class RabbitMqConnectionPool(string uri, int streamPort = 5552) : IRabbitMqConnectionPool
 {
-    // RabbitMQ's stream protocol listens on a separate port from AMQP (5552 by default, distinct from AMQP's 5672)
-    // on the same host. There is no way to override this today — Flowly's RabbitMQ registration API has no
-    // stream-port option yet. Needs a deliberate decision (a new UseRabbitMq parameter) before this can be
-    // anything but the broker's documented default.
-    private const int DefaultStreamPort = 5552;
-
     private readonly RabbitMqLazyConnection _publisherConnection = new(uri);
     private readonly RabbitMqLazyConnection _consumerConnection = new(uri);
     private readonly SemaphoreSlim _streamSystemLock = new(1, 1);
@@ -45,7 +40,7 @@ internal sealed class RabbitMqConnectionPool(string uri) : IRabbitMqConnectionPo
                 UserName = userInfo.Length > 0 && userInfo[0].Length > 0 ? Uri.UnescapeDataString(userInfo[0]) : "guest",
                 Password = userInfo.Length > 1 ? Uri.UnescapeDataString(userInfo[1]) : "guest",
                 VirtualHost = virtualHost,
-                Endpoints = [new System.Net.DnsEndPoint(parsed.Host, DefaultStreamPort)]
+                Endpoints = [ResolveStreamEndpoint()]
             };
 
             _streamSystem = await StreamSystem.Create(config);
@@ -57,4 +52,6 @@ internal sealed class RabbitMqConnectionPool(string uri) : IRabbitMqConnectionPo
             _streamSystemLock.Release();
         }
     }
+
+    internal DnsEndPoint ResolveStreamEndpoint() => new(new Uri(uri).Host, streamPort);
 }
