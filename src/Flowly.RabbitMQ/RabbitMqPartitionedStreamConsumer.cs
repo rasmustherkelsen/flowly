@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Text;
 using System.Text.Json;
 using Flowly.Transport;
 using Microsoft.Extensions.Logging;
@@ -274,6 +275,7 @@ internal sealed class RabbitMqPartitionedStreamConsumer<TMessage>(
             {
                 int i => i,
                 long l => (int)l,
+                byte[] b => int.TryParse(Encoding.UTF8.GetString(b), out var parsed) ? parsed : 0,
                 _ => 0
             };
         }
@@ -281,7 +283,12 @@ internal sealed class RabbitMqPartitionedStreamConsumer<TMessage>(
         private static string? GetStringProperty(ApplicationProperties? properties, string key)
         {
             if (properties is null || !properties.TryGetValue(key, out var value)) return null;
-            return value as string;
+            return value switch
+            {
+                string s => s,
+                byte[] b => Encoding.UTF8.GetString(b),
+                _ => null
+            };
         }
     }
 }
