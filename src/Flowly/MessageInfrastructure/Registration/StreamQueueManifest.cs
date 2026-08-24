@@ -31,17 +31,26 @@ public sealed class StreamQueueManifest
     /// <returns><see langword="true" /> when the queue is a stream queue.</returns>
     public bool TryGetRetention(string queueName, out StreamRetentionSettings retention) => _streams.TryGetValue(queueName, out retention);
 
-    internal void MarkAsStream(string queueName, int? maxAgeSeconds, long? maxLengthBytes)
+    /// <summary>
+    ///     Returns the partition count declared via <see cref="StreamPartitionsAttribute" /> for <paramref name="queueName" />,
+    ///     or <see langword="null" /> for a non-partitioned (or non-stream) queue.
+    /// </summary>
+    /// <param name="queueName">The queue name to look up (case-insensitive).</param>
+    /// <returns>The partition count, or <see langword="null" />.</returns>
+    public int? GetPartitionCount(string queueName) => _streams.TryGetValue(queueName, out var settings) ? settings.PartitionCount : null;
+
+    internal void MarkAsStream(string queueName, int? maxAgeSeconds, long? maxLengthBytes, int? partitionCount = null)
     {
         if (!_streams.TryGetValue(queueName, out var existing))
         {
-            _streams[queueName] = new StreamRetentionSettings(maxAgeSeconds, maxLengthBytes);
+            _streams[queueName] = new StreamRetentionSettings(maxAgeSeconds, maxLengthBytes, partitionCount);
             return;
         }
 
         _streams[queueName] = new StreamRetentionSettings(
             MergeSetting(existing.MaxAgeSeconds, maxAgeSeconds, queueName, nameof(StreamRetentionSettings.MaxAgeSeconds)),
-            MergeSetting(existing.MaxLengthBytes, maxLengthBytes, queueName, nameof(StreamRetentionSettings.MaxLengthBytes)));
+            MergeSetting(existing.MaxLengthBytes, maxLengthBytes, queueName, nameof(StreamRetentionSettings.MaxLengthBytes)),
+            MergeSetting(existing.PartitionCount, partitionCount, queueName, nameof(StreamRetentionSettings.PartitionCount)));
     }
 
     internal static StreamQueueManifest GetOrCreate(IServiceCollection services)

@@ -35,10 +35,10 @@ internal class QueueRegistrarHostedService(
             {
                 logger.LogDebug("Skipping topology creation for provider '{Provider}'", manifest.ProviderName);
 
-                var validator = topologyValidators.FirstOrDefault(v =>
+                var validators = topologyValidators.Where(v =>
                     string.Equals(v.ProviderName, manifest.ProviderName, StringComparison.OrdinalIgnoreCase));
 
-                if (validator != null)
+                foreach (var validator in validators)
                     await validator.Validate(queueDescriptions, cancellationToken);
 
                 continue;

@@ -138,6 +138,16 @@ public class RabbitMqRetryTopologyValidatorTests
         {
             return Task.FromResult<IConnection>(new SequencedConnection(channels));
         }
+
+        public Task<global::RabbitMQ.Stream.Client.StreamSystem> GetStreamSystem(CancellationToken cancellationToken = default)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<string[]> QueryStreamPartitions(string superStreamName, CancellationToken cancellationToken = default)
+        {
+            throw new NotImplementedException();
+        }
     }
 
     private class SequencedConnection(IChannel[] channels) : IConnection

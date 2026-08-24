@@ -28,7 +28,11 @@ internal class FlowlyConfiguration : Configuration
 #if (UseCallHandler)
         builder.AddCallSubmitter<MyMessage>();
 #else
+#if (UseStream)
+        builder.AddMessageRecorder<MyMessage>();
+#else
         builder.AddMessageSubmitter<MyMessage>();
+#endif
 #endif
 #if (UseDeadLetterTracking)
         builder.AddMessageSubmitter<DeadLetterSampleMessage>();

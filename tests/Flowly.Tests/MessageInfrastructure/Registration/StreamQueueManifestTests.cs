@@ -63,6 +63,28 @@ public class StreamQueueManifestTests
             Assert.Contains("orders-stream", exception.Message);
             Assert.Contains(nameof(StreamRetentionSettings.MaxAgeSeconds), exception.Message);
         }
+
+        [Fact]
+        public void RecordsPartitionCount()
+        {
+            var streamQueueManifest = new StreamQueueManifest();
+
+            streamQueueManifest.MarkAsStream("orders-stream", null, null, partitionCount: 4);
+
+            Assert.Equal(4, streamQueueManifest.GetPartitionCount("orders-stream"));
+        }
+
+        [Fact]
+        public void ConflictingPartitionCount_Throws()
+        {
+            var streamQueueManifest = new StreamQueueManifest();
+            streamQueueManifest.MarkAsStream("orders-stream", null, null, partitionCount: 4);
+
+            var exception = Assert.Throws<InvalidOperationException>(() => streamQueueManifest.MarkAsStream("orders-stream", null, null, partitionCount: 8));
+
+            Assert.Contains("orders-stream", exception.Message);
+            Assert.Contains(nameof(StreamRetentionSettings.PartitionCount), exception.Message);
+        }
     }
 
     public class IsStreamQueue
@@ -84,6 +106,26 @@ public class StreamQueueManifestTests
             var streamQueueManifest = new StreamQueueManifest();
 
             Assert.False(streamQueueManifest.TryGetRetention("regular-queue", out _));
+        }
+    }
+
+    public class GetPartitionCount
+    {
+        [Fact]
+        public void UnknownQueue_ReturnsNull()
+        {
+            var streamQueueManifest = new StreamQueueManifest();
+
+            Assert.Null(streamQueueManifest.GetPartitionCount("regular-queue"));
+        }
+
+        [Fact]
+        public void NonPartitionedStream_ReturnsNull()
+        {
+            var streamQueueManifest = new StreamQueueManifest();
+            streamQueueManifest.MarkAsStream("orders-stream", null, null);
+
+            Assert.Null(streamQueueManifest.GetPartitionCount("orders-stream"));
         }
     }
 

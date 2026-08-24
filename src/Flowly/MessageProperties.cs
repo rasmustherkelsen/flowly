@@ -30,6 +30,16 @@ namespace Flowly;
 ///     infrastructure when sending a call message via <see cref="IMessageCaller" />; read by
 ///     <c>CallMessageHandlingStrategy</c> to route the response back to the originating caller.
 /// </param>
+/// <param name="StreamOffset">
+///     The numeric offset of this message within its stream. Only populated for messages delivered by a
+///     stream-capable transport (<see langword="null" /> otherwise). Used internally to persist a
+///     <see cref="MessageStreamCheckpoint{TMessage}" /> position after a batch is successfully processed.
+/// </param>
+/// <param name="PartitionKey">
+///     The partition-routing key supplied to <see cref="IMessageRecorder.Record{TMessage}" /> when recording onto a
+///     partitioned stream. Used only at send time to select a partition (via a transport-specific hash) — not
+///     retained on the delivered message. <see langword="null" /> selects a partition via round-robin.
+/// </param>
 public record MessageProperties(
     string MessageId,
     string CorrelationId,
@@ -38,7 +48,9 @@ public record MessageProperties(
     DateTimeOffset? ScheduledEnqueueTime = null,
     string? Traceparent = null,
     string? Tracestate = null,
-    string? ReplyTo = null)
+    string? ReplyTo = null,
+    long? StreamOffset = null,
+    string? PartitionKey = null)
 {
     /// <summary>
     ///     A default empty <see cref="MessageProperties" /> instance with empty strings for required fields. Used as a

@@ -12,8 +12,8 @@ public class MessageStreamProcessingBackgroundServiceTests
 {
     private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(10);
 
-    private static (MessageStreamProcessingBackgroundService<TestMessage, SpyStreamHandler> BackgroundService, FakeStreamProcessor Processor, SpyStreamHandler Handler, SpyHandlerInstrumentation Instrumentation)
-        CreateService(int maxMessages, int maxRetries, Func<IMessageStreamContext<TestMessage>, Task>? onHandle = null)
+    private static (MessageStreamProcessingBackgroundService<TestMessage, SpyStreamHandler> BackgroundService, FakeStreamProcessor Processor, SpyStreamHandler Handler, SpyHandlerInstrumentation Instrumentation, FakeCheckpoint? Checkpoint)
+        CreateService(int maxMessages, int maxRetries, Func<IMessageStreamContext<TestMessage>, Task>? onHandle = null, FakeCheckpoint? checkpoint = null)
     {
         var processor = new FakeStreamProcessor();
         var client = new FakeStreamClient(processor);
@@ -23,6 +23,8 @@ public class MessageStreamProcessingBackgroundServiceTests
         var handler = new SpyStreamHandler(onHandle);
         var services = new ServiceCollection();
         services.AddScoped<SpyStreamHandler>(_ => handler);
+        if (checkpoint != null)
+            services.AddSingleton<MessageStreamCheckpoint<TestMessage>>(checkpoint);
         var serviceProvider = services.BuildServiceProvider();
 
         var instrumentation = new SpyHandlerInstrumentation();
@@ -33,6 +35,7 @@ public class MessageStreamProcessingBackgroundServiceTests
                 "telemetry-reading",
                 "primary",
                 nameof(SpyStreamHandler),
+                nameof(SpyStreamHandler),
                 StartPosition.First(),
                 maxMessages,
                 TimeSpan.FromSeconds(30),
@@ -42,7 +45,7 @@ public class MessageStreamProcessingBackgroundServiceTests
             NullLogger<MessageStreamProcessingBackgroundService<TestMessage, SpyStreamHandler>>.Instance,
             instrumentation);
 
-        return (backgroundService, processor, handler, instrumentation);
+        return (backgroundService, processor, handler, instrumentation, checkpoint);
     }
 
     public class ExecuteAsync
@@ -55,7 +58,7 @@ public class MessageStreamProcessingBackgroundServiceTests
 
             var backgroundService = new MessageStreamProcessingBackgroundService<TestMessage, SpyStreamHandler>(
                 registry,
-                new MessageStreamHandlerSettings<TestMessage, SpyStreamHandler>("q", "primary", "H", StartPosition.First(), 1, TimeSpan.FromSeconds(1), 0, 0),
+                new MessageStreamHandlerSettings<TestMessage, SpyStreamHandler>("q", "primary", "H", "H", StartPosition.First(), 1, TimeSpan.FromSeconds(1), 0, 0),
                 new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
                 NullLogger<MessageStreamProcessingBackgroundService<TestMessage, SpyStreamHandler>>.Instance,
                 new SpyHandlerInstrumentation());
@@ -70,7 +73,7 @@ public class MessageStreamProcessingBackgroundServiceTests
         [Fact]
         public async Task CreatesStreamProcessorWithConfiguredStartPosition()
         {
-            var (backgroundService, processor, _, _) = CreateService(maxMessages: 1, maxRetries: 0);
+            var (backgroundService, processor, _, _, _) = CreateService(maxMessages: 1, maxRetries: 0);
 
             await backgroundService.StartAsync(CancellationToken.None);
             await processor.Started.Task.WaitAsync(TestTimeout);
@@ -84,7 +87,7 @@ public class MessageStreamProcessingBackgroundServiceTests
         [Fact]
         public async Task PrefetchIsSizedToMaxMessagesBeforeProcessing()
         {
-            var (backgroundService, processor, _, _) = CreateService(maxMessages: 42, maxRetries: 0);
+            var (backgroundService, processor, _, _, _) = CreateService(maxMessages: 42, maxRetries: 0);
 
             await backgroundService.StartAsync(CancellationToken.None);
             await processor.Started.Task.WaitAsync(TestTimeout);
@@ -97,7 +100,7 @@ public class MessageStreamProcessingBackgroundServiceTests
         [Fact]
         public async Task OnSuccess_CompletesAllMessagesAndRecordsSucceeded()
         {
-            var (backgroundService, processor, handler, instrumentation) = CreateService(maxMessages: 2, maxRetries: 0);
+            var (backgroundService, processor, handler, instrumentation, _) = CreateService(maxMessages: 2, maxRetries: 0);
 
             await backgroundService.StartAsync(CancellationToken.None);
             await processor.Started.Task.WaitAsync(TestTimeout);
@@ -121,7 +124,7 @@ public class MessageStreamProcessingBackgroundServiceTests
         public async Task OnFailure_RetriesSameBatchInProcessWithoutRepublishing()
         {
             var attempts = 0;
-            var (backgroundService, processor, handler, instrumentation) = CreateService(
+            var (backgroundService, processor, handler, instrumentation, _) = CreateService(
                 maxMessages: 1,
                 maxRetries: 2,
                 onHandle: _ => ++attempts < 3 ? throw new InvalidOperationException("boom") : Task.CompletedTask);
@@ -147,7 +150,7 @@ public class MessageStreamProcessingBackgroundServiceTests
         [Fact]
         public async Task WhenRetriesExhausted_HaltsWithoutCompletingMessages()
         {
-            var (backgroundService, processor, handler, instrumentation) = CreateService(
+            var (backgroundService, processor, handler, instrumentation, _) = CreateService(
                 maxMessages: 1,
                 maxRetries: 1,
                 onHandle: _ => throw new InvalidOperationException("permanent failure"));
@@ -171,7 +174,7 @@ public class MessageStreamProcessingBackgroundServiceTests
         [Fact]
         public async Task AfterHalt_ProcessesNoFurtherMessages()
         {
-            var (backgroundService, processor, handler, _) = CreateService(
+            var (backgroundService, processor, handler, _, _) = CreateService(
                 maxMessages: 1,
                 maxRetries: 0,
                 onHandle: _ => throw new InvalidOperationException("permanent failure"));
@@ -212,7 +215,7 @@ public class MessageStreamProcessingBackgroundServiceTests
             var backgroundServiceOne = new MessageStreamProcessingBackgroundService<TestMessage, SpyStreamHandler>(
                 registry,
                 new MessageStreamHandlerSettings<TestMessage, SpyStreamHandler>(
-                    "telemetry-reading", "primary-one", nameof(SpyStreamHandler), StartPosition.First(), 1, TimeSpan.FromSeconds(30), 0, 0),
+                    "telemetry-reading", "primary-one", nameof(SpyStreamHandler), nameof(SpyStreamHandler), StartPosition.First(), 1, TimeSpan.FromSeconds(30), 0, 0),
                 serviceProvider.GetRequiredService<IServiceScopeFactory>(),
                 NullLogger<MessageStreamProcessingBackgroundService<TestMessage, SpyStreamHandler>>.Instance,
                 new SpyHandlerInstrumentation());
@@ -220,7 +223,7 @@ public class MessageStreamProcessingBackgroundServiceTests
             var backgroundServiceTwo = new MessageStreamProcessingBackgroundService<TestMessage, SpyStreamHandlerTwo>(
                 registry,
                 new MessageStreamHandlerSettings<TestMessage, SpyStreamHandlerTwo>(
-                    "telemetry-reading", "primary-two", nameof(SpyStreamHandlerTwo), StartPosition.First(), 1, TimeSpan.FromSeconds(30), 0, 0),
+                    "telemetry-reading", "primary-two", nameof(SpyStreamHandlerTwo), nameof(SpyStreamHandlerTwo), StartPosition.First(), 1, TimeSpan.FromSeconds(30), 0, 0),
                 serviceProvider.GetRequiredService<IServiceScopeFactory>(),
                 NullLogger<MessageStreamProcessingBackgroundService<TestMessage, SpyStreamHandlerTwo>>.Instance,
                 new SpyHandlerInstrumentation());
@@ -241,6 +244,119 @@ public class MessageStreamProcessingBackgroundServiceTests
 
             await backgroundServiceOne.StopAsync(CancellationToken.None);
             await backgroundServiceTwo.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task WhenNoCheckpointRegistered_UsesConfiguredStartPosition()
+        {
+            var (backgroundService, processor, _, _, _) = CreateService(maxMessages: 1, maxRetries: 0);
+
+            await backgroundService.StartAsync(CancellationToken.None);
+            await processor.Started.Task.WaitAsync(TestTimeout);
+
+            Assert.Equal(StartPosition.First(), processor.Client!.ReceivedStartPosition);
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task WhenCheckpointRegisteredWithNoStoredPosition_InitializesAndUsesConfiguredStartPosition()
+        {
+            var checkpoint = new FakeCheckpoint();
+            var (backgroundService, processor, _, _, _) = CreateService(maxMessages: 1, maxRetries: 0, checkpoint: checkpoint);
+
+            await backgroundService.StartAsync(CancellationToken.None);
+            await processor.Started.Task.WaitAsync(TestTimeout);
+
+            Assert.Equal(StartPosition.First(), processor.Client!.ReceivedStartPosition);
+            Assert.Single(checkpoint.InitializeCalls);
+            Assert.Equal(nameof(SpyStreamHandler), checkpoint.InitializeCalls[0].ConsumerName);
+            Assert.Null(checkpoint.InitializeCalls[0].Partition);
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task WhenCheckpointHasStoredPosition_ResumesFromStoredPositionPlusOne()
+        {
+            var checkpoint = new FakeCheckpoint { StoredPosition = 41 };
+            var (backgroundService, processor, _, _, _) = CreateService(maxMessages: 1, maxRetries: 0, checkpoint: checkpoint);
+
+            await backgroundService.StartAsync(CancellationToken.None);
+            await processor.Started.Task.WaitAsync(TestTimeout);
+
+            Assert.Equal(StartPosition.Offset(42), processor.Client!.ReceivedStartPosition);
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task OnSuccess_SavesCheckpointWithLastMessageOffset()
+        {
+            var checkpoint = new FakeCheckpoint();
+            var (backgroundService, processor, handler, _, _) = CreateService(maxMessages: 2, maxRetries: 0, checkpoint: checkpoint);
+
+            await backgroundService.StartAsync(CancellationToken.None);
+            await processor.Started.Task.WaitAsync(TestTimeout);
+
+            await processor.Deliver(new FakeReceivedMessage(new TestMessage("a"), streamOffset: 10));
+            await processor.Deliver(new FakeReceivedMessage(new TestMessage("b"), streamOffset: 11));
+
+            await handler.WaitForInvocations(1, TestTimeout);
+            await WaitUntil(() => checkpoint.SaveCalls.Count == 1, TestTimeout);
+
+            Assert.Equal(11, checkpoint.SaveCalls[0].Position);
+            Assert.Equal(nameof(SpyStreamHandler), checkpoint.SaveCalls[0].ConsumerName);
+            Assert.Null(checkpoint.SaveCalls[0].Partition);
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task WhenLastMessageHasNoStreamOffset_DoesNotSaveCheckpoint()
+        {
+            var checkpoint = new FakeCheckpoint();
+            var (backgroundService, processor, handler, _, _) = CreateService(maxMessages: 1, maxRetries: 0, checkpoint: checkpoint);
+
+            await backgroundService.StartAsync(CancellationToken.None);
+            await processor.Started.Task.WaitAsync(TestTimeout);
+
+            await processor.Deliver(new FakeReceivedMessage(new TestMessage("a")));
+            await handler.WaitForInvocations(1, TestTimeout);
+
+            Assert.Empty(checkpoint.SaveCalls);
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task WhenRetriesExhausted_DoesNotSaveCheckpoint()
+        {
+            var checkpoint = new FakeCheckpoint();
+            var (backgroundService, processor, _, _, _) = CreateService(
+                maxMessages: 1,
+                maxRetries: 0,
+                onHandle: _ => throw new InvalidOperationException("permanent failure"),
+                checkpoint: checkpoint);
+
+            await backgroundService.StartAsync(CancellationToken.None);
+            await processor.Started.Task.WaitAsync(TestTimeout);
+
+            await processor.Deliver(new FakeReceivedMessage(new TestMessage("a"), streamOffset: 5));
+            await backgroundService.ExecuteTask!.WaitAsync(TestTimeout);
+
+            Assert.Empty(checkpoint.SaveCalls);
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        private static async Task WaitUntil(Func<bool> condition, TimeSpan timeout)
+        {
+            var deadline = DateTime.UtcNow + timeout;
+            while (!condition() && DateTime.UtcNow < deadline)
+                await Task.Delay(10);
+
+            Assert.True(condition(), "Condition was not met within timeout.");
         }
     }
 
@@ -419,12 +535,35 @@ public class MessageStreamProcessingBackgroundServiceTests
         }
     }
 
-    private sealed class FakeReceivedMessage(TestMessage body) : IReceivedMessage<TestMessage>
+    private sealed class FakeCheckpoint : MessageStreamCheckpoint<TestMessage>
+    {
+        public long? StoredPosition { get; set; }
+        public List<MessageStreamCheckpointContext> InitializeCalls { get; } = [];
+        public List<MessageStreamCheckpointSaveContext> SaveCalls { get; } = [];
+
+        protected internal override Task InitializeCheckpoint(MessageStreamCheckpointContext context, CancellationToken cancellationToken)
+        {
+            InitializeCalls.Add(context);
+            return Task.CompletedTask;
+        }
+
+        protected internal override Task<long?> GetStreamPosition(MessageStreamCheckpointContext context, CancellationToken cancellationToken)
+            => Task.FromResult(StoredPosition);
+
+        protected internal override Task SaveStreamPosition(MessageStreamCheckpointSaveContext context, CancellationToken cancellationToken)
+        {
+            SaveCalls.Add(context);
+            StoredPosition = context.Position;
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class FakeReceivedMessage(TestMessage body, long? streamOffset = null) : IReceivedMessage<TestMessage>
     {
         public TaskCompletionSource Completed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public TestMessage Body { get; } = body;
-        public MessageProperties Properties { get; } = new(Guid.NewGuid().ToString(), string.Empty);
+        public MessageProperties Properties { get; } = new(Guid.NewGuid().ToString(), string.Empty, StreamOffset: streamOffset);
 
         public Task Complete(CancellationToken cancellationToken = default)
         {

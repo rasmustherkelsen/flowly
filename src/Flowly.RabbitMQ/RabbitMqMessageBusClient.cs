@@ -1,11 +1,13 @@
 using System.Collections.Concurrent;
+using Flowly.MessageInfrastructure.Registration;
 using Flowly.Transport;
+using Microsoft.Extensions.Logging;
 using RabbitMQ.Client;
 
 namespace Flowly.RabbitMQ;
 
-internal class RabbitMqMessageBusClient(IRabbitMqConnectionPool connectionPool, long? maxMessageSizeBytes = null)
-    : IMessageBusClient, IEventCapableMessageBusClient, IStreamCapableMessageBusClient
+internal class RabbitMqMessageBusClient(IRabbitMqConnectionPool connectionPool, long? maxMessageSizeBytes = null, StreamQueueManifest? streamQueueManifest = null)
+    : IMessageBusClient, IEventCapableMessageBusClient, IStreamCapableMessageBusClient, IPartitionedStreamCapableMessageBusClient
 {
     private readonly SemaphoreSlim _senderLock = new(1, 1);
     private readonly ConcurrentDictionary<string, IMessageBusSender> _senders = new();
@@ -137,6 +139,17 @@ internal class RabbitMqMessageBusClient(IRabbitMqConnectionPool connectionPool, 
         return new AmqpTimestamp(new DateTimeOffset(utcTimestamp).ToUnixTimeSeconds());
     }
 
+    public async Task<IPartitionedStreamConsumer<TMessage>> CreatePartitionedStreamConsumer<TMessage>(
+        string queueName,
+        int partitionCount,
+        Func<int, CancellationToken, Task<StartPosition>> resolveStartPosition,
+        MessageBusProcessorOptions options,
+        ILogger logger)
+    {
+        var streamSystem = await connectionPool.GetStreamSystem();
+        return new RabbitMqPartitionedStreamConsumer<TMessage>(streamSystem, queueName, resolveStartPosition, logger);
+    }
+
     public async Task<IExecutionLaneProcessor> CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options)
     {
         var connection = await connectionPool.GetConsumerConnection();
@@ -164,7 +177,7 @@ internal class RabbitMqMessageBusClient(IRabbitMqConnectionPool connectionPool, 
 
             var connection = await connectionPool.GetPublisherConnection();
             var channel = await connection.CreateChannelAsync();
-            var sender = new RabbitMqMessageBusSender(queueName, channel, maxMessageSizeBytes);
+            var sender = new RabbitMqMessageBusSender(queueName, channel, maxMessageSizeBytes, streamQueueManifest);
             _senders[queueName] = sender;
             return sender;
         }

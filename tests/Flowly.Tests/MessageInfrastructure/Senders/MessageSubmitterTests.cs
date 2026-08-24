@@ -109,6 +109,21 @@ public class MessageSubmitterTests
 
             Assert.Equal(cancellationTokenSource.Token, capturingSender.ReceivedTokens.Single());
         }
+
+        [Fact]
+        public async Task PassesPartitionKeyThroughToSentMessageProperties()
+        {
+            var capturingSender = new CapturingSender();
+            var client = new FakeMessageBusClient(capturingSender);
+            var registry = new SingleClientRegistry(client, "primary");
+            var instrumentation = new StubSubmitterInstrumentation();
+            var queueSettings = new MessageSubmitter<OrderPlaced>.QueueSettings("order-placed", "primary");
+            var messageSubmitter = new MessageSubmitter<OrderPlaced>(registry, queueSettings, instrumentation);
+
+            await messageSubmitter.Submit(new OrderPlaced("x"), CancellationToken.None, partitionKey: "customer-7");
+
+            Assert.Equal("customer-7", capturingSender.SentMessages[0].Properties.PartitionKey);
+        }
     }
 
     public class WhenMessageImplementsIOpenTelemetryTagsProvider

@@ -22,15 +22,21 @@ public static class RabbitMqRegistration
     /// <param name="createTopology"></param>
     /// <param name="enableHealthCheck"></param>
     /// <param name="maxMessageSizeBytes"></param>
+    /// <param name="streamPort">
+    ///     The RabbitMQ Stream protocol port, used only for partitioned-stream consumption (broker-coordinated
+    ///     Single Active Consumer rebalancing). Defaults to <c>5552</c>, the broker's documented default. The
+    ///     stream protocol is always assumed to be on the same host as the AMQP connection.
+    /// </param>
     /// <returns></returns>
     public static IFlowlyBuilder UseRabbitMq(
         this IFlowlyBuilder flowlyBuilder,
         string? name = null,
         bool? createTopology = null,
         bool enableHealthCheck = false,
-        long? maxMessageSizeBytes = null)
+        long? maxMessageSizeBytes = null,
+        int streamPort = 5552)
     {
-        return flowlyBuilder.RegisterRabbitMq("amqp://guest:guest@localhost:5672/", name, createTopology, enableHealthCheck, maxMessageSizeBytes);
+        return flowlyBuilder.RegisterRabbitMq("amqp://guest:guest@localhost:5672/", name, createTopology, enableHealthCheck, maxMessageSizeBytes, streamPort);
     }
 
     /// <summary>
@@ -43,6 +49,11 @@ public static class RabbitMqRegistration
     /// <param name="createTopology"></param>
     /// <param name="enableHealthCheck"></param>
     /// <param name="maxMessageSizeBytes"></param>
+    /// <param name="streamPort">
+    ///     The RabbitMQ Stream protocol port, used only for partitioned-stream consumption (broker-coordinated
+    ///     Single Active Consumer rebalancing). Defaults to <c>5552</c>, the broker's documented default. The
+    ///     stream protocol is always assumed to be on the same host as the AMQP connection.
+    /// </param>
     /// <returns></returns>
     public static IFlowlyBuilder UseRabbitMq(
         this IFlowlyBuilder flowlyBuilder,
@@ -50,10 +61,11 @@ public static class RabbitMqRegistration
         string? name = null,
         bool? createTopology = null,
         bool enableHealthCheck = false,
-        long? maxMessageSizeBytes = null)
+        long? maxMessageSizeBytes = null,
+        int streamPort = 5552)
     {
         var uri = flowlyBuilder.Configuration.GetConnectionString(connection) ?? connection;
-        return flowlyBuilder.RegisterRabbitMq(uri, name, createTopology, enableHealthCheck, maxMessageSizeBytes);
+        return flowlyBuilder.RegisterRabbitMq(uri, name, createTopology, enableHealthCheck, maxMessageSizeBytes, streamPort);
     }
 
     private static IFlowlyBuilder RegisterRabbitMq(
@@ -62,7 +74,8 @@ public static class RabbitMqRegistration
         string? name,
         bool? createTopology,
         bool enableHealthCheck,
-        long? maxMessageSizeBytes)
+        long? maxMessageSizeBytes,
+        int streamPort)
     {
         var services = flowlyBuilder.Services;
         var clientRegistry = ProviderNameResolver.GetRegistry(services);
@@ -73,9 +86,9 @@ public static class RabbitMqRegistration
             DefaultProviderName,
             "Secondary RabbitMQ providers must have an explicit name. Pass name: \"...\" to UseRabbitMq().");
 
-        var connectionPool = new RabbitMqConnectionPool(uri);
-        var messageBusClient = new RabbitMqMessageBusClient(connectionPool, maxMessageSizeBytes);
+        var connectionPool = new RabbitMqConnectionPool(uri, streamPort);
         var streamQueueManifest = StreamQueueManifest.GetOrCreate(services);
+        var messageBusClient = new RabbitMqMessageBusClient(connectionPool, maxMessageSizeBytes, streamQueueManifest);
         var topologyCreator = new RabbitMqMessagingTopologyCreator(connectionPool, streamQueueManifest);
 
         clientRegistry.Register(effectiveName, messageBusClient, createTopology);
@@ -92,6 +105,9 @@ public static class RabbitMqRegistration
 
         services.AddSingleton<IMessagingTopologyValidator>(
             new RabbitMqRetryTopologyValidator(effectiveName, connectionPool, streamQueueManifest));
+
+        services.AddSingleton<IMessagingTopologyValidator>(
+            new RabbitMqPartitionedStreamTopologyValidator(effectiveName, connectionPool, streamQueueManifest));
 
         TransportRegistrationHelper.RegisterProviderManifest(services, clientRegistry, effectiveName, TransportType);
 

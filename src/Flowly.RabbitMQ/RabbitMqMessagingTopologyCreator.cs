@@ -28,6 +28,12 @@ internal class RabbitMqMessagingTopologyCreator(IRabbitMqConnectionPool connecti
     {
         if (streamQueueManifest != null && streamQueueManifest.TryGetRetention(queue.Name, out var retention))
         {
+            if (retention.PartitionCount is { } partitionCount)
+            {
+                await DeclarePartitionedStreamTopology(channel, queue.Name, retention, partitionCount, cancellationToken);
+                return;
+            }
+
             await DeclareStreamQueue(channel, queue.Name, retention, cancellationToken);
             return;
         }
@@ -111,6 +117,36 @@ internal class RabbitMqMessagingTopologyCreator(IRabbitMqConnectionPool connecti
             streamQueueArgs,
             cancellationToken: cancellationToken);
     }
+
+    /// <summary>
+    ///     Declares a RabbitMQ Super Stream: a direct exchange named <paramref name="queueName" />, one stream queue
+    ///     per partition named <c>{queueName}-{partition}</c>, and a binding from the exchange to each partition
+    ///     stream with the partition index as the routing key. This topology is entirely expressible over plain
+    ///     AMQP 0.9.1 — the same mechanism <see cref="DeclareStreamQueue" /> already uses per partition — matching
+    ///     how a Super Stream can be created with any AMQP client, not just the RabbitMQ Stream protocol client.
+    ///     Producers publish with the partition index as the routing key (see <c>RabbitMqMessageBusSender</c>);
+    ///     only partitioned <em>consumption</em> needs the Stream protocol client, for its broker-coordinated
+    ///     Single Active Consumer rebalancing, which AMQP has no equivalent for.
+    /// </summary>
+    private static async Task DeclarePartitionedStreamTopology(IChannel channel, string queueName, StreamRetentionSettings retention, int partitionCount, CancellationToken cancellationToken)
+    {
+        await channel.ExchangeDeclareAsync(queueName, ExchangeType.Direct, true, false, cancellationToken: cancellationToken);
+
+        for (var partition = 0; partition < partitionCount; partition++)
+        {
+            var partitionStreamName = PartitionStreamName(queueName, partition);
+            await DeclareStreamQueue(channel, partitionStreamName, retention, cancellationToken);
+            await channel.QueueBindAsync(partitionStreamName, queueName, partition.ToString(), cancellationToken: cancellationToken);
+        }
+    }
+
+    /// <summary>
+    ///     The RabbitMQ stream name for a single partition of a Super Stream — <c>{queueName}-{partition}</c>,
+    ///     matching the convention <c>rabbitmq-streams add_super_stream</c> uses. Shared with the partitioned
+    ///     consumer, which parses the partition index back out of this exact format when messages arrive tagged
+    ///     with their source stream.
+    /// </summary>
+    internal static string PartitionStreamName(string queueName, int partition) => $"{queueName}-{partition}";
 
     private static async Task DeclareEventTopology(IChannel channel, IEventDescription eventDescription, CancellationToken cancellationToken)
     {

@@ -99,7 +99,7 @@ internal class InMemoryMessageBusSender(
             SenderMode.Topic or SenderMode.TopicRetry => FanOutToTopic(envelope, null, cancellationToken),
             _ when !string.IsNullOrEmpty(messageProperties.SessionId)
                 => broker.GetSessionChannel(destination, messageProperties.SessionId!).Writer.WriteAsync(envelope, cancellationToken).AsTask(),
-            _ => broker.EnqueueOrAppend(destination, envelope, cancellationToken)
+            _ => broker.EnqueueOrAppend(destination, envelope, cancellationToken, messageProperties.PartitionKey)
         };
     }
 

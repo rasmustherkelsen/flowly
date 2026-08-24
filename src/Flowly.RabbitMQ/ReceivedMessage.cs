@@ -25,7 +25,8 @@ internal class RabbitMqReceivedMessage<TMessage>(IChannel channel, BasicDeliverE
         RetryCount: GetRetryCount(args.BasicProperties),
         Traceparent: GetStringHeader(args.BasicProperties, "traceparent"),
         Tracestate: GetStringHeader(args.BasicProperties, "tracestate"),
-        ReplyTo: string.IsNullOrEmpty(args.BasicProperties.ReplyTo) ? null : args.BasicProperties.ReplyTo);
+        ReplyTo: string.IsNullOrEmpty(args.BasicProperties.ReplyTo) ? null : args.BasicProperties.ReplyTo,
+        StreamOffset: GetStreamOffset(args.BasicProperties));
 
     public Task Complete(CancellationToken cancellationToken = default)
     {
@@ -49,6 +50,20 @@ internal class RabbitMqReceivedMessage<TMessage>(IChannel channel, BasicDeliverE
             long l => (int)l,
             byte[] b => int.TryParse(Encoding.UTF8.GetString(b), out var parsed) ? parsed : 0,
             _ => 0
+        };
+    }
+
+    private static long? GetStreamOffset(IReadOnlyBasicProperties properties)
+    {
+        if (properties.Headers is null) return null;
+        if (!properties.Headers.TryGetValue("x-stream-offset", out var offset)) return null;
+
+        return offset switch
+        {
+            long l => l,
+            int i => i,
+            byte[] b => long.TryParse(Encoding.UTF8.GetString(b), out var parsed) ? parsed : null,
+            _ => null
         };
     }
 

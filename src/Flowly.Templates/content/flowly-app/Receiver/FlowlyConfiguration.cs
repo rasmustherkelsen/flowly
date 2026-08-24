@@ -25,7 +25,11 @@ internal class FlowlyConfiguration : Configuration
 #if (UseCallHandler)
         builder.AddCallHandler<MyMessage, MyMessageHandler>();
 #else
+#if (UseStream)
+        builder.AddMessageStreamHandler<MyMessage, MyMessageHandler>();
+#else
         builder.AddMessageHandler<MyMessage, MyMessageHandler>();
+#endif
 #endif
 #if (UseJobTracking)
 

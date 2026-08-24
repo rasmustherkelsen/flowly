@@ -4,9 +4,9 @@ namespace Flowly.MessageInfrastructure.Senders;
 
 internal class MessageRecorder(IServiceProvider serviceProvider) : IMessageRecorder
 {
-    public async Task Record<TMessage>(TMessage message, CancellationToken cancellationToken = default)
+    public async Task Record<TMessage>(TMessage message, CancellationToken cancellationToken = default, string? partitionKey = null)
     {
         var messageSubmitter = serviceProvider.GetRequiredService<IMessageSubmitter<TMessage>>();
-        await messageSubmitter.Submit(message, cancellationToken);
+        await messageSubmitter.Submit(message, cancellationToken, partitionKey);
     }
 }

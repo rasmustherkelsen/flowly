@@ -8,7 +8,7 @@ internal class InMemoryReceivedMessage<TMessage>(InMemoryEnvelope envelope, Chan
 {
     public TMessage Body => field ??= DeserializeBody(envelope);
 
-    public MessageProperties Properties { get; } = BuildProperties(envelope);
+    public MessageProperties Properties { get; } = BuildProperties(envelope, null);
 
     public Task Complete(CancellationToken cancellationToken = default)
         => Task.CompletedTask;
@@ -25,7 +25,7 @@ internal class InMemoryReceivedMessage<TMessage>(InMemoryEnvelope envelope, Chan
             : JsonSerializer.Deserialize<TMessage>(envelope.RawBody)
                 ?? throw new InvalidOperationException($"Deserialized message body is null for type {typeof(TMessage).FullName}.");
 
-    internal static MessageProperties BuildProperties(InMemoryEnvelope e)
+    internal static MessageProperties BuildProperties(InMemoryEnvelope e, long? streamOffset)
     {
         e.ApplicationProperties.TryGetValue(FlowlyMessageProperties.RetryCount, out var rc);
         e.ApplicationProperties.TryGetValue("traceparent", out var tp);
@@ -41,7 +41,8 @@ internal class InMemoryReceivedMessage<TMessage>(InMemoryEnvelope envelope, Chan
             Traceparent: tp as string,
             Tracestate: ts as string,
             SessionId: sid as string,
-            ReplyTo: replyTo as string);
+            ReplyTo: replyTo as string,
+            StreamOffset: streamOffset);
     }
 
     private static InMemoryEnvelope CreateDeadLetterEnvelope(InMemoryEnvelope source, string? reason)

@@ -29,16 +29,19 @@ internal static class MessageStreamHandlerOptionsResolver
 
         var retryPolicyAttribute = handlerType.GetCustomAttribute<RetryPolicyAttribute>();
         var retentionAttribute = typeof(TMessage).GetCustomAttribute<StreamRetentionAttribute>();
+        var partitionsAttribute = typeof(TMessage).GetCustomAttribute<StreamPartitionsAttribute>();
 
         return new ResolvedMessageStreamHandlerOptions(
             options.QueueName!,
+            options.ConsumerName ?? handlerType.Name,
             options.StartPosition.Value,
             options.MaxMessagesBeforeProcessing ?? DefaultMaxMessagesBeforeProcessing,
             options.MaxWaitTime ?? DefaultMaxWaitTime,
             retryPolicyAttribute?.MaxRetries ?? DefaultMaxRetries,
             retryPolicyAttribute?.DelaySeconds ?? DefaultRetryDelaySeconds,
             retentionAttribute?.MaxAgeSeconds,
-            retentionAttribute?.MaxLengthBytes);
+            retentionAttribute?.MaxLengthBytes,
+            partitionsAttribute?.Count);
     }
 
     private static void ApplyHandlerAttributes(Type handlerType, MessageStreamHandlerOptions options)
@@ -74,10 +77,12 @@ internal static class MessageStreamHandlerOptionsResolver
 
 internal sealed record ResolvedMessageStreamHandlerOptions(
     string QueueName,
+    string ConsumerName,
     StartPosition StartPosition,
     int MaxMessagesBeforeProcessing,
     TimeSpan MaxWaitTime,
     int MaxRetries,
     int RetryDelaySeconds,
     int? MaxAgeSeconds,
-    long? MaxLengthBytes);
+    long? MaxLengthBytes,
+    int? PartitionCount);

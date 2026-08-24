@@ -127,6 +127,38 @@ public class RabbitMqReceivedMessageTests
 
             Assert.Equal("k=v", message.Properties.Tracestate);
         }
+
+        [Fact]
+        public void WithNoHeaders_StreamOffsetIsNull()
+        {
+            var message = new RabbitMqReceivedMessage<TestMessage>(new ChannelStub(), BuildArgs(new TestMessage("x"), new BasicProperties()));
+
+            Assert.Null(message.Properties.StreamOffset);
+        }
+
+        [Fact]
+        public void WithStreamOffsetHeaderAsLong_ExtractsStreamOffset()
+        {
+            var props = new BasicProperties
+            {
+                Headers = new Dictionary<string, object?> { ["x-stream-offset"] = 42L }
+            };
+            var message = new RabbitMqReceivedMessage<TestMessage>(new ChannelStub(), BuildArgs(new TestMessage("x"), props));
+
+            Assert.Equal(42L, message.Properties.StreamOffset);
+        }
+
+        [Fact]
+        public void WithStreamOffsetHeaderAsBytes_ExtractsStreamOffset()
+        {
+            var props = new BasicProperties
+            {
+                Headers = new Dictionary<string, object?> { ["x-stream-offset"] = Encoding.UTF8.GetBytes("99") }
+            };
+            var message = new RabbitMqReceivedMessage<TestMessage>(new ChannelStub(), BuildArgs(new TestMessage("x"), props));
+
+            Assert.Equal(99L, message.Properties.StreamOffset);
+        }
     }
 
     public class Complete

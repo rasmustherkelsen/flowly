@@ -22,27 +22,54 @@ internal class InMemoryBroker(InMemoryOptions options, StreamQueueManifest? stre
 
     public bool IsStreamQueue(string queueName) => streamQueueManifest?.IsStreamQueue(queueName) == true;
 
+    public int? GetPartitionCount(string queueName) => streamQueueManifest?.GetPartitionCount(queueName);
+
     public InMemoryStreamLog GetOrCreateStreamLog(string queueName)
         => _streamLogs.GetOrAdd(queueName, static (name, self) => self.CreateStreamLog(name), this);
 
-    public Task EnqueueOrAppend(string queueName, InMemoryEnvelope envelope, CancellationToken cancellationToken = default)
+    public InMemoryStreamLog GetOrCreatePartitionedStreamLog(string queueName, int partition)
+        => GetOrCreateStreamLog(PartitionLogName(queueName, partition));
+
+    public Task EnqueueOrAppend(string queueName, InMemoryEnvelope envelope, CancellationToken cancellationToken = default, string? partitionKey = null)
     {
         if (IsStreamQueue(queueName))
         {
-            GetOrCreateStreamLog(queueName).Append(envelope);
+            var log = GetPartitionCount(queueName) is { } partitionCount
+                ? GetOrCreatePartitionedStreamLog(queueName, ResolvePartition(queueName, partitionKey, partitionCount))
+                : GetOrCreateStreamLog(queueName);
+
+            log.Append(envelope);
             return Task.CompletedTask;
         }
 
         return GetQueue(queueName).Writer.WriteAsync(envelope, cancellationToken).AsTask();
     }
 
+    private static string PartitionLogName(string queueName, int partition) => $"{queueName}::{partition}";
+
+    private readonly ConcurrentDictionary<string, PartitionRoundRobin> _roundRobins = new();
+
+    private int ResolvePartition(string queueName, string? partitionKey, int partitionCount)
+    {
+        if (partitionKey is null)
+            return _roundRobins.GetOrAdd(queueName, static _ => new PartitionRoundRobin()).Next(partitionCount);
+
+        return PartitionKeyHasher.Resolve(partitionKey, partitionCount);
+    }
+
     private InMemoryStreamLog CreateStreamLog(string queueName)
     {
-        var retention = streamQueueManifest is not null && streamQueueManifest.TryGetRetention(queueName, out var settings)
+        var retention = streamQueueManifest is not null && streamQueueManifest.TryGetRetention(BaseQueueName(queueName), out var settings)
             ? settings
             : default;
 
         return new InMemoryStreamLog(retention, options.EnableReferencePassing);
+    }
+
+    private static string BaseQueueName(string queueName)
+    {
+        var separatorIndex = queueName.LastIndexOf("::", StringComparison.Ordinal);
+        return separatorIndex < 0 ? queueName : queueName[..separatorIndex];
     }
 
     public Channel<InMemoryEnvelope> GetDeadLetterQueue(string queueName)

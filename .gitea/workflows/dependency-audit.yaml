@@ -8,6 +8,9 @@ on:
 
 jobs:
   audit:
+    # Gitea Actions schedules can fire against stale non-default branch refs (go-gitea/gitea#28157);
+    # guard so a scheduled run only ever executes against the default branch.
+    if: gitea.event_name != 'schedule' || gitea.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository code
@@ -40,4 +43,4 @@ jobs:
           subject: "Flowly: dependency vulnerability detected"
           to: ${{ vars.MAIL_TO }}
           from: 'Flowly CI <${{ secrets.MAIL_USERNAME }}>'
-          body_file: vulnerabilities.txt
+          body: file://vulnerabilities.txt

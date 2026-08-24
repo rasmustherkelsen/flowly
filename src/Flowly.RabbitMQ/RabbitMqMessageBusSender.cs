@@ -1,14 +1,16 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using Flowly.MessageInfrastructure.Registration;
 using Flowly.Transport;
 using RabbitMQ.Client;
 
 namespace Flowly.RabbitMQ;
 
-internal class RabbitMqMessageBusSender(string queueName, IChannel channel, long? maxMessageSizeBytes) : IMessageBusSender
+internal class RabbitMqMessageBusSender(string queueName, IChannel channel, long? maxMessageSizeBytes, StreamQueueManifest? streamQueueManifest = null) : IMessageBusSender
 {
     private readonly SemaphoreSlim _semaphore = new(1, 1);
+    private readonly PartitionRoundRobin _roundRobin = new();
 
     public async Task SendMessage<TMessage>(TMessage message, MessageProperties messageProperties, CancellationToken cancellationToken = default)
     {
@@ -79,20 +81,31 @@ internal class RabbitMqMessageBusSender(string queueName, IChannel channel, long
         if (Activity.Current?.TraceStateString is { Length: > 0 } tracestate)
             props.Headers["tracestate"] = tracestate;
 
+        string exchange;
         string routingKey;
-        if (messageProperties.ScheduledEnqueueTime.HasValue)
+        var partitionCount = streamQueueManifest?.GetPartitionCount(queueName);
+
+        if (partitionCount is { } count)
+        {
+            exchange = queueName;
+            routingKey = ResolvePartition(messageProperties.PartitionKey, count).ToString();
+        }
+        else if (messageProperties.ScheduledEnqueueTime.HasValue)
         {
             var delay = messageProperties.ScheduledEnqueueTime.Value - DateTimeOffset.UtcNow;
             var delayMs = Math.Max(1L, (long)delay.TotalMilliseconds);
             props.Expiration = delayMs.ToString();
+            exchange = "";
             routingKey = $"{queueName}.retry";
         }
         else if (!string.IsNullOrEmpty(messageProperties.SessionId))
         {
+            exchange = "";
             routingKey = $"{queueName}.lane.{messageProperties.SessionId}";
         }
         else
         {
+            exchange = "";
             routingKey = queueName;
         }
 
@@ -100,7 +113,7 @@ internal class RabbitMqMessageBusSender(string queueName, IChannel channel, long
         try
         {
             await channel.BasicPublishAsync(
-                "",
+                exchange,
                 routingKey,
                 false,
                 props,
@@ -111,6 +124,14 @@ internal class RabbitMqMessageBusSender(string queueName, IChannel channel, long
         {
             _semaphore.Release();
         }
+    }
+
+    private int ResolvePartition(string? partitionKey, int partitionCount)
+    {
+        if (partitionKey is null)
+            return _roundRobin.Next(partitionCount);
+
+        return PartitionKeyHasher.Resolve(partitionKey, partitionCount);
     }
 
     private void ValidateMessageSize(long actualBytes)

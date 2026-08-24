@@ -4,6 +4,7 @@ using Flowly.MessageInfrastructure.Senders;
 using Flowly.Transport;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Flowly.Tests;
 
@@ -121,6 +122,38 @@ public class MessageRecorderRegistrationExtensionsTests
 
             Assert.Same(flowlyBuilder, returned);
         }
+
+        [Fact]
+        public void MarksQueueAsStreamWithPartitionCountFromContract()
+        {
+            var flowlyBuilder = CreatePartitionedBuilder("primary");
+
+            flowlyBuilder.AddMessageRecorder<PartitionedReading>();
+
+            var streamQueueManifest = StreamQueueManifest.GetOrCreate(flowlyBuilder.Services);
+            Assert.Equal(4, streamQueueManifest.GetPartitionCount("partitioned-reading"));
+        }
+
+        [Fact]
+        public void WhenStreamPartitionsButClientNotPartitionedCapable_Throws()
+        {
+            var flowlyBuilder = CreatePartitionedBuilder("primary", partitionedCapable: false);
+
+            var exception = Assert.Throws<InvalidOperationException>(() => flowlyBuilder.AddMessageRecorder<PartitionedReading>());
+
+            Assert.Contains(nameof(IPartitionedStreamCapableMessageBusClient), exception.Message);
+        }
+    }
+
+    private static IFlowlyBuilder CreatePartitionedBuilder(string providerName, bool partitionedCapable = true)
+    {
+        var services = new ServiceCollection();
+        var registry = new MessageBusClientRegistry();
+        registry.Register(providerName, partitionedCapable ? new PartitionedStreamCapableStubClient() : new StreamCapableStubClient(), null);
+        services.AddSingleton<IMessageBusClientRegistry>(registry);
+        services.AddSingleton(new ProviderQueueManifest(providerName, true, "Stub"));
+
+        return new StubFlowlyBuilder(services);
     }
 
     private sealed class StubFlowlyBuilder(IServiceCollection services) : IFlowlyBuilder
@@ -152,9 +185,20 @@ public class MessageRecorderRegistrationExtensionsTests
         public Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default) => throw new NotImplementedException();
     }
 
-    private sealed class StreamCapableStubClient : StubMessageBusClient, IStreamCapableMessageBusClient
+    private class StreamCapableStubClient : StubMessageBusClient, IStreamCapableMessageBusClient
     {
         public Task<IMessageBusProcessor<TMessage>> CreateStreamProcessor<TMessage>(string queueName, StartPosition startPosition, MessageBusProcessorOptions options)
+            => throw new NotImplementedException();
+    }
+
+    [StreamPartitions(4)]
+    private record PartitionedReading;
+
+    private sealed class PartitionedStreamCapableStubClient : StreamCapableStubClient, IPartitionedStreamCapableMessageBusClient
+    {
+        public Task<IPartitionedStreamConsumer<TMessage>> CreatePartitionedStreamConsumer<TMessage>(
+            string queueName, int partitionCount, Func<int, CancellationToken, Task<StartPosition>> resolveStartPosition, MessageBusProcessorOptions options,
+            ILogger logger)
             => throw new NotImplementedException();
     }
 }

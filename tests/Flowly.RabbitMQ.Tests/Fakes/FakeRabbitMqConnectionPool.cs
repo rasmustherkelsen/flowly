@@ -1,4 +1,5 @@
 using RabbitMQ.Client;
+using RabbitMQ.Stream.Client;
 
 namespace Flowly.RabbitMQ.Tests.Fakes;
 
@@ -12,4 +13,10 @@ internal class FakeRabbitMqConnectionPool(FakeConnection publisherConnection, Fa
 
     public Task<IConnection> GetConsumerConnection(CancellationToken cancellationToken = default)
         => Task.FromResult<IConnection>(consumerConnection);
+
+    public Task<StreamSystem> GetStreamSystem(CancellationToken cancellationToken = default)
+        => throw new NotImplementedException();
+
+    public Task<string[]> QueryStreamPartitions(string superStreamName, CancellationToken cancellationToken = default)
+        => throw new NotImplementedException();
 }

@@ -35,14 +35,14 @@ using Messages;
 namespace Receiver.Handlers;
 
 [RetryPolicy(maxRetries: 2, delaySeconds: 2)]
-internal class MyMessageHandler : MessageHandler<MyMessage>
+internal class MyMessageHandler(ILogger<MyMessageHandler> logger) : MessageHandler<MyMessage>
 {
     public override Task Handle(IMessageContext<MyMessage> messageContext)
     {
         if (messageContext.Message.Text.StartsWith("[fail]", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Simulated failure.");
 
-        Console.WriteLine($"Received: {messageContext.Message.Text}");
+        logger.LogInformation("Received: {Text}", messageContext.Message.Text);
         return Task.CompletedTask;
     }
 }
@@ -458,14 +458,14 @@ using App.Messages;
 namespace App.Handlers;
 
 [RetryPolicy(maxRetries: 2, delaySeconds: 2)]
-internal class MyMessageHandler : MessageHandler<MyMessage>
+internal class MyMessageHandler(ILogger<MyMessageHandler> logger) : MessageHandler<MyMessage>
 {
     public override Task Handle(IMessageContext<MyMessage> messageContext)
     {
         if (messageContext.Message.Text.StartsWith("[fail]", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Simulated failure.");
 
-        Console.WriteLine($"Received: {messageContext.Message.Text}");
+        logger.LogInformation("Received: {Text}", messageContext.Message.Text);
         return Task.CompletedTask;
     }
 }
