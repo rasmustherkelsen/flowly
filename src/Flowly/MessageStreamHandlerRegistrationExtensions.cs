@@ -67,10 +67,7 @@ public static class MessageStreamHandlerRegistrationExtensions
 
         if (resolved.PartitionCount is { } partitionCount)
         {
-            if (client is not IPartitionedStreamCapableMessageBusClient)
-                throw new InvalidOperationException(
-                    $"{typeof(TMessage).Name} carries [StreamPartitions], but the message bus client for provider '{providerName}' does not " +
-                    $"support partitioned message streaming. The client must implement {nameof(IPartitionedStreamCapableMessageBusClient)}.");
+            MessageRecorderRegistrationExtensions.ThrowIfNotPartitionedStreamCapable(flowlyBuilder.Services, providerName, typeof(TMessage));
 
             flowlyBuilder.Services
                 .AddSingleton(new PartitionedMessageStreamHandlerSettings<TMessage, THandler>(
