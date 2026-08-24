@@ -113,6 +113,7 @@ public class MessageStreamProcessingBackgroundServiceTests
             await handler.WaitForInvocations(1, TestTimeout);
             await first.Completed.Task.WaitAsync(TestTimeout);
             await second.Completed.Task.WaitAsync(TestTimeout);
+            await WaitUntil(() => instrumentation.SucceededCounts.Count > 0, TestTimeout);
 
             Assert.Equal([2L], instrumentation.SucceededCounts);
             Assert.Empty(instrumentation.HaltedReasons);
