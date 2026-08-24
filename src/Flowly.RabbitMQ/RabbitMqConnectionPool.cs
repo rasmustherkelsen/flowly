@@ -35,15 +35,13 @@ internal sealed class RabbitMqConnectionPool(string uri, int streamPort = 5552) 
                 ? "/"
                 : Uri.UnescapeDataString(parsed.AbsolutePath.TrimStart('/'));
 
-            var config = new StreamSystemConfig
+            _streamSystem = await StreamSystem.Create(new StreamSystemConfig
             {
                 UserName = userInfo.Length > 0 && userInfo[0].Length > 0 ? Uri.UnescapeDataString(userInfo[0]) : "guest",
                 Password = userInfo.Length > 1 ? Uri.UnescapeDataString(userInfo[1]) : "guest",
                 VirtualHost = virtualHost,
                 Endpoints = [ResolveStreamEndpoint()]
-            };
-
-            _streamSystem = await StreamSystem.Create(config);
+            });
 
             return _streamSystem;
         }
