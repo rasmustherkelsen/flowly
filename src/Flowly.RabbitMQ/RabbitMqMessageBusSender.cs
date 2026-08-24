@@ -10,7 +10,7 @@ namespace Flowly.RabbitMQ;
 internal class RabbitMqMessageBusSender(string queueName, IChannel channel, long? maxMessageSizeBytes, StreamQueueManifest? streamQueueManifest = null) : IMessageBusSender
 {
     private readonly SemaphoreSlim _semaphore = new(1, 1);
-    private long _roundRobinCounter;
+    private readonly PartitionRoundRobin _roundRobin = new();
 
     public async Task SendMessage<TMessage>(TMessage message, MessageProperties messageProperties, CancellationToken cancellationToken = default)
     {
@@ -129,7 +129,7 @@ internal class RabbitMqMessageBusSender(string queueName, IChannel channel, long
     private int ResolvePartition(string? partitionKey, int partitionCount)
     {
         if (partitionKey is null)
-            return (int)(Interlocked.Increment(ref _roundRobinCounter) % partitionCount);
+            return _roundRobin.Next(partitionCount);
 
         return PartitionKeyHasher.Resolve(partitionKey, partitionCount);
     }

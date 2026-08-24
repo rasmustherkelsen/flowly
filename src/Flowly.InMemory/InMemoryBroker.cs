@@ -47,15 +47,12 @@ internal class InMemoryBroker(InMemoryOptions options, StreamQueueManifest? stre
 
     private static string PartitionLogName(string queueName, int partition) => $"{queueName}::{partition}";
 
-    private readonly ConcurrentDictionary<string, int> _roundRobinCounters = new();
+    private readonly ConcurrentDictionary<string, PartitionRoundRobin> _roundRobins = new();
 
     private int ResolvePartition(string queueName, string? partitionKey, int partitionCount)
     {
         if (partitionKey is null)
-        {
-            var next = _roundRobinCounters.AddOrUpdate(queueName, 0, (_, current) => current + 1);
-            return next % partitionCount;
-        }
+            return _roundRobins.GetOrAdd(queueName, static _ => new PartitionRoundRobin()).Next(partitionCount);
 
         return PartitionKeyHasher.Resolve(partitionKey, partitionCount);
     }
