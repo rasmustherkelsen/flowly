@@ -254,6 +254,8 @@ public class RabbitMqMessagingTopologyCreatorTests
         public Task<IConnection> GetConsumerConnection(CancellationToken cancellationToken = default) => Task.FromResult<IConnection>(new StreamConnection(channel));
 
         public Task<global::RabbitMQ.Stream.Client.StreamSystem> GetStreamSystem(CancellationToken cancellationToken = default) => throw new NotImplementedException();
+
+        public Task<string[]> QueryStreamPartitions(string superStreamName, CancellationToken cancellationToken = default) => throw new NotImplementedException();
     }
 
     private sealed class StreamConnection(IChannel channel) : IConnection
@@ -316,6 +318,11 @@ public class RabbitMqMessagingTopologyCreatorTests
         }
 
         public Task<global::RabbitMQ.Stream.Client.StreamSystem> GetStreamSystem(CancellationToken cancellationToken = default)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<string[]> QueryStreamPartitions(string superStreamName, CancellationToken cancellationToken = default)
         {
             throw new NotImplementedException();
         }

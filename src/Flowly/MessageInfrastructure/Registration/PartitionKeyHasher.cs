@@ -10,7 +10,7 @@ namespace Flowly.MessageInfrastructure.Registration;
 ///     <see cref="Transport.IPartitionedStreamCapableMessageBusClient" /> so the "same key always routes to the same
 ///     partition" guarantee documented on <see cref="MessageProperties.PartitionKey" /> actually holds.
 /// </summary>
-public static class PartitionKeyHasher
+internal static class PartitionKeyHasher
 {
     /// <summary>
     ///     Resolves <paramref name="partitionKey" /> to a partition index in the range

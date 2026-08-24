@@ -29,21 +29,15 @@ internal sealed class RabbitMqConnectionPool(string uri, int streamPort = 5552) 
             if (_streamSystem is not null)
                 return _streamSystem;
 
-            var parsed = new Uri(uri);
-            var userInfo = parsed.UserInfo.Split(':', 2);
-            var virtualHost = string.IsNullOrEmpty(parsed.AbsolutePath) || parsed.AbsolutePath == "/"
-                ? "/"
-                : Uri.UnescapeDataString(parsed.AbsolutePath.TrimStart('/'));
+            var connectionFactory = new ConnectionFactory { Uri = new Uri(uri) };
 
-            var config = new StreamSystemConfig
+            _streamSystem = await StreamSystem.Create(new StreamSystemConfig
             {
-                UserName = userInfo.Length > 0 && userInfo[0].Length > 0 ? Uri.UnescapeDataString(userInfo[0]) : "guest",
-                Password = userInfo.Length > 1 ? Uri.UnescapeDataString(userInfo[1]) : "guest",
-                VirtualHost = virtualHost,
+                UserName = connectionFactory.UserName,
+                Password = connectionFactory.Password,
+                VirtualHost = connectionFactory.VirtualHost,
                 Endpoints = [ResolveStreamEndpoint()]
-            };
-
-            _streamSystem = await StreamSystem.Create(config);
+            });
 
             return _streamSystem;
         }
@@ -51,6 +45,12 @@ internal sealed class RabbitMqConnectionPool(string uri, int streamPort = 5552) 
         {
             _streamSystemLock.Release();
         }
+    }
+
+    public async Task<string[]> QueryStreamPartitions(string superStreamName, CancellationToken cancellationToken = default)
+    {
+        var streamSystem = await GetStreamSystem(cancellationToken);
+        return await streamSystem.QueryPartition(superStreamName);
     }
 
     internal DnsEndPoint ResolveStreamEndpoint() => new(new Uri(uri).Host, streamPort);

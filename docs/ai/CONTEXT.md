@@ -964,6 +964,10 @@ When `createTopology: false`, the retry queue must be pre-declared with those ex
 
 The validator uses `QueueDeclarePassiveAsync` to confirm existence. It cannot verify that the DLX arguments are set correctly — if the queue exists but was declared without `x-dead-letter-exchange`, retried messages will expire silently without re-routing. Always declare the retry queue with the exact arguments above.
 
+#### Partitioned stream topology — declared vs. actual partition count
+
+`RabbitMqPartitionedStreamTopologyValidator` (`Flowly.RabbitMQ/RabbitMqPartitionedStreamTopologyValidator.cs`) is a second `IMessagingTopologyValidator` registered alongside `RabbitMqRetryTopologyValidator` — `QueueRegistrarHostedService` runs every validator whose `ProviderName` matches the provider, not just the first match, so both compose. When `createTopology: false`, it queries the broker's actual Super Stream partitions via `IRabbitMqConnectionPool.QueryStreamPartitions` (which wraps the RabbitMQ Stream protocol client's `StreamSystem.QueryPartition`) for every queue `StreamQueueManifest.GetPartitionCount` reports as partitioned, and throws `InvalidOperationException` if the broker's partition stream count doesn't match the `[StreamPartitions(n)]` count declared on the message contract — a mismatch would otherwise let `RabbitMqMessageBusSender.ResolvePartition` compute routing keys with no matching exchange binding (publishes silently dropped) or leave real broker partitions permanently unconsumed. This check does not run when `createTopology: true` — that path is additive (declares missing partition streams/bindings) and doesn't reconcile orphaned ones, so a stale over-count on the broker after lowering `[StreamPartitions(n)]` is not currently detected; this was a deliberate scope decision, not an oversight.
+
 ---
 
 ### 16. Naming & Conventions
@@ -1036,6 +1040,7 @@ Rules:
 | RabbitMQ wiring | `Flowly.RabbitMQ/RabbitMqRegistration.cs` |
 | RabbitMQ topology creation | `Flowly.RabbitMQ/RabbitMqMessagingTopologyCreator.cs` |
 | RabbitMQ retry DLX validation | `Flowly.RabbitMQ/RabbitMqRetryTopologyValidator.cs` |
+| RabbitMQ partitioned stream topology validation | `Flowly.RabbitMQ/RabbitMqPartitionedStreamTopologyValidator.cs` |
 | RabbitMQ connection pool | `Flowly.RabbitMQ/RabbitMqConnectionPool.cs` |
 | InMemory wiring | `Flowly.InMemory/InMemoryRegistration.cs` |
 | InMemory broker (channel store) | `Flowly.InMemory/InMemoryBroker.cs` |

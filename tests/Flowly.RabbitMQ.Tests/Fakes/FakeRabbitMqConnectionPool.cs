@@ -16,4 +16,7 @@ internal class FakeRabbitMqConnectionPool(FakeConnection publisherConnection, Fa
 
     public Task<StreamSystem> GetStreamSystem(CancellationToken cancellationToken = default)
         => throw new NotImplementedException();
+
+    public Task<string[]> QueryStreamPartitions(string superStreamName, CancellationToken cancellationToken = default)
+        => throw new NotImplementedException();
 }

@@ -41,11 +41,8 @@ public static class MessageRecorderRegistrationExtensions
         ThrowIfNotStreamCapable(flowlyBuilder.Services, providerName);
 
         var partitionsAttribute = typeof(TMessage).GetCustomAttribute<StreamPartitionsAttribute>();
-        if (partitionsAttribute != null &&
-            ProviderNameResolver.GetRegistry(flowlyBuilder.Services).GetClient(providerName) is not IPartitionedStreamCapableMessageBusClient)
-            throw new InvalidOperationException(
-                $"{typeof(TMessage).Name} carries [StreamPartitions], but the message bus client for provider '{providerName}' does not " +
-                $"support partitioned message streaming. The client must implement {nameof(IPartitionedStreamCapableMessageBusClient)}.");
+        if (partitionsAttribute != null)
+            ThrowIfNotPartitionedStreamCapable(flowlyBuilder.Services, providerName, typeof(TMessage));
 
         flowlyBuilder.Services
             .AddSingleton(new MessageSubmitter<TMessage>.QueueSettings(queueName, providerName))
@@ -69,5 +66,13 @@ public static class MessageRecorderRegistrationExtensions
             throw new InvalidOperationException(
                 $"The message bus client for provider '{providerName}' does not support message streaming. " +
                 $"The client must implement {nameof(IStreamCapableMessageBusClient)}.");
+    }
+
+    internal static void ThrowIfNotPartitionedStreamCapable(IServiceCollection services, string providerName, Type messageType)
+    {
+        if (ProviderNameResolver.GetRegistry(services).GetClient(providerName) is not IPartitionedStreamCapableMessageBusClient)
+            throw new InvalidOperationException(
+                $"{messageType.Name} carries [StreamPartitions], but the message bus client for provider '{providerName}' does not " +
+                $"support partitioned message streaming. The client must implement {nameof(IPartitionedStreamCapableMessageBusClient)}.");
     }
 }

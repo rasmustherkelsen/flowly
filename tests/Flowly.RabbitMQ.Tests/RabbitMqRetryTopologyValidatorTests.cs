@@ -143,6 +143,11 @@ public class RabbitMqRetryTopologyValidatorTests
         {
             throw new NotImplementedException();
         }
+
+        public Task<string[]> QueryStreamPartitions(string superStreamName, CancellationToken cancellationToken = default)
+        {
+            throw new NotImplementedException();
+        }
     }
 
     private class SequencedConnection(IChannel[] channels) : IConnection

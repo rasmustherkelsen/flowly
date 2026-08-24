@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Text;
 using System.Text.Json;
 using Flowly.Transport;
 using Microsoft.Extensions.Logging;
@@ -57,10 +58,12 @@ internal sealed class RabbitMqPartitionedStreamConsumer<TMessage>(
                 if (processor is null)
                 {
                     logger.LogWarning(
-                        "Received a stream message on queue '{QueueName}' for partition {Partition} that this process does not " +
-                        "currently own — most likely a Single Active Consumer handover in progress. The message is not processed " +
-                        "here; since no offset is advanced for it, it will be redelivered from the last checkpointed offset once " +
-                        "partition ownership settles.",
+                        "Received a stream message on queue '{QueueName}' for partition {Partition} that this process is not " +
+                        "currently processing — either a Single Active Consumer handover is in progress, or this partition was " +
+                        "halted after exhausting its retries. The message is dropped without advancing any offset; it is only " +
+                        "redelivered if a MessageStreamCheckpoint is registered for this consumer and its last saved position is " +
+                        "at or before this message. Without a registered checkpoint, the next assignment resumes from the " +
+                        "configured StartPosition instead.",
                         queueName, partition);
                     return;
                 }
@@ -73,10 +76,7 @@ internal sealed class RabbitMqPartitionedStreamConsumer<TMessage>(
 
                 if (!isActive)
                 {
-                    lock (_lock)
-                    {
-                        _processors.Remove(partition);
-                    }
+                    RemoveProcessor(partition);
 
                     if (PartitionRevoked != null)
                         _ = FireRevoked(partition);
@@ -84,7 +84,7 @@ internal sealed class RabbitMqPartitionedStreamConsumer<TMessage>(
                     return new OffsetTypeFirst();
                 }
 
-                var processor = new RabbitMqPartitionProcessor(logger, queueName, partition);
+                var processor = new RabbitMqPartitionProcessor(this, logger, queueName, partition);
                 lock (_lock)
                 {
                     _processors[partition] = processor;
@@ -120,6 +120,14 @@ internal sealed class RabbitMqPartitionedStreamConsumer<TMessage>(
         }
     }
 
+    private void RemoveProcessor(int partition)
+    {
+        lock (_lock)
+        {
+            _processors.Remove(partition);
+        }
+    }
+
     private int ResolvePartitionIndex(string sourceStream)
     {
         var prefix = $"{queueName}-";
@@ -147,7 +155,11 @@ internal sealed class RabbitMqPartitionedStreamConsumer<TMessage>(
         }
     }
 
-    private sealed class RabbitMqPartitionProcessor(ILogger logger, string queueName, int partition) : IMessageBusProcessor<TMessage>
+    private sealed class RabbitMqPartitionProcessor(
+        RabbitMqPartitionedStreamConsumer<TMessage> owner,
+        ILogger logger,
+        string queueName,
+        int partition) : IMessageBusProcessor<TMessage>
     {
         private readonly List<Func<IReceivedMessage<TMessage>, CancellationToken, Task>> _messageHandlers = [];
         private readonly List<Func<ErrorDetails, Task>> _errorHandlers = [];
@@ -191,9 +203,17 @@ internal sealed class RabbitMqPartitionedStreamConsumer<TMessage>(
 
         public Task StartProcessingMessages(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
-        public Task StopProcessing(CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task StopProcessing(CancellationToken cancellationToken)
+        {
+            owner.RemoveProcessor(partition);
+            return Task.CompletedTask;
+        }
 
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        public ValueTask DisposeAsync()
+        {
+            owner.RemoveProcessor(partition);
+            return ValueTask.CompletedTask;
+        }
 
         public async Task Dispatch(Message message, long offset)
         {
@@ -255,6 +275,7 @@ internal sealed class RabbitMqPartitionedStreamConsumer<TMessage>(
             {
                 int i => i,
                 long l => (int)l,
+                byte[] b => int.TryParse(Encoding.UTF8.GetString(b), out var parsed) ? parsed : 0,
                 _ => 0
             };
         }
@@ -262,7 +283,12 @@ internal sealed class RabbitMqPartitionedStreamConsumer<TMessage>(
         private static string? GetStringProperty(ApplicationProperties? properties, string key)
         {
             if (properties is null || !properties.TryGetValue(key, out var value)) return null;
-            return value as string;
+            return value switch
+            {
+                string s => s,
+                byte[] b => Encoding.UTF8.GetString(b),
+                _ => null
+            };
         }
     }
 }
