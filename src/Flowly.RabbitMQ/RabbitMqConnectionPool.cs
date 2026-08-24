@@ -53,5 +53,11 @@ internal sealed class RabbitMqConnectionPool(string uri, int streamPort = 5552) 
         }
     }
 
+    public async Task<string[]> QueryStreamPartitions(string superStreamName, CancellationToken cancellationToken = default)
+    {
+        var streamSystem = await GetStreamSystem(cancellationToken);
+        return await streamSystem.QueryPartition(superStreamName);
+    }
+
     internal DnsEndPoint ResolveStreamEndpoint() => new(new Uri(uri).Host, streamPort);
 }

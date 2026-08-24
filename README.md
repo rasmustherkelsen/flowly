@@ -561,6 +561,8 @@ A halted partition (retries exhausted, per [Retry and failure handling](#retry-a
 
 > **RabbitMQ partitioned consumption uses a separate connection port from AMQP** (the Stream protocol, port `5552` by default, distinct from AMQP's `5672`) on the same broker host. Configure a different port via `UseRabbitMq(..., streamPort: <port>)` — the stream protocol is always assumed to be on the same host as the AMQP connection, only the port is configurable. If you change your deployment's published stream port, pass the matching `streamPort` value.
 
+**When `createTopology: false` on RabbitMQ, Flowly validates the declared partition count at startup.** For each queue carrying `[StreamPartitions(n)]`, Flowly queries the broker for the Super Stream's actual partition streams and throws `InvalidOperationException` if the count doesn't match `n` (or if the Super Stream doesn't exist at all). This catches drift between your code and a pre-provisioned broker before it causes silent data loss — an undetected mismatch would let the sender compute publish routing keys with no matching exchange binding (dropped without error) or leave real broker partitions permanently unconsumed. This check only runs when `createTopology: false`; with `createTopology: true` (the default), Flowly declares any missing partition streams and bindings but does not reconcile a broker that has *more* partitions than currently declared.
+
 ---
 
 ## Events (Fan-Out)

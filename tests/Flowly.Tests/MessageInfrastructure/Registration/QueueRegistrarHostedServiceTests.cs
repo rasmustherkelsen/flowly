@@ -185,6 +185,24 @@ public class QueueRegistrarHostedServiceTests
         }
 
         [Fact]
+        public async Task WhenTopologyCreationDisabled_CallsAllValidatorsRegisteredForTheProvider()
+        {
+            var firstValidator = new SpyTopologyValidator("asb");
+            var secondValidator = new SpyTopologyValidator("asb");
+            var manifest = ManifestWith("asb", "AzureServiceBus", "order-placed");
+            var service = Build(
+                [manifest],
+                [("asb", new SpyTopologyCreator())],
+                topologyValidators: [firstValidator, secondValidator],
+                createTopology: false);
+
+            await service.StartAsync(CancellationToken.None);
+
+            Assert.True(firstValidator.WasCalled);
+            Assert.True(secondValidator.WasCalled);
+        }
+
+        [Fact]
         public async Task WhenTopologyCreationDisabled_PassesCancellationTokenToValidator()
         {
             using var cts = new CancellationTokenSource();
@@ -282,10 +300,12 @@ public class QueueRegistrarHostedServiceTests
         private sealed class SpyTopologyValidator(string providerName) : IMessagingTopologyValidator
         {
             public CancellationToken ReceivedCancellationToken { get; private set; }
+            public bool WasCalled { get; private set; }
             public string ProviderName => providerName;
 
             public Task Validate(IReadOnlyCollection<IQueueDescription> queueDescriptions, CancellationToken cancellationToken)
             {
+                WasCalled = true;
                 ReceivedCancellationToken = cancellationToken;
                 return Task.CompletedTask;
             }

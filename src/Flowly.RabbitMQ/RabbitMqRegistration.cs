@@ -106,6 +106,9 @@ public static class RabbitMqRegistration
         services.AddSingleton<IMessagingTopologyValidator>(
             new RabbitMqRetryTopologyValidator(effectiveName, connectionPool, streamQueueManifest));
 
+        services.AddSingleton<IMessagingTopologyValidator>(
+            new RabbitMqPartitionedStreamTopologyValidator(effectiveName, connectionPool, streamQueueManifest));
+
         TransportRegistrationHelper.RegisterProviderManifest(services, clientRegistry, effectiveName, TransportType);
 
         return flowlyBuilder;
