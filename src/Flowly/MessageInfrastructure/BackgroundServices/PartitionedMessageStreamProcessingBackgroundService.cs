@@ -97,22 +97,30 @@ internal sealed class PartitionedMessageStreamProcessingBackgroundService<TMessa
 
         var cts = CancellationTokenSource.CreateLinkedTokenSource(_stoppingToken);
         var runTask = runner.Run(cts.Token);
+        var activeRunner = new ActiveRunner(runner, runTask, cts);
 
         lock (_lock)
         {
-            _activeRunners[partition] = new ActiveRunner(runner, runTask, cts);
+            _activeRunners[partition] = activeRunner;
         }
 
         _ = runTask.ContinueWith(_ =>
         {
-            ActiveRunner? entry;
+            var stillCurrent = false;
             lock (_lock)
             {
-                _activeRunners.Remove(partition, out entry);
+                if (_activeRunners.TryGetValue(partition, out var current) && ReferenceEquals(current, activeRunner))
+                {
+                    _activeRunners.Remove(partition);
+                    stillCurrent = true;
+                }
             }
 
-            if (entry is not null)
-                _ = DisposeEntry(entry);
+            // If the partition was revoked and reassigned before this continuation ran, `activeRunner` has already
+            // been replaced in the dictionary by a newer instance — skip removal/disposal so we don't tear down
+            // the currently-active runner for this partition (an ABA race between revoke and reassignment).
+            if (stillCurrent)
+                _ = DisposeEntry(activeRunner);
         }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
     }
 
