@@ -98,6 +98,7 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
             await processor.Deliver(new FakeReceivedMessage(new TestMessage("a")));
 
             await handler.WaitForInvocations(1, TestTimeout);
+            await WaitUntil(() => instrumentation.SucceededCounts.Count > 0, TestTimeout);
 
             Assert.Equal(0, handler.Invocations.Single().Partition);
             Assert.Equal([1L], instrumentation.SucceededCounts);
@@ -165,7 +166,7 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
             var processorOne = await consumer.AssignPartition(1);
 
             await processorZero.Deliver(new FakeReceivedMessage(new TestMessage("poison")));
-            await Task.Delay(100);
+            await WaitUntil(() => instrumentation.HaltedReasons.Count > 0, TestTimeout);
             Assert.Contains("permanent failure", instrumentation.HaltedReasons);
 
             await processorOne.Deliver(new FakeReceivedMessage(new TestMessage("still-works")));
