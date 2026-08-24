@@ -57,10 +57,12 @@ internal sealed class RabbitMqPartitionedStreamConsumer<TMessage>(
                 if (processor is null)
                 {
                     logger.LogWarning(
-                        "Received a stream message on queue '{QueueName}' for partition {Partition} that this process does not " +
-                        "currently own — most likely a Single Active Consumer handover in progress. The message is not processed " +
-                        "here; since no offset is advanced for it, it will be redelivered from the last checkpointed offset once " +
-                        "partition ownership settles.",
+                        "Received a stream message on queue '{QueueName}' for partition {Partition} that this process is not " +
+                        "currently processing — either a Single Active Consumer handover is in progress, or this partition was " +
+                        "halted after exhausting its retries. The message is dropped without advancing any offset; it is only " +
+                        "redelivered if a MessageStreamCheckpoint is registered for this consumer and its last saved position is " +
+                        "at or before this message. Without a registered checkpoint, the next assignment resumes from the " +
+                        "configured StartPosition instead.",
                         queueName, partition);
                     return;
                 }
