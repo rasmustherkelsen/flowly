@@ -103,7 +103,7 @@ public class RabbitMqMessageBusReceiverTests
         }
 
         [Fact]
-        public async Task CancelsConsumerAfterCollecting()
+        public async Task DoesNotCancelConsumerAfterCollecting()
         {
             var fakeChannel = new FakeChannel();
             var receiver = new RabbitMqMessageBusReceiver(fakeChannel, "test-queue");
@@ -112,7 +112,68 @@ public class RabbitMqMessageBusReceiverTests
                 maxMessagesBeforeProcessing: 5,
                 maxWaitTime: TimeSpan.FromMilliseconds(10));
 
+            Assert.False(fakeChannel.ConsumerWasCancelled);
+        }
+
+        [Fact]
+        public async Task CancelsConsumerOnDispose()
+        {
+            var fakeChannel = new FakeChannel();
+            var receiver = new RabbitMqMessageBusReceiver(fakeChannel, "test-queue");
+
+            await receiver.ReceiveMessages<TestMessage>(
+                maxMessagesBeforeProcessing: 5,
+                maxWaitTime: TimeSpan.FromMilliseconds(10));
+
+            await receiver.DisposeAsync();
+
             Assert.True(fakeChannel.ConsumerWasCancelled);
+        }
+
+        [Fact]
+        public async Task ReusesSameConsumerAcrossMultipleCalls()
+        {
+            var fakeChannel = new FakeChannel();
+            var receiver = new RabbitMqMessageBusReceiver(fakeChannel, "test-queue");
+
+            await receiver.ReceiveMessages<TestMessage>(
+                maxMessagesBeforeProcessing: 5,
+                maxWaitTime: TimeSpan.FromMilliseconds(10));
+
+            await receiver.ReceiveMessages<TestMessage>(
+                maxMessagesBeforeProcessing: 5,
+                maxWaitTime: TimeSpan.FromMilliseconds(10));
+
+            Assert.Equal(1, fakeChannel.BasicConsumeCallCount);
+        }
+
+        [Fact]
+        public async Task WhenMessagesArriveAcrossSeparateCalls_DeliversEachCallsMessagesWithoutLoss()
+        {
+            var fakeChannel = new FakeChannel();
+            var receiver = new RabbitMqMessageBusReceiver(fakeChannel, "test-queue");
+
+            _ = Task.Run(async () =>
+            {
+                await fakeChannel.WaitForConsumerAsync();
+                await fakeChannel.DeliverAsync(1, new TestMessage("first"));
+            });
+
+            var firstResult = await receiver.ReceiveMessages<TestMessage>(
+                maxMessagesBeforeProcessing: 1,
+                maxWaitTime: TimeSpan.FromSeconds(5));
+
+            Assert.Single(firstResult);
+            Assert.Equal("first", firstResult.Single().Body.Value);
+
+            await fakeChannel.DeliverAsync(2, new TestMessage("second"));
+
+            var secondResult = await receiver.ReceiveMessages<TestMessage>(
+                maxMessagesBeforeProcessing: 1,
+                maxWaitTime: TimeSpan.FromSeconds(5));
+
+            Assert.Single(secondResult);
+            Assert.Equal("second", secondResult.Single().Body.Value);
         }
     }
 
@@ -126,6 +187,7 @@ public class RabbitMqMessageBusReceiverTests
 
         public ushort LastPrefetchCount { get; private set; }
         public bool ConsumerWasCancelled { get; private set; }
+        public int BasicConsumeCallCount { get; private set; }
 
         public Task WaitForConsumerAsync() => _consumerRegistered.WaitAsync();
 
@@ -153,6 +215,7 @@ public class RabbitMqMessageBusReceiverTests
 
         public Task<string> BasicConsumeAsync(string queue, bool autoAck, string consumerTag, bool noLocal, bool exclusive, IDictionary<string, object?>? arguments, IAsyncBasicConsumer consumer, CancellationToken cancellationToken = default)
         {
+            BasicConsumeCallCount++;
             _consumer = consumer;
             _consumerRegistered.Release();
             return Task.FromResult(_consumerTag);
