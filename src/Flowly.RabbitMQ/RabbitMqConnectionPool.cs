@@ -1,4 +1,5 @@
 using System.Net;
+using System.Reflection;
 using RabbitMQ.Client;
 using RabbitMQ.Stream.Client;
 
@@ -6,8 +7,8 @@ namespace Flowly.RabbitMQ;
 
 internal sealed class RabbitMqConnectionPool(string uri, int streamPort = 5552) : IRabbitMqConnectionPool, IAsyncDisposable
 {
-    private readonly RabbitMqLazyConnection _publisherConnection = new(uri);
-    private readonly RabbitMqLazyConnection _consumerConnection = new(uri);
+    private readonly RabbitMqLazyConnection _publisherConnection = new(uri, ResolveClientProvidedName("publisher"));
+    private readonly RabbitMqLazyConnection _consumerConnection = new(uri, ResolveClientProvidedName("consumer"));
     private readonly SemaphoreSlim _streamSystemLock = new(1, 1);
     private StreamSystem? _streamSystem;
 
@@ -54,6 +55,9 @@ internal sealed class RabbitMqConnectionPool(string uri, int streamPort = 5552) 
     }
 
     internal DnsEndPoint ResolveStreamEndpoint() => new(new Uri(uri).Host, streamPort);
+
+    internal static string ResolveClientProvidedName(string role)
+        => $"{Assembly.GetEntryAssembly()?.GetName().Name ?? "flowly"}-{role}";
 
     public async ValueTask DisposeAsync()
     {

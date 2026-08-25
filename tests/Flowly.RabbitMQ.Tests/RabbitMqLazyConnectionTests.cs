@@ -7,7 +7,7 @@ public class RabbitMqLazyConnectionTests
         [Fact]
         public async Task WhenNeverConnected_DoesNotThrow()
         {
-            var rabbitMqLazyConnection = new RabbitMqLazyConnection("amqp://guest:guest@localhost:5672/");
+            var rabbitMqLazyConnection = new RabbitMqLazyConnection("amqp://guest:guest@localhost:5672/", "test-connection");
 
             await rabbitMqLazyConnection.DisposeAsync();
         }

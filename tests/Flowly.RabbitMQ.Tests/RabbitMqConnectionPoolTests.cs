@@ -35,6 +35,34 @@ public class RabbitMqConnectionPoolTests
         }
     }
 
+    public class ResolveClientProvidedName
+    {
+        [Fact]
+        public void ReturnsNameEndingWithGivenRole()
+        {
+            var clientProvidedName = RabbitMqConnectionPool.ResolveClientProvidedName("publisher");
+
+            Assert.EndsWith("-publisher", clientProvidedName);
+        }
+
+        [Fact]
+        public void PublisherAndConsumerRolesResolveToDistinctNames()
+        {
+            var publisherName = RabbitMqConnectionPool.ResolveClientProvidedName("publisher");
+            var consumerName = RabbitMqConnectionPool.ResolveClientProvidedName("consumer");
+
+            Assert.NotEqual(publisherName, consumerName);
+        }
+
+        [Fact]
+        public void NeverReturnsNullOrEmpty()
+        {
+            var clientProvidedName = RabbitMqConnectionPool.ResolveClientProvidedName("consumer");
+
+            Assert.False(string.IsNullOrEmpty(clientProvidedName));
+        }
+    }
+
     public class DisposeAsync
     {
         [Fact]
