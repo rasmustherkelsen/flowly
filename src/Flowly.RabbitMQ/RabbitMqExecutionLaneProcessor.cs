@@ -4,7 +4,7 @@ using RabbitMQ.Client.Events;
 
 namespace Flowly.RabbitMQ;
 
-internal class RabbitMqExecutionLaneProcessor(IChannel channel, string queueName, string laneFilter) : IExecutionLaneProcessor
+internal class RabbitMqExecutionLaneProcessor(IChannel channel, string queueName, string laneFilter, MessageBusProcessorOptions options) : IExecutionLaneProcessor
 {
     private readonly string _laneQueueName = $"{queueName}.lane.{laneFilter}";
     private readonly List<Func<ErrorDetails, Task>> _processErrorHandlers = [];
@@ -62,7 +62,9 @@ internal class RabbitMqExecutionLaneProcessor(IChannel channel, string queueName
             false,
             cancellationToken: cancellationToken);
 
-        await channel.BasicQosAsync(0, 1, false, cancellationToken);
+        var autoAck = options.ReceiveMode == MessageBusReceiveMode.ReceiveAndDelete;
+
+        await channel.BasicQosAsync(0, (ushort)Math.Max(1, options.MaxConcurrentCalls), false, cancellationToken);
 
         var consumer = new AsyncEventingBasicConsumer(channel);
 
@@ -75,9 +77,28 @@ internal class RabbitMqExecutionLaneProcessor(IChannel channel, string queueName
                 handlers = [.._processMessageHandlers];
             }
 
-            foreach (var handler in handlers)
-                await handler(received, args.CancellationToken).ConfigureAwait(false);
-            await channel.BasicAckAsync(args.DeliveryTag, false, args.CancellationToken);
+            try
+            {
+                foreach (var handler in handlers)
+                    await handler(received, args.CancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception e)
+            {
+                List<Func<ErrorDetails, Task>> errorHandlers;
+                lock (_processErrorLock)
+                {
+                    errorHandlers = [.._processErrorHandlers];
+                }
+
+                var error = new ErrorDetails(e, _laneQueueName);
+                foreach (var errorHandler in errorHandlers)
+                    await errorHandler(error).ConfigureAwait(false);
+            }
+            finally
+            {
+                if (!autoAck)
+                    await channel.BasicAckAsync(args.DeliveryTag, false, args.CancellationToken);
+            }
         };
 
         consumer.ShutdownAsync += async (_, args) =>
@@ -96,7 +117,7 @@ internal class RabbitMqExecutionLaneProcessor(IChannel channel, string queueName
 
         _consumerTag = await channel.BasicConsumeAsync(
             _laneQueueName,
-            false,
+            autoAck,
             consumer,
             cancellationToken);
     }
