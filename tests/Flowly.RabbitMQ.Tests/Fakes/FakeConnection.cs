@@ -6,10 +6,12 @@ namespace Flowly.RabbitMQ.Tests.Fakes;
 internal class FakeConnection(IChannel channel) : IConnection
 {
     public int CreateChannelCallCount { get; private set; }
+    public CreateChannelOptions? LastCreateChannelOptions { get; private set; }
 
     public Task<IChannel> CreateChannelAsync(CreateChannelOptions? options = null, CancellationToken cancellationToken = default)
     {
         CreateChannelCallCount++;
+        LastCreateChannelOptions = options;
         return Task.FromResult(channel);
     }
 

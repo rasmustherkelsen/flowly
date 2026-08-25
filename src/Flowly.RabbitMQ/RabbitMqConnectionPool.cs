@@ -4,7 +4,7 @@ using RabbitMQ.Stream.Client;
 
 namespace Flowly.RabbitMQ;
 
-internal sealed class RabbitMqConnectionPool(string uri, int streamPort = 5552) : IRabbitMqConnectionPool
+internal sealed class RabbitMqConnectionPool(string uri, int streamPort = 5552) : IRabbitMqConnectionPool, IAsyncDisposable
 {
     private readonly RabbitMqLazyConnection _publisherConnection = new(uri);
     private readonly RabbitMqLazyConnection _consumerConnection = new(uri);
@@ -54,4 +54,13 @@ internal sealed class RabbitMqConnectionPool(string uri, int streamPort = 5552) 
     }
 
     internal DnsEndPoint ResolveStreamEndpoint() => new(new Uri(uri).Host, streamPort);
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_streamSystem is not null)
+            await _streamSystem.DisposeAsync();
+
+        await _publisherConnection.DisposeAsync();
+        await _consumerConnection.DisposeAsync();
+    }
 }
