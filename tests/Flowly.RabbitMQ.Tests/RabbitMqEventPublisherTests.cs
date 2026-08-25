@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using Flowly.RabbitMQ.Tests.Fakes;
@@ -139,6 +140,39 @@ public class RabbitMqEventPublisherTests
             Assert.Equal("orders-exchange", messageTooLargeException.QueueName);
             Assert.Equal(2, messageTooLargeException.MaxSizeBytes);
             Assert.True(messageTooLargeException.ActualSizeBytes > 2);
+        }
+
+        [Fact]
+        public async Task WhenActivityIsCurrent_AddsTraceparentHeader()
+        {
+            using var activityListener = new ActivityListener
+            {
+                ShouldListenTo = _ => true,
+                Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllData
+            };
+            ActivitySource.AddActivityListener(activityListener);
+            using var activitySource = new ActivitySource(nameof(RabbitMqEventPublisherTests));
+            using var activity = activitySource.StartActivity("test-activity");
+
+            var recordingChannel = new RecordingChannel();
+            var rabbitMqEventPublisher = new RabbitMqEventPublisher("orders-exchange", recordingChannel, null);
+
+            await rabbitMqEventPublisher.SendRawMessage("raw-body", new Dictionary<string, object>());
+
+            var headers = recordingChannel.LastBasicProperties!.Headers!;
+            Assert.Equal(activity!.Id, headers["traceparent"]);
+        }
+
+        [Fact]
+        public async Task WhenNoActivityIsCurrent_DoesNotAddTraceparentHeader()
+        {
+            var recordingChannel = new RecordingChannel();
+            var rabbitMqEventPublisher = new RabbitMqEventPublisher("orders-exchange", recordingChannel, null);
+
+            await rabbitMqEventPublisher.SendRawMessage("raw-body", new Dictionary<string, object>());
+
+            var headers = recordingChannel.LastBasicProperties!.Headers!;
+            Assert.False(headers.ContainsKey("traceparent"));
         }
     }
 

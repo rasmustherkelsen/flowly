@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.Transport;
 using RabbitMQ.Client;
@@ -66,6 +67,39 @@ public class RabbitMqMessageBusSenderTests
             Assert.Equal("test-queue", exception.QueueName);
             Assert.Equal(1, exception.MaxSizeBytes);
             Assert.True(exception.ActualSizeBytes > 1);
+        }
+
+        [Fact]
+        public async Task WhenActivityIsCurrent_AddsTraceparentHeader()
+        {
+            using var activityListener = new ActivityListener
+            {
+                ShouldListenTo = _ => true,
+                Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllData
+            };
+            ActivitySource.AddActivityListener(activityListener);
+            using var activitySource = new ActivitySource(nameof(RabbitMqMessageBusSenderTests));
+            using var activity = activitySource.StartActivity("test-activity");
+
+            var recordingChannel = new RecordingChannel();
+            var sender = new RabbitMqMessageBusSender("test-queue", recordingChannel, null);
+
+            await sender.SendRawMessage("hello", new Dictionary<string, object>());
+
+            var headers = recordingChannel.LastBasicProperties!.Headers!;
+            Assert.Equal(activity!.Id, headers["traceparent"]);
+        }
+
+        [Fact]
+        public async Task WhenNoActivityIsCurrent_DoesNotAddTraceparentHeader()
+        {
+            var recordingChannel = new RecordingChannel();
+            var sender = new RabbitMqMessageBusSender("test-queue", recordingChannel, null);
+
+            await sender.SendRawMessage("hello", new Dictionary<string, object>());
+
+            var headers = recordingChannel.LastBasicProperties!.Headers!;
+            Assert.False(headers.ContainsKey("traceparent"));
         }
     }
 
@@ -155,6 +189,17 @@ public class RabbitMqMessageBusSenderTests
         public override ValueTask BasicPublishAsync<TProperties>(string exchange, string routingKey, bool mandatory, TProperties basicProperties, ReadOnlyMemory<byte> body, CancellationToken cancellationToken = default)
         {
             Published.Add((exchange, routingKey));
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    private class RecordingChannel : SpyChannel
+    {
+        public IReadOnlyBasicProperties? LastBasicProperties { get; private set; }
+
+        public override ValueTask BasicPublishAsync<TProperties>(string exchange, string routingKey, bool mandatory, TProperties basicProperties, ReadOnlyMemory<byte> body, CancellationToken cancellationToken = default)
+        {
+            LastBasicProperties = basicProperties;
             return ValueTask.CompletedTask;
         }
     }

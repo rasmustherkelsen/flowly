@@ -35,6 +35,12 @@ internal class RabbitMqMessageBusSender(string queueName, IChannel channel, long
             Headers = applicationProperties.ToDictionary(k => k.Key, v => (object?)v.Value)
         };
 
+        if (Activity.Current?.Id is { } traceparent)
+            props.Headers["traceparent"] = traceparent;
+
+        if (Activity.Current?.TraceStateString is { Length: > 0 } tracestate)
+            props.Headers["tracestate"] = tracestate;
+
         await _semaphore.WaitAsync(cancellationToken);
         try
         {
