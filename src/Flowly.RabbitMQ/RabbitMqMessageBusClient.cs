@@ -27,7 +27,7 @@ internal class RabbitMqMessageBusClient(IRabbitMqConnectionPool connectionPool, 
                 return existing;
 
             var connection = await connectionPool.GetPublisherConnection();
-            var channel = await connection.CreateChannelAsync();
+            var channel = await connection.CreateChannelAsync(new CreateChannelOptions(true, true));
             var publisher = new RabbitMqEventPublisher(topicName, channel, maxMessageSizeBytes);
             _senders[key] = publisher;
             return publisher;
@@ -176,7 +176,7 @@ internal class RabbitMqMessageBusClient(IRabbitMqConnectionPool connectionPool, 
                 return existing;
 
             var connection = await connectionPool.GetPublisherConnection();
-            var channel = await connection.CreateChannelAsync();
+            var channel = await connection.CreateChannelAsync(new CreateChannelOptions(true, true));
             var sender = new RabbitMqMessageBusSender(queueName, channel, maxMessageSizeBytes, streamQueueManifest);
             _senders[queueName] = sender;
             return sender;

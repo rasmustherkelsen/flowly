@@ -30,6 +30,20 @@ public class RabbitMqMessageBusClientTests
         }
     }
 
+    public class CreateEventPublisher
+    {
+        [Fact]
+        public async Task EnablesPublisherConfirmations()
+        {
+            var (pool, client) = Build();
+
+            await client.CreateEventPublisher("test-topic");
+
+            Assert.True(pool.PublisherConnection.LastCreateChannelOptions?.PublisherConfirmationsEnabled);
+            Assert.True(pool.PublisherConnection.LastCreateChannelOptions?.PublisherConfirmationTrackingEnabled);
+        }
+    }
+
     public class CreateProcessor
     {
         [Fact]
@@ -175,6 +189,17 @@ public class RabbitMqMessageBusClientTests
             var sender2 = await client.CreateMessageBusSender("queue-b");
 
             Assert.NotSame(sender1, sender2);
+        }
+
+        [Fact]
+        public async Task EnablesPublisherConfirmations()
+        {
+            var (pool, client) = Build();
+
+            await client.CreateMessageBusSender("test-queue");
+
+            Assert.True(pool.PublisherConnection.LastCreateChannelOptions?.PublisherConfirmationsEnabled);
+            Assert.True(pool.PublisherConnection.LastCreateChannelOptions?.PublisherConfirmationTrackingEnabled);
         }
     }
 
