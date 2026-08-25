@@ -378,7 +378,7 @@ public class MyService(IMessageCaller caller, ILogger<MyService> logger)
 
 ### Infrastructure
 
-Each sender gets a dedicated reply queue named `{callQueue}.reply.{instanceName}` (e.g. `call-message.reply.my-service`). Flowly creates this queue at startup, routes responses to it via `CorrelationId`, and resolves the waiting `Call` task.
+Each sender gets a dedicated reply queue named `{callQueue}.reply.{instanceName}` (e.g. `call-message.reply.my-service`). Flowly creates this queue at startup, routes responses to it via `CorrelationId`, and resolves the waiting `Call` task. The sender also declares the call queue itself at its own startup, so on RabbitMQ a call made before the `CallHandler` process has ever started is queued for delivery rather than silently dropped — the queue exists regardless of which process starts first.
 
 > **Note:** Attributes on the return message type (`[QueueName]`, `[RetryPolicy]`, `[ProviderAffinity]`, etc.) are **silently ignored** on the reply path. The response is delivered via the infrastructure reply queue and these attributes only apply if `ReturnMessage` is also independently registered as a normal handler or submitter elsewhere.
 
