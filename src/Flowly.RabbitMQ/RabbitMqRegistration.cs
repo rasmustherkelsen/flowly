@@ -2,6 +2,7 @@ using Flowly.MessageInfrastructure.Registration;
 using Flowly.Transport;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 namespace Flowly.RabbitMQ;
 
@@ -92,6 +93,8 @@ public static class RabbitMqRegistration
         var topologyCreator = new RabbitMqMessagingTopologyCreator(connectionPool, streamQueueManifest);
 
         clientRegistry.Register(effectiveName, messageBusClient, createTopology);
+
+        services.AddSingleton<IHostedService>(new RabbitMqConnectionLifetime(connectionPool, messageBusClient));
 
         if (enableHealthCheck)
             services
