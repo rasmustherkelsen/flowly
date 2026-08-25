@@ -245,6 +245,27 @@ public class RabbitMqMessageBusClientTests
         }
     }
 
+    public class DisposeAsync
+    {
+        [Fact]
+        public async Task ClosesAndDisposesEveryCachedSenderChannel()
+        {
+            var senderChannel = new FakeChannel();
+            var eventChannel = new FakeChannel();
+            var pool = new FakeRabbitMqConnectionPool(
+                new FakeConnection(senderChannel),
+                new FakeConnection(new FakeChannel()));
+            var client = new RabbitMqMessageBusClient(pool);
+
+            await client.CreateMessageBusSender("test-queue");
+
+            await client.DisposeAsync();
+
+            Assert.True(senderChannel.WasClosed);
+            Assert.True(senderChannel.WasDisposed);
+        }
+    }
+
     private record TestMessage(string Value);
 
     private sealed class ConsumeCapturingChannel : ChannelStub
@@ -271,6 +292,8 @@ public class RabbitMqMessageBusClientTests
     private class FakeChannel : IChannel
     {
         public QueueDeclareOk QueueDeclareResult { get; set; } = new("", 0, 0);
+        public bool WasClosed { get; private set; }
+        public bool WasDisposed { get; private set; }
 
         public Task<QueueDeclareOk> QueueDeclareAsync(string queue, bool durable, bool exclusive, bool autoDelete, IDictionary<string, object?>? arguments = null, bool passive = false, bool noWait = false, CancellationToken cancellationToken = default)
         {
@@ -448,16 +471,19 @@ public class RabbitMqMessageBusClientTests
 
         public Task CloseAsync(ushort replyCode, string replyText, bool abort, CancellationToken cancellationToken = default)
         {
+            WasClosed = true;
             return Task.CompletedTask;
         }
 
         public Task CloseAsync(ShutdownEventArgs reason, bool abort)
         {
+            WasClosed = true;
             return Task.CompletedTask;
         }
 
         public Task CloseAsync(ShutdownEventArgs reason, bool abort, CancellationToken cancellationToken)
         {
+            WasClosed = true;
             return Task.CompletedTask;
         }
 
@@ -467,6 +493,7 @@ public class RabbitMqMessageBusClientTests
 
         public ValueTask DisposeAsync()
         {
+            WasDisposed = true;
             return ValueTask.CompletedTask;
         }
     }

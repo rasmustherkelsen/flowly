@@ -7,7 +7,7 @@ using RabbitMQ.Client;
 namespace Flowly.RabbitMQ;
 
 internal class RabbitMqMessageBusClient(IRabbitMqConnectionPool connectionPool, long? maxMessageSizeBytes = null, StreamQueueManifest? streamQueueManifest = null)
-    : IMessageBusClient, IEventCapableMessageBusClient, IStreamCapableMessageBusClient, IPartitionedStreamCapableMessageBusClient
+    : IMessageBusClient, IEventCapableMessageBusClient, IStreamCapableMessageBusClient, IPartitionedStreamCapableMessageBusClient, IAsyncDisposable
 {
     private readonly SemaphoreSlim _senderLock = new(1, 1);
     private readonly ConcurrentDictionary<string, IMessageBusSender> _senders = new();
@@ -208,5 +208,12 @@ internal class RabbitMqMessageBusClient(IRabbitMqConnectionPool connectionPool, 
             cancellationToken: cancellationToken);
 
         return result.MessageCount;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        foreach (var sender in _senders.Values)
+            if (sender is IAsyncDisposable disposableSender)
+                await disposableSender.DisposeAsync();
     }
 }

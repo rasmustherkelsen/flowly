@@ -34,4 +34,15 @@ public class RabbitMqConnectionPoolTests
             Assert.Equal("broker-host", endpoint.Host);
         }
     }
+
+    public class DisposeAsync
+    {
+        [Fact]
+        public async Task WhenNeverConnected_DoesNotThrow()
+        {
+            var connectionPool = new RabbitMqConnectionPool("amqp://guest:guest@localhost:5672/");
+
+            await connectionPool.DisposeAsync();
+        }
+    }
 }

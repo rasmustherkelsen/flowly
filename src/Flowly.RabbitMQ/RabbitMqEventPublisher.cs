@@ -6,7 +6,7 @@ using RabbitMQ.Client;
 
 namespace Flowly.RabbitMQ;
 
-internal class RabbitMqEventPublisher(string exchangeName, IChannel channel, long? maxMessageSizeBytes) : IMessageBusSender
+internal class RabbitMqEventPublisher(string exchangeName, IChannel channel, long? maxMessageSizeBytes) : IMessageBusSender, IAsyncDisposable
 {
     private readonly SemaphoreSlim _semaphore = new(1, 1);
 
@@ -103,5 +103,11 @@ internal class RabbitMqEventPublisher(string exchangeName, IChannel channel, lon
     {
         if (maxMessageSizeBytes.HasValue && actualBytes > maxMessageSizeBytes.Value)
             throw new MessageTooLargeException(exchangeName, actualBytes, maxMessageSizeBytes.Value);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await channel.CloseAsync();
+        await channel.DisposeAsync();
     }
 }

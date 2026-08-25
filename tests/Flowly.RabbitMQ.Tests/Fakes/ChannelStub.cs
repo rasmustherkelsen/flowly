@@ -5,6 +5,9 @@ namespace Flowly.RabbitMQ.Tests.Fakes;
 
 internal class ChannelStub : IChannel
 {
+    public bool WasClosed { get; private set; }
+    public bool WasDisposed { get; private set; }
+
     public int ChannelNumber => 1;
     public ShutdownEventArgs? CloseReason => null;
     public TimeSpan ContinuationTimeout { get; set; } = TimeSpan.FromSeconds(10);
@@ -53,10 +56,29 @@ internal class ChannelStub : IChannel
     public virtual Task TxSelectAsync(CancellationToken cancellationToken = default) => throw new NotImplementedException();
     public virtual Task TxCommitAsync(CancellationToken cancellationToken = default) => throw new NotImplementedException();
     public virtual Task TxRollbackAsync(CancellationToken cancellationToken = default) => throw new NotImplementedException();
-    public virtual Task CloseAsync(ushort replyCode, string replyText, bool abort, CancellationToken cancellationToken = default) => Task.CompletedTask;
-    public virtual Task CloseAsync(ShutdownEventArgs reason, bool abort) => Task.CompletedTask;
-    public virtual Task CloseAsync(ShutdownEventArgs reason, bool abort, CancellationToken cancellationToken) => Task.CompletedTask;
+    public virtual Task CloseAsync(ushort replyCode, string replyText, bool abort, CancellationToken cancellationToken = default)
+    {
+        WasClosed = true;
+        return Task.CompletedTask;
+    }
+
+    public virtual Task CloseAsync(ShutdownEventArgs reason, bool abort)
+    {
+        WasClosed = true;
+        return Task.CompletedTask;
+    }
+
+    public virtual Task CloseAsync(ShutdownEventArgs reason, bool abort, CancellationToken cancellationToken)
+    {
+        WasClosed = true;
+        return Task.CompletedTask;
+    }
 
     public void Dispose() { }
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+    public virtual ValueTask DisposeAsync()
+    {
+        WasDisposed = true;
+        return ValueTask.CompletedTask;
+    }
 }

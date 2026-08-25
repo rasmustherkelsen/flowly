@@ -142,6 +142,21 @@ public class RabbitMqEventPublisherTests
         }
     }
 
+    public class DisposeAsync
+    {
+        [Fact]
+        public async Task ClosesAndDisposesTheChannel()
+        {
+            var recordingChannel = new RecordingChannel();
+            var rabbitMqEventPublisher = new RabbitMqEventPublisher("orders-exchange", recordingChannel, null);
+
+            await rabbitMqEventPublisher.DisposeAsync();
+
+            Assert.True(recordingChannel.WasClosed);
+            Assert.True(recordingChannel.WasDisposed);
+        }
+    }
+
     private record OrderPlaced(string OrderId);
 
     private class RecordingChannel : ChannelStub
