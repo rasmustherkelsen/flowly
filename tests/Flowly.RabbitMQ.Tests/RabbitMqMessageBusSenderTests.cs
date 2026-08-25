@@ -131,6 +131,21 @@ public class RabbitMqMessageBusSenderTests
         }
     }
 
+    public class DisposeAsync
+    {
+        [Fact]
+        public async Task ClosesAndDisposesTheChannel()
+        {
+            var channel = new SpyChannel();
+            var sender = new RabbitMqMessageBusSender("test-queue", channel, null);
+
+            await sender.DisposeAsync();
+
+            Assert.True(channel.WasClosed);
+            Assert.True(channel.WasDisposed);
+        }
+    }
+
     private record TestMessage(string Value);
 
     private class CapturingChannel : SpyChannel
@@ -146,6 +161,9 @@ public class RabbitMqMessageBusSenderTests
 
     private class SpyChannel : IChannel
     {
+        public bool WasClosed { get; private set; }
+        public bool WasDisposed { get; private set; }
+
         public int ChannelNumber => 1;
         public ShutdownEventArgs? CloseReason => null;
         public TimeSpan ContinuationTimeout { get; set; } = TimeSpan.FromSeconds(10);
@@ -324,16 +342,19 @@ public class RabbitMqMessageBusSenderTests
 
         public Task CloseAsync(ushort replyCode, string replyText, bool abort, CancellationToken cancellationToken = default)
         {
+            WasClosed = true;
             return Task.CompletedTask;
         }
 
         public Task CloseAsync(ShutdownEventArgs reason, bool abort)
         {
+            WasClosed = true;
             return Task.CompletedTask;
         }
 
         public Task CloseAsync(ShutdownEventArgs reason, bool abort, CancellationToken cancellationToken)
         {
+            WasClosed = true;
             return Task.CompletedTask;
         }
 
@@ -343,6 +364,7 @@ public class RabbitMqMessageBusSenderTests
 
         public ValueTask DisposeAsync()
         {
+            WasDisposed = true;
             return ValueTask.CompletedTask;
         }
     }

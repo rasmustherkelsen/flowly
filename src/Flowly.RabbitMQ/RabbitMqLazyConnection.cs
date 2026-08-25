@@ -2,7 +2,7 @@ using RabbitMQ.Client;
 
 namespace Flowly.RabbitMQ;
 
-internal sealed class RabbitMqLazyConnection(string uri)
+internal sealed class RabbitMqLazyConnection(string uri) : IAsyncDisposable
 {
     private readonly SemaphoreSlim _lock = new(1, 1);
     private IConnection? _connection;
@@ -33,5 +33,11 @@ internal sealed class RabbitMqLazyConnection(string uri)
         {
             _lock.Release();
         }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_connection is not null)
+            await _connection.CloseAsync();
     }
 }

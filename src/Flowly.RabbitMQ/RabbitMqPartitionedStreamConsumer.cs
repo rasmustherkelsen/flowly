@@ -128,13 +128,20 @@ internal sealed class RabbitMqPartitionedStreamConsumer<TMessage>(
         });
     }
 
-    public async Task StopProcessing(CancellationToken cancellationToken)
-    {
-        if (_consumer != null)
-            await _consumer.Close();
-    }
+    public async Task StopProcessing(CancellationToken cancellationToken) => await CloseConsumer();
 
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    public async ValueTask DisposeAsync() => await CloseConsumer();
+
+    // DisposeAsync must independently close the consumer rather than relying on StopProcessing
+    // having run first — IAsyncDisposable's contract requires DisposeAsync alone to release
+    // resources. Interlocked.Exchange makes closing idempotent so StopProcessing followed by
+    // DisposeAsync (or either alone) never double-closes the underlying broker subscription.
+    private async Task CloseConsumer()
+    {
+        var consumer = Interlocked.Exchange(ref _consumer, null);
+        if (consumer != null)
+            await consumer.Close();
+    }
 
     private RabbitMqPartitionProcessor? GetProcessor(int partition)
     {

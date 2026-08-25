@@ -7,7 +7,7 @@ using RabbitMQ.Client;
 namespace Flowly.RabbitMQ;
 
 internal class RabbitMqMessageBusClient(IRabbitMqConnectionPool connectionPool, long? maxMessageSizeBytes = null, StreamQueueManifest? streamQueueManifest = null)
-    : IMessageBusClient, IEventCapableMessageBusClient, IStreamCapableMessageBusClient, IPartitionedStreamCapableMessageBusClient
+    : IMessageBusClient, IEventCapableMessageBusClient, IStreamCapableMessageBusClient, IPartitionedStreamCapableMessageBusClient, IAsyncDisposable
 {
     private readonly SemaphoreSlim _senderLock = new(1, 1);
     private readonly ConcurrentDictionary<string, IMessageBusSender> _senders = new();
@@ -27,7 +27,7 @@ internal class RabbitMqMessageBusClient(IRabbitMqConnectionPool connectionPool, 
                 return existing;
 
             var connection = await connectionPool.GetPublisherConnection();
-            var channel = await connection.CreateChannelAsync();
+            var channel = await connection.CreateChannelAsync(new CreateChannelOptions(true, true));
             var publisher = new RabbitMqEventPublisher(topicName, channel, maxMessageSizeBytes);
             _senders[key] = publisher;
             return publisher;
@@ -160,7 +160,7 @@ internal class RabbitMqMessageBusClient(IRabbitMqConnectionPool connectionPool, 
 
         var channel = await connection.CreateChannelAsync(channelOptions);
 
-        return new RabbitMqExecutionLaneProcessor(channel, queueName, laneFilter);
+        return new RabbitMqExecutionLaneProcessor(channel, queueName, laneFilter, options);
     }
 
     public async Task<IMessageBusSender> CreateMessageBusSender(string queueName)
@@ -176,7 +176,7 @@ internal class RabbitMqMessageBusClient(IRabbitMqConnectionPool connectionPool, 
                 return existing;
 
             var connection = await connectionPool.GetPublisherConnection();
-            var channel = await connection.CreateChannelAsync();
+            var channel = await connection.CreateChannelAsync(new CreateChannelOptions(true, true));
             var sender = new RabbitMqMessageBusSender(queueName, channel, maxMessageSizeBytes, streamQueueManifest);
             _senders[queueName] = sender;
             return sender;
@@ -208,5 +208,12 @@ internal class RabbitMqMessageBusClient(IRabbitMqConnectionPool connectionPool, 
             cancellationToken: cancellationToken);
 
         return result.MessageCount;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        foreach (var sender in _senders.Values)
+            if (sender is IAsyncDisposable disposableSender)
+                await disposableSender.DisposeAsync();
     }
 }
