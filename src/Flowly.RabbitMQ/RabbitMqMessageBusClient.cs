@@ -160,7 +160,7 @@ internal class RabbitMqMessageBusClient(IRabbitMqConnectionPool connectionPool, 
 
         var channel = await connection.CreateChannelAsync(channelOptions);
 
-        return new RabbitMqExecutionLaneProcessor(channel, queueName, laneFilter);
+        return new RabbitMqExecutionLaneProcessor(channel, queueName, laneFilter, options);
     }
 
     public async Task<IMessageBusSender> CreateMessageBusSender(string queueName)
