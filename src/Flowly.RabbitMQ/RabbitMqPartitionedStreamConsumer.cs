@@ -25,6 +25,14 @@ namespace Flowly.RabbitMQ;
 ///         rebalancing protocol.
 ///     </para>
 ///     <para>
+///         A reassignment of a given partition (a revoke immediately followed by a re-assign, e.g. a brief Single
+///         Active Consumer handover) waits for that same partition's prior revocation to finish running before the
+///         new assignment proceeds — this prevents two <see cref="RabbitMqPartitionProcessor" /> instances from
+///         momentarily existing for the same partition index. This serialization is scoped to a single partition
+///         only: it never blocks assignment of other partitions, and never blocks the revoke callback itself (a
+///         slow revoke still can't stall the broker's rebalance negotiation).
+///     </para>
+///     <para>
 ///         <strong>Best-effort against documented API shape, not verified against a live broker.</strong> The
 ///         exact semantics of <c>ConsumerUpdateListener</c>'s <c>isActive: false</c> case (whether it fires at all,
 ///         and whether the returned offset is ignored) are inferred from the client's public surface, not confirmed
@@ -38,6 +46,7 @@ internal sealed class RabbitMqPartitionedStreamConsumer<TMessage>(
     ILogger logger) : IPartitionedStreamConsumer<TMessage>
 {
     private readonly Dictionary<int, RabbitMqPartitionProcessor> _processors = new();
+    private readonly Dictionary<int, Task> _pendingRevocations = new();
     private readonly Lock _lock = new();
     private Consumer? _consumer;
 
@@ -79,10 +88,25 @@ internal sealed class RabbitMqPartitionedStreamConsumer<TMessage>(
                     RemoveProcessor(partition);
 
                     if (PartitionRevoked != null)
-                        _ = FireRevoked(partition);
+                    {
+                        var revokeTask = FireRevoked(partition);
+                        lock (_lock)
+                        {
+                            _pendingRevocations[partition] = revokeTask;
+                        }
+                    }
 
                     return new OffsetTypeFirst();
                 }
+
+                Task? pendingRevocation;
+                lock (_lock)
+                {
+                    _pendingRevocations.Remove(partition, out pendingRevocation);
+                }
+
+                if (pendingRevocation != null)
+                    await pendingRevocation;
 
                 var processor = new RabbitMqPartitionProcessor(this, logger, queueName, partition);
                 lock (_lock)
