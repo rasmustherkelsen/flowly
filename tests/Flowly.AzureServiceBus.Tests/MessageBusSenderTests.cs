@@ -34,6 +34,28 @@ public class MessageBusSenderTests
             Assert.Equal(1, exception.MaxSizeBytes);
             Assert.True(exception.ActualSizeBytes > 1);
         }
+
+        [Fact]
+        public async Task WithoutExtraApplicationProperties_DoesNotSetAnyExtraProperties()
+        {
+            var serviceBusSender = new FakeServiceBusSender();
+            var sender = new MessageBusSender(serviceBusSender, null);
+
+            await sender.SendMessage(new TestMessage("hello"), MessageProperties.Empty);
+
+            Assert.False(serviceBusSender.LastSentMessage!.ApplicationProperties.ContainsKey(FlowlyMessageProperties.TargetSubscription));
+        }
+
+        [Fact]
+        public async Task WithExtraApplicationProperties_SetsThemOnTheOutgoingMessage()
+        {
+            var serviceBusSender = new FakeServiceBusSender();
+            var sender = new MessageBusSender(serviceBusSender, null, new Dictionary<string, object> { [FlowlyMessageProperties.TargetSubscription] = "my-subscription" });
+
+            await sender.SendMessage(new TestMessage("hello"), MessageProperties.Empty);
+
+            Assert.Equal("my-subscription", serviceBusSender.LastSentMessage!.ApplicationProperties[FlowlyMessageProperties.TargetSubscription]);
+        }
     }
 
     public class SendRawMessage
@@ -67,17 +89,42 @@ public class MessageBusSenderTests
         }
     }
 
+    public class DisposeAsync
+    {
+        [Fact]
+        public async Task DisposesTheWrappedServiceBusSender()
+        {
+            var serviceBusSender = new FakeServiceBusSender();
+            var sender = new MessageBusSender(serviceBusSender, null);
+
+            await sender.DisposeAsync();
+
+            Assert.True(serviceBusSender.DisposeAsyncCalled);
+        }
+    }
+
     private record TestMessage(string Value);
 
     private class FakeServiceBusSender : ServiceBusSender
     {
         public const string QueueName = "test-queue";
 
+        public ServiceBusMessage? LastSentMessage { get; private set; }
+
+        public bool DisposeAsyncCalled { get; private set; }
+
         public override string EntityPath => QueueName;
 
         public override Task SendMessageAsync(ServiceBusMessage message, CancellationToken cancellationToken = default)
         {
+            LastSentMessage = message;
             return Task.CompletedTask;
+        }
+
+        public override ValueTask DisposeAsync()
+        {
+            DisposeAsyncCalled = true;
+            return ValueTask.CompletedTask;
         }
     }
 }

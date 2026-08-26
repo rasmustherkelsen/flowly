@@ -4,6 +4,7 @@ using Flowly.MessageInfrastructure.Registration;
 using Flowly.Transport;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 namespace Flowly.AzureServiceBus.Tests;
 
@@ -86,6 +87,16 @@ public class AzureServiceBusRegistrationTests
             builder.UseAzureServiceBus("testnamespace.servicebus.windows.net", new FakeTokenCredential());
 
             Assert.Single(registry.GetAll());
+        }
+
+        [Fact]
+        public void RegistersAConnectionLifetimeHostedService()
+        {
+            var (builder, _) = CreateBuilder();
+
+            builder.UseAzureServiceBus("testnamespace.servicebus.windows.net", new FakeTokenCredential());
+
+            Assert.Single(builder.Services, s => s.ServiceType == typeof(IHostedService) && s.ImplementationInstance is AzureServiceBusConnectionLifetime);
         }
     }
 
