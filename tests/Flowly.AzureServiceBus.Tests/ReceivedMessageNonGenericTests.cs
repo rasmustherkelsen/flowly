@@ -18,6 +18,15 @@ public class ReceivedMessageNonGenericTests
 
             Assert.Equal("99", body.OrderId);
         }
+
+        [Fact]
+        public void WhenJsonDeserializesToNull_Throws()
+        {
+            var serviceBusReceivedMessage = ServiceBusModelFactory.ServiceBusReceivedMessage(body: BinaryData.FromString("null"));
+            var receivedMessage = new ReceivedMessage(serviceBusReceivedMessage);
+
+            Assert.Throws<InvalidOperationException>(() => receivedMessage.GetBody<OrderPlaced>());
+        }
     }
 
     public class Properties
@@ -33,6 +42,17 @@ public class ReceivedMessageNonGenericTests
 
             Assert.Equal("mid", receivedMessage.Properties.MessageId);
             Assert.Equal("cid", receivedMessage.Properties.CorrelationId);
+        }
+
+        [Fact]
+        public void PopulatesSessionId()
+        {
+            var serviceBusReceivedMessage = ServiceBusModelFactory.ServiceBusReceivedMessage(
+                body: BinaryData.FromString("{}"),
+                sessionId: "session-1");
+            var receivedMessage = new ReceivedMessage(serviceBusReceivedMessage);
+
+            Assert.Equal("session-1", receivedMessage.Properties.SessionId);
         }
     }
 
