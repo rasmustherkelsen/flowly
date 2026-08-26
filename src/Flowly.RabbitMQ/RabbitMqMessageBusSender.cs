@@ -7,7 +7,7 @@ using RabbitMQ.Client;
 
 namespace Flowly.RabbitMQ;
 
-internal class RabbitMqMessageBusSender(string queueName, IChannel channel, long? maxMessageSizeBytes, StreamQueueManifest? streamQueueManifest = null) : IMessageBusSender
+internal class RabbitMqMessageBusSender(string queueName, IChannel channel, long? maxMessageSizeBytes, StreamQueueManifest? streamQueueManifest = null) : IMessageBusSender, IAsyncDisposable
 {
     private readonly SemaphoreSlim _semaphore = new(1, 1);
     private readonly PartitionRoundRobin _roundRobin = new();
@@ -34,6 +34,12 @@ internal class RabbitMqMessageBusSender(string queueName, IChannel channel, long
             DeliveryMode = DeliveryModes.Persistent,
             Headers = applicationProperties.ToDictionary(k => k.Key, v => (object?)v.Value)
         };
+
+        if (Activity.Current?.Id is { } traceparent)
+            props.Headers["traceparent"] = traceparent;
+
+        if (Activity.Current?.TraceStateString is { Length: > 0 } tracestate)
+            props.Headers["tracestate"] = tracestate;
 
         await _semaphore.WaitAsync(cancellationToken);
         try
@@ -138,5 +144,11 @@ internal class RabbitMqMessageBusSender(string queueName, IChannel channel, long
     {
         if (maxMessageSizeBytes.HasValue && actualBytes > maxMessageSizeBytes.Value)
             throw new MessageTooLargeException(queueName, actualBytes, maxMessageSizeBytes.Value);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await channel.CloseAsync();
+        await channel.DisposeAsync();
     }
 }

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.Transport;
 using RabbitMQ.Client;
@@ -67,6 +68,39 @@ public class RabbitMqMessageBusSenderTests
             Assert.Equal(1, exception.MaxSizeBytes);
             Assert.True(exception.ActualSizeBytes > 1);
         }
+
+        [Fact]
+        public async Task WhenActivityIsCurrent_AddsTraceparentHeader()
+        {
+            using var activityListener = new ActivityListener
+            {
+                ShouldListenTo = _ => true,
+                Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllData
+            };
+            ActivitySource.AddActivityListener(activityListener);
+            using var activitySource = new ActivitySource(nameof(RabbitMqMessageBusSenderTests));
+            using var activity = activitySource.StartActivity("test-activity");
+
+            var recordingChannel = new RecordingChannel();
+            var sender = new RabbitMqMessageBusSender("test-queue", recordingChannel, null);
+
+            await sender.SendRawMessage("hello", new Dictionary<string, object>());
+
+            var headers = recordingChannel.LastBasicProperties!.Headers!;
+            Assert.Equal(activity!.Id, headers["traceparent"]);
+        }
+
+        [Fact]
+        public async Task WhenNoActivityIsCurrent_DoesNotAddTraceparentHeader()
+        {
+            var recordingChannel = new RecordingChannel();
+            var sender = new RabbitMqMessageBusSender("test-queue", recordingChannel, null);
+
+            await sender.SendRawMessage("hello", new Dictionary<string, object>());
+
+            var headers = recordingChannel.LastBasicProperties!.Headers!;
+            Assert.False(headers.ContainsKey("traceparent"));
+        }
     }
 
     public class PartitionedStreamRouting
@@ -131,6 +165,21 @@ public class RabbitMqMessageBusSenderTests
         }
     }
 
+    public class DisposeAsync
+    {
+        [Fact]
+        public async Task ClosesAndDisposesTheChannel()
+        {
+            var channel = new SpyChannel();
+            var sender = new RabbitMqMessageBusSender("test-queue", channel, null);
+
+            await sender.DisposeAsync();
+
+            Assert.True(channel.WasClosed);
+            Assert.True(channel.WasDisposed);
+        }
+    }
+
     private record TestMessage(string Value);
 
     private class CapturingChannel : SpyChannel
@@ -144,8 +193,22 @@ public class RabbitMqMessageBusSenderTests
         }
     }
 
+    private class RecordingChannel : SpyChannel
+    {
+        public IReadOnlyBasicProperties? LastBasicProperties { get; private set; }
+
+        public override ValueTask BasicPublishAsync<TProperties>(string exchange, string routingKey, bool mandatory, TProperties basicProperties, ReadOnlyMemory<byte> body, CancellationToken cancellationToken = default)
+        {
+            LastBasicProperties = basicProperties;
+            return ValueTask.CompletedTask;
+        }
+    }
+
     private class SpyChannel : IChannel
     {
+        public bool WasClosed { get; private set; }
+        public bool WasDisposed { get; private set; }
+
         public int ChannelNumber => 1;
         public ShutdownEventArgs? CloseReason => null;
         public TimeSpan ContinuationTimeout { get; set; } = TimeSpan.FromSeconds(10);
@@ -324,16 +387,19 @@ public class RabbitMqMessageBusSenderTests
 
         public Task CloseAsync(ushort replyCode, string replyText, bool abort, CancellationToken cancellationToken = default)
         {
+            WasClosed = true;
             return Task.CompletedTask;
         }
 
         public Task CloseAsync(ShutdownEventArgs reason, bool abort)
         {
+            WasClosed = true;
             return Task.CompletedTask;
         }
 
         public Task CloseAsync(ShutdownEventArgs reason, bool abort, CancellationToken cancellationToken)
         {
+            WasClosed = true;
             return Task.CompletedTask;
         }
 
@@ -343,6 +409,7 @@ public class RabbitMqMessageBusSenderTests
 
         public ValueTask DisposeAsync()
         {
+            WasDisposed = true;
             return ValueTask.CompletedTask;
         }
     }

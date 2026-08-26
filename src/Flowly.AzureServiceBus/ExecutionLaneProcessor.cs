@@ -5,13 +5,15 @@ namespace Flowly.AzureServiceBus;
 
 internal class ExecutionLaneProcessor(ServiceBusSessionProcessor serviceBusSessionProcessor) : IExecutionLaneProcessor
 {
-    private readonly Dictionary<Func<ErrorDetails, Task>, Func<ProcessErrorEventArgs, Task>> _errorHandlerMap = new();
+    private readonly EventHandlerAdapterRegistry<Func<ErrorDetails, Task>, ProcessErrorEventArgs> _processErrorAdapters =
+        new(handler => args => handler(new ErrorDetails(args.Exception, args.FullyQualifiedNamespace)));
 
-    private readonly Lock _processErrorLock = new();
-    private readonly Dictionary<Func<IReceivedMessage, CancellationToken, Task>, Func<ProcessSessionMessageEventArgs, Task>> _processMessageHandlerMap = new();
-    private readonly Lock _processMessageLock = new();
-    private readonly Func<ProcessErrorEventArgs, ErrorDetails> _toErrorDetails = args => new ErrorDetails(args.Exception, args.FullyQualifiedNamespace);
-    private readonly Func<ProcessSessionMessageEventArgs, IReceivedMessage> _toReceivedMessage = args => new ReceivedMessage(args.Message);
+    private readonly EventHandlerAdapterRegistry<Func<IReceivedMessage, CancellationToken, Task>, ProcessSessionMessageEventArgs> _processMessageAdapters =
+        new(handler => async args =>
+        {
+            var received = new ReceivedMessage(args.Message);
+            await handler(received, args.CancellationToken).ConfigureAwait(false);
+        });
 
     public event Func<IReceivedMessage, CancellationToken, Task>? ProcessMessage
     {
@@ -19,32 +21,13 @@ internal class ExecutionLaneProcessor(ServiceBusSessionProcessor serviceBusSessi
         {
             if (value == null) return;
 
-            Func<ProcessSessionMessageEventArgs, Task> adapter = async args =>
-            {
-                var received = _toReceivedMessage(args);
-                await value(received, args.CancellationToken).ConfigureAwait(false);
-            };
-
-            lock (_processMessageLock)
-            {
-                _processMessageHandlerMap.Add(value, adapter);
-            }
-
-            serviceBusSessionProcessor.ProcessMessageAsync += adapter;
+            serviceBusSessionProcessor.ProcessMessageAsync += _processMessageAdapters.Add(value);
         }
         remove
         {
             if (value == null) return;
 
-            Func<ProcessSessionMessageEventArgs, Task>? adapter = null;
-            lock (_processMessageLock)
-            {
-                if (_processMessageHandlerMap.TryGetValue(value, out var found))
-                {
-                    adapter = found;
-                    _processMessageHandlerMap.Remove(value);
-                }
-            }
+            var adapter = _processMessageAdapters.Remove(value);
 
             if (adapter != null) serviceBusSessionProcessor.ProcessMessageAsync -= adapter;
         }
@@ -56,32 +39,13 @@ internal class ExecutionLaneProcessor(ServiceBusSessionProcessor serviceBusSessi
         {
             if (value == null) return;
 
-            Func<ProcessErrorEventArgs, Task> adapter = args =>
-            {
-                var details = _toErrorDetails(args);
-                return value(details);
-            };
-
-            lock (_processErrorLock)
-            {
-                _errorHandlerMap.Add(value, adapter);
-            }
-
-            serviceBusSessionProcessor.ProcessErrorAsync += adapter;
+            serviceBusSessionProcessor.ProcessErrorAsync += _processErrorAdapters.Add(value);
         }
         remove
         {
             if (value == null) return;
 
-            Func<ProcessErrorEventArgs, Task>? adapter = null;
-            lock (_processErrorLock)
-            {
-                if (_errorHandlerMap.TryGetValue(value, out var found))
-                {
-                    adapter = found;
-                    _errorHandlerMap.Remove(value);
-                }
-            }
+            var adapter = _processErrorAdapters.Remove(value);
 
             if (adapter != null) serviceBusSessionProcessor.ProcessErrorAsync -= adapter;
         }

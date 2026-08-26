@@ -5,15 +5,14 @@ using Flowly.Transport;
 
 namespace Flowly.AzureServiceBus;
 
-internal class MessageBusClient(ServiceBusClient serviceBusClient, ServiceBusAdministrationClient administrationClient, long? maxMessageSizeBytes) : IMessageBusClient, IEventCapableMessageBusClient
+internal class MessageBusClient(ServiceBusClient serviceBusClient, ServiceBusAdministrationClient administrationClient, long? maxMessageSizeBytes) : IMessageBusClient, IEventCapableMessageBusClient, IAsyncDisposable
 {
+    private readonly SemaphoreSlim _senderLock = new(1, 1);
     private readonly ConcurrentDictionary<string, IMessageBusSender> _serviceBusSenders = new();
 
     public Task<IMessageBusSender> CreateEventPublisher(string topicName)
     {
-        return Task.FromResult(_serviceBusSenders.GetOrAdd(
-            $"topic:{topicName}",
-            _ => new MessageBusSender(serviceBusClient.CreateSender(topicName), maxMessageSizeBytes)));
+        return GetOrCreateSender($"topic:{topicName}", () => new MessageBusSender(serviceBusClient.CreateSender(topicName), maxMessageSizeBytes));
     }
 
     public Task<IMessageBusProcessor<TEvent>> CreateEventProcessor<TEvent>(
@@ -36,7 +35,12 @@ internal class MessageBusClient(ServiceBusClient serviceBusClient, ServiceBusAdm
 
     public Task<IMessageBusSender> CreateEventRetrySender(string topicName, string subscriptionName)
     {
-        return CreateEventPublisher(topicName);
+        return GetOrCreateSender(
+            $"topic:{topicName}:retry:{subscriptionName}",
+            () => new MessageBusSender(
+                serviceBusClient.CreateSender(topicName),
+                maxMessageSizeBytes,
+                new Dictionary<string, object> { [FlowlyMessageProperties.TargetSubscription] = subscriptionName }));
     }
 
     public Task<IDeadLetterReceiver> CreateEventSubscriptionDeadLetterReceiver(string topicName, string subscriptionName)
@@ -81,7 +85,8 @@ internal class MessageBusClient(ServiceBusClient serviceBusClient, ServiceBusAdm
         var serviceBusSessionProcessorOptions = new ServiceBusSessionProcessorOptions
         {
             ReceiveMode = options.ReceiveMode == MessageBusReceiveMode.PeekLock ? ServiceBusReceiveMode.PeekLock : ServiceBusReceiveMode.ReceiveAndDelete,
-            MaxAutoLockRenewalDuration = TimeSpan.FromHours(6)
+            MaxAutoLockRenewalDuration = TimeSpan.FromHours(6),
+            AutoCompleteMessages = false
         };
 
         serviceBusSessionProcessorOptions.SessionIds.Add(laneFilter);
@@ -91,7 +96,7 @@ internal class MessageBusClient(ServiceBusClient serviceBusClient, ServiceBusAdm
 
     public Task<IMessageBusSender> CreateMessageBusSender(string queueName)
     {
-        return Task.FromResult(_serviceBusSenders.GetOrAdd(queueName, q => new MessageBusSender(serviceBusClient.CreateSender(q), maxMessageSizeBytes)));
+        return GetOrCreateSender(queueName, () => new MessageBusSender(serviceBusClient.CreateSender(queueName), maxMessageSizeBytes));
     }
 
     public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName)
@@ -108,5 +113,36 @@ internal class MessageBusClient(ServiceBusClient serviceBusClient, ServiceBusAdm
     {
         var properties = await administrationClient.GetQueueRuntimePropertiesAsync(queueName, cancellationToken);
         return properties.Value.DeadLetterMessageCount;
+    }
+
+    private async Task<IMessageBusSender> GetOrCreateSender(string key, Func<IMessageBusSender> factory)
+    {
+        if (_serviceBusSenders.TryGetValue(key, out var existing))
+            return existing;
+
+        await _senderLock.WaitAsync();
+
+        try
+        {
+            if (_serviceBusSenders.TryGetValue(key, out existing))
+                return existing;
+
+            var sender = factory();
+            _serviceBusSenders[key] = sender;
+            return sender;
+        }
+        finally
+        {
+            _senderLock.Release();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        foreach (var sender in _serviceBusSenders.Values)
+            if (sender is IAsyncDisposable disposableSender)
+                await disposableSender.DisposeAsync();
+
+        await serviceBusClient.DisposeAsync();
     }
 }

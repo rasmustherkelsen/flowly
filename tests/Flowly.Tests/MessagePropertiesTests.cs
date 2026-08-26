@@ -16,6 +16,7 @@ public class MessagePropertiesTests
             Assert.Null(messageProperties.ScheduledEnqueueTime);
             Assert.Null(messageProperties.Traceparent);
             Assert.Null(messageProperties.Tracestate);
+            Assert.Null(messageProperties.DeliveryCount);
         }
 
         [Fact]
@@ -29,13 +30,15 @@ public class MessagePropertiesTests
                 3,
                 scheduled,
                 "tp",
-                "ts");
+                "ts",
+                DeliveryCount: 7);
 
             Assert.Equal("sess-1", messageProperties.SessionId);
             Assert.Equal(3, messageProperties.RetryCount);
             Assert.Equal(scheduled, messageProperties.ScheduledEnqueueTime);
             Assert.Equal("tp", messageProperties.Traceparent);
             Assert.Equal("ts", messageProperties.Tracestate);
+            Assert.Equal(7, messageProperties.DeliveryCount);
         }
     }
 
@@ -63,6 +66,12 @@ public class MessagePropertiesTests
         public void RetryCountIsZero()
         {
             Assert.Equal(0, MessageProperties.Empty.RetryCount);
+        }
+
+        [Fact]
+        public void DeliveryCountIsNull()
+        {
+            Assert.Null(MessageProperties.Empty.DeliveryCount);
         }
     }
 

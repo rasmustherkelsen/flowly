@@ -49,6 +49,13 @@ public static class CallHandlerRegistrationExtensions
     ///     reply queue and registers <see cref="IMessageCaller" /> in the DI container.
     ///     Requires <see cref="FlowlyOptions.InstanceName" /> to be set; throws
     ///     <see cref="InvalidOperationException" /> if it is not.
+    ///     Also declares the call/request queue's topology at this process's own startup (with default queue
+    ///     settings), mirroring the reply queue declaration below — this means a caller no longer depends on the
+    ///     <see cref="CallHandler{TMessage,TReturn}" /> process having started first to avoid its first call being
+    ///     silently dropped by the broker. If the corresponding <c>CallHandler</c> overrides
+    ///     <c>DefaultMessageTimeToLiveAttribute</c> or <c>DeadLetterOnMessageExpirationAttribute</c> away from their
+    ///     defaults, whichever of the two processes starts second may fail at startup with a queue-argument
+    ///     mismatch (RabbitMQ) — the submitter has no way to see handler-level attributes to match them.
     /// </summary>
     /// <param name="flowlyBuilder">The Flowly builder.</param>
     /// <param name="configure">Optional delegate to configure per-submitter options such as the call timeout.</param>
@@ -83,6 +90,10 @@ public static class CallHandlerRegistrationExtensions
         queueRegistrar.Register(
             flowlyBuilder.Services,
             new DeferredQueueRegistration(returnQueueName, IsReplyQueue: true),
+            providerName);
+        queueRegistrar.Register(
+            flowlyBuilder.Services,
+            new DeferredQueueRegistration(callQueueName),
             providerName);
 
         var registerReturnQueueMethod = typeof(CallHandlerRegistrationExtensions)

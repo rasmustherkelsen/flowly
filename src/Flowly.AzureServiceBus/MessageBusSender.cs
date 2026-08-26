@@ -5,7 +5,7 @@ using Flowly.Transport;
 
 namespace Flowly.AzureServiceBus;
 
-internal class MessageBusSender(ServiceBusSender serviceBusSender, long? maxMessageSizeBytes) : IMessageBusSender
+internal class MessageBusSender(ServiceBusSender serviceBusSender, long? maxMessageSizeBytes, IReadOnlyDictionary<string, object>? extraApplicationProperties = null) : IMessageBusSender, IAsyncDisposable
 {
     public async Task SendMessage<TMessage>(TMessage message, MessageProperties messageProperties, CancellationToken cancellationToken = default)
     {
@@ -54,6 +54,10 @@ internal class MessageBusSender(ServiceBusSender serviceBusSender, long? maxMess
         if (Activity.Current?.TraceStateString is { Length: > 0 } tracestate)
             serviceBusMessage.ApplicationProperties["tracestate"] = tracestate;
 
+        if (extraApplicationProperties is not null)
+            foreach (var (key, value) in extraApplicationProperties)
+                serviceBusMessage.ApplicationProperties[key] = value;
+
         ValidateMessageSize(serviceBusMessage);
 
         await serviceBusSender.SendMessageAsync(serviceBusMessage, cancellationToken);
@@ -68,5 +72,10 @@ internal class MessageBusSender(ServiceBusSender serviceBusSender, long? maxMess
 
         if (bodySize > maxMessageSizeBytes.Value)
             throw new MessageTooLargeException(serviceBusSender.EntityPath, bodySize, maxMessageSizeBytes.Value);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await serviceBusSender.DisposeAsync();
     }
 }

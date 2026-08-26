@@ -13,16 +13,25 @@ internal class ServiceBusDeadLetterReceiver(ServiceBusReceiver receiver) : IDead
 
     public Task CompleteMessage(IDeadLetterMessage message, CancellationToken cancellationToken = default)
     {
-        return receiver.CompleteMessageAsync(((DeadLetterReceivedMessage)message).ServiceBusReceivedMessage, cancellationToken);
+        return receiver.CompleteMessageAsync(AsServiceBusMessage(message).ServiceBusReceivedMessage, cancellationToken);
     }
 
     public Task AbandonMessage(IDeadLetterMessage message, CancellationToken cancellationToken = default)
     {
-        return receiver.AbandonMessageAsync(((DeadLetterReceivedMessage)message).ServiceBusReceivedMessage, cancellationToken: cancellationToken);
+        return receiver.AbandonMessageAsync(AsServiceBusMessage(message).ServiceBusReceivedMessage, cancellationToken: cancellationToken);
     }
 
     public ValueTask DisposeAsync()
     {
         return receiver.DisposeAsync();
+    }
+
+    private static DeadLetterReceivedMessage AsServiceBusMessage(IDeadLetterMessage message)
+    {
+        if (message is DeadLetterReceivedMessage deadLetterReceivedMessage) return deadLetterReceivedMessage;
+
+        throw new ArgumentException(
+            $"Expected an {nameof(IDeadLetterMessage)} of type {nameof(DeadLetterReceivedMessage)} but received {message.GetType().Name}.",
+            nameof(message));
     }
 }

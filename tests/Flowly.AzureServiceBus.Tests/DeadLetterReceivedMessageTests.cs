@@ -44,4 +44,19 @@ public class DeadLetterReceivedMessageTests
             Assert.Null(deadLetterReceivedMessage.DeadLetterErrorDescription);
         }
     }
+
+    public class RawBody
+    {
+        [Fact]
+        public void IsComputedFromTheRetainedServiceBusReceivedMessageRatherThanCachedAtConstruction()
+        {
+            var serviceBusReceivedMessage = ServiceBusModelFactory.ServiceBusReceivedMessage(
+                body: BinaryData.FromString("raw-body-contents"),
+                messageId: "msg-1");
+            var deadLetterReceivedMessage = new DeadLetterReceivedMessage(serviceBusReceivedMessage);
+
+            Assert.Equal("raw-body-contents", deadLetterReceivedMessage.RawBody);
+            Assert.Equal(serviceBusReceivedMessage.Body.ToString(), deadLetterReceivedMessage.RawBody);
+        }
+    }
 }

@@ -5,6 +5,7 @@ using Flowly.MessageInfrastructure.Registration;
 using Flowly.Transport;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 namespace Flowly.AzureServiceBus;
 
@@ -105,8 +106,8 @@ public static class AzureServiceBusRegistration
         bool enableHealthCheck = false,
         long? maxMessageSizeBytes = null)
     {
-        if (IsDiscoveryMode())
-            return flowlyBuilder.RegisterForDiscovery(name, createTopology);
+        if (flowlyBuilder.TryRegisterForDiscovery(name, createTopology) is { } discoveryBuilder)
+            return discoveryBuilder;
 
         var fullyQualifiedNamespace =
             flowlyBuilder.Configuration[fullyQualifiedNamespaceOrConfigKey]
@@ -126,8 +127,8 @@ public static class AzureServiceBusRegistration
         bool enableHealthCheck,
         long? maxMessageSizeBytes)
     {
-        if (IsDiscoveryMode())
-            return flowlyBuilder.RegisterForDiscovery(name, createTopology);
+        if (flowlyBuilder.TryRegisterForDiscovery(name, createTopology) is { } discoveryBuilder)
+            return discoveryBuilder;
 
         var serviceBusClient = new ServiceBusClient(connectionString);
         var adminClient = new ServiceBusAdministrationClient(connectionString);
@@ -141,11 +142,14 @@ public static class AzureServiceBusRegistration
     private static bool IsDiscoveryMode() =>
         Environment.GetEnvironmentVariable(Services.CommandLineParserHostedServiceDefinitions.OutputFileEnvVar) is not null;
 
-    private static IFlowlyBuilder RegisterForDiscovery(
+    private static IFlowlyBuilder? TryRegisterForDiscovery(
         this IFlowlyBuilder flowlyBuilder,
         string? name,
         bool? createTopology)
     {
+        if (!IsDiscoveryMode())
+            return null;
+
         var services = flowlyBuilder.Services;
         var clientRegistry = ProviderNameResolver.GetRegistry(services);
 
@@ -189,6 +193,7 @@ public static class AzureServiceBusRegistration
         var topologyCreator = new MessagingTopologyCreator(serviceBusClient, adminClient);
 
         clientRegistry.Register(effectiveName, messageBusClient, createTopology);
+        services.AddSingleton<IHostedService>(new AzureServiceBusConnectionLifetime(messageBusClient));
 
         if (enableHealthCheck)
             services

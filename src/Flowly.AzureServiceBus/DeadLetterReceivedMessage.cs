@@ -8,7 +8,7 @@ internal class DeadLetterReceivedMessage(ServiceBusReceivedMessage message) : ID
     internal ServiceBusReceivedMessage ServiceBusReceivedMessage { get; } = message;
     public string MessageId { get; } = message.MessageId;
 
-    public string RawBody { get; } = message.Body.ToString();
+    public string RawBody => ServiceBusReceivedMessage.Body.ToString();
 
     public IReadOnlyDictionary<string, object> ApplicationProperties { get; } = message.ApplicationProperties;
 

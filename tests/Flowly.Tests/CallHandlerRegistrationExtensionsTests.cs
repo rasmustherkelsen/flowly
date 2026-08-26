@@ -59,6 +59,16 @@ public class CallHandlerRegistrationExtensionsTests
         }
 
         [Fact]
+        public void WithInstanceName_RegistersCallQueueInManifest()
+        {
+            var (flowlyBuilder, manifest) = CreateBuilder("primary", instanceName: "sender");
+
+            flowlyBuilder.AddCallSubmitter<PingMessage>();
+
+            Assert.Contains(manifest.Queues, q => q.QueueName == "ping" && !q.IsReplyQueue);
+        }
+
+        [Fact]
         public void CustomTimeout_IsAppliedToCallSubmitterSettings()
         {
             var (flowlyBuilder, _) = CreateBuilder("primary", instanceName: "sender");
