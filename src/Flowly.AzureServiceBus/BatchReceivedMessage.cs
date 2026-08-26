@@ -9,18 +9,31 @@ internal class BatchReceivedMessage<TMessage>(ServiceBusReceiver receiver, Servi
         ??= message.Body.ToObjectFromJson<TMessage>()
             ?? throw new InvalidOperationException($"Deserialized message body is null for type {typeof(TMessage).FullName}.");
 
-    public MessageProperties Properties { get; } = new(
-        message.MessageId,
-        message.CorrelationId,
-        RetryCount: message.ApplicationProperties.TryGetValue(FlowlyMessageProperties.RetryCount, out var rc) ? Convert.ToInt32(rc) : 0);
+    public MessageProperties Properties { get; } = ServiceBusReceivedMessagePropertiesMapper.Map(message);
 
-    public Task Complete(CancellationToken cancellationToken = default)
+    public async Task Complete(CancellationToken cancellationToken = default)
     {
-        return receiver.CompleteMessageAsync(message, cancellationToken);
+        try
+        {
+            await receiver.CompleteMessageAsync(message, cancellationToken);
+        }
+        catch (ServiceBusException ex) when (ex.Reason == ServiceBusFailureReason.MessageLockLost)
+        {
+            // The handler already ran successfully before the lock expired; the broker will redeliver the message
+            // naturally regardless, so treat this as a no-op rather than letting core mistake it for a batch failure
+            // and both republish the batch and re-attempt completion against a lock this process no longer holds.
+        }
     }
 
-    public Task DeadLetter(string? reason = null, CancellationToken cancellationToken = default)
+    public async Task DeadLetter(string? reason = null, CancellationToken cancellationToken = default)
     {
-        return receiver.DeadLetterMessageAsync(message, reason, cancellationToken: cancellationToken);
+        try
+        {
+            await receiver.DeadLetterMessageAsync(message, reason, cancellationToken: cancellationToken);
+        }
+        catch (ServiceBusException ex) when (ex.Reason == ServiceBusFailureReason.MessageLockLost)
+        {
+            // See Complete() above — the lock is already gone, so there is nothing further Flowly can correctly do.
+        }
     }
 }

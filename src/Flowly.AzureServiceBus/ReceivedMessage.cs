@@ -10,22 +10,31 @@ internal class ReceivedMessage<TMessage>(ProcessMessageEventArgs args) : IReceiv
         get => field ??= args.Message.Body.ToObjectFromJson<TMessage>() ?? throw new InvalidOperationException($"Deserialized message body is null for type {typeof(TMessage).FullName}.");
     } = default;
 
-    public MessageProperties Properties { get; } = new(
-        args.Message.MessageId,
-        args.Message.CorrelationId,
-        RetryCount: args.Message.ApplicationProperties.TryGetValue(FlowlyMessageProperties.RetryCount, out var rc) ? Convert.ToInt32(rc) : 0,
-        Traceparent: args.Message.ApplicationProperties.TryGetValue("traceparent", out var tp) ? tp as string : null,
-        Tracestate: args.Message.ApplicationProperties.TryGetValue("tracestate", out var ts) ? ts as string : null,
-        ReplyTo: string.IsNullOrEmpty(args.Message.ReplyTo) ? null : args.Message.ReplyTo);
+    public MessageProperties Properties { get; } = ServiceBusReceivedMessagePropertiesMapper.Map(args.Message);
 
-    public Task Complete(CancellationToken cancellationToken = default)
+    public async Task Complete(CancellationToken cancellationToken = default)
     {
-        return args.CompleteMessageAsync(args.Message, cancellationToken);
+        try
+        {
+            await args.CompleteMessageAsync(args.Message, cancellationToken);
+        }
+        catch (ServiceBusException ex) when (ex.Reason == ServiceBusFailureReason.MessageLockLost)
+        {
+            // The handler already ran successfully before the lock expired; the broker will redeliver the message
+            // naturally regardless, so treat this as a no-op rather than letting it surface as a handler failure.
+        }
     }
 
-    public Task DeadLetter(string? reason = null, CancellationToken cancellationToken = default)
+    public async Task DeadLetter(string? reason = null, CancellationToken cancellationToken = default)
     {
-        return args.DeadLetterMessageAsync(args.Message, reason, cancellationToken: cancellationToken);
+        try
+        {
+            await args.DeadLetterMessageAsync(args.Message, reason, cancellationToken: cancellationToken);
+        }
+        catch (ServiceBusException ex) when (ex.Reason == ServiceBusFailureReason.MessageLockLost)
+        {
+            // See Complete() above — the lock is already gone, so there is nothing further Flowly can correctly do.
+        }
     }
 }
 
@@ -33,8 +42,8 @@ internal class ReceivedMessage(ServiceBusReceivedMessage serviceBusReceivedMessa
 {
     public TBody GetBody<TBody>()
     {
-        return serviceBusReceivedMessage.Body.ToObjectFromJson<TBody>()!;
+        return serviceBusReceivedMessage.Body.ToObjectFromJson<TBody>() ?? throw new InvalidOperationException($"Deserialized message body is null for type {typeof(TBody).FullName}.");
     }
 
-    public MessageProperties Properties { get; } = new(serviceBusReceivedMessage.MessageId, serviceBusReceivedMessage.CorrelationId);
+    public MessageProperties Properties { get; } = ServiceBusReceivedMessagePropertiesMapper.Map(serviceBusReceivedMessage);
 }

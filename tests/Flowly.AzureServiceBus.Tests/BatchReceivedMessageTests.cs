@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Azure.Messaging.ServiceBus;
+using Flowly.AzureServiceBus.Tests.Fakes;
 
 namespace Flowly.AzureServiceBus.Tests;
 
@@ -81,6 +82,111 @@ public class BatchReceivedMessageTests
             var batchReceivedMessage = new BatchReceivedMessage<OrderPlaced>(receiver: null!, message: serviceBusReceivedMessage);
 
             Assert.Equal(0, batchReceivedMessage.Properties.RetryCount);
+        }
+
+        [Fact]
+        public void PopulatesTraceparentTracestateReplyToSessionIdAndDeliveryCount()
+        {
+            var applicationProperties = new Dictionary<string, object>
+            {
+                ["traceparent"] = "00-trace-01",
+                ["tracestate"] = "vendor=value"
+            };
+            var serviceBusReceivedMessage = ServiceBusModelFactory.ServiceBusReceivedMessage(
+                body: BinaryData.FromString("{}"),
+                properties: applicationProperties,
+                replyTo: "reply-queue",
+                sessionId: "session-1",
+                deliveryCount: 4);
+            var batchReceivedMessage = new BatchReceivedMessage<OrderPlaced>(receiver: null!, message: serviceBusReceivedMessage);
+
+            Assert.Equal("00-trace-01", batchReceivedMessage.Properties.Traceparent);
+            Assert.Equal("vendor=value", batchReceivedMessage.Properties.Tracestate);
+            Assert.Equal("reply-queue", batchReceivedMessage.Properties.ReplyTo);
+            Assert.Equal("session-1", batchReceivedMessage.Properties.SessionId);
+            Assert.Equal(4, batchReceivedMessage.Properties.DeliveryCount);
+        }
+    }
+
+    public class Complete
+    {
+        [Fact]
+        public async Task DelegatesToReceiverCompleteMessage()
+        {
+            var serviceBusReceivedMessage = ServiceBusModelFactory.ServiceBusReceivedMessage(body: BinaryData.FromString("{}"));
+            var fakeServiceBusReceiver = new FakeServiceBusReceiver();
+            var batchReceivedMessage = new BatchReceivedMessage<OrderPlaced>(receiver: fakeServiceBusReceiver, message: serviceBusReceivedMessage);
+
+            await batchReceivedMessage.Complete();
+
+            Assert.Equal(1, fakeServiceBusReceiver.CompleteMessageCallCount);
+        }
+
+        [Fact]
+        public async Task WhenMessageLockLost_SwallowsExceptionInsteadOfThrowing()
+        {
+            var serviceBusReceivedMessage = ServiceBusModelFactory.ServiceBusReceivedMessage(body: BinaryData.FromString("{}"));
+            var fakeServiceBusReceiver = new FakeServiceBusReceiver
+            {
+                ExceptionToThrowOnComplete = new ServiceBusException("lock lost", ServiceBusFailureReason.MessageLockLost)
+            };
+            var batchReceivedMessage = new BatchReceivedMessage<OrderPlaced>(receiver: fakeServiceBusReceiver, message: serviceBusReceivedMessage);
+
+            await batchReceivedMessage.Complete();
+        }
+
+        [Fact]
+        public async Task WhenServiceBusExceptionForOtherReason_Rethrows()
+        {
+            var serviceBusReceivedMessage = ServiceBusModelFactory.ServiceBusReceivedMessage(body: BinaryData.FromString("{}"));
+            var fakeServiceBusReceiver = new FakeServiceBusReceiver
+            {
+                ExceptionToThrowOnComplete = new ServiceBusException("service busy", ServiceBusFailureReason.ServiceBusy)
+            };
+            var batchReceivedMessage = new BatchReceivedMessage<OrderPlaced>(receiver: fakeServiceBusReceiver, message: serviceBusReceivedMessage);
+
+            await Assert.ThrowsAsync<ServiceBusException>(() => batchReceivedMessage.Complete());
+        }
+    }
+
+    public class DeadLetter
+    {
+        [Fact]
+        public async Task DelegatesToReceiverDeadLetterMessage()
+        {
+            var serviceBusReceivedMessage = ServiceBusModelFactory.ServiceBusReceivedMessage(body: BinaryData.FromString("{}"));
+            var fakeServiceBusReceiver = new FakeServiceBusReceiver();
+            var batchReceivedMessage = new BatchReceivedMessage<OrderPlaced>(receiver: fakeServiceBusReceiver, message: serviceBusReceivedMessage);
+
+            await batchReceivedMessage.DeadLetter("bad-message");
+
+            Assert.Equal(1, fakeServiceBusReceiver.DeadLetterMessageCallCount);
+        }
+
+        [Fact]
+        public async Task WhenMessageLockLost_SwallowsExceptionInsteadOfThrowing()
+        {
+            var serviceBusReceivedMessage = ServiceBusModelFactory.ServiceBusReceivedMessage(body: BinaryData.FromString("{}"));
+            var fakeServiceBusReceiver = new FakeServiceBusReceiver
+            {
+                ExceptionToThrowOnDeadLetter = new ServiceBusException("lock lost", ServiceBusFailureReason.MessageLockLost)
+            };
+            var batchReceivedMessage = new BatchReceivedMessage<OrderPlaced>(receiver: fakeServiceBusReceiver, message: serviceBusReceivedMessage);
+
+            await batchReceivedMessage.DeadLetter("bad-message");
+        }
+
+        [Fact]
+        public async Task WhenServiceBusExceptionForOtherReason_Rethrows()
+        {
+            var serviceBusReceivedMessage = ServiceBusModelFactory.ServiceBusReceivedMessage(body: BinaryData.FromString("{}"));
+            var fakeServiceBusReceiver = new FakeServiceBusReceiver
+            {
+                ExceptionToThrowOnDeadLetter = new ServiceBusException("service busy", ServiceBusFailureReason.ServiceBusy)
+            };
+            var batchReceivedMessage = new BatchReceivedMessage<OrderPlaced>(receiver: fakeServiceBusReceiver, message: serviceBusReceivedMessage);
+
+            await Assert.ThrowsAsync<ServiceBusException>(() => batchReceivedMessage.DeadLetter("bad-message"));
         }
     }
 

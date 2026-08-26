@@ -40,6 +40,13 @@ namespace Flowly;
 ///     partitioned stream. Used only at send time to select a partition (via a transport-specific hash) — not
 ///     retained on the delivered message. <see langword="null" /> selects a partition via round-robin.
 /// </param>
+/// <param name="DeliveryCount">
+///     The broker's native delivery/attempt count for this message, where the transport exposes one. This is
+///     distinct from <paramref name="RetryCount" />, which is Flowly's own application-level counter — this value
+///     reflects how many times the underlying broker has attempted to deliver the message, independent of Flowly's
+///     retry mechanism. <see langword="null" /> for transports/receive paths that don't expose it, which today is
+///     every receive path except Azure Service Bus.
+/// </param>
 public record MessageProperties(
     string MessageId,
     string CorrelationId,
@@ -50,7 +57,8 @@ public record MessageProperties(
     string? Tracestate = null,
     string? ReplyTo = null,
     long? StreamOffset = null,
-    string? PartitionKey = null)
+    string? PartitionKey = null,
+    int? DeliveryCount = null)
 {
     /// <summary>
     ///     A default empty <see cref="MessageProperties" /> instance with empty strings for required fields. Used as a
