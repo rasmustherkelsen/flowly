@@ -75,24 +75,24 @@ internal class DeadLetterRepository(IDbContextFactory<DeadLetterDataContext> con
             .ExecuteDeleteAsync(cancellationToken);
     }
 
-    public async Task DeleteRequeuedOlderThan(TimeSpan age, CancellationToken cancellationToken = default)
+    public async Task<int> DeleteRequeuedOlderThan(TimeSpan age, CancellationToken cancellationToken = default)
     {
         await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
 
         var cutOff = DateTimeOffset.UtcNow - age;
 
-        await context.DeadLetters
+        return await context.DeadLetters
             .Where(d => d.Status == DeadLetterStatus.Requeued && d.RequeuedAt < cutOff)
             .ExecuteDeleteAsync(cancellationToken);
     }
 
-    public async Task DeletePendingOlderThan(TimeSpan age, CancellationToken cancellationToken = default)
+    public async Task<int> DeletePendingOlderThan(TimeSpan age, CancellationToken cancellationToken = default)
     {
         await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
 
         var cutOff = DateTimeOffset.UtcNow - age;
 
-        await context.DeadLetters
+        return await context.DeadLetters
             .Where(d => d.Status == DeadLetterStatus.Pending && d.DeadLetteredAt < cutOff)
             .ExecuteDeleteAsync(cancellationToken);
     }

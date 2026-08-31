@@ -1,4 +1,5 @@
 using Flowly.DeadLetters.Repositories;
+using Flowly.DeadLetters.Telemetry;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -9,6 +10,7 @@ namespace Flowly.DeadLetters.BackgroundServices;
 internal class DeadLetterCleanupBackgroundService(
     IServiceScopeFactory serviceScopeFactory,
     IOptions<DeadLetterTrackingOptions> options,
+    IDeadLetterCleanupInstrumentation instrumentation,
     ILogger<DeadLetterCleanupBackgroundService> logger) : BackgroundService
 {
     private static readonly TimeSpan CleanupInterval = TimeSpan.FromMinutes(1);
@@ -20,7 +22,12 @@ internal class DeadLetterCleanupBackgroundService(
             try
             {
                 await Task.Delay(CleanupInterval, stoppingToken);
-                await RunCleanup(stoppingToken);
+
+                if (!IsCleanupConfigured())
+                    continue;
+
+                await using var scope = serviceScopeFactory.CreateAsyncScope();
+                await RunCleanup(scope.ServiceProvider.GetRequiredService<IDeadLetterRepository>(), stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -33,20 +40,31 @@ internal class DeadLetterCleanupBackgroundService(
         }
     }
 
-    private async Task RunCleanup(CancellationToken cancellationToken)
+    private bool IsCleanupConfigured()
     {
         var opts = options.Value;
 
-        if (!opts.DeleteRequeuedMessagesAfter.HasValue && !opts.DeleteDeadLetteredMessagesAfter.HasValue)
-            return;
+        return opts.DeleteRequeuedMessagesAfter.HasValue || opts.DeleteDeadLetteredMessagesAfter.HasValue;
+    }
 
-        await using var scope = serviceScopeFactory.CreateAsyncScope();
-        var repository = scope.ServiceProvider.GetRequiredService<IDeadLetterRepository>();
+    internal async Task RunCleanup(IDeadLetterRepository repository, CancellationToken cancellationToken)
+    {
+        var opts = options.Value;
 
         if (opts.DeleteRequeuedMessagesAfter.HasValue)
-            await repository.DeleteRequeuedOlderThan(opts.DeleteRequeuedMessagesAfter.Value, cancellationToken);
+        {
+            var requeuedDeleted = await repository.DeleteRequeuedOlderThan(opts.DeleteRequeuedMessagesAfter.Value, cancellationToken);
+
+            if (requeuedDeleted > 0)
+                instrumentation.RecordRequeuedPurged(requeuedDeleted);
+        }
 
         if (opts.DeleteDeadLetteredMessagesAfter.HasValue)
-            await repository.DeletePendingOlderThan(opts.DeleteDeadLetteredMessagesAfter.Value, cancellationToken);
+        {
+            var pendingDeleted = await repository.DeletePendingOlderThan(opts.DeleteDeadLetteredMessagesAfter.Value, cancellationToken);
+
+            if (pendingDeleted > 0)
+                instrumentation.RecordPendingPurged(pendingDeleted);
+        }
     }
 }

@@ -506,7 +506,7 @@ builder.AddSqlServerDeadLetterTracking("ConnectionString", configure: options =>
 });
 ```
 
-When set, a `DeadLetterCleanupBackgroundService` will automatically delete messages based on their respective timestamps. If not set, messages are kept indefinitely.
+When set, a `DeadLetterCleanupBackgroundService` will automatically delete messages based on their respective timestamps. If not set, messages are kept indefinitely. Each cleanup sweep records how many rows it purged via `flowly.deadletter.cleanup.pending_purged` / `flowly.deadletter.cleanup.requeued_purged` — see the telemetry table below.
 
 **How it works:** For each opted-in queue, a `DeadLetterIngestionBackgroundService` reads from the broker's dead letter sub-queue, persists to the DB, then explicitly completes the message. On DB failure the message is abandoned and will reappear on the next poll.
 
@@ -547,6 +547,8 @@ When `SubscriptionName` is set, the record is an event subscription dead letter.
 | Counter | `flowly.deadletter.requeued` | — | `messaging.destination.name` | Incremented on every successful requeue |
 | Counter | `flowly.deadletter.discarded` | — | `messaging.destination.name`, `reason` (`user_initiated` / `expired`) | Incremented on every successful discard |
 | Gauge | `flowly.deadletter.pending` | — | — | Current count of `Pending` dead letters; polled every 60 s |
+| Counter | `flowly.deadletter.cleanup.pending_purged` | — | — | Aggregate count of `Pending` dead letters purged by `DeadLetterCleanupBackgroundService` for exceeding `DeleteDeadLetteredMessagesAfter`; recorded once per cleanup sweep, not tagged per queue |
+| Counter | `flowly.deadletter.cleanup.requeued_purged` | — | — | Aggregate count of stale `Requeued` audit-trail rows purged by `DeadLetterCleanupBackgroundService` for exceeding `DeleteRequeuedMessagesAfter`; recorded once per cleanup sweep, not tagged per queue |
 
 The `ActivityLink` on both span types lets you navigate from the management operation (e.g. a dashboard requeue) back to the original message processing trace. Multiple requeues all link to the original trace — they do not chain to each other.
 

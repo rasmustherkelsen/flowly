@@ -10,6 +10,8 @@ internal class FakeDeadLetterRepository : IDeadLetterRepository
     public string? RequeuedMessageId { get; private set; }
     public string? RequeuedBy { get; private set; }
     public string? DeletedMessageId { get; private set; }
+    public int RequeuedOlderThanCountToReturn { get; set; }
+    public int PendingOlderThanCountToReturn { get; set; }
 
     public Task SaveBatch(IReadOnlyCollection<IDeadLetterMessage> messages, string queueName, CancellationToken cancellationToken = default)
     {
@@ -49,14 +51,14 @@ internal class FakeDeadLetterRepository : IDeadLetterRepository
         return Task.CompletedTask;
     }
 
-    public Task DeleteRequeuedOlderThan(TimeSpan age, CancellationToken cancellationToken = default)
+    public Task<int> DeleteRequeuedOlderThan(TimeSpan age, CancellationToken cancellationToken = default)
     {
-        return Task.CompletedTask;
+        return Task.FromResult(RequeuedOlderThanCountToReturn);
     }
 
-    public Task DeletePendingOlderThan(TimeSpan age, CancellationToken cancellationToken = default)
+    public Task<int> DeletePendingOlderThan(TimeSpan age, CancellationToken cancellationToken = default)
     {
-        return Task.CompletedTask;
+        return Task.FromResult(PendingOlderThanCountToReturn);
     }
 
     public Task<IReadOnlyCollection<IDeadLetter>> GetAll(CancellationToken cancellationToken = default)
