@@ -506,7 +506,7 @@ builder.AddSqlServerDeadLetterTracking("ConnectionString", configure: options =>
 });
 ```
 
-When set, a `DeadLetterCleanupBackgroundService` will automatically delete messages based on their respective timestamps. If not set, messages are kept indefinitely.
+When set, a `DeadLetterCleanupBackgroundService` will automatically delete messages based on their respective timestamps. If not set, messages are kept indefinitely. Each cleanup sweep records how many rows it purged via `flowly.deadletter.cleanup.pending_purged` / `flowly.deadletter.cleanup.requeued_purged` — see the telemetry table below. For each `Pending` row purged this way, the sweep additionally emits a per-message `flowly.deadletter.discard` span (with `reason=expired`) exactly as an explicit `IDeadLetterService.Discard` call would, so an expired dead letter is just as traceable back to its original message as one a user discarded by hand — only the aggregate `cleanup.requeued_purged` path (already-requeued audit rows) has no per-row trace correlation, since those messages were already sent onward, not discarded.
 
 **How it works:** For each opted-in queue, a `DeadLetterIngestionBackgroundService` reads from the broker's dead letter sub-queue, persists to the DB, then explicitly completes the message. On DB failure the message is abandoned and will reappear on the next poll.
 
@@ -547,8 +547,10 @@ When `SubscriptionName` is set, the record is an event subscription dead letter.
 | Counter | `flowly.deadletter.requeued` | — | `messaging.destination.name` | Incremented on every successful requeue |
 | Counter | `flowly.deadletter.discarded` | — | `messaging.destination.name`, `reason` (`user_initiated` / `expired`) | Incremented on every successful discard |
 | Gauge | `flowly.deadletter.pending` | — | — | Current count of `Pending` dead letters; polled every 60 s |
+| Counter | `flowly.deadletter.cleanup.pending_purged` | — | — | Aggregate count of `Pending` dead letters purged by `DeadLetterCleanupBackgroundService` for exceeding `DeleteDeadLetteredMessagesAfter`; recorded once per cleanup sweep, not tagged per queue. Each purged row also gets its own `flowly.deadletter.discard` span and `flowly.deadletter.discarded` (`reason=expired`) increment — see below |
+| Counter | `flowly.deadletter.cleanup.requeued_purged` | — | — | Aggregate count of stale `Requeued` audit-trail rows purged by `DeadLetterCleanupBackgroundService` for exceeding `DeleteRequeuedMessagesAfter`; recorded once per cleanup sweep, not tagged per queue. No per-row telemetry — these rows were already requeued (sent onward), so purging them isn't a discard |
 
-The `ActivityLink` on both span types lets you navigate from the management operation (e.g. a dashboard requeue) back to the original message processing trace. Multiple requeues all link to the original trace — they do not chain to each other.
+The `ActivityLink` on both span types lets you navigate from the management operation (e.g. a dashboard requeue, an explicit discard, or a retention-driven expiry) back to the original message processing trace. Multiple requeues/discards all link to the original trace — they do not chain to each other.
 
 ---
 

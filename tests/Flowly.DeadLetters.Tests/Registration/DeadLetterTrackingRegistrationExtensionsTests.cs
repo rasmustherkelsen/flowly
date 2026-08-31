@@ -1,4 +1,5 @@
 using Flowly.DeadLetters.BackgroundServices;
+using Flowly.DeadLetters.Telemetry;
 using Flowly.MessageInfrastructure;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -7,6 +8,33 @@ namespace Flowly.DeadLetters.Tests.Registration;
 
 public class DeadLetterTrackingRegistrationExtensionsTests
 {
+    public class AddDeadLetterTracking
+    {
+        [Fact]
+        public void RegistersDeadLetterCleanupInstrumentation()
+        {
+            var services = new ServiceCollection();
+            services.AddSingleton(new FlowlyOptions());
+            var flowlyBuilder = new StubFlowlyBuilder(services);
+
+            flowlyBuilder.AddDeadLetterTracking(_ => { });
+
+            Assert.NotNull(services.BuildServiceProvider().GetRequiredService<IDeadLetterCleanupInstrumentation>());
+        }
+
+        [Fact]
+        public void RegistersDeadLetterCleanupBackgroundService()
+        {
+            var services = new ServiceCollection();
+            services.AddSingleton(new FlowlyOptions());
+            var flowlyBuilder = new StubFlowlyBuilder(services);
+
+            flowlyBuilder.AddDeadLetterTracking(_ => { });
+
+            Assert.NotNull(services.FirstOrDefault(s => s.ImplementationType == typeof(DeadLetterCleanupBackgroundService)));
+        }
+    }
+
     private static IEventHandlerBuilder<OrderPlaced> BuildEventHandlerBuilder(
         string topicName,
         string subscriptionName,

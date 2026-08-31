@@ -58,6 +58,14 @@ public static class DeadLetterTrackingRegistrationExtensions
                 : new NullDeadLetterOperationInstrumentation();
         });
 
+        flowlyBuilder.Services.TryAddSingleton<IDeadLetterCleanupInstrumentation>(sp =>
+        {
+            var options = sp.GetRequiredService<FlowlyOptions>();
+            return options.EnableTelemetry
+                ? new DeadLetterCleanupInstrumentation()
+                : new NullDeadLetterCleanupInstrumentation();
+        });
+
         return flowlyBuilder;
     }
 

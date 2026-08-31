@@ -67,6 +67,12 @@ public static class FlowlyInstrumentationConstants
     /// <summary>Counter: number of dead-lettered messages that were discarded.</summary>
     public const string DeadLettersDiscarded = "flowly.deadletter.discarded";
 
+    /// <summary>Counter: number of Pending dead letters purged by the cleanup service for exceeding retention.</summary>
+    public const string DeadLetterCleanupPendingPurged = "flowly.deadletter.cleanup.pending_purged";
+
+    /// <summary>Counter: number of stale Requeued audit-trail rows purged by the cleanup service for exceeding retention.</summary>
+    public const string DeadLetterCleanupRequeuedPurged = "flowly.deadletter.cleanup.requeued_purged";
+
     /// <summary>Gauge: current number of jobs in the <c>Failed</c> state.</summary>
     public const string JobsFailed = "flowly.job.failed";
 

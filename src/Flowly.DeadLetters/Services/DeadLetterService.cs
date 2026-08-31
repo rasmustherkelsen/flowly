@@ -30,16 +30,14 @@ internal class DeadLetterService(
                 $"Dead letter '{messageId}' has status '{deadLetter.Status}' and cannot be requeued.");
 
         var rawProperties = JsonSerializer.Deserialize<Dictionary<string, object>>(deadLetter.MessageProperties) ?? [];
-        var applicationProperties = rawProperties.ToDictionary(
-            kvp => kvp.Key,
-            kvp => ConvertJsonElement(kvp.Value));
+        var applicationProperties = DeadLetterPropertiesConverter.ConvertProperties(rawProperties);
 
         applicationProperties.Remove(FlowlyMessageProperties.RetryCount);
 
         if (deadLetter.SubscriptionName is not null)
             applicationProperties[FlowlyMessageProperties.TargetSubscription] = deadLetter.SubscriptionName;
 
-        var originalContext = ParseActivityContext(applicationProperties);
+        var originalContext = DeadLetterPropertiesConverter.ParseActivityContext(applicationProperties);
         using var activity = instrumentation.StartRequeue(deadLetter.QueueName, messageId, originalContext);
 
         try
@@ -69,7 +67,7 @@ internal class DeadLetterService(
             throw new InvalidOperationException(
                 $"Dead letter '{messageId}' has already been requeued and cannot be discarded.");
 
-        var originalContext = ParseActivityContext(deadLetter.MessageProperties);
+        var originalContext = DeadLetterPropertiesConverter.ParseActivityContext(deadLetter.MessageProperties);
         using var activity = instrumentation.StartDiscard(deadLetter.QueueName, messageId, originalContext);
 
         try
@@ -111,38 +109,5 @@ internal class DeadLetterService(
             .FirstOrDefault(s => string.Equals(s.TopicName, queueOrTopicName, StringComparison.OrdinalIgnoreCase));
 
         return subscriptionSettings?.ProviderName ?? clientRegistry.PrimaryProviderName;
-    }
-
-    private static ActivityContext ParseActivityContext(Dictionary<string, object> applicationProperties)
-    {
-        if (!applicationProperties.TryGetValue("traceparent", out var raw) || raw is not string traceparent)
-            return default;
-
-        var tracestate = applicationProperties.TryGetValue("tracestate", out var tsRaw) && tsRaw is string ts ? ts : null;
-
-        return ActivityContext.TryParse(traceparent, tracestate, isRemote: true, out var context) ? context : default;
-    }
-
-    private static ActivityContext ParseActivityContext(string messagePropertiesJson)
-    {
-        var dict = JsonSerializer.Deserialize<Dictionary<string, object>>(messagePropertiesJson) ?? [];
-        return ParseActivityContext(dict.ToDictionary(kvp => kvp.Key, kvp => ConvertJsonElement(kvp.Value)));
-    }
-
-    private static object ConvertJsonElement(object value)
-    {
-        if (value is not JsonElement element)
-            return value;
-
-        return element.ValueKind switch
-        {
-            JsonValueKind.String => element.GetString() ?? string.Empty,
-            JsonValueKind.Number when element.TryGetInt32(out var i) => i,
-            JsonValueKind.Number when element.TryGetInt64(out var l) => l,
-            JsonValueKind.Number => element.GetDouble(),
-            JsonValueKind.True => true,
-            JsonValueKind.False => false,
-            _ => element.ToString()
-        };
     }
 }
