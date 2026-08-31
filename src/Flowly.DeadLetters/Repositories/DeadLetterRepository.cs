@@ -52,6 +52,7 @@ internal class DeadLetterRepository(IDbContextFactory<DeadLetterDataContext> con
         await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
 
         return await context.DeadLetters
+            .AsNoTracking()
             .FirstOrDefaultAsync(d => d.MessageId == messageId, cancellationToken);
     }
 
