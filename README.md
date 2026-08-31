@@ -1513,7 +1513,7 @@ All metrics use the meter name `"Flowly"` and follow the `messaging.*` semantic 
 | `flowly.deadletter.pending` | Gauge | Pending dead-lettered messages |
 | `flowly.deadletter.requeued` | Counter | Dead letters successfully requeued |
 | `flowly.deadletter.discarded` | Counter | Dead letters discarded |
-| `flowly.deadletter.cleanup.pending_purged` | Counter | Pending dead letters purged by retention cleanup |
+| `flowly.deadletter.cleanup.pending_purged` | Counter | Pending dead letters purged by retention cleanup (each purged message also gets its own `flowly.deadletter.discard` span, linked to the original trace, and increments `flowly.deadletter.discarded`) |
 | `flowly.deadletter.cleanup.requeued_purged` | Counter | Stale Requeued audit rows purged by retention cleanup |
 | `flowly.job.failed` | Gauge | Jobs in the Failed state |
 | `flowly.job.running` | Gauge | Jobs in the Started state |

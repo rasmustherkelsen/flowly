@@ -22,5 +22,5 @@ internal interface IDeadLetterRepository
 
     Task<int> DeleteRequeuedOlderThan(TimeSpan age, CancellationToken cancellationToken = default);
 
-    Task<int> DeletePendingOlderThan(TimeSpan age, CancellationToken cancellationToken = default);
+    Task<IReadOnlyCollection<PurgedDeadLetter>> DeletePendingOlderThan(TimeSpan age, CancellationToken cancellationToken = default);
 }

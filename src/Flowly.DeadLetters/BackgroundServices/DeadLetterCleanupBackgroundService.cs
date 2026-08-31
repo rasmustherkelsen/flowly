@@ -1,3 +1,4 @@
+using Flowly.DeadLetters;
 using Flowly.DeadLetters.Repositories;
 using Flowly.DeadLetters.Telemetry;
 using Microsoft.Extensions.DependencyInjection;
@@ -10,7 +11,8 @@ namespace Flowly.DeadLetters.BackgroundServices;
 internal class DeadLetterCleanupBackgroundService(
     IServiceScopeFactory serviceScopeFactory,
     IOptions<DeadLetterTrackingOptions> options,
-    IDeadLetterCleanupInstrumentation instrumentation,
+    IDeadLetterCleanupInstrumentation cleanupInstrumentation,
+    IDeadLetterOperationInstrumentation operationInstrumentation,
     ILogger<DeadLetterCleanupBackgroundService> logger) : BackgroundService
 {
     private static readonly TimeSpan CleanupInterval = TimeSpan.FromMinutes(1);
@@ -56,15 +58,37 @@ internal class DeadLetterCleanupBackgroundService(
             var requeuedDeleted = await repository.DeleteRequeuedOlderThan(opts.DeleteRequeuedMessagesAfter.Value, cancellationToken);
 
             if (requeuedDeleted > 0)
-                instrumentation.RecordRequeuedPurged(requeuedDeleted);
+                cleanupInstrumentation.RecordRequeuedPurged(requeuedDeleted);
         }
 
         if (opts.DeleteDeadLetteredMessagesAfter.HasValue)
         {
-            var pendingDeleted = await repository.DeletePendingOlderThan(opts.DeleteDeadLetteredMessagesAfter.Value, cancellationToken);
+            var pendingPurged = await repository.DeletePendingOlderThan(opts.DeleteDeadLetteredMessagesAfter.Value, cancellationToken);
 
-            if (pendingDeleted > 0)
-                instrumentation.RecordPendingPurged(pendingDeleted);
+            if (pendingPurged.Count > 0)
+            {
+                cleanupInstrumentation.RecordPendingPurged(pendingPurged.Count);
+
+                foreach (var deadLetter in pendingPurged)
+                {
+                    try
+                    {
+                        RecordExpiredDiscard(deadLetter);
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogError(ex, "Failed to record expired-discard telemetry for dead letter {MessageId}", deadLetter.MessageId);
+                    }
+                }
+            }
         }
+    }
+
+    private void RecordExpiredDiscard(PurgedDeadLetter deadLetter)
+    {
+        var originalContext = DeadLetterPropertiesConverter.ParseActivityContext(deadLetter.MessageProperties);
+        using var activity = operationInstrumentation.StartDiscard(deadLetter.QueueName, deadLetter.MessageId, originalContext);
+
+        operationInstrumentation.RecordDiscarded(deadLetter.QueueName, DeadLetterDiscardReason.Expired);
     }
 }
