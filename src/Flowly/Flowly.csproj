@@ -17,6 +17,7 @@
         <InternalsVisibleTo Include="Flowly.Jobs.Postgres.Tests" />
         <InternalsVisibleTo Include="Flowly.Jobs.SQLite.Tests" />
         <InternalsVisibleTo Include="Flowly.DeadLetters" />
+        <InternalsVisibleTo Include="Flowly.DeadLetters.Tests" />
         <InternalsVisibleTo Include="Flowly.RabbitMQ" />
         <InternalsVisibleTo Include="Flowly.RabbitMQ.Tests" />
         <InternalsVisibleTo Include="Flowly.InMemory" />

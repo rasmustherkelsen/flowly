@@ -17,16 +17,22 @@ internal class DeadLetterMetricsBackgroundService(
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(60));
         do
         {
-            try
-            {
-                await using var dbContext = await dbContextFactory.CreateDbContextAsync(stoppingToken);
-                var pendingCount = await dbContext.DeadLetters.LongCountAsync(d => d.Status == DeadLetterStatus.Pending, stoppingToken);
-                metrics.UpdatePendingCount(pendingCount);
-            }
-            catch (Exception) when (!stoppingToken.IsCancellationRequested)
-            {
-                // metrics polling must not affect application health
-            }
-        } while (await timer.WaitForNextTickAsync(stoppingToken));
+            await RefreshPendingCount(stoppingToken);
+        } 
+        while (await timer.WaitForNextTickAsync(stoppingToken));
+    }
+
+    internal async Task RefreshPendingCount(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+            var pendingCount = await dbContext.DeadLetters.LongCountAsync(d => d.Status == DeadLetterStatus.Pending, cancellationToken);
+            metrics.UpdatePendingCount(pendingCount);
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            // metrics polling must not affect application health
+        }
     }
 }

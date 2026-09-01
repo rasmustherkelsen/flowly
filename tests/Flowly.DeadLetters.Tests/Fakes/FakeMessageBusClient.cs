@@ -16,25 +16,18 @@ internal class FakeMessageBusClient : IMessageBusClient, IEventCapableMessageBus
         return Task.FromResult<IMessageBusSender>(sender);
     }
 
-    public Task<IMessageBusSender> CreateEventPublisher(string topicName)
-    {
-        throw new NotSupportedException();
-    }
+    public Task<IMessageBusSender> CreateEventPublisher(string topicName) => throw new NotSupportedException();
 
     public Task<IMessageBusProcessor<TEvent>> CreateEventProcessor<TEvent>(string topicName, string subscriptionName, MessageBusProcessorOptions options)
-    {
-        throw new NotSupportedException();
-    }
+        => throw new NotSupportedException();
 
     public Task<IDeadLetterReceiver> CreateEventSubscriptionDeadLetterReceiver(string topicName, string subscriptionName)
-    {
-        throw new NotSupportedException();
-    }
+        => throw new NotSupportedException();
+
+    public long EventSubscriptionDeadLetterMessageCountToReturn { get; set; }
 
     public Task<long> GetEventSubscriptionDeadLetterMessageCount(string topicName, string subscriptionName, CancellationToken cancellationToken = default)
-    {
-        throw new NotSupportedException();
-    }
+        => Task.FromResult(EventSubscriptionDeadLetterMessageCountToReturn);
 
     public string MessagingSystem => "fake";
 
@@ -45,43 +38,26 @@ internal class FakeMessageBusClient : IMessageBusClient, IEventCapableMessageBus
         return Task.FromResult<IMessageBusSender>(sender);
     }
 
-    public Task<IMessageBusReceiver> CreateReceiver(string queueName)
-    {
-        throw new NotSupportedException();
-    }
+    public Task<IMessageBusReceiver> CreateReceiver(string queueName) => throw new NotSupportedException();
 
     public Task<IMessageBusProcessor<TMessage>> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options)
-    {
-        throw new NotSupportedException();
-    }
+        => throw new NotSupportedException();
 
     public Task<IExecutionLaneProcessor> CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options)
-    {
-        throw new NotSupportedException();
-    }
+        => throw new NotSupportedException();
 
-    public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName)
-    {
-        throw new NotSupportedException();
-    }
+    public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName) => throw new NotSupportedException();
+
+    public long DeadLetterMessageCountToReturn { get; set; }
 
     public Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default)
-    {
-        throw new NotSupportedException();
-    }
+        => Task.FromResult(DeadLetterMessageCountToReturn);
 
-    public FakeMessageBusSender GetSender(string queueName)
-    {
-        return _senders[queueName];
-    }
+    public FakeMessageBusSender GetSender(string queueName) => _senders[queueName];
 
     public FakeMessageBusSender GetEventRetrySender(string topicName, string subscriptionName)
-    {
-        return _eventRetrySenders[$"{topicName}/{subscriptionName}"];
-    }
+        => _eventRetrySenders[$"{topicName}/{subscriptionName}"];
 
     public bool EventRetrySenderCreated(string topicName, string subscriptionName)
-    {
-        return _eventRetrySenders.ContainsKey($"{topicName}/{subscriptionName}");
-    }
+        => _eventRetrySenders.ContainsKey($"{topicName}/{subscriptionName}");
 }
