@@ -14,6 +14,7 @@ Add a `MessageStreamCheckpoint<$0>` for an **existing** `MessageStreamHandler<$0
 > - **No default storage implementation is provided.** This skill scaffolds the class shape with method stubs and comments describing the decision — it does not pick a database, cache, or file for the user. Ask what durable storage this project already has (an existing `DbContext`, a distributed cache, etc.) before filling in the bodies, and only fill them in if the user wants that done now.
 > - **Checkpoint identity is `(ConsumerName, Partition)`** — this disambiguates independent readers of the same stream. `ConsumerName` defaults to the handler type name; `Partition` is `null` for a non-partitioned stream.
 > - **Only one live instance per non-partitioned handler registration** may run against a shared checkpoint store at a time — Flowly does not coordinate exclusive access across processes, and running more than one will corrupt the stored position.
+> - **The checkpoint class must be thread-safe.** It's registered `AddSingleton`, so one instance is shared for the process's lifetime. For a non-partitioned stream Flowly never calls it concurrently. For a *partitioned* stream, Flowly runs one independent processing loop per partition this process owns, and every loop calls into the same checkpoint instance — `InitializeCheckpoint`/`GetStreamPosition`/`SaveStreamPosition` can run concurrently across different partitions (never twice concurrently for the same `(ConsumerName, Partition)`, but across different ones, yes). This matters most for the storage choice in Step 3: if it's EF Core, inject `IDbContextFactory<T>` and create a short-lived `DbContext` per call — never take a `DbContext` directly through the constructor. A `DbContext` isn't safe for concurrent use, and a constructor-injected one (normally `Scoped`) captured as state on a `Singleton` is also a DI captive-dependency bug.
 
 ## Step 1 — Find the existing stream handler
 
@@ -37,7 +38,7 @@ grep -r "UseRabbitMq\|UseInMemory\|UseAzureServiceBus" --include="*.cs" <handler
 ## Step 3 — Ask what storage this checkpoint should use
 
 Ask the user what durable store this project should persist the position in — do not guess. Common answers:
-- An existing EF Core `DbContext` already used elsewhere in the project (add a table/entity for it if one doesn't exist)
+- An existing EF Core `DbContext` already used elsewhere in the project (add a table/entity for it if one doesn't exist) — inject `IDbContextFactory<T>`, not the `DbContext` type itself; see the thread-safety constraint above for why
 - A distributed cache (e.g. Redis via `IDistributedCache`)
 - A file or embedded store local to the process
 - Some other repository/service the project already has
@@ -97,7 +98,7 @@ internal class $0Checkpoint : MessageStreamCheckpoint<$0>
 Rules:
 - Class must be `internal`.
 - Do not invent a storage implementation — leave the `throw new NotImplementedException();` bodies and comments as-is unless the user has told you what storage to use and asked you to implement it now.
-- If the user does ask for the implementation now, use primary constructor injection for the storage dependency (e.g. `internal class $0Checkpoint(MyDbContext dbContext) : MessageStreamCheckpoint<$0>`) and replace the relevant stub bodies — keep the guidance comments only where they still add non-obvious context.
+- If the user does ask for the implementation now, use primary constructor injection for the storage dependency and replace the relevant stub bodies — keep the guidance comments only where they still add non-obvious context. **If the storage is EF Core, inject `IDbContextFactory<T>` and create a short-lived `DbContext` per method call** (e.g. `internal class $0Checkpoint(IDbContextFactory<MyDbContext> dbContextFactory) : MessageStreamCheckpoint<$0>`, `await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);` at the top of each method) — never take a `DbContext` directly through the constructor. This class is registered `AddSingleton` (Step 5) and, for a partitioned stream, its methods are called concurrently from every partition's independent processing loop; a constructor-injected `DbContext` would be both unsafe for that concurrent use and a DI captive-dependency bug (`DbContext` is normally `Scoped`).
 
 ## Step 5 — Register in DI
 
@@ -127,6 +128,7 @@ Fix any errors before reporting the task as complete.
 - [ ] Confirmed the target project uses RabbitMQ, not InMemory
 - [ ] Asked the user what durable storage to use, without guessing
 - [ ] `$0Checkpoint` class created in the handler's project (`internal`, inherits `MessageStreamCheckpoint<$0>`), with stub bodies left as `NotImplementedException` unless the user asked for the implementation now
+- [ ] If implemented now with EF Core storage, injected `IDbContextFactory<T>` (not `DbContext` directly) — required for thread safety on partitioned streams and to avoid a DI captive-dependency bug
 - [ ] Registered via `services.AddSingleton<MessageStreamCheckpoint<$0>, $0Checkpoint>()` in the same project
 - [ ] Mentioned `options.ConsumerName` if a rename or multiple independent readers are relevant
 - [ ] `dotnet build` passes with no errors

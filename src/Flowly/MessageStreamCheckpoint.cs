@@ -20,6 +20,21 @@ namespace Flowly;
 ///         checkpoint store at a time. Flowly does not coordinate exclusive access across processes — running more
 ///         than one instance concurrently will corrupt the stored position.
 ///     </para>
+///     <para>
+///         <strong>Implementations must be thread-safe.</strong> Flowly resolves this type from DI and expects a
+///         single instance to be registered with <c>AddSingleton</c>, shared for the lifetime of the process. For a
+///         non-partitioned stream this is never called concurrently — one reader, one sequential processing loop.
+///         For a <see cref="StreamPartitionsAttribute">partitioned</see> stream, Flowly runs one independent
+///         processing loop per partition currently owned by this process, and every loop calls into the same
+///         checkpoint instance — <see cref="InitializeCheckpoint" />, <see cref="GetStreamPosition" />, and
+///         <see cref="SaveStreamPosition" /> can all be invoked concurrently from different partitions' loops at the
+///         same time. Flowly never calls a method twice concurrently for the same
+///         (<see cref="MessageStreamCheckpointContext.ConsumerName" />, <see cref="MessageStreamCheckpointContext.Partition" />)
+///         pair, but an implementation must tolerate concurrent calls across different pairs. Avoid holding a single
+///         non-thread-safe resource (e.g. an injected EF Core <c>DbContext</c>, which is not safe for concurrent
+///         use) as instance state — inject an <c>IDbContextFactory&lt;T&gt;</c> and create a short-lived context per
+///         call instead.
+///     </para>
 /// </summary>
 /// <typeparam name="TMessage">The message contract type this checkpoint tracks a position for.</typeparam>
 public abstract class MessageStreamCheckpoint<TMessage>

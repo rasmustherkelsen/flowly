@@ -484,10 +484,12 @@ When retries are exhausted, the handler **halts consumption of that queue entire
 Register a `MessageStreamCheckpoint<TMessage>` to restore restart-survival — an opt-in, transport-agnostic extension point you implement against whatever storage you already have (a database, typically):
 
 ```csharp
-internal class TelemetryReadingCheckpoint(MyDbContext dbContext) : MessageStreamCheckpoint<TelemetryReading>
+internal class TelemetryReadingCheckpoint(IDbContextFactory<MyDbContext> dbContextFactory) : MessageStreamCheckpoint<TelemetryReading>
 {
     protected internal override async Task InitializeCheckpoint(MessageStreamCheckpointContext context, CancellationToken cancellationToken)
     {
+        await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+
         if (await dbContext.StreamPositions.AnyAsync(p => p.ConsumerName == context.ConsumerName && p.Partition == context.Partition, cancellationToken))
             return;
 
@@ -495,16 +497,24 @@ internal class TelemetryReadingCheckpoint(MyDbContext dbContext) : MessageStream
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
-    protected internal override Task<long?> GetStreamPosition(MessageStreamCheckpointContext context, CancellationToken cancellationToken)
-        => dbContext.StreamPositions
+    protected internal override async Task<long?> GetStreamPosition(MessageStreamCheckpointContext context, CancellationToken cancellationToken)
+    {
+        await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+
+        return await dbContext.StreamPositions
             .Where(p => p.ConsumerName == context.ConsumerName && p.Partition == context.Partition)
             .Select(p => p.Position)
             .SingleOrDefaultAsync(cancellationToken);
+    }
 
-    protected internal override Task SaveStreamPosition(MessageStreamCheckpointSaveContext context, CancellationToken cancellationToken)
-        => dbContext.StreamPositions
+    protected internal override async Task SaveStreamPosition(MessageStreamCheckpointSaveContext context, CancellationToken cancellationToken)
+    {
+        await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+
+        await dbContext.StreamPositions
             .Where(p => p.ConsumerName == context.ConsumerName && p.Partition == context.Partition)
             .ExecuteUpdateAsync(s => s.SetProperty(p => p.Position, context.Position), cancellationToken);
+    }
 }
 ```
 
@@ -523,6 +533,8 @@ Flowly feature-detects the registration — no separate builder call is needed. 
 **RabbitMQ only.** Registering a checkpoint against an InMemory-backed stream throws `InvalidOperationException` at registration time — the underlying log has no cross-restart persistence of its own, so a persisted position would point at data that no longer exists after a restart.
 
 **Run at most one live instance** of a given non-partitioned handler registration against a shared checkpoint store at a time. Flowly does not coordinate exclusive access across processes — running more than one concurrently will corrupt the stored position. (Partitioned streams are unaffected by this constraint — see below.)
+
+**Implementations must be thread-safe.** The checkpoint is registered `AddSingleton`, so one instance is shared for the process's lifetime. For a non-partitioned stream that's never a concern — one reader, one sequential loop. For a [partitioned](#partitioned-streams) stream, Flowly runs one independent processing loop per partition currently owned by this process, and every loop calls into the *same* checkpoint instance — `InitializeCheckpoint`, `GetStreamPosition`, and `SaveStreamPosition` can all run concurrently across different partitions (never twice concurrently for the same `(ConsumerName, Partition)`, but across different ones, yes). This is why the example above injects `IDbContextFactory<MyDbContext>` and creates a short-lived `DbContext` per call rather than taking a `DbContext` directly through the constructor — an EF Core `DbContext` is not safe for concurrent use, and a constructor-injected one (normally registered `Scoped`) captured as state on a `Singleton` is a DI captive-dependency bug on top of that.
 
 ### Partitioned streams
 

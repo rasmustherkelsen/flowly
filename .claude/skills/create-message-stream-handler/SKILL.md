@@ -136,7 +136,7 @@ Rules:
 By default, restarting the process re-evaluates `StartPosition` fresh — any progress from before the restart is not remembered. Ask the user whether this handler needs to resume where it left off after a restart instead.
 
 - **InMemory** — not supported. Registering a `MessageStreamCheckpoint<T>` against an InMemory-backed stream throws `InvalidOperationException` at registration time, because the InMemory log itself has no cross-restart persistence: a saved position would point at data that no longer exists after a restart. Tell the user this isn't available and skip this step.
-- **RabbitMQ** — if the user wants restart-survival, invoke `/add-message-stream-checkpoint` with `$0` right after finishing this skill. It scaffolds the `MessageStreamCheckpoint<$0>` class (no default storage implementation — that skill asks the user what durable store to use) and its DI registration.
+- **RabbitMQ** — if the user wants restart-survival, invoke `/add-message-stream-checkpoint` with `$0` right after finishing this skill. It scaffolds the `MessageStreamCheckpoint<$0>` class (no default storage implementation — that skill asks the user what durable store to use) and its DI registration. If this stream is also partitioned (Step 4a), that skill's thread-safety constraint matters here: the checkpoint is a process-lifetime singleton, and Flowly calls into it concurrently from every partition's independent processing loop.
 
 ## Step 6 — Register in FlowlyConfiguration
 
