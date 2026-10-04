@@ -136,7 +136,11 @@ Rules:
 By default, restarting the process re-evaluates `StartPosition` fresh — any progress from before the restart is not remembered. Ask the user whether this handler needs to resume where it left off after a restart instead.
 
 - **InMemory** — not supported. Registering a `MessageStreamCheckpoint<T>` against an InMemory-backed stream throws `InvalidOperationException` at registration time, because the InMemory log itself has no cross-restart persistence: a saved position would point at data that no longer exists after a restart. Tell the user this isn't available and skip this step.
-- **RabbitMQ** — if the user wants restart-survival, invoke `/add-message-stream-checkpoint` with `$0` right after finishing this skill. It scaffolds the `MessageStreamCheckpoint<$0>` class (no default storage implementation — that skill asks the user what durable store to use) and its DI registration. If this stream is also partitioned (Step 4a), that skill's thread-safety constraint matters here: the checkpoint is a process-lifetime singleton, and Flowly calls into it concurrently from every partition's independent processing loop.
+- **RabbitMQ** — if the user wants restart-survival, ask which they'd prefer:
+  - **Built-in database persistence** (SQL Server, PostgreSQL, or SQLite, no hand-written storage code) — invoke `/add-message-stream-persistence` with `$0` right after finishing this skill. If scaffolding a brand-new project rather than adding to an existing one, `dotnet new flowlyapp`/`flowlyaspireapp --stream --stream-checkpoint <sqlserver|postgres|sqlite>` wires this at scaffold time instead — prefer that for a new project, per this repo's "prefer templates for new projects" convention.
+  - **Custom storage** (a cache, a file, a bespoke repository) — invoke `/add-message-stream-checkpoint` with `$0` instead. It scaffolds the `MessageStreamCheckpoint<$0>` class (no default storage implementation — that skill asks the user what durable store to use) and its DI registration.
+
+  Either way, if this stream is also partitioned (Step 4a), the thread-safety constraint matters: the checkpoint is a process-lifetime singleton, and Flowly calls into it concurrently from every partition's independent processing loop.
 
 ## Step 6 — Register in FlowlyConfiguration
 
@@ -177,7 +181,7 @@ Fix any errors before reporting the task as complete.
 - [ ] Message contract record created with `[StreamRetention]` (or existing contract confirmed) — retention values confirmed with the user, not guessed
 - [ ] Asked whether the stream should be partitioned; if yes, `[StreamPartitions(count)]` added with a user-confirmed count, and InMemory's parity-only (no real scale-out) limitation explained if that's the target transport
 - [ ] Handler class created (`internal`, inherits `MessageStreamHandler<$0>`, `Configure` sets `StartPosition`)
-- [ ] Asked whether restart-survival is needed; if yes and transport is RabbitMQ, invoked `/add-message-stream-checkpoint` for `$0` (skipped and explained if transport is InMemory)
+- [ ] Asked whether restart-survival is needed; if yes and transport is RabbitMQ, invoked `/add-message-stream-persistence` (built-in database) or `/add-message-stream-checkpoint` (custom storage) for `$0` per the user's choice (skipped and explained if transport is InMemory)
 - [ ] Registered with `AddMessageStreamHandler` in the consumer's `FlowlyConfiguration`
 - [ ] `AddMessageRecorder` added in the producer's `FlowlyConfiguration` if a different project records onto the stream
 - [ ] `dotnet build` passes with no errors

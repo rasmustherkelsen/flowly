@@ -49,6 +49,18 @@ public static class FlowlyInstrumentationConstants
     /// <summary>Histogram: message processing duration in milliseconds for handlers.</summary>
     public const string HandlerProcessingDuration = "flowly.message.handler.duration";
 
+    /// <summary>Counter: number of times a message stream's checkpoint position was successfully saved.</summary>
+    public const string CheckpointSaved = "flowly.message.checkpoint.saved";
+
+    /// <summary>Histogram: checkpoint save duration in milliseconds.</summary>
+    public const string CheckpointSaveDuration = "flowly.message.checkpoint.save.duration";
+
+    /// <summary>Counter: number of checkpoint save failures.</summary>
+    public const string CheckpointSaveFailed = "flowly.message.checkpoint.save.failed";
+
+    /// <summary>Counter: number of times a message stream's start position was resolved, tagged <c>outcome=resumed|fresh</c>.</summary>
+    public const string CheckpointResolved = "flowly.message.checkpoint.resolved";
+
     /// <summary>Counter: number of messages successfully sent by submitters.</summary>
     public const string SubmitterMessagesSent = "flowly.message.submitter.sent";
 

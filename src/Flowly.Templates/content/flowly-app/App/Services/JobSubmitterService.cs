@@ -7,11 +7,12 @@ internal class JobSubmitterService(IServiceScopeFactory serviceScopeFactory, ILo
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        await using var scope = serviceScopeFactory.CreateAsyncScope();
+
+        var sender = scope.ServiceProvider.GetRequiredService<IJobMessageSender>();
+
         while (!stoppingToken.IsCancellationRequested)
         {
-            await using var scope = serviceScopeFactory.CreateAsyncScope();
-
-            var sender = scope.ServiceProvider.GetRequiredService<IJobMessageSender>();
             var jobId = await sender.QueueJob(
                 new ProcessJobMessage($"Task at {DateTime.Now}"),
                 stoppingToken);

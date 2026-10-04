@@ -1,6 +1,6 @@
 ---
 name: add-message-stream-checkpoint
-description: Add restart-survival to an existing Flowly MessageStreamHandler<T> by scaffolding a MessageStreamCheckpoint<T> — RabbitMQ only. Scaffolds the class with no default storage implementation, just method stubs and guidance comments, since the storage choice (database, cache, file, etc.) belongs to the user. Use when the user asks to persist a stream's read position across restarts, or to make a stream handler resume where it left off after a restart.
+description: Add restart-survival to an existing Flowly MessageStreamHandler<T> by scaffolding a hand-rolled MessageStreamCheckpoint<T> against custom storage — RabbitMQ only. If the user wants SQL Server/Postgres/SQLite instead, use the add-message-stream-persistence skill (Flowly's built-in checkpoint providers) rather than this one. Scaffolds the class with no default storage implementation, just method stubs and guidance comments, since the storage choice (database, cache, file, etc.) belongs to the user. Use when the user asks to persist a stream's read position across restarts, or to make a stream handler resume where it left off after a restart.
 arguments:
   - name: messageName
     description: "PascalCase message class name of the existing stream, including the Message suffix. Example: TelemetryReadingMessage"
@@ -37,7 +37,9 @@ grep -r "UseRabbitMq\|UseInMemory\|UseAzureServiceBus" --include="*.cs" <handler
 
 ## Step 3 — Ask what storage this checkpoint should use
 
-Ask the user what durable store this project should persist the position in — do not guess. Common answers:
+**First, check if a built-in provider is actually what they want.** If the user just wants restart-survival backed by SQL Server, PostgreSQL, or SQLite with no custom storage logic, stop and point them at the `add-message-stream-persistence` skill instead — it wires `Add<Provider>MessageStreamPersistence(...)` + `UseMessageStreamCheckpoint<T>()` with zero hand-written storage code. This skill (`add-message-stream-checkpoint`) is for genuinely custom storage (a cache, a file, an existing bespoke repository, or a database shape the built-in providers don't support).
+
+Otherwise, ask the user what durable store this project should persist the position in — do not guess. Common answers:
 - An existing EF Core `DbContext` already used elsewhere in the project (add a table/entity for it if one doesn't exist) — inject `IDbContextFactory<T>`, not the `DbContext` type itself; see the thread-safety constraint above for why
 - A distributed cache (e.g. Redis via `IDistributedCache`)
 - A file or embedded store local to the process
@@ -102,13 +104,13 @@ Rules:
 
 ## Step 5 — Register in DI
 
-Add to `FlowlyConfiguration` (or wherever DI services are configured) in the **same project** as the handler, with plain DI — there is no separate builder call:
+Add to `FlowlyConfiguration` in the **same project** as the handler, using the `AddMessageStreamCheckpoint<TCheckpoint>()` sugar (infers `$0` from `$0Checkpoint`'s base type):
 
 ```csharp
-services.AddSingleton<MessageStreamCheckpoint<$0>, $0Checkpoint>();
+builder.AddMessageStreamCheckpoint<$0Checkpoint>();
 ```
 
-Flowly feature-detects this registration automatically when `AddMessageStreamHandler<$0, ...>()` runs — no further wiring is needed.
+This is sugar over `services.AddSingleton<MessageStreamCheckpoint<$0>, $0Checkpoint>()` — either form works, but prefer the builder call for consistency with the rest of `FlowlyConfiguration`. Flowly feature-detects this registration automatically when `AddMessageStreamHandler<$0, ...>()` runs — no further wiring is needed.
 
 ## Step 6 — Mention the ConsumerName override if relevant
 
@@ -129,6 +131,6 @@ Fix any errors before reporting the task as complete.
 - [ ] Asked the user what durable storage to use, without guessing
 - [ ] `$0Checkpoint` class created in the handler's project (`internal`, inherits `MessageStreamCheckpoint<$0>`), with stub bodies left as `NotImplementedException` unless the user asked for the implementation now
 - [ ] If implemented now with EF Core storage, injected `IDbContextFactory<T>` (not `DbContext` directly) — required for thread safety on partitioned streams and to avoid a DI captive-dependency bug
-- [ ] Registered via `services.AddSingleton<MessageStreamCheckpoint<$0>, $0Checkpoint>()` in the same project
+- [ ] Registered via `builder.AddMessageStreamCheckpoint<$0Checkpoint>()` in the same project
 - [ ] Mentioned `options.ConsumerName` if a rename or multiple independent readers are relevant
 - [ ] `dotnet build` passes with no errors

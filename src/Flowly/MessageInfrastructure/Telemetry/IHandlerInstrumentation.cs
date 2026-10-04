@@ -106,6 +106,34 @@ internal interface IHandlerInstrumentation
     void RecordHalted(string handlerName, string queueName, string reason);
 
     /// <summary>
+    ///     Increments the <c>flowly.message.checkpoint.saved</c> counter and records the save duration. Called after a
+    ///     <see cref="MessageStreamCheckpoint{TMessage}" /> successfully persists a stream's position.
+    /// </summary>
+    /// <param name="handlerName">The name of the stream handler class.</param>
+    /// <param name="queueName">The stream queue the checkpoint belongs to.</param>
+    /// <param name="durationMs">The elapsed time in milliseconds to save the position.</param>
+    void RecordCheckpointSaved(string handlerName, string queueName, double durationMs);
+
+    /// <summary>
+    ///     Increments the <c>flowly.message.checkpoint.save.failed</c> counter. Called when persisting a stream's
+    ///     checkpoint position throws.
+    /// </summary>
+    /// <param name="handlerName">The name of the stream handler class.</param>
+    /// <param name="queueName">The stream queue the checkpoint belongs to.</param>
+    void RecordCheckpointSaveFailed(string handlerName, string queueName);
+
+    /// <summary>
+    ///     Increments the <c>flowly.message.checkpoint.resolved</c> counter, tagged <c>outcome=resumed</c> when a
+    ///     stored position was found or <c>outcome=fresh</c> when the handler's configured
+    ///     <see cref="MessageStreamHandlerOptions.StartPosition" /> was used instead. Called once per reader (or, for a
+    ///     partitioned stream, once per newly-assigned partition) when the start position is resolved.
+    /// </summary>
+    /// <param name="handlerName">The name of the stream handler class.</param>
+    /// <param name="queueName">The stream queue being resolved.</param>
+    /// <param name="resumed"><see langword="true" /> when a stored position was found; otherwise <see langword="false" />.</param>
+    void RecordCheckpointResolved(string handlerName, string queueName, bool resumed);
+
+    /// <summary>
     ///     Starts a <see cref="ActivityKind.Producer" /> span named <c>flowly.call.reply {callQueueName}</c> for the
     ///     act of sending a response back to the caller. The activity becomes <c>Activity.Current</c> so the transport
     ///     can inject its <c>traceparent</c> into the outgoing response message, linking it as a child of the handler

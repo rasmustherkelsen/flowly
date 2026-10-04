@@ -43,6 +43,12 @@ var flowlyDeadLettersDb = sqlServer.AddDatabase("FlowlyDeadLetters");
 #if (UseDeadLetterTracking && UsePostgres)
 var flowlyDeadLettersDb = postgres.AddDatabase("FlowlyDeadLetters");
 #endif
+#if (UseStream && UseStreamCheckpointSqlServer)
+var msgStreamDb = sqlServer.AddDatabase("MsgStreamDb");
+#endif
+#if (UseStream && UseStreamCheckpointPostgres)
+var msgStreamDb = postgres.AddDatabase("MsgStreamDb");
+#endif
 
 #if (!UseInMemory)
 var sender = builder.AddProject<Projects.MyAspireApp_Sender>("sender");
@@ -84,6 +90,9 @@ receiver.WithReference(rabbitMq).WaitFor(rabbitMq);
 #endif
 #if (UseAzureServiceBus)
 receiver.WithReference(azureServiceBus).WaitFor(azureServiceBus);
+#endif
+#if (UseStream && (UseStreamCheckpointSqlServer || UseStreamCheckpointPostgres))
+receiver.WithReference(msgStreamDb).WaitFor(msgStreamDb);
 #endif
 #if (UseJobTracking)
 

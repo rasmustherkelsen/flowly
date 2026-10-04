@@ -167,6 +167,7 @@ internal sealed class StreamPartitionRunner<TMessage, THandler>(
         var lastOffset = batch[^1].Properties.StreamOffset;
         if (lastOffset is null) return;
 
-        await MessageStreamCheckpointHelper.SaveStreamPositionIfPresent<TMessage>(serviceScopeFactory, consumerName, partition, lastOffset.Value, cancellationToken);
+        await MessageStreamCheckpointHelper.SaveStreamPositionIfPresent<TMessage>(
+            serviceScopeFactory, consumerName, partition, lastOffset.Value, handlerName, queueName, handlerInstrumentation, cancellationToken);
     }
 }

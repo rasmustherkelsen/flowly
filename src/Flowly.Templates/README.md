@@ -33,6 +33,7 @@ dotnet new flowlyapp --transport <transport> [options] -n <SolutionName>
 | `--callhandler` | `--call` | Scaffold the main message as an RPC-style call/response pair using `CallHandler` and `IMessageCaller` instead of the default fire-and-forget `MessageHandler`. `MyMessage` implements `IReturns<MyReturnMessage>`; the sender blocks on `IMessageCaller.Call` and prints each response. |
 | `--streamhandler` | `--stream` | Scaffold the main message as an append-only, replayable stream using `MessageStreamHandler<T>` and `IMessageRecorder` instead of the default fire-and-forget `MessageHandler`. RabbitMQ or InMemory only (no Azure Service Bus stream primitive); incompatible with `--call`. `MyMessage` gets `[StreamRetention]`; the Receiver's handler sets `[StreamStartPosition(StreamStartPositionKind.First)]`. |
 | `--partitions <n>` | | Partition the stream into `n` independent, ordered sub-logs via `[StreamPartitions(n)]` on `MyMessage`. `0` (default) = non-partitioned. Requires `--stream`. On RabbitMQ this genuinely scales out across instances (broker-coordinated Single Active Consumer); on InMemory it's parity/local-dev only (a single process owns every partition). On RabbitMQ, the generated `docker-compose.yml` also publishes the Stream protocol port (`5552`) and enables the `rabbitmq_stream` plugin needed for partitioned consumption. |
+| `--stream-checkpoint <value>` | | Add built-in message stream checkpoint persistence (`sqlserver`/`postgres`/`sqlite`) to the Receiver — `Add<Provider>MessageStreamPersistence("MsgStreamDb")` + `UseMessageStreamCheckpoint<MyMessage>()`, a matching connection string, and (SQL Server/PostgreSQL) a `docker-compose.yml` container, reused when `--db` already provisions the same engine. Requires `--stream` and `--transport rabbitmq`; silently has no effect otherwise, the same way `--db` has no effect without `--jobs`/`--deadletter`. |
 | `--jobtracking` | `--jobs` | Add job state tracking. Adds `ProcessJobMessage`, `ProcessJobHandler`, `JobSubmitterService`, and a dedicated `JobTracker` infrastructure project. Requires a DB flag. Not applicable to InMemory (job state runs in `App`). |
 | `--deadlettertracking` | `--deadletter` | Add dead-letter tracking. Adds `DeadLetterSampleMessage`, `DeadLetterSampleMessageHandler` with `[RetryPolicy]`, `FailingMessageSenderService`, and a dedicated `DeadLetterTracker` infrastructure project. The Receiver processes domain messages; `DeadLetterTracker` monitors the dead-letter sub-queue and persists failed messages to the DB. Requires a DB flag. Not applicable to InMemory (dead letter tracking runs in `App`). |
 | `--opentelemetry` | `--otel` | Add Flowly.OpenTelemetry instrumentation (metrics and tracing). No exporter — signals are collected but not emitted unless `--otel-export` is also specified. |
@@ -76,6 +77,9 @@ dotnet new flowlyapp --transport rabbitmq --stream --partitions 4 -n MyApp
 
 # Partitioned message stream (InMemory, dev/test parity only)
 dotnet new flowlyapp --transport inm --stream --partitions 4 -n MyApp
+
+# Message stream with built-in checkpoint persistence (RabbitMQ, SQLite)
+dotnet new flowlyapp --transport rabbitmq --stream --stream-checkpoint sqlite -n MyApp
 
 # RabbitMQ with job tracking (SQLite) and dead-letter tracking
 dotnet new flowlyapp --transport rabbitmq --jobs --deadletter --db sqlite -n MyApp
@@ -163,6 +167,7 @@ dotnet new flowlyaspireapp --transport <transport> [options] -n <SolutionName>
 | `--callhandler` | `--call` | Scaffold the main message as an RPC-style call/response pair using `CallHandler` and `IMessageCaller`. |
 | `--streamhandler` | `--stream` | Scaffold the main message as an append-only, replayable stream using `MessageStreamHandler<T>` and `IMessageRecorder`. RabbitMQ or InMemory only; incompatible with `--call`. |
 | `--partitions <n>` | | Partition the stream into `n` independent, ordered sub-logs via `[StreamPartitions(n)]`. `0` (default) = non-partitioned. Requires `--stream`. On RabbitMQ, the AppHost also bind-mounts `enabled_plugins`/`rabbitmq.conf` into the RabbitMQ container and pins the Stream protocol port to `5552` (`.WithEndpoint(name: "stream", port: 5552, targetPort: 5552)`), needed for partitioned consumption. |
+| `--stream-checkpoint <value>` | | Add built-in message stream checkpoint persistence (`sqlserver`/`postgres`/`sqlite`) to the Receiver. SQL Server/PostgreSQL provision a `MsgStreamDb` AppHost database off the same resource `--db` already provisions when the engine matches; SQLite gets a static connection string instead. Requires `--stream` and `--transport rabbitmq`. |
 | `--jobtracking` | `--jobs` | Add job state tracking. Scaffolds a dedicated `JobTracker` project that owns job state persistence. Receiver stays a pure message-processing worker. InMemory embeds tracking in `App`. Requires a DB flag. |
 | `--deadlettertracking` | `--deadletter` | Add dead-letter tracking. Scaffolds a dedicated `DeadLetterTracker` project that monitors dead-letter sub-queues and persists failed messages. Receiver stays a pure message-processing worker. InMemory embeds tracking in `App`. Requires a DB flag. |
 | `--dashboard` | | Scaffold a standalone `Dashboard/` project hosting the Flowly management UI at `/`. Receiver stays a pure message-processing worker. For InMemory transport the dashboard is embedded in `App/` instead. |
@@ -192,6 +197,9 @@ dotnet new flowlyaspireapp --transport asb --call -n MyApp
 
 # Partitioned message stream (RabbitMQ)
 dotnet new flowlyaspireapp --transport rabbitmq --stream --partitions 4 -n MyApp
+
+# Message stream with built-in checkpoint persistence (RabbitMQ, SQL Server)
+dotnet new flowlyaspireapp --transport rabbitmq --stream --stream-checkpoint sqlserver -n MyApp
 
 # RabbitMQ with job tracking (PostgreSQL) and dead-letter tracking
 dotnet new flowlyaspireapp --transport rabbitmq --jobs --deadletter --db postgres -n MyApp

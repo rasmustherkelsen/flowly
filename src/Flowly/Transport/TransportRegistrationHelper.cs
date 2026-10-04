@@ -11,31 +11,32 @@ namespace Flowly.Transport;
 public static class TransportRegistrationHelper
 {
     /// <summary>
-    ///     Resolves the effective provider name for a transport registration.
-    ///     Returns <paramref name="defaultProviderName" /> when <paramref name="name" /> is <see langword="null" /> and no
-    ///     other provider has been registered yet. Returns <paramref name="name" /> unchanged when supplied.
-    ///     Throws <see cref="InvalidOperationException" /> with <paramref name="secondaryProviderErrorMessage" /> when
-    ///     <paramref name="name" /> is <see langword="null" /> but another provider is already registered.
+    ///     Resolves the effective name for a registration in any "first one is the default, a second one needs an
+    ///     explicit name" registry (transport providers, message stream checkpoint persistence stores, …).
+    ///     Returns <paramref name="defaultName" /> when <paramref name="name" /> is <see langword="null" /> and
+    ///     <paramref name="registeredCount" /> is zero. Returns <paramref name="name" /> unchanged when supplied.
+    ///     Throws <see cref="InvalidOperationException" /> with <paramref name="secondaryRegistrationErrorMessage" /> when
+    ///     <paramref name="name" /> is <see langword="null" /> but <paramref name="registeredCount" /> is already non-zero.
     /// </summary>
-    /// <param name="registry">The <see cref="IMessageBusClientRegistry" /> holding current registrations.</param>
-    /// <param name="name">The caller-supplied provider name, or <see langword="null" /> to use the default.</param>
-    /// <param name="defaultProviderName">The transport's canonical default name (e.g. <c>"rabbitmq"</c>).</param>
-    /// <param name="secondaryProviderErrorMessage">
-    ///     The exception message to use when a secondary provider is registered without an explicit name.
+    /// <param name="registeredCount">The number of registrations already present in the target registry.</param>
+    /// <param name="name">The caller-supplied registration name, or <see langword="null" /> to use the default.</param>
+    /// <param name="defaultName">The canonical default name (e.g. <c>"rabbitmq"</c>).</param>
+    /// <param name="secondaryRegistrationErrorMessage">
+    ///     The exception message to use when a second registration is made without an explicit name.
     /// </param>
-    /// <returns>The resolved provider name.</returns>
+    /// <returns>The resolved name.</returns>
     public static string ResolveProviderName(
-        IMessageBusClientRegistry registry,
+        int registeredCount,
         string? name,
-        string defaultProviderName,
-        string secondaryProviderErrorMessage)
+        string defaultName,
+        string secondaryRegistrationErrorMessage)
     {
         if (name is null)
         {
-            if (registry.GetAll().Count > 0)
-                throw new InvalidOperationException(secondaryProviderErrorMessage);
+            if (registeredCount > 0)
+                throw new InvalidOperationException(secondaryRegistrationErrorMessage);
 
-            return defaultProviderName;
+            return defaultName;
         }
 
         return name;

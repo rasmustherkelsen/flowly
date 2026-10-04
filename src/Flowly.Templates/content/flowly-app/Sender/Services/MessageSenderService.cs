@@ -11,21 +11,27 @@ internal class MessageSenderService(IServiceScopeFactory serviceScopeFactory) : 
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        while (!stoppingToken.IsCancellationRequested)
-        {
-            await using var scope = serviceScopeFactory.CreateAsyncScope();
+        await using var scope = serviceScopeFactory.CreateAsyncScope();
 
 #if (UseCallHandler)
-            var caller = scope.ServiceProvider.GetRequiredService<IMessageCaller>();
+        var caller = scope.ServiceProvider.GetRequiredService<IMessageCaller>();
+#else
+#if (UseStream)
+        var recorder = scope.ServiceProvider.GetRequiredService<IMessageRecorder>();
+#else
+        var sender = scope.ServiceProvider.GetRequiredService<IMessageSender>();
+#endif
+#endif
 
+        while (!stoppingToken.IsCancellationRequested)
+        {
+#if (UseCallHandler)
             MyReturnMessage response = await caller.Call<MyMessage, MyReturnMessage>(
                 new MyMessage($"Hello from Sender at {DateTime.Now}"), stoppingToken);
 
             logger.LogInformation("Received response: {Reply}", response.Reply);
 #else
 #if (UseStream)
-            var recorder = scope.ServiceProvider.GetRequiredService<IMessageRecorder>();
-
 #if (UseStreamPartitions)
             var partitionKey = $"sensor-{DateTime.Now.Second % 4}";
 
@@ -34,8 +40,6 @@ internal class MessageSenderService(IServiceScopeFactory serviceScopeFactory) : 
             await recorder.Record(new MyMessage($"Hello from Sender at {DateTime.Now}"), stoppingToken);
 #endif
 #else
-            var sender = scope.ServiceProvider.GetRequiredService<IMessageSender>();
-
             await sender.Send(new MyMessage($"Hello from Sender at {DateTime.Now}"), stoppingToken);
 #endif
 #endif

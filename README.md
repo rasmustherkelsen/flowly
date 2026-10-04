@@ -17,11 +17,27 @@ There is no fixed default port. When embedded in an existing app, the dashboard 
 
 ---
 
+## Management API
+
+For operators who don't want to install the Dashboard just to reset a stuck message stream, `Flowly.ManagementApi` is a separate, opt-in, machine-oriented HTTP surface — no UI, independent of `Flowly.Dashboard`. Message stream checkpoint list/reset is its first capability, exposed via a standard OpenAPI-documented endpoint and a companion `Flowly` PowerShell module:
+
+```csharp
+builder.Services.AddFlowlyManagementApi(options => options.RequireApiKey(apiKey)); // or UseOAuth2(...) for Entra ID
+```
+```csharp
+app.UseFlowlyManagementApi();
+```
+
+See [`src/Flowly.ManagementApi/README.md`](src/Flowly.ManagementApi/README.md) for authorization modes (API key, OAuth2/Entra ID client-credentials, or existing host policies) and the `IFlowlyManagementAction` extensibility point future features plug into, and [`src/Flowly.PowerShell/README.md`](src/Flowly.PowerShell/README.md) for the `Connect-Flowly`/`Get-FlowlyMessageStreamCheckpoint`/`Reset-FlowlyMessageStreamCheckpoint` cmdlets.
+
+---
+
 ## Quick Navigation
 
 - [RabbitMQ Quickstart](docs/quickstart-rabbitmq.md)
 - [Azure Service Bus Quickstart](docs/quickstart-azure-service-bus.md)
 - [InMemory Quickstart](docs/quickstart-inmemory.md)
+- [Management API](#management-api)
 - [Why Flowly?](#why-flowly)
 - [Packages](#packages)
 - [Installation](#installation)
@@ -85,9 +101,15 @@ All packages are published to [NuGet.org](https://www.nuget.org/packages?q=Flowl
 | `Flowly.DeadLetters.SqlServer` | SQL Server backend for dead letter tracking |
 | `Flowly.DeadLetters.Postgres` | PostgreSQL backend for dead letter tracking |
 | `Flowly.DeadLetters.SQLite` | SQLite backend for dead letter tracking |
+| `Flowly.MessageStreams` | Built-in position persistence for message stream checkpoints core |
+| `Flowly.MessageStreams.SqlServer` | SQL Server backend for message stream checkpoint persistence |
+| `Flowly.MessageStreams.Postgres` | PostgreSQL backend for message stream checkpoint persistence |
+| `Flowly.MessageStreams.SQLite` | SQLite backend for message stream checkpoint persistence |
 | `Flowly.OpenTelemetry` | OpenTelemetry metrics and traces for handlers and submitters |
 | `Flowly.Dashboard` | Embedded web dashboard middleware — submit messages, browse jobs, inspect dead letters, and trigger recurring jobs at `/flowly`; opt-in OAuth2/OIDC authentication with role and policy authorization |
-| `Flowly.Tool` | `flowly` CLI for queue discovery and code generation |
+| `Flowly.ManagementApi` | Opt-in, machine-oriented HTTP surface for operational actions (message stream checkpoint list/reset is its first capability) — independent of `Flowly.Dashboard` |
+| `Flowly.PowerShell` | C# PowerShell module client for the Management API (`Connect-Flowly`, `Get-FlowlyMessageStreamCheckpoint`, `Reset-FlowlyMessageStreamCheckpoint`) |
+| `Flowly.Tool` | `flowly` CLI for queue discovery, code generation, and message stream checkpoint operations |
 | `Flowly.Templates` | `dotnet new flowlyapp` / `dotnet new flowlyaspireapp` / `dotnet new flowly` project templates |
 
 ---
@@ -120,8 +142,22 @@ dotnet add package Flowly.DeadLetters.SqlServer
 dotnet add package Flowly.DeadLetters.Postgres
 dotnet add package Flowly.DeadLetters.SQLite
 
+# Message stream checkpoint persistence — pick the backend that matches your database
+dotnet add package Flowly.MessageStreams.SqlServer
+dotnet add package Flowly.MessageStreams.Postgres
+dotnet add package Flowly.MessageStreams.SQLite
+
+# Management API — opt-in operational HTTP surface (independent of Flowly.Dashboard)
+dotnet add package Flowly.ManagementApi
+
 # OpenTelemetry instrumentation
 dotnet add package Flowly.OpenTelemetry
+```
+
+Install the `Flowly` PowerShell module (a thin client for the Management API) from the PowerShell Gallery:
+
+```powershell
+Install-Module Flowly
 ```
 
 Install the `flowly` CLI tool globally for local development and code generation:
@@ -481,7 +517,34 @@ When retries are exhausted, the handler **halts consumption of that queue entire
 
 ### Position persistence
 
-Register a `MessageStreamCheckpoint<TMessage>` to restore restart-survival — an opt-in, transport-agnostic extension point you implement against whatever storage you already have (a database, typically):
+Register a `MessageStreamCheckpoint<TMessage>` to restore restart-survival — a transport-agnostic extension point, backed either by one of Flowly's own database providers or by storage you implement yourself.
+
+**Built-in (SQL Server, PostgreSQL, or SQLite)** — install `Flowly.MessageStreams.SqlServer`, `.Postgres`, or `.SQLite`, no hand-written storage code:
+
+```csharp
+builder.UseRabbitMq(connection: "RabbitMQ");
+builder.AddSqlServerMessageStreamPersistence("MsgStreamDb");
+
+builder.AddMessageStreamHandler<TelemetryReading, TelemetryReadingHandler>();
+builder.UseMessageStreamCheckpoint<TelemetryReading>();
+```
+
+Multiple named persistence stores are supported in the same process — the first unnamed `Add<Provider>MessageStreamPersistence` call becomes the default, used when `UseMessageStreamCheckpoint<T>()` is called without a name:
+
+```csharp
+builder.AddPostgresMessageStreamPersistence("MsgStreamDb");
+builder.AddSqlServerMessageStreamPersistence("MsgStreamDb", name: "This One");
+
+builder.UseMessageStreamCheckpoint<TelemetryReading>("This One");
+```
+
+By default (`enableMigrations: true`), a hosted service applies pending EF Core migrations at startup. To generate an idempotent SQL script instead:
+
+```bash
+dotnet ef migrations script --idempotent --project Flowly.MessageStreams.SqlServer --output migrate.sql
+```
+
+**Custom storage** — implement `MessageStreamCheckpoint<TMessage>` yourself against whatever you already have (a cache, a file, a bespoke repository):
 
 ```csharp
 internal class TelemetryReadingCheckpoint(IDbContextFactory<MyDbContext> dbContextFactory) : MessageStreamCheckpoint<TelemetryReading>
@@ -519,10 +582,11 @@ internal class TelemetryReadingCheckpoint(IDbContextFactory<MyDbContext> dbConte
 ```
 
 ```csharp
-services.AddSingleton<MessageStreamCheckpoint<TelemetryReading>, TelemetryReadingCheckpoint>();
+builder.AddMessageStreamCheckpoint<TelemetryReadingCheckpoint>();
+// equivalent to: services.AddSingleton<MessageStreamCheckpoint<TelemetryReading>, TelemetryReadingCheckpoint>();
 ```
 
-Flowly feature-detects the registration — no separate builder call is needed. Once registered:
+Flowly feature-detects the registration — no separate builder call is needed beyond the sugar above (or the plain `AddSingleton` it wraps). Once registered:
 
 - `InitializeCheckpoint` runs once before the processing loop starts (per reader), so `SaveStreamPosition` — called after every successfully processed batch — can be a plain update with no existence check on the hot path.
 - `GetStreamPosition` returning `null` means this reader has never completed a batch — Flowly falls back to the `StartPosition` configured in `Configure`, which becomes a bootstrap value only.
@@ -535,6 +599,24 @@ Flowly feature-detects the registration — no separate builder call is needed. 
 **Run at most one live instance** of a given non-partitioned handler registration against a shared checkpoint store at a time. Flowly does not coordinate exclusive access across processes — running more than one concurrently will corrupt the stored position. (Partitioned streams are unaffected by this constraint — see below.)
 
 **Implementations must be thread-safe.** The checkpoint is registered `AddSingleton`, so one instance is shared for the process's lifetime. For a non-partitioned stream that's never a concern — one reader, one sequential loop. For a [partitioned](#partitioned-streams) stream, Flowly runs one independent processing loop per partition currently owned by this process, and every loop calls into the *same* checkpoint instance — `InitializeCheckpoint`, `GetStreamPosition`, and `SaveStreamPosition` can all run concurrently across different partitions (never twice concurrently for the same `(ConsumerName, Partition)`, but across different ones, yes). This is why the example above injects `IDbContextFactory<MyDbContext>` and creates a short-lived `DbContext` per call rather than taking a `DbContext` directly through the constructor — an EF Core `DbContext` is not safe for concurrent use, and a constructor-injected one (normally registered `Scoped`) captured as state on a `Singleton` is a DI captive-dependency bug on top of that.
+
+**Resetting a position from outside the running process** — useful after an integration issue, to replay messages from an earlier offset. Two tools, both reading/writing the same underlying store:
+
+```bash
+# Flowly.Tool — works against any deployment with network access to the checkpoint database
+flowly message-stream list-checkpoints --provider sqlite --connection "Data Source=checkpoints.db"
+flowly message-stream reset-checkpoint --provider sqlite --connection "Data Source=checkpoints.db" \
+  --queue my-queue --consumer MyHandler --offset 42 --yes
+```
+
+```powershell
+# Flowly.PowerShell — talks to a running Flowly.ManagementApi instance over HTTPS instead
+Connect-Flowly -BaseUri https://myapp.example.com/flowly/management -ApiKey $env:FLOWLY_API_KEY
+Get-FlowlyMessageStreamCheckpoint
+Reset-FlowlyMessageStreamCheckpoint -QueueName my-queue -ConsumerName MyHandler -Offset 42
+```
+
+Either way, the reset only takes effect the next time that handler's process starts — `StartPosition` is resolved once at boot, not polled while running. See `Flowly.ManagementApi`'s own README for authentication options (API key or OAuth2/Entra ID client-credentials) if you're deployed somewhere the checkpoint database isn't directly reachable.
 
 ### Partitioned streams
 
@@ -1089,7 +1171,7 @@ Pass multiple `--project` flags to aggregate queues across several services into
 | `--namespace` | ASB emulator namespace name (default: `sbemulatorns`). |
 | `--sbconfig-output` | Override the path for the generated `sbconfig.json` (ASB only). |
 
-The tool detects transports from package references (`Flowly.AzureServiceBus.dll`, `Flowly.RabbitMQ.dll`) and database providers from (`Flowly.Jobs.SqlServer.dll`, `Flowly.DeadLetters.Postgres.dll`, etc.) in the build output. No configuration class is required — it works with both inline `AddFlowly()` and `FlowlyDesignTimeFactory` setups.
+The tool detects transports from package references (`Flowly.AzureServiceBus.dll`, `Flowly.RabbitMQ.dll`) and database providers from (`Flowly.Jobs.SqlServer.dll`, `Flowly.DeadLetters.Postgres.dll`, `Flowly.MessageStreams.SqlServer.dll`, `Flowly.MessageStreams.Postgres.dll`, etc.) in the build output. No configuration class is required — it works with both inline `AddFlowly()` and `FlowlyDesignTimeFactory` setups.
 
 ---
 
@@ -1111,7 +1193,7 @@ Generates a full .NET Aspire solution — AppHost, ServiceDefaults, Messages, Se
 dotnet new flowlyaspireapp --transport <rabbitmq|asb|inmemory> [options] -n <SolutionName>
 ```
 
-Supports the same `--callhandler`, `--streamhandler`, `--partitions`, `--jobs`, `--deadletter`, `--db`, and `--dashboard` flags as `flowlyapp`, with the same architecture: `--jobs` scaffolds a dedicated `JobTracker` project and `--deadletter` scaffolds a dedicated `DeadLetterTracker` project — the Receiver stays a pure message-processing worker. For RabbitMQ, `--partitions` also makes the AppHost bind-mount the plugin/config files and pin the Stream protocol port to `5552` on the RabbitMQ container, mirroring what `flowlyapp`'s `docker-compose.yml` does. Run everything with:
+Supports the same `--callhandler`, `--streamhandler`, `--partitions`, `--stream-checkpoint`, `--jobs`, `--deadletter`, `--db`, and `--dashboard` flags as `flowlyapp`, with the same architecture: `--jobs` scaffolds a dedicated `JobTracker` project and `--deadletter` scaffolds a dedicated `DeadLetterTracker` project — the Receiver stays a pure message-processing worker. For RabbitMQ, `--partitions` also makes the AppHost bind-mount the plugin/config files and pin the Stream protocol port to `5552` on the RabbitMQ container, mirroring what `flowlyapp`'s `docker-compose.yml` does. `--stream-checkpoint` (SQL Server/PostgreSQL) provisions a `MsgStreamDb` AppHost database off the same resource `--db` already provisions when the engine matches — SQLite gets a static connection string instead, no AppHost resource needed. Run everything with:
 
 ```bash
 dotnet run --project MyApp.AppHost
@@ -1142,6 +1224,7 @@ Optional features:
 | `--callhandler` | `--call` | Scaffold as RPC-style call/response — `MyMessage` implements `IReturns<MyReturnMessage>`; the sender uses `IMessageCaller.Call` and blocks for the response. |
 | `--streamhandler` | `--stream` | Scaffold the main message as an append-only, replayable stream — `MyMessage` gets `[StreamRetention]`, the Receiver's handler becomes a `MessageStreamHandler<T>`, and the sender uses `IMessageRecorder.Record`. RabbitMQ or InMemory only; incompatible with `--call`. |
 | `--partitions <n>` | | Partition the stream into `n` independent, ordered sub-logs via `[StreamPartitions(n)]`. `0` (default) = non-partitioned. Requires `--stream`. On RabbitMQ, the generated `docker-compose.yml` also publishes the Stream protocol port (`5552`) and enables the `rabbitmq_stream` plugin needed for partitioned consumption. |
+| `--stream-checkpoint <value>` | | Add built-in message stream checkpoint persistence (`sqlserver`, `postgres`, or `sqlite`) — wires `Add<Provider>MessageStreamPersistence("MsgStreamDb")` and `UseMessageStreamCheckpoint<T>()` into the Receiver, plus a matching connection string and (SQL Server/PostgreSQL) `docker-compose.yml` container, reused when `--db` already provisions the same engine. Requires `--stream` and `--transport rabbitmq` — silently has no effect otherwise, the same way `--db` has no effect without `--jobs`/`--deadletter`. |
 | `--jobtracking` | `--jobs` | Job state tracking — adds `ProcessJobMessage`, `ProcessJobHandler`, `JobSubmitterService`, and a `JobTracker` infrastructure project. Requires a DB flag. |
 | `--deadlettertracking` | `--deadletter` | Dead-letter tracking — adds `DeadLetterSampleMessage`, `DeadLetterSampleMessageHandler` with `[RetryPolicy]`, and `FailingMessageSenderService`. Requires a DB flag. |
 | `--opentelemetry` | `--otel` | Add Flowly.OpenTelemetry instrumentation. No exporter — signals are collected but not emitted unless `--otel-export` is also specified. |
@@ -1165,6 +1248,9 @@ dotnet new flowlyapp --transport rabbitmq --call -n MyApp
 
 # Partitioned message stream (RabbitMQ, scales across instances)
 dotnet new flowlyapp --transport rabbitmq --stream --partitions 4 -n MyApp
+
+# Message stream with built-in checkpoint persistence (RabbitMQ, SQLite)
+dotnet new flowlyapp --transport rabbitmq --stream --stream-checkpoint sqlite -n MyApp
 
 # RabbitMQ with job tracking and dead-letter tracking (SQLite)
 dotnet new flowlyapp --transport rabbitmq --jobs --deadletter --db sqlite -n MyApp
@@ -1514,6 +1600,10 @@ All metrics use the meter name `"Flowly"` and follow the `messaging.*` semantic 
 | `flowly.message.submitter.sent` | Counter | Messages sent by submitters |
 | `flowly.message.submitter.failed` | Counter | Send failures |
 | `flowly.message.submitter.duration` | Histogram (ms) | Send duration |
+| `flowly.message.checkpoint.saved` | Counter | Message stream checkpoint positions successfully saved (built-in or hand-rolled) |
+| `flowly.message.checkpoint.save.duration` | Histogram (ms) | Checkpoint save duration |
+| `flowly.message.checkpoint.save.failed` | Counter | Checkpoint save failures |
+| `flowly.message.checkpoint.resolved` | Counter | Start position resolutions, tagged `outcome=resumed\|fresh` |
 | `flowly.event.handler.received` | Counter | Events received by event handlers |
 | `flowly.event.handler.succeeded` | Counter | Events processed successfully |
 | `flowly.event.handler.failed` | Counter | Events that failed processing |

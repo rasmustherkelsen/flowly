@@ -18,6 +18,10 @@ internal sealed class HandlerInstrumentation : IHandlerInstrumentation, IDisposa
     private readonly Counter<long> _retried;
     private readonly Counter<long> _halted;
     private readonly Histogram<double> _duration;
+    private readonly Counter<long> _checkpointSaved;
+    private readonly Histogram<double> _checkpointSaveDuration;
+    private readonly Counter<long> _checkpointSaveFailed;
+    private readonly Counter<long> _checkpointResolved;
     private readonly Counter<long> _replied;
     private readonly Counter<long> _replyFailed;
     private readonly Histogram<double> _replyDuration;
@@ -34,6 +38,10 @@ internal sealed class HandlerInstrumentation : IHandlerInstrumentation, IDisposa
         _retried = _meter.CreateCounter<long>(FlowlyInstrumentationConstants.HandlerMessagesRetried);
         _halted = _meter.CreateCounter<long>(FlowlyInstrumentationConstants.HandlerMessagesHalted);
         _duration = _meter.CreateHistogram<double>(FlowlyInstrumentationConstants.HandlerProcessingDuration, "ms");
+        _checkpointSaved = _meter.CreateCounter<long>(FlowlyInstrumentationConstants.CheckpointSaved);
+        _checkpointSaveDuration = _meter.CreateHistogram<double>(FlowlyInstrumentationConstants.CheckpointSaveDuration, "ms");
+        _checkpointSaveFailed = _meter.CreateCounter<long>(FlowlyInstrumentationConstants.CheckpointSaveFailed);
+        _checkpointResolved = _meter.CreateCounter<long>(FlowlyInstrumentationConstants.CheckpointResolved);
         _replied = _meter.CreateCounter<long>(FlowlyInstrumentationConstants.CallHandlerReplied);
         _replyFailed = _meter.CreateCounter<long>(FlowlyInstrumentationConstants.CallHandlerReplyFailed);
         _replyDuration = _meter.CreateHistogram<double>(FlowlyInstrumentationConstants.CallHandlerReplyDuration, "ms");
@@ -115,6 +123,28 @@ internal sealed class HandlerInstrumentation : IHandlerInstrumentation, IDisposa
 
         _halted.Add(1, new TagList { { "handler", handlerName }, { FlowlyInstrumentationConstants.MessagingDestinationName, queueName } });
     }
+
+    /// <inheritdoc />
+    public void RecordCheckpointSaved(string handlerName, string queueName, double durationMs)
+    {
+        var tags = new TagList { { "handler", handlerName }, { FlowlyInstrumentationConstants.MessagingDestinationName, queueName } };
+
+        _checkpointSaved.Add(1, tags);
+        _checkpointSaveDuration.Record(durationMs, tags);
+    }
+
+    /// <inheritdoc />
+    public void RecordCheckpointSaveFailed(string handlerName, string queueName)
+        => _checkpointSaveFailed.Add(1, new TagList { { "handler", handlerName }, { FlowlyInstrumentationConstants.MessagingDestinationName, queueName } });
+
+    /// <inheritdoc />
+    public void RecordCheckpointResolved(string handlerName, string queueName, bool resumed)
+        => _checkpointResolved.Add(1, new TagList
+        {
+            { "handler", handlerName },
+            { FlowlyInstrumentationConstants.MessagingDestinationName, queueName },
+            { "outcome", resumed ? "resumed" : "fresh" },
+        });
 
     /// <inheritdoc />
     public Activity? StartSendingResponse(string callQueueName, string replyQueueName, string messagingSystem, string messageId, string correlationId)

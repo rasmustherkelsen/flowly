@@ -154,7 +154,7 @@ public static class AzureServiceBusRegistration
         var clientRegistry = ProviderNameResolver.GetRegistry(services);
 
         var effectiveName = TransportRegistrationHelper.ResolveProviderName(
-            clientRegistry,
+            clientRegistry.GetAll().Count,
             name,
             DefaultProviderName,
             "Secondary Azure Service Bus providers must have an explicit name. Pass name: \"...\" to UseAzureServiceBus().");
@@ -184,7 +184,7 @@ public static class AzureServiceBusRegistration
         var clientRegistry = ProviderNameResolver.GetRegistry(services);
 
         var effectiveName = TransportRegistrationHelper.ResolveProviderName(
-            clientRegistry,
+            clientRegistry.GetAll().Count,
             name,
             DefaultProviderName,
             "Secondary Azure Service Bus providers must have an explicit name. Pass name: \"...\" to UseAzureServiceBus().");

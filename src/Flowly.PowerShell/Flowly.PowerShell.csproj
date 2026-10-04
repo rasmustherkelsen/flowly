@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <AssemblyName>Flowly.PowerShell</AssemblyName>
+        <RootNamespace>Flowly.PowerShell</RootNamespace>
+        <PackageId>Flowly.PowerShell</PackageId>
+        <Description>A thin C# (binary) PowerShell module client for the Flowly Management API — Connect-Flowly, Get-FlowlyMessageStreamCheckpoint, Reset-FlowlyMessageStreamCheckpoint, Disconnect-Flowly. Requires PowerShell 7.4+.</Description>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <GenerateDependencyFile>false</GenerateDependencyFile>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <!-- Supplied by the PowerShell host at load time — never shipped with the module. -->
+        <PackageReference Include="System.Management.Automation" Version="7.6.6" ExcludeAssets="runtime" PrivateAssets="all" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Include="Flowly.psd1" CopyToOutputDirectory="PreserveNewest" Pack="true" PackagePath="\" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="Flowly.PowerShell.Tests" />
+    </ItemGroup>
+
+</Project>

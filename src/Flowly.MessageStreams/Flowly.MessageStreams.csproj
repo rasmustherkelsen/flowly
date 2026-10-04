@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <PackageId>Flowly.MessageStreams</PackageId>
+        <Description>Built-in position persistence for Flowly message streams (MessageStreamCheckpoint&lt;T&gt;). Requires a database backend: Flowly.MessageStreams.SqlServer, Flowly.MessageStreams.Postgres, or Flowly.MessageStreams.SQLite.</Description>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.11" />
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.11" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Flowly\Flowly.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="Flowly.MessageStreams.SqlServer" />
+        <InternalsVisibleTo Include="Flowly.MessageStreams.Postgres" />
+        <InternalsVisibleTo Include="Flowly.MessageStreams.SQLite" />
+        <InternalsVisibleTo Include="Flowly.MessageStreams.Tests" />
+        <InternalsVisibleTo Include="Flowly.MessageStreams.SqlServer.Tests" />
+        <InternalsVisibleTo Include="Flowly.MessageStreams.Postgres.Tests" />
+        <InternalsVisibleTo Include="Flowly.MessageStreams.SQLite.Tests" />
+        <InternalsVisibleTo Include="Flowly.Tool" />
+        <InternalsVisibleTo Include="Flowly.Tool.Tests" />
+        <InternalsVisibleTo Include="Flowly.ManagementApi" />
+        <InternalsVisibleTo Include="Flowly.ManagementApi.Tests" />
+    </ItemGroup>
+
+</Project>

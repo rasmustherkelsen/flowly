@@ -5,13 +5,15 @@ internal static class DatabaseProviderDetector
     private static readonly string[] SqlServerDlls =
     [
         "Flowly.Jobs.SqlServer.dll",
-        "Flowly.DeadLetters.SqlServer.dll"
+        "Flowly.DeadLetters.SqlServer.dll",
+        "Flowly.MessageStreams.SqlServer.dll"
     ];
 
     private static readonly string[] PostgresDlls =
     [
         "Flowly.Jobs.Postgres.dll",
-        "Flowly.DeadLetters.Postgres.dll"
+        "Flowly.DeadLetters.Postgres.dll",
+        "Flowly.MessageStreams.Postgres.dll"
     ];
 
     public static IReadOnlySet<string> Detect(IReadOnlyList<QueueDiscoverySource> sources)

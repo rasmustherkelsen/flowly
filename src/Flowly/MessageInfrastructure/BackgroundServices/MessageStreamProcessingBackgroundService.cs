@@ -28,8 +28,11 @@ internal sealed class MessageStreamProcessingBackgroundService<TMessage, THandle
                 $"The client must implement {nameof(IStreamCapableMessageBusClient)}.");
 
         var messagingSystem = client.MessagingSystem;
+        MessageStreamCheckpointHelper.ThrowIfCheckpointRegisteredForInMemory<TMessage>(serviceScopeFactory, messagingSystem);
+
         var startPosition = await MessageStreamCheckpointHelper.ResolveStartPosition<TMessage>(
-            serviceScopeFactory, handlerSettings.ConsumerName, null, handlerSettings.StartPosition, stoppingToken);
+            serviceScopeFactory, handlerSettings.ConsumerName, null, handlerSettings.StartPosition,
+            handlerSettings.HandlerName, handlerSettings.QueueName, handlerInstrumentation, stoppingToken);
 
         var processor = await streamCapableClient.CreateStreamProcessor<TMessage>(
             handlerSettings.QueueName,

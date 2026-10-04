@@ -7,12 +7,12 @@ internal class MessageSenderService(IServiceScopeFactory serviceScopeFactory) : 
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        await using var scope = serviceScopeFactory.CreateAsyncScope();
+
+        var recorder = scope.ServiceProvider.GetRequiredService<IMessageRecorder>();
+
         while (!stoppingToken.IsCancellationRequested)
         {
-            await using var scope = serviceScopeFactory.CreateAsyncScope();
-
-            var recorder = scope.ServiceProvider.GetRequiredService<IMessageRecorder>();
-
             var partitionKey = $"sensor-{DateTime.Now.Second % 4}";
 
             await recorder.Record(new MyMessage($"Hello from Sender at {DateTime.Now}"), stoppingToken, partitionKey);

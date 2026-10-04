@@ -1,0 +1,22 @@
+services:
+  rabbitmq:
+    image: rabbitmq:4-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+      - "5552:5552"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - ./enabled_plugins:/etc/rabbitmq/enabled_plugins
+      - ./rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres

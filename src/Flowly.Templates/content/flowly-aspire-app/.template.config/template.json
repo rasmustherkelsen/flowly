@@ -130,6 +130,36 @@
       "type": "computed",
       "value": "(UseRabbitMQ && UseStreamPartitions)"
     },
+    "stream-checkpoint": {
+      "type": "parameter",
+      "datatype": "choice",
+      "isEnabled": "(transport == \"rabbitmq\" || transport == \"rmq\")",
+      "defaultValue": "none",
+      "displayName": "Stream checkpoint persistence",
+      "description": "Built-in database-backed position persistence for the stream handler. Requires --stream (has no effect without it) and --transport rabbitmq.",
+      "choices": [
+        { "choice": "none",      "description": "No built-in checkpoint persistence." },
+        { "choice": "sqlserver", "description": "SQL Server" },
+        { "choice": "postgres",  "description": "PostgreSQL" },
+        { "choice": "sqlite",    "description": "SQLite" }
+      ]
+    },
+    "UseStreamCheckpointSqlServer": {
+      "type": "computed",
+      "value": "(stream-checkpoint == \"sqlserver\")"
+    },
+    "UseStreamCheckpointPostgres": {
+      "type": "computed",
+      "value": "(stream-checkpoint == \"postgres\")"
+    },
+    "UseStreamCheckpointSQLite": {
+      "type": "computed",
+      "value": "(stream-checkpoint == \"sqlite\")"
+    },
+    "UseStreamCheckpoint": {
+      "type": "computed",
+      "value": "(UseStreamCheckpointSqlServer || UseStreamCheckpointPostgres || UseStreamCheckpointSQLite)"
+    },
     "UseDatabase": {
       "type": "computed",
       "value": "(UseJobTracking || UseDeadLetterTracking)"
@@ -173,11 +203,11 @@
     },
     "NeedsSqlServerInfrastructure": {
       "type": "computed",
-      "value": "(UseDatabase && UseSqlServer)"
+      "value": "((UseDatabase && UseSqlServer) || UseStreamCheckpointSqlServer)"
     },
     "NeedsPostgresInfrastructure": {
       "type": "computed",
-      "value": "(UseDatabase && UsePostgres)"
+      "value": "((UseDatabase && UsePostgres) || UseStreamCheckpointPostgres)"
     },
     "AppHostHttpPort": {
       "type": "generated",
