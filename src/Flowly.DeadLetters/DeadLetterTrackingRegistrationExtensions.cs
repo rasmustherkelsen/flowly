@@ -44,6 +44,8 @@ public static class DeadLetterTrackingRegistrationExtensions
         flowlyBuilder.Services.AddScoped<IDeadLetterRepository, DeadLetterRepository>();
         flowlyBuilder.Services.AddScoped<IDeadLetterService, DeadLetterService>();
         flowlyBuilder.Services.AddSingleton(new DeadLetterIngestionHealthSettings(TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5)));
+        flowlyBuilder.Services.AddSingleton<IDeadLetterBatchIngestor, DeadLetterBatchIngestor>();
+        flowlyBuilder.Services.AddSingleton<IDeadLetterIngestionHealthChecker, DeadLetterIngestionHealthChecker>();
         flowlyBuilder.Services.AddHostedService<DeadLetterIngestionHealthBackgroundService>();
         flowlyBuilder.Services.AddHostedService<DeadLetterCleanupBackgroundService>();
 

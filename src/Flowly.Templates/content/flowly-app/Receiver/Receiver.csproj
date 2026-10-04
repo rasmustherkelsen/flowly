@@ -15,6 +15,15 @@
         <!--#if (UseJobTracking)-->
         <PackageReference Include="Flowly.Jobs" Version="1.2.0" />
         <!--#endif-->
+        <!--#if (UseStream && UseStreamCheckpointSqlServer)-->
+        <PackageReference Include="Flowly.MessageStreams.SqlServer" Version="1.2.0" />
+        <!--#endif-->
+        <!--#if (UseStream && UseStreamCheckpointPostgres)-->
+        <PackageReference Include="Flowly.MessageStreams.Postgres" Version="1.2.0" />
+        <!--#endif-->
+        <!--#if (UseStream && UseStreamCheckpointSQLite)-->
+        <PackageReference Include="Flowly.MessageStreams.SQLite" Version="1.2.0" />
+        <!--#endif-->
         <!--#if (UseOpenTelemetry)-->
         <PackageReference Include="Flowly.OpenTelemetry" Version="1.2.0" />
         <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.17.0" />

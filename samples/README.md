@@ -27,6 +27,7 @@ Each sample is self-contained and runnable. Pick the one matching your transport
 | [RpcCalls](RabbitMQ/RpcCalls/README.md) | RPC-style blocking call/response using `CallHandler` and `IMessageCaller` |
 | [SendReceiveMessageStream](RabbitMQ/SendReceiveMessageStream/README.md) | Append-only, replayable message stream using `MessageStreamHandler<T>` and `IMessageRecorder` |
 | [SendReceivePartitionedMessageStream](RabbitMQ/SendReceivePartitionedMessageStream/README.md) | Partitioned message stream using `[StreamPartitions]` against a RabbitMQ Super Stream |
+| [MessageStreamCheckPoint](RabbitMQ/MessageStreamCheckPoint/README.md) | Partitioned message stream with restart-survival via `UseMessageStreamCheckpoint<T>()` and a PostgreSQL-backed checkpoint store |
 
 ## InMemory
 

@@ -32,7 +32,13 @@ This document gives an AI assistant the context needed to work effectively in th
 ├── Flowly.DeadLetters.SqlServer/    # SQL Server backend for dead letter tracking
 ├── Flowly.DeadLetters.Postgres/     # PostgreSQL backend for dead letter tracking
 ├── Flowly.DeadLetters.SQLite/       # SQLite backend for dead letter tracking
-├── Flowly.Tool/                     # dotnet CLI tool (queue discovery, code gen)
+├── Flowly.MessageStreams/           # Built-in message stream checkpoint persistence core
+├── Flowly.MessageStreams.SqlServer/ # SQL Server backend for message stream checkpoint persistence
+├── Flowly.MessageStreams.Postgres/  # PostgreSQL backend for message stream checkpoint persistence
+├── Flowly.MessageStreams.SQLite/    # SQLite backend for message stream checkpoint persistence
+├── Flowly.ManagementApi/            # Opt-in operational HTTP surface (independent of Flowly.Dashboard); message stream checkpoint list/reset is its first capability
+├── Flowly.PowerShell/               # C# PowerShell module client for the Management API
+├── Flowly.Tool/                     # dotnet CLI tool (queue discovery, code gen, message stream checkpoint ops)
 ├── Flowly.Templates/                # dotnet new flowly project templates
 ├── Samples/
 │   └── AzureServiceBus/
@@ -53,7 +59,7 @@ This document gives an AI assistant the context needed to work effectively in th
 - Manage dead letters → inject `IDeadLetterService`
 - Send messages → inject `IMessageSender` or `IJobMessageSender`
 
-Consuming applications must never take a dependency on `IDbContextFactory<JobStateDataContext>`, `IDbContextFactory<DeadLetterDataContext>`, `IJobStateRepository`, or any other internal Flowly type.
+Consuming applications must never take a dependency on `IDbContextFactory<JobStateDataContext>`, `IDbContextFactory<DeadLetterDataContext>`, `IDbContextFactory<MessageStreamCheckpointDataContext>`, `IJobStateRepository`, `MessageStreamCheckpointStoreRegistry`, or any other internal Flowly type.
 
 ---
 
@@ -243,7 +249,15 @@ Retention limits go on the **message contract**, not the handler: `[StreamRetent
 
 **Offsets are not persisted across restarts by default.** `StartPosition` is re-evaluated fresh on every boot — avoid values computed relative to "now" (e.g. `StartPosition.Timestamp(DateTime.UtcNow - TimeSpan.FromHours(2))`), which never converge unless a checkpoint is registered. On InMemory there's also no cross-process sharing — the log exists only in the one process's memory, so it's gone entirely on restart, not just unindexed.
 
-**Opt into restart-survival with `MessageStreamCheckpoint<TMessage>`.** Implement `InitializeCheckpoint`/`GetStreamPosition`/`SaveStreamPosition` against whatever storage the user already has, and register it with plain DI: `services.AddSingleton<MessageStreamCheckpoint<TMessage>, TImpl>()` — Flowly feature-detects it (same pattern as Jobs/DeadLetters on the Dashboard), no builder call needed. Once registered, `StartPosition` becomes a bootstrap value used only on the first run; the stored position — keyed by `ConsumerName` (`MessageStreamHandlerOptions.ConsumerName`, defaults to the handler type name) and `Partition` (`null` for a non-partitioned stream, the owning partition index otherwise) — takes over afterwards. **RabbitMQ only**: registering a checkpoint against an InMemory-backed stream throws `InvalidOperationException` at registration time, since the log itself has no cross-restart persistence to checkpoint against — persisting a position for data that won't exist after a restart is a structural incoherence, not a missing-convenience-store problem. Flowly does not coordinate exclusive checkpoint-store access across processes; running more than one instance of the same non-partitioned handler against a shared store is unsupported and documented, not enforced.
+**Opt into restart-survival with `MessageStreamCheckpoint<TMessage>`** — two ways to get one registered, both feature-detected the same way (same pattern as Jobs/DeadLetters on the Dashboard):
+- **Built-in**: install `Flowly.MessageStreams.SqlServer`/`.Postgres`/`.SQLite`, call `Add<Provider>MessageStreamPersistence(connection, name?, enableMigrations = true, configure?)` (first unnamed registration is the default store; a second unnamed one throws — same "first is default" rule transports use, generalized in `TransportRegistrationHelper.ResolveProviderName` to a plain `int registeredCount` so both share it), then `UseMessageStreamCheckpoint<TMessage>(name?)` (`Flowly.MessageStreams`) — no hand-written storage code.
+- **Hand-rolled**: implement `InitializeCheckpoint`/`GetStreamPosition`/`SaveStreamPosition` against whatever storage you already have, and register it either via plain DI (`services.AddSingleton<MessageStreamCheckpoint<TMessage>, TImpl>()`) or the `AddMessageStreamCheckpoint<TCheckpoint>()` sugar (core `Flowly`, infers `TMessage` from `TCheckpoint`'s base type).
+
+Once registered, `StartPosition` becomes a bootstrap value used only on the first run; the stored position — keyed by `ConsumerName` (`MessageStreamHandlerOptions.ConsumerName`, defaults to the handler type name) and `Partition` (`null` for a non-partitioned stream, the owning partition index otherwise) — takes over afterwards. **RabbitMQ only**: registering a checkpoint against an InMemory-backed stream throws `InvalidOperationException`, checked symmetrically since `UseMessageStreamCheckpoint<TMessage>()` can be called before or after `AddMessageStreamHandler<TMessage, THandler>()` — each entry point catches the case where the other was registered first, so either order is safe for the built-in path (the plain hand-rolled `AddSingleton` escape hatch registered after the handler is instead rejected at host startup, before the stream starts consuming). Flowly does not coordinate exclusive checkpoint-store access across processes; running more than one instance of the same non-partitioned handler against a shared store is unsupported and documented, not enforced. **Implementations must be thread-safe**: since the checkpoint is a process-lifetime singleton, a partitioned stream calls into the same instance concurrently from every partition's independent processing loop (never twice for the same `(ConsumerName, Partition)`, but across different ones, yes) — inject `IDbContextFactory<T>` rather than a `DbContext` directly, not just for thread safety but because a constructor-injected `DbContext` (normally `Scoped`) captured into a singleton is a DI captive-dependency bug. The built-in `EfCoreMessageStreamCheckpoint<TMessage>` follows this same rule.
+
+**OpenTelemetry** for checkpoints (`flowly.message.checkpoint.saved`/`.save.failed`/`.resolved`) is recorded once, in `MessageStreamCheckpointHelper` — the shared call site every checkpoint (built-in or hand-rolled) passes through — not inside any specific `MessageStreamCheckpoint<T>` implementation.
+
+**Operational reset**: `flowly message-stream list-checkpoints|reset-checkpoint` (`Flowly.Tool`, direct DB connection) and the Flowly Management API's `message-streams/checkpoints` actions (`Flowly.ManagementApi`, HTTP, feature-detected) both go through the same `MessageStreamCheckpointAdmin` helper in `Flowly.MessageStreams`. A reset only takes effect on that handler's next restart — `StartPosition` is resolved once at boot.
 
 **Partitioning** — `[StreamPartitions(count)]` on the message contract divides a stream into `N` independent, ordered sub-logs. Requires `IPartitionedStreamCapableMessageBusClient`; RabbitMQ (Super Streams, broker-coordinated Single Active Consumer rebalancing — needs the `RabbitMQ.Stream.Client` package, pulled in automatically) and InMemory (parity/local-dev only, no cross-instance scale-out since InMemory is single-process) both implement it; Azure Service Bus doesn't. Flowly does not implement its own cross-instance partition-assignment protocol — each transport owns ownership/rebalancing natively, and Flowly runs one independent accumulate-batch-and-retry loop per partition currently owned by this process, so a halted partition only stops that partition. `IMessageStreamContext<T>.Partition` reports which partition a batch came from. Recording takes an optional partition key: `IMessageRecorder.Record(msg, ct, partitionKey: key)` — same key always routes to the same partition; omit for round-robin. Checkpointing composes unchanged, keyed by `(ConsumerName, Partition)` as above.
 
@@ -669,7 +683,8 @@ dotnet tool install --global --add-source ./Flowly.Tool/bin/Release Flowly.Tool
 
 # Generate docker-compose.yml with all local dev dependencies (RabbitMQ, ASB emulator, DB)
 # Detects transports from Flowly.AzureServiceBus.dll / Flowly.RabbitMQ.dll in the build output
-# Detects DB providers from Flowly.Jobs.SqlServer.dll / Flowly.DeadLetters.Postgres.dll etc.
+# Detects DB providers from Flowly.Jobs.SqlServer.dll / Flowly.DeadLetters.Postgres.dll /
+# Flowly.MessageStreams.SqlServer.dll / Flowly.MessageStreams.Postgres.dll etc.
 # When ASB is detected, also generates sbconfig.json alongside the output file
 flowly docker-compose --project ./Sender --project ./Receiver --output docker-compose.yml
 
@@ -730,11 +745,12 @@ dotnet new flowlyaspireapp --transport <value> [options] -n <SolutionName>
 | `azureservicebus` | `asb` | same; AppHost uses `AddFlowly(receiver)` to discover queues |
 | `inmemory` | `inm` | AppHost + ServiceDefaults + `App/` (single-project, in-process) |
 
-Supports the same optional flags as `flowlyapp` — `--callhandler`/`--call`, `--streamhandler`/`--stream`, `--partitions <n>`, `--jobtracking`/`--jobs`, `--deadlettertracking`/`--deadletter`, `--db sqlserver|postgres|sqlite`, `--dashboard` — with these differences:
+Supports the same optional flags as `flowlyapp` — `--callhandler`/`--call`, `--streamhandler`/`--stream`, `--partitions <n>`, `--stream-checkpoint <sqlserver|postgres|sqlite>`, `--jobtracking`/`--jobs`, `--deadlettertracking`/`--deadletter`, `--db sqlserver|postgres|sqlite`, `--dashboard` — with these differences:
 
 - `--jobs` and `--deadletter` each scaffold a **dedicated project** (`JobTracker`, `DeadLetterTracker`) that owns the DB persistence, mirroring `flowlyapp`. The Receiver stays a pure message-processing worker. InMemory keeps everything in `App`.
 - `--db sqlserver` / `--db postgres` causes the AppHost to provision the DB resource and pass it to the appropriate tracker project via `WithReference`.
 - `--db sqlite` does not require an Aspire resource; the connection string is in `appsettings.Development.json` of the relevant tracker project.
+- `--stream-checkpoint sqlserver`/`postgres` provisions a `MsgStreamDb` AppHost database (`sqlServer.AddDatabase("MsgStreamDb")`/`postgres.AddDatabase("MsgStreamDb")`) off the same resource `--db` already provisions when the engine matches, referenced into the Receiver via `WithReference`/`WaitFor` alongside the transport reference; `--stream-checkpoint sqlite` gets a static connection string in the Receiver's `appsettings.Development.json` instead, no AppHost resource.
 - For ASB, `CreateTopology = false`; Aspire creates queues via `azureServiceBus.AddFlowly(receiver)`, `azureServiceBus.AddFlowly(jobTracker)`, and `azureServiceBus.AddFlowly(deadLetterTracker)` — one call per project.
 - For RabbitMQ, `CreateTopology = true` (Aspire Hosting does not manage RabbitMQ queue topology) and `DotCaseTopologyNameResolver` is registered automatically.
 - For RabbitMQ with `--partitions <n>` (Super Streams), the AppHost additionally bind-mounts `enabled_plugins`/`rabbitmq.conf` into the RabbitMQ container (enabling the `rabbitmq_stream`/`rabbitmq_stream_management` plugins) and pins a `stream` endpoint at host/container port `5552` via `.WithEndpoint(name: "stream", port: 5552, targetPort: 5552)` — mirroring what `flowlyapp`'s `docker-compose.yml` does. `RabbitMqConnectionPool` connects to the Stream protocol port on the same host as the AMQP connection, defaulting to `5552`; pass `streamPort:` to `UseRabbitMq(...)` if the deployment publishes a different port (the scaffolded templates always pin `5552`, so this only matters if you edit the generated infrastructure).
@@ -767,6 +783,7 @@ Optional flags:
 | `--callhandler` | `--call` | Scaffold the main message as an RPC-style call/response. `MyMessage` implements `IReturns<MyReturnMessage>`; Sender uses `IMessageCaller.Call` and blocks for the response; Receiver uses `CallHandler<MyMessage, MyReturnMessage>`. Sender `Program.cs` sets `options.InstanceName = "sender"`. For ASB, `sbconfig.json` includes the reply queue `my.reply.sender`. |
 | `--streamhandler` | `--stream` | Scaffold the main message as an append-only, replayable stream. `MyMessage` gets `[StreamRetention(maxAgeSeconds: 604800, maxLengthBytes: 500_000_000)]`; Sender uses `IMessageRecorder.Record`; Receiver uses `MessageStreamHandler<MyMessage>` with `[StreamStartPosition(StreamStartPositionKind.First)]`. RabbitMQ or InMemory only (no ASB stream primitive); incompatible with `--call`. |
 | `--partitions <n>` | | Partition the stream into `n` independent, ordered sub-logs via `[StreamPartitions(n)]` on `MyMessage`, and demonstrate a rotating `partitionKey` on `IMessageRecorder.Record` in the Sender. `0` (default) = non-partitioned. Requires `--stream`. On RabbitMQ this scales out across running instances (broker-coordinated Single Active Consumer); on InMemory it's parity/local-dev only (a single process owns every partition). On RabbitMQ, the generated `docker-compose.yml` also publishes the Stream protocol port (`5552`) and enables the `rabbitmq_stream` plugin needed for partitioned consumption. |
+| `--stream-checkpoint <value>` | | Add built-in message stream checkpoint persistence (`sqlserver`/`postgres`/`sqlite`) to the Receiver: `Add<Provider>MessageStreamPersistence("MsgStreamDb")` + `UseMessageStreamCheckpoint<MyMessage>()`, a matching `MsgStreamDb` connection string, and (SQL Server/PostgreSQL) a `docker-compose.yml` container — reused when `--db` already provisions the same engine, rather than a duplicate container. Requires `--stream` and `--transport rabbitmq` (checked via the `isEnabled` template-engine gate on `transport` only, since `isEnabled` expressions can't reliably reference another conditionally-enabled symbol like `stream`/`streamhandler` — the actual code generation is separately gated on `UseStream` too); has no effect when passed without `--stream`, the same silent-no-op behavior `--db` already has without `--jobs`/`--deadletter`. |
 | `--jobtracking` | `--jobs` | Add job state tracking. Adds `ProcessJobMessage`/`ProcessJobHandler`/`JobSubmitterService` and a dedicated `JobTracker` infrastructure project (RabbitMQ/ASB). InMemory keeps everything in `App`. Requires `--db`. |
 | `--deadlettertracking` | `--deadletter` | Add dead-letter tracking. Adds `DeadLetterSampleMessage`/`DeadLetterSampleMessageHandler` (with `[RetryPolicy]`), `FailingMessageSenderService`, and a dedicated `DeadLetterTracker` infrastructure project (RabbitMQ/ASB). The Receiver handles domain messages; `DeadLetterTracker` monitors dead-letter sub-queues and persists failed messages to the DB via `AddDeadLetterSource<T>()`. InMemory keeps everything in `App`. Requires `--db`. |
 | `--opentelemetry` | `--otel` | Add `Flowly.OpenTelemetry` instrumentation. No exporter — signals are collected but not emitted unless `--otel-export` is also specified. |
@@ -776,7 +793,7 @@ Optional flags:
 | `--db postgres` | | PostgreSQL backend |
 | `--db sqlite` | | SQLite backend |
 
-Connection string names: `FlowlyJobs` (job tracking), `FlowlyDeadLetters` (dead-letter tracking).
+Connection string names: `FlowlyJobs` (job tracking), `FlowlyDeadLetters` (dead-letter tracking), `MsgStreamDb` (message stream checkpoint persistence).
 
 For RabbitMQ, `CreateTopology = true` and `DotCaseTopologyNameResolver` is registered automatically in each project's `Program.cs` (dot-case naming is idiomatic for RabbitMQ). For ASB and InMemory, `KebabCaseTopologyNameResolver` (the default) is used.
 

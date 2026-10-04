@@ -82,7 +82,7 @@ public static class RabbitMqRegistration
         var clientRegistry = ProviderNameResolver.GetRegistry(services);
 
         var effectiveName = TransportRegistrationHelper.ResolveProviderName(
-            clientRegistry,
+            clientRegistry.GetAll().Count,
             name,
             DefaultProviderName,
             "Secondary RabbitMQ providers must have an explicit name. Pass name: \"...\" to UseRabbitMq().");

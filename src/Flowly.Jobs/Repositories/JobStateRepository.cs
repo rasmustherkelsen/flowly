@@ -161,6 +161,7 @@ internal class JobStateRepository(IDbContextFactory<JobStateDataContext> jobStat
         await using var context = await jobStateDataContextFactory.CreateDbContextAsync();
 
         return await context.Jobs
+            .AsNoTracking()
             .Where(x => x.IsRecurringJob == true)
             .Select(j => new RecurringJob(j.JobIdentifier, j.JobType!.Name, j.Description, j.CronExpression!, j.Created, j.Started, j.Completed))
             .ToListAsync();

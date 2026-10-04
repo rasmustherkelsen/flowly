@@ -10,9 +10,12 @@ namespace Flowly.DeadLetters.Tests.Services;
 public class DeadLetterServiceTests
 {
     private static DeadLetterService BuildService(FakeDeadLetterRepository repository, FakeMessageBusClient client)
-    {
-        return new DeadLetterService(repository, new FakeMessageBusClientRegistry(client), [new DeadLetterIngestionSettings("test-queue", "azure-service-bus")], [], new NullDeadLetterOperationInstrumentation());
-    }
+        => new(
+            repository,
+            new FakeMessageBusClientRegistry(client),
+            [new DeadLetterIngestionSettings("test-queue", "azure-service-bus")],
+            [],
+            new NullDeadLetterOperationInstrumentation());
 
     private static DeadLetterService BuildServiceWithEventSubscription(
         FakeDeadLetterRepository repository,
@@ -181,6 +184,16 @@ public class DeadLetterServiceTests
             await deadLetterService.Discard("msg-1");
 
             Assert.Empty(messageBusClient.CreatedSenders);
+        }
+
+        [Fact]
+        public async Task WhenRepositoryDeleteThrows_PropagatesException()
+        {
+            var repository = new FakeDeadLetterRepository { MessageIdToThrowOnDelete = "msg-1" };
+            repository.Add(BuildDeadLetter("msg-1"));
+            var deadLetterService = BuildService(repository, new FakeMessageBusClient());
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => deadLetterService.Discard("msg-1"));
         }
     }
 
@@ -378,34 +391,19 @@ public class DeadLetterServiceTests
     {
         public string MessagingSystem => "fake-non-event";
 
-        public Task<IMessageBusReceiver> CreateReceiver(string queueName)
-        {
-            throw new NotImplementedException();
-        }
+        public Task<IMessageBusReceiver> CreateReceiver(string queueName) => throw new NotImplementedException();
 
         public Task<IMessageBusProcessor<TMessage>> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options)
-        {
-            throw new NotImplementedException();
-        }
+            => throw new NotImplementedException();
 
         public Task<IExecutionLaneProcessor> CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options)
-        {
-            throw new NotImplementedException();
-        }
+            => throw new NotImplementedException();
 
-        public Task<IMessageBusSender> CreateMessageBusSender(string queueName)
-        {
-            throw new NotImplementedException();
-        }
+        public Task<IMessageBusSender> CreateMessageBusSender(string queueName) => throw new NotImplementedException();
 
-        public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName)
-        {
-            throw new NotImplementedException();
-        }
+        public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName) => throw new NotImplementedException();
 
         public Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default)
-        {
-            throw new NotImplementedException();
-        }
+            => throw new NotImplementedException();
     }
 }

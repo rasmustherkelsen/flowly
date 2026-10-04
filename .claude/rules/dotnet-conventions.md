@@ -35,6 +35,26 @@
         => _serviceBusSenders.GetOrAdd(queueName, q => new MessageBusSender(serviceBusClient.CreateSender(q)));
   ```
 
+  This also applies when the entire body is a single call delegating to another method (including returning a `Task` without `await`) — do not write a block body with a single `return`/statement.
+
+  Example:
+
+  Not ok:
+
+  ```C#
+  public Task IngestForQueue(IDeadLetterReceiver receiver, IReadOnlyCollection<IDeadLetterMessage> messages, string queueName, CancellationToken cancellationToken)
+  {
+      return Ingest(receiver, messages, queueName, (repository, ct) => repository.SaveBatch(messages, queueName, ct), cancellationToken);
+  }
+  ```
+
+  Ok:
+
+  ```C#
+  public Task IngestForQueue(IDeadLetterReceiver receiver, IReadOnlyCollection<IDeadLetterMessage> messages, string queueName, CancellationToken cancellationToken)
+      => Ingest(receiver, messages, queueName, (repository, ct) => repository.SaveBatch(messages, queueName, ct), cancellationToken);
+  ```
+
 - Do not unnecessarily do line breaks.
 
   Example of bad break:
@@ -82,6 +102,25 @@
     }
   ```
 
+- Always use brackets in `foreach` loops, same as `for` — never a single statement on the same line as the `foreach` header.
+
+  Example:
+
+  Not ok:
+
+  ```C#
+    foreach (var settings in queueSettings) await CheckQueue(settings.QueueName, settings.ProviderName, repository, cancellationToken);
+  ```
+
+  Ok:
+
+  ```C#
+    foreach (var settings in queueSettings)
+    {
+        await CheckQueue(settings.QueueName, settings.ProviderName, repository, cancellationToken);
+    }
+  ```
+
 - Always use brackets around a `while` loop body, regardless of what the body is — a single statement, a `try` statement, an `if`, whatever (a single statement is still syntactically "one statement," so it's easy to drop the loop's own braces — don't).
 
   Example:
@@ -116,6 +155,29 @@
             logger.LogError(ex, "Batch processing failed");
         }
     }
+  ```
+
+- In a `do { } while ();` loop, put the `while` clause on its own line under the closing brace — not on the same line as the closing brace.
+
+  Example:
+
+  Not ok:
+
+  ```C#
+    do
+    {
+        batch = await AccumulateBatch(stoppingToken);
+    } while (batch.Count > 0);
+  ```
+
+  Ok:
+
+  ```C#
+    do
+    {
+        batch = await AccumulateBatch(stoppingToken);
+    }
+    while (batch.Count > 0);
   ```
 
 ## Line Spacing

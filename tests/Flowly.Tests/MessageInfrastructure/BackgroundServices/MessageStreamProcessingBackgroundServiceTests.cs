@@ -599,6 +599,12 @@ public class MessageStreamProcessingBackgroundServiceTests
 
         public void RecordHalted(string handlerName, string queueName, string reason) => HaltedReasons.Add(reason);
 
+        public void RecordCheckpointSaved(string handlerName, string queueName, double durationMs) { }
+
+        public void RecordCheckpointSaveFailed(string handlerName, string queueName) { }
+
+        public void RecordCheckpointResolved(string handlerName, string queueName, bool resumed) { }
+
         public System.Diagnostics.Activity? StartSendingResponse(string callQueueName, string replyQueueName, string messagingSystem, string messageId, string correlationId) => null;
 
         public void RecordResponseSent(string callQueueName, double durationMs) { }

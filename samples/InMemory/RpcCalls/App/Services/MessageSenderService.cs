@@ -7,12 +7,12 @@ internal class MessageSenderService(IServiceScopeFactory serviceScopeFactory) : 
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        await using var scope = serviceScopeFactory.CreateAsyncScope();
+
+        var caller = scope.ServiceProvider.GetRequiredService<IMessageCaller>();
+
         while (!stoppingToken.IsCancellationRequested)
         {
-            await using var scope = serviceScopeFactory.CreateAsyncScope();
-
-            var caller = scope.ServiceProvider.GetRequiredService<IMessageCaller>();
-
             MyReturnMessage response = await caller.Call<MyMessage, MyReturnMessage>(
                 new MyMessage($"Hello at {DateTime.Now}"), stoppingToken);
 

@@ -12,31 +12,44 @@ internal class FakeDeadLetterRepository : IDeadLetterRepository
     public string? DeletedMessageId { get; private set; }
     public int RequeuedOlderThanCountToReturn { get; set; }
     public IReadOnlyCollection<PurgedDeadLetter> PendingOlderThanToReturn { get; set; } = [];
+    public bool ThrowOnSaveBatch { get; set; }
+    public string? MessageIdToThrowOnDelete { get; set; }
+    public List<IDeadLetterMessage> SavedMessages { get; } = [];
+    public string? SavedQueueName { get; private set; }
+    public string? SavedSubscriptionName { get; private set; }
 
     public Task SaveBatch(IReadOnlyCollection<IDeadLetterMessage> messages, string queueName, CancellationToken cancellationToken = default)
     {
+        if (ThrowOnSaveBatch)
+            throw new InvalidOperationException("Simulated save failure");
+
+        SavedMessages.AddRange(messages);
+        SavedQueueName = queueName;
         return Task.CompletedTask;
     }
 
     public Task SaveBatchForSubscription(IReadOnlyCollection<IDeadLetterMessage> messages, string topicName, string subscriptionName, CancellationToken cancellationToken = default)
     {
+        if (ThrowOnSaveBatch)
+            throw new InvalidOperationException("Simulated save failure");
+
+        SavedMessages.AddRange(messages);
+        SavedQueueName = topicName;
+        SavedSubscriptionName = subscriptionName;
         return Task.CompletedTask;
     }
 
+    public DateTimeOffset? LastIngestionTimeToReturn { get; set; }
+    public DateTimeOffset? LastIngestionTimeForSubscriptionToReturn { get; set; }
+
     public Task<DateTimeOffset?> GetLastIngestionTime(string queueName, CancellationToken cancellationToken = default)
-    {
-        return Task.FromResult<DateTimeOffset?>(null);
-    }
+        => Task.FromResult(LastIngestionTimeToReturn);
 
     public Task<DateTimeOffset?> GetLastIngestionTimeForSubscription(string topicName, string subscriptionName, CancellationToken cancellationToken = default)
-    {
-        return Task.FromResult<DateTimeOffset?>(null);
-    }
+        => Task.FromResult(LastIngestionTimeForSubscriptionToReturn);
 
     public Task<IDeadLetter?> Get(string messageId, CancellationToken cancellationToken = default)
-    {
-        return Task.FromResult(_store.GetValueOrDefault(messageId));
-    }
+        => Task.FromResult(_store.GetValueOrDefault(messageId));
 
     public Task MarkAsRequeued(string messageId, string? requeuedBy, CancellationToken cancellationToken = default)
     {
@@ -47,27 +60,21 @@ internal class FakeDeadLetterRepository : IDeadLetterRepository
 
     public Task Delete(string messageId, CancellationToken cancellationToken = default)
     {
+        if (messageId == MessageIdToThrowOnDelete)
+            throw new InvalidOperationException("Simulated delete failure");
+
         DeletedMessageId = messageId;
         return Task.CompletedTask;
     }
 
     public Task<int> DeleteRequeuedOlderThan(TimeSpan age, CancellationToken cancellationToken = default)
-    {
-        return Task.FromResult(RequeuedOlderThanCountToReturn);
-    }
+        => Task.FromResult(RequeuedOlderThanCountToReturn);
 
     public Task<IReadOnlyCollection<PurgedDeadLetter>> DeletePendingOlderThan(TimeSpan age, CancellationToken cancellationToken = default)
-    {
-        return Task.FromResult(PendingOlderThanToReturn);
-    }
+        => Task.FromResult(PendingOlderThanToReturn);
 
     public Task<IReadOnlyCollection<IDeadLetter>> GetAll(CancellationToken cancellationToken = default)
-    {
-        return Task.FromResult<IReadOnlyCollection<IDeadLetter>>(_store.Values.ToList());
-    }
+        => Task.FromResult<IReadOnlyCollection<IDeadLetter>>(_store.Values.ToList());
 
-    public void Add(IDeadLetter deadLetter)
-    {
-        _store[deadLetter.MessageId] = deadLetter;
-    }
+    public void Add(IDeadLetter deadLetter) => _store[deadLetter.MessageId] = deadLetter;
 }

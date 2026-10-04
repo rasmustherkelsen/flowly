@@ -33,7 +33,7 @@ public static class InMemoryRegistration
         var clientRegistry = ProviderNameResolver.GetRegistry(services);
 
         var effectiveName = TransportRegistrationHelper.ResolveProviderName(
-            clientRegistry,
+            clientRegistry.GetAll().Count,
             name,
             DefaultProviderName,
             "Secondary in-memory providers must have an explicit name. Pass name: \"...\" to UseInMemory().");

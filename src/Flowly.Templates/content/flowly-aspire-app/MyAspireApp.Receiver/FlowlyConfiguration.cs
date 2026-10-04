@@ -8,6 +8,9 @@ using Flowly.OpenTelemetry;
 #if (UseJobTracking)
 using Flowly.Jobs;
 #endif
+#if (UseStream && UseStreamCheckpoint)
+using Flowly.MessageStreams;
+#endif
 using MyAspireApp.Messages;
 using MyAspireApp.Receiver.Handlers;
 
@@ -27,7 +30,19 @@ internal class FlowlyConfiguration : Configuration
         builder.AddCallHandler<MyMessage, MyMessageHandler>();
 #else
 #if (UseStream)
+#if (UseStreamCheckpointSqlServer)
+        builder.AddSqlServerMessageStreamPersistence("MsgStreamDb");
+#endif
+#if (UseStreamCheckpointPostgres)
+        builder.AddPostgresMessageStreamPersistence("MsgStreamDb");
+#endif
+#if (UseStreamCheckpointSQLite)
+        builder.AddSQLiteMessageStreamPersistence("MsgStreamDb");
+#endif
         builder.AddMessageStreamHandler<MyMessage, MyMessageHandler>();
+#if (UseStreamCheckpoint)
+        builder.UseMessageStreamCheckpoint<MyMessage>();
+#endif
 #else
         builder.AddMessageHandler<MyMessage, MyMessageHandler>();
 #endif

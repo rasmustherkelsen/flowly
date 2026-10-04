@@ -39,12 +39,14 @@ internal sealed class PartitionedMessageStreamProcessingBackgroundService<TMessa
                 $"The client must implement {nameof(IPartitionedStreamCapableMessageBusClient)}.");
 
         var messagingSystem = client.MessagingSystem;
+        MessageStreamCheckpointHelper.ThrowIfCheckpointRegisteredForInMemory<TMessage>(serviceScopeFactory, messagingSystem);
 
         _consumer = await partitionedClient.CreatePartitionedStreamConsumer<TMessage>(
             handlerSettings.QueueName,
             handlerSettings.PartitionCount,
             (partition, ct) => MessageStreamCheckpointHelper.ResolveStartPosition<TMessage>(
-                serviceScopeFactory, handlerSettings.ConsumerName, partition, handlerSettings.StartPosition, ct,
+                serviceScopeFactory, handlerSettings.ConsumerName, partition, handlerSettings.StartPosition,
+                handlerSettings.HandlerName, handlerSettings.QueueName, handlerInstrumentation, ct,
                 initializeCheckpoint: IsFirstAssignment(partition)),
             new MessageBusProcessorOptions(handlerSettings.MaxMessagesBeforeProcessing, MessageBusReceiveMode.PeekLock),
             logger);
