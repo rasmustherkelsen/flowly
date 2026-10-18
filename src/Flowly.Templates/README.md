@@ -249,6 +249,8 @@ dotnet run --project MyApp.AppHost
 
 The Aspire dashboard opens automatically and shows all services, health checks, logs, and traces.
 
+The AppHost sets `<AspireUseCliBundle>true</AspireUseCliBundle>` (the default for new Aspire apps), so `dotnet run` is handed to the Aspire CLI (`aspire run`), which supplies the dashboard and orchestrator. You do not need to install anything beyond the .NET 10 SDK: if `aspire` is not on your PATH, the SDK's `dnx` fetches the matching `Aspire.Cli` package from NuGet on first run (network access required, can take a minute). A solution-root `aspire.config.json` points the CLI at the AppHost project. Set `AspireUseCliBundle` to `false` in the AppHost `.csproj` to opt out (the build then emits warning `ASPIRE010`; add `<NoWarn>$(NoWarn);ASPIRE010</NoWarn>` to silence it).
+
 ---
 
 ### `flowly` — Scaffold a new Flowly project

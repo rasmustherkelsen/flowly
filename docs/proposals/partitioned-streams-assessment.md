@@ -1,6 +1,6 @@
 # Partitioned Streams — Design Assessment
 
-**Status:** Phases 0–2 implemented (checkpointing, core partitioning abstraction, InMemory, and RabbitMQ Super Streams). The RabbitMQ partitioned consumer (`RabbitMqPartitionedStreamConsumer`, built against the `RabbitMQ.Stream.Client` package) is implemented against the package's documented/reflected API surface but has not been verified against a live broker — see `.claude/rules/message-streaming-conventions.md` § "Partitioned streams" for exactly which parts are unverified. Phase 3 (Event Hub, Kafka) remains out of scope.
+**Scope:** Covers checkpointing, the core partitioning abstraction, InMemory, and RabbitMQ Super Streams (`RabbitMqPartitionedStreamConsumer`, built against the `RabbitMQ.Stream.Client` package's documented and reflected API surface and not yet verified against a live broker; see `.claude/rules/message-streaming-conventions.md` § "Partitioned streams" for exactly which parts are unverified). Event Hub and Kafka are out of scope here.
 **Origin:** This investigation started as a feasibility assessment of adding Azure Event Hub as a stream-only Flowly transport. That investigation surfaced the real blocker before any Event Hub-specific work began: Event Hub's native model is partitioned, and Flowly's stream abstraction (`IStreamCapableMessageBusClient`, `StartPosition`, one cursor per `MessageStreamHandler` registration) assumes a single, unpartitioned log — true of both existing stream backends today (RabbitMQ plain streams, `InMemoryStreamLog`). RabbitMQ itself has a native partitioning feature ("Super Streams") that Flowly's RabbitMQ provider doesn't use today.
 
 This document reframes the ask accordingly: instead of shipping Event Hub support directly, it assesses **partitioned streams as a first-class Flowly capability**, built and proven first against RabbitMQ (Super Streams) and InMemory (a partitioned in-process log), with an abstraction deliberately shaped so Event Hub and, later, Kafka can plug in as additional transport implementations without another redesign.
@@ -102,7 +102,7 @@ None of these are blocked or contradicted by the generic architecture — they r
 
 The checkpoint abstraction (§5) also sidesteps the earlier concern about `EventProcessorClient`'s mandatory Blob Storage checkpoint store — Flowly wouldn't need Event Hub's built-in checkpointing at all, since `MessageStreamCheckpoint<TMessage>` already gives users a bring-your-own-store option that works the same way across every transport. Event Hub's own checkpoint store only becomes relevant if a future Event Hub provider chooses `EventProcessorClient` specifically for its ownership/rebalancing behavior — at that point it's an ownership concern, not a persistence one.
 
-## 7. Effort & sequencing recommendation
+## 7. Phasing rationale
 
 | Phase | Scope | Notes |
 |---|---|---|
@@ -126,7 +126,6 @@ Resolved through discussion — settled, not pending further input:
 - **RabbitMQ: adopt `RabbitMQ.Stream.Client`** for partitioned streams (§3) — the direction is decided; what remains is technical validation via a spike, not a choice between options.
 - **InMemory + `MessageStreamCheckpoint<TMessage>` throws eagerly at registration** (§5) — rather than a silent no-op, mirroring the existing `ThrowIfNotStreamCapable` pattern.
 
-Still open — need a technical spike or an implementation-time decision, not further design discussion:
+Naming of the new interface and attribute (`IPartitionedStreamCapableMessageBusClient` and `[StreamPartitions]`) was settled at implementation time.
 
-1. **RabbitMQ `Stream.Client` technical spike** (§3): confirm the .NET API actually covers topology interop with the AMQP-declared partition streams, rebalancing callbacks, and connection lifecycle alongside the existing AMQP connection.
-2. **Naming** for the new interface/attribute (`IPartitionedStreamCapableMessageBusClient` / `[StreamPartitions]` are working names only) — low-stakes, best settled at implementation time.
+Verifying the RabbitMQ `Stream.Client` behaviour (topology interop with the AMQP-declared partition streams, rebalancing callbacks, connection lifecycle alongside the AMQP connection) against a live broker is tracked in Gitea, not in this document.

@@ -85,6 +85,30 @@ public class MessageStreamProcessingBackgroundServiceTests
         }
 
         [Fact]
+        public async Task OnStreamOnlyClient_CreatesStreamProcessorWithConfiguredStartPosition()
+        {
+            var processor = new FakeStreamProcessor();
+            var client = new StreamOnlyClient(processor);
+            var registry = new MessageBusClientRegistry();
+            registry.Register("primary", client, null);
+            var backgroundService = new MessageStreamProcessingBackgroundService<TestMessage, SpyStreamHandler>(
+                registry,
+                new MessageStreamHandlerSettings<TestMessage, SpyStreamHandler>(
+                    "telemetry-reading", "primary", nameof(SpyStreamHandler), nameof(SpyStreamHandler), StartPosition.First(), 1, TimeSpan.FromSeconds(30), 0, 0),
+                new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
+                NullLogger<MessageStreamProcessingBackgroundService<TestMessage, SpyStreamHandler>>.Instance,
+                new SpyHandlerInstrumentation());
+
+            await backgroundService.StartAsync(CancellationToken.None);
+            await processor.Started.Task.WaitAsync(TestTimeout);
+
+            Assert.Equal("telemetry-reading", client.ReceivedQueueName);
+            Assert.Equal(StartPosition.First(), client.ReceivedStartPosition);
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
         public async Task PrefetchIsSizedToMaxMessagesBeforeProcessing()
         {
             var (backgroundService, processor, _, _, _) = CreateService(maxMessages: 42, maxRetries: 0);
@@ -476,6 +500,22 @@ public class MessageStreamProcessingBackgroundServiceTests
         public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName) => throw new NotImplementedException();
 
         public Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+    }
+
+    private sealed class StreamOnlyClient(FakeStreamProcessor processor) : IStreamCapableMessageBusClient
+    {
+        public string? ReceivedQueueName { get; private set; }
+        public StartPosition? ReceivedStartPosition { get; private set; }
+
+        public string MessagingSystem => "fake-stream-only";
+
+        public Task<IMessageBusProcessor<TMessage>> CreateStreamProcessor<TMessage>(string queueName, StartPosition startPosition, MessageBusProcessorOptions options)
+        {
+            ReceivedQueueName = queueName;
+            ReceivedStartPosition = startPosition;
+
+            return Task.FromResult((IMessageBusProcessor<TMessage>)(object)processor);
+        }
     }
 
     private sealed class NonStreamClient : IMessageBusClient

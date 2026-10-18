@@ -5,6 +5,7 @@ using Flowly.MessageInfrastructure.Events.Registration;
 using Flowly.MessageInfrastructure.Receivers;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.Registration;
+using Flowly.Transport;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Flowly;
@@ -32,7 +33,7 @@ public static class EventHandlerRegistrationExtensions
         where THandler : EventHandlerBase<TEvent>
         where TEvent : class
     {
-        var providerName = ProviderNameResolver.Resolve(flowlyBuilder.Services, typeof(TEvent));
+        var providerName = ProviderNameResolver.Resolve<IEventCapableMessageBusClient>(flowlyBuilder.Services, typeof(TEvent));
         var topicName = flowlyBuilder.TopologyNameResolver.ResolveEventName<TEvent>();
         var subscriptionName = flowlyBuilder.TopologyNameResolver.ResolveSubscriptionName<THandler>();
         var handlerOptions = ResolveHandlerOptions(typeof(THandler));

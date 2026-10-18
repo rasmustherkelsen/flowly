@@ -1,6 +1,8 @@
 using Flowly.MessageInfrastructure;
 using Flowly.MessageInfrastructure.Model;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.Tests.Fakes;
+using Flowly.Transport;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Flowly.Tests.MessageInfrastructure.Model;
@@ -127,11 +129,22 @@ public class HandlerSettingsFactoryTests
             Assert.False(registration.QueueRegistration.RequiresSession);
         }
 
-        private static ServiceCollection CreateServices()
+        [Fact]
+        public void WithStreamOnlyProvider_ThrowsDescriptiveError()
+        {
+            var services = CreateServices(new FakeStreamOnlyClient());
+            var factory = new HandlerSettingsFactory(new KebabCaseTopologyNameResolver());
+
+            var exception = Assert.Throws<InvalidOperationException>(() => factory.Create<TestMessageHandler, TestMessage>(services));
+
+            Assert.Contains("'azure-service-bus' does not support queue-based messaging", exception.Message);
+        }
+
+        private static ServiceCollection CreateServices(ITransportClient? client = null)
         {
             var services = new ServiceCollection();
             var registry = new MessageBusClientRegistry();
-            registry.Register("azure-service-bus", null!, null);
+            registry.Register("azure-service-bus", client ?? new FakeMessageBusClient(), null);
             services.AddSingleton<IMessageBusClientRegistry>(registry);
             return services;
         }

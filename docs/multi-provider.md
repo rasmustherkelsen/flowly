@@ -17,6 +17,29 @@ This resolution happens at **registration time** (inside `Configure`), not at se
 
 ---
 
+## Provider capabilities
+
+A transport client is an `ITransportClient` that implements one or more capability interfaces. What a provider can host depends on which ones it implements:
+
+| Capability | Interface | Hosts | Azure Service Bus | RabbitMQ | InMemory |
+|---|---|---|---|---|---|
+| Queues | `IMessageBusClient` | `MessageHandler<T>`, `BatchMessageHandler<T>`, `JobHandler<T>`, `RecurringJobHandler`, `CallHandler<T, TReturn>`, their submitters and dead letter sources | yes | yes | yes |
+| Events | `IEventCapableMessageBusClient` | `EventHandlerBase<TEvent>` and event submitters | yes | yes | yes |
+| Streams | `IStreamCapableMessageBusClient` | `MessageStreamHandler<T>` and `IMessageRecorder` | no | yes | yes |
+| Partitioned streams | `IPartitionedStreamCapableMessageBusClient` | contracts annotated with `[StreamPartitions]` | no | yes | yes |
+
+A transport does not have to support queues. A **stream-only** transport implements `IStreamCapableMessageBusClient` without `IMessageBusClient`; it can host stream handlers and recorders but nothing queue-based. No stream-only transport ships with Flowly yet — the abstractions are in place for one.
+
+Flowly checks the capability when a handler or submitter is registered, so a mismatch fails at startup rather than on first use. The error names the provider and the missing capability:
+
+```
+The message bus client for provider 'streams' does not support queue-based messaging. The client must implement IMessageBusClient.
+```
+
+Capability does not influence routing. A contract without `[ProviderAffinity]` still resolves to the primary provider, so with a queue provider registered first and a stream-capable provider second, stream contracts must carry `[ProviderAffinity]` to reach the second provider. Routing by capability is tracked as a follow-up.
+
+---
+
 ## Registering multiple providers
 
 ```csharp

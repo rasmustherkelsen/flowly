@@ -2,6 +2,7 @@ using Flowly.MessageInfrastructure;
 using Flowly.MessageInfrastructure.Events.Registration;
 using Flowly.MessageInfrastructure.Receivers;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.Tests.Fakes;
 using Flowly.Transport;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -14,7 +15,7 @@ public class FlowlySubmitterManifestTests
     {
         var services = new ServiceCollection();
         var registry = new MessageBusClientRegistry();
-        registry.Register(providerName, new StubMessageBusClient(), null);
+        registry.Register(providerName, new FakeEventCapableClient(), null);
         services.AddSingleton<IMessageBusClientRegistry>(registry);
         services.AddSingleton(new ProviderQueueManifest(providerName, true, "Stub"));
         return new StubFlowlyBuilder(services);
@@ -117,27 +118,4 @@ public class FlowlySubmitterManifestTests
 
     private record OrderPlaced;
     private record OrderShipped;
-
-    private sealed class StubMessageBusClient : IMessageBusClient
-    {
-        public string MessagingSystem => "Stub";
-
-        public Task<IMessageBusReceiver> CreateReceiver(string queueName) =>
-            throw new NotImplementedException();
-
-        public Task<IMessageBusProcessor<TMessage>> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options) =>
-            throw new NotImplementedException();
-
-        public Task<IExecutionLaneProcessor> CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options) =>
-            throw new NotImplementedException();
-
-        public Task<IMessageBusSender> CreateMessageBusSender(string queueName) =>
-            throw new NotImplementedException();
-
-        public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName) =>
-            throw new NotImplementedException();
-
-        public Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default) =>
-            throw new NotImplementedException();
-    }
 }

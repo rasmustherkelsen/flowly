@@ -1,6 +1,7 @@
 using Flowly.MessageInfrastructure;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.MessageInfrastructure.Senders;
+using Flowly.Tests.Fakes;
 using Flowly.Transport;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -21,8 +22,43 @@ public class MessageRecorderRegistrationExtensionsTests
         return new StubFlowlyBuilder(services);
     }
 
+    private static IFlowlyBuilder CreateStreamOnlyBuilder(string providerName)
+    {
+        var services = new ServiceCollection();
+        var registry = new MessageBusClientRegistry();
+        registry.Register(providerName, new FakeStreamOnlyClient(), null);
+        services.AddSingleton<IMessageBusClientRegistry>(registry);
+        services.AddSingleton(new ProviderQueueManifest(providerName, true, "Stub"));
+
+        return new StubFlowlyBuilder(services);
+    }
+
     public class AddMessageRecorder
     {
+        [Fact]
+        public void WithStreamOnlyProvider_RegistersMessageSubmitterForMessageType()
+        {
+            var flowlyBuilder = CreateStreamOnlyBuilder("streams");
+
+            flowlyBuilder.AddMessageRecorder<TelemetryReading>();
+
+            Assert.Contains(flowlyBuilder.Services, s => s.ServiceType == typeof(IMessageSubmitter<TelemetryReading>));
+        }
+
+        [Fact]
+        public void RegistersQueueSettingsMarkedAsStream()
+        {
+            var flowlyBuilder = CreateBuilder("primary");
+
+            flowlyBuilder.AddMessageRecorder<TelemetryReading>();
+
+            var queueSettings = flowlyBuilder.Services
+                .Where(s => s.ServiceType == typeof(MessageSubmitter<TelemetryReading>.QueueSettings))
+                .Select(s => (MessageSubmitter<TelemetryReading>.QueueSettings)s.ImplementationInstance!)
+                .Single();
+            Assert.True(queueSettings.IsStream);
+        }
+
         [Fact]
         public void RegistersMessageSubmitterForMessageType()
         {

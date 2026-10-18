@@ -13,6 +13,7 @@
     <ItemGroup>
         <!-- Supplied by the PowerShell host at load time — never shipped with the module. -->
         <PackageReference Include="System.Management.Automation" Version="7.6.6" ExcludeAssets="runtime" PrivateAssets="all" />
+        <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.13" PrivateAssets="all" />
     </ItemGroup>
 
     <ItemGroup>

@@ -1,19 +1,25 @@
 namespace Flowly.Transport;
 
 /// <summary>
-///     Core factory interface that every Flowly transport provider must implement. The framework resolves this interface
-///     from the DI container (keyed by provider name) and calls its methods to obtain the primitives needed for each
-///     registered handler, submitter, and background service. Implement this interface — and optionally
-///     <see cref="IEventCapableMessageBusClient" /> when your broker supports pub/sub topics — to create a new transport
-///     provider.
+///     Queue-based messaging capability of a transport provider. The framework resolves this interface from the client
+///     registry (keyed by provider name) and calls its methods to obtain the primitives needed for each registered message,
+///     batch, job, call, and recurring-job handler and submitter. Implement this interface — and optionally
+///     <see cref="IEventCapableMessageBusClient" /> when your broker supports pub/sub topics and
+///     <see cref="IStreamCapableMessageBusClient" /> when it offers a replayable stream primitive — to create a new
+///     transport provider. A transport that only supports streams implements <see cref="IStreamCapableMessageBusClient" />
+///     alone and does not implement this interface.
 /// </summary>
-public interface IMessageBusClient
+public interface IMessageBusClient : ITransportClient
 {
     /// <summary>
     ///     A human-readable identifier for the underlying messaging technology (e.g. <c>"azure-service-bus"</c> or
-    ///     <c>"rabbitmq"</c>). Used by telemetry and logging to tag spans and metrics with the messaging system name.
+    ///     <c>"rabbitmq"</c>). Redeclared here, hiding <see cref="ITransportClient.MessagingSystem" />, so that code compiled
+    ///     against earlier versions — callers of <c>IMessageBusClient.MessagingSystem</c> and implementers that implement it
+    ///     explicitly — keeps working unchanged.
     /// </summary>
-    string MessagingSystem { get; }
+    new string MessagingSystem { get; }
+
+    string ITransportClient.MessagingSystem => MessagingSystem;
 
     /// <summary>
     ///     Creates a pull-based receiver for the specified queue. The framework calls this method for

@@ -3,11 +3,13 @@ using Flowly.Transport;
 namespace Flowly.MessageInfrastructure.Registration;
 
 /// <summary>
-///     Defines a registry for managing message bus clients within the Flowly framework. This interface provides methods
-///     for registering message bus clients, retrieving clients by provider name, checking if a client is registered for a
+///     Defines a registry for managing transport clients within the Flowly framework. This interface provides methods
+///     for registering transport clients, retrieving clients by provider name, checking if a client is registered for a
 ///     specific provider, and getting a list of all registered clients along with their associated transport information.
-///     The registry allows for flexible management of multiple message bus clients, enabling support for different message
-///     brokers and configurations within the Flowly framework.
+///     The registry allows for flexible management of multiple transport clients, enabling support for different message
+///     brokers and configurations within the Flowly framework. A registered client is an <see cref="ITransportClient" />
+///     that may or may not support queue-based messaging; use
+///     <see cref="MessageBusClientRegistryExtensions.GetClient{TClient}" /> to retrieve it as a specific capability.
 /// </summary>
 public interface IMessageBusClientRegistry
 {
@@ -22,11 +24,22 @@ public interface IMessageBusClientRegistry
 
     /// <summary>
     ///     Returns the <see cref="IMessageBusClient" /> registered for <paramref name="providerName" />.
-    ///     Throws <see cref="InvalidOperationException" /> if no client is registered under that name.
+    ///     Throws <see cref="InvalidOperationException" /> if no client is registered under that name, or if the registered
+    ///     client is a stream-only transport that does not support queue-based messaging.
     /// </summary>
     /// <param name="providerName">The provider name that was used during registration.</param>
     /// <returns>The <see cref="IMessageBusClient" /> associated with the provider.</returns>
     IMessageBusClient GetClient(string providerName);
+
+    /// <summary>
+    ///     Returns the <see cref="ITransportClient" /> registered for <paramref name="providerName" /> regardless of which
+    ///     capabilities it supports. Throws <see cref="InvalidOperationException" /> if no client is registered under that
+    ///     name. The default implementation delegates to <see cref="GetClient(string)" />; the framework registry overrides it
+    ///     so that stream-only clients can be retrieved.
+    /// </summary>
+    /// <param name="providerName">The provider name that was used during registration.</param>
+    /// <returns>The <see cref="ITransportClient" /> associated with the provider.</returns>
+    ITransportClient GetTransportClient(string providerName) => GetClient(providerName);
 
     /// <summary>
     ///     Returns <see langword="true" /> if a client has been registered for <paramref name="providerName" />.
@@ -53,4 +66,28 @@ public interface IMessageBusClientRegistry
     ///     for this provider only.
     /// </param>
     void Register(string providerName, IMessageBusClient client, bool? createTopologyOverride);
+
+    /// <summary>
+    ///     Registers a transport provider whose client may be a stream-only transport that does not implement
+    ///     <see cref="IMessageBusClient" />. Behaves like
+    ///     <see cref="Register(string, IMessageBusClient, bool?)" /> otherwise. The default implementation accepts only an
+    ///     <see cref="IMessageBusClient" /> and delegates to the other overload; the framework registry overrides it to
+    ///     accept any <see cref="ITransportClient" />.
+    /// </summary>
+    /// <param name="providerName">A unique name for this provider instance.</param>
+    /// <param name="client">The <see cref="ITransportClient" /> implementation for this transport.</param>
+    /// <param name="createTopologyOverride">
+    ///     When non-<see langword="null" />, overrides the global <see cref="FlowlyOptions.CreateTopology" /> flag
+    ///     for this provider only.
+    /// </param>
+    /// <exception cref="NotSupportedException">
+    ///     The registry implementation only supports clients that implement <see cref="IMessageBusClient" />.
+    /// </exception>
+    void Register(string providerName, ITransportClient client, bool? createTopologyOverride)
+    {
+        if (client is not IMessageBusClient messageBusClient)
+            throw new NotSupportedException($"{GetType().Name} only supports transport clients that implement {nameof(IMessageBusClient)}.");
+
+        Register(providerName, messageBusClient, createTopologyOverride);
+    }
 }

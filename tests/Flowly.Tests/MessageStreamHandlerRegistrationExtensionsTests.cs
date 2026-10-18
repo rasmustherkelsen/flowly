@@ -2,6 +2,7 @@ using Flowly.MessageInfrastructure;
 using Flowly.MessageInfrastructure.BackgroundServices;
 using Flowly.MessageInfrastructure.Model;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.Tests.Fakes;
 using Flowly.Transport;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -45,8 +46,31 @@ public class MessageStreamHandlerRegistrationExtensionsTests
         return new StubFlowlyBuilder(services);
     }
 
+    private static IFlowlyBuilder CreateStreamOnlyBuilder(string providerName)
+    {
+        var services = new ServiceCollection();
+        var registry = new MessageBusClientRegistry();
+        registry.Register(providerName, new FakeStreamOnlyClient(), null);
+        services.AddSingleton<IMessageBusClientRegistry>(registry);
+        services.AddSingleton(new ProviderQueueManifest(providerName, true, "Stub"));
+
+        return new StubFlowlyBuilder(services);
+    }
+
     public class AddMessageStreamHandler
     {
+        [Fact]
+        public void WithStreamOnlyProvider_RegistersHandlerSettings()
+        {
+            var flowlyBuilder = CreateStreamOnlyBuilder("streams");
+
+            flowlyBuilder.AddMessageStreamHandler<TelemetryReading, TelemetryReadingHandler>();
+
+            Assert.Contains(
+                flowlyBuilder.Services,
+                s => s.ServiceType == typeof(MessageStreamHandlerSettings<TelemetryReading, TelemetryReadingHandler>));
+        }
+
         [Fact]
         public void RegistersHandlerAsScoped()
         {

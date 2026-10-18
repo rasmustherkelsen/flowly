@@ -3,6 +3,7 @@ using Flowly.MessageInfrastructure.Events;
 using Flowly.MessageInfrastructure.Events.Telemetry;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.MessageInfrastructure.Telemetry;
+using Flowly.Tests.Fakes;
 using Flowly.Transport;
 
 namespace Flowly.Tests.MessageInfrastructure.Events;
@@ -42,6 +43,19 @@ public class EventSubmitterTests
             var properties = publisher.SentMessages[0].Properties;
             Assert.True(Guid.TryParse(properties.MessageId, out _));
             Assert.Equal(string.Empty, properties.CorrelationId);
+        }
+
+        [Fact]
+        public async Task WhenClientIsStreamOnly_ThrowsInvalidOperationExceptionNamingEvents()
+        {
+            var registry = new MessageBusClientRegistry();
+            registry.Register("primary", new FakeStreamOnlyClient(), null);
+            var topicSettings = new EventSubmitter<OrderPlaced>.TopicSettings("order-placed", "primary");
+            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, topicSettings, new StubPublisherInstrumentation());
+
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => eventSubmitter.Raise(new OrderPlaced("x")));
+
+            Assert.Contains("'primary' does not support events", exception.Message);
         }
 
         [Fact]

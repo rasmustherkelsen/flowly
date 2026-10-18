@@ -1,4 +1,6 @@
+using Flowly.MessageInfrastructure.Registration;
 using Flowly.Transport;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Flowly.Tests.Transport;
 
@@ -49,5 +51,69 @@ public class TransportRegistrationHelperTests
 
             Assert.Equal("rabbitmq-secondary", result);
         }
+    }
+
+    public class RegisterTopologyCreators
+    {
+        [Fact]
+        public void WithBothCreators_RegistersEachWithItsRegistry()
+        {
+            var (services, messagingRegistry, eventRegistry) = CreateServices();
+            var messagingCreator = new StubMessagingTopologyCreator();
+            var eventCreator = new StubEventTopologyCreator();
+
+            TransportRegistrationHelper.RegisterTopologyCreators(services, "rabbit", messagingCreator, eventCreator);
+
+            Assert.Same(messagingCreator, messagingRegistry.GetCreator("rabbit"));
+            Assert.Same(eventCreator, eventRegistry.TryGetCreator("rabbit"));
+        }
+
+        [Fact]
+        public void WithoutEventCreator_RegistersMessagingCreatorAndLeavesEventRegistryEmpty()
+        {
+            var (services, messagingRegistry, eventRegistry) = CreateServices();
+            var messagingCreator = new StubMessagingTopologyCreator();
+
+            TransportRegistrationHelper.RegisterTopologyCreators(services, "streams", messagingCreator);
+
+            Assert.Same(messagingCreator, messagingRegistry.GetCreator("streams"));
+            Assert.Null(eventRegistry.TryGetCreator("streams"));
+        }
+
+        [Fact]
+        public void WithoutEventCreator_DoesNotRequireAnEventRegistry()
+        {
+            var messagingRegistry = new MessagingTopologyCreatorRegistry();
+            var services = new ServiceCollection();
+            services.AddSingleton<IMessagingTopologyCreatorRegistry>(messagingRegistry);
+            var messagingCreator = new StubMessagingTopologyCreator();
+
+            TransportRegistrationHelper.RegisterTopologyCreators(services, "streams", messagingCreator);
+
+            Assert.Same(messagingCreator, messagingRegistry.GetCreator("streams"));
+        }
+
+        private static (IServiceCollection Services, MessagingTopologyCreatorRegistry MessagingRegistry, EventTopologyCreatorRegistry EventRegistry) CreateServices()
+        {
+            var messagingRegistry = new MessagingTopologyCreatorRegistry();
+            var eventRegistry = new EventTopologyCreatorRegistry();
+            var services = new ServiceCollection();
+            services.AddSingleton<IMessagingTopologyCreatorRegistry>(messagingRegistry);
+            services.AddSingleton<IEventTopologyCreatorRegistry>(eventRegistry);
+
+            return (services, messagingRegistry, eventRegistry);
+        }
+    }
+
+    private sealed class StubMessagingTopologyCreator : IMessagingTopologyCreator
+    {
+        public Task CreateTopology(IReadOnlyCollection<IQueueDescription> queueDescriptions, CancellationToken cancellationToken)
+            => Task.CompletedTask;
+    }
+
+    private sealed class StubEventTopologyCreator : IEventTopologyCreator
+    {
+        public Task CreateEventTopology(IReadOnlyCollection<IEventDescription> eventDescriptions, CancellationToken cancellationToken)
+            => Task.CompletedTask;
     }
 }

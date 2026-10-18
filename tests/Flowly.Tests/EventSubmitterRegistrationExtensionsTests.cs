@@ -3,6 +3,7 @@ using Flowly.MessageInfrastructure.Events;
 using Flowly.MessageInfrastructure.Events.Registration;
 using Flowly.MessageInfrastructure.Receivers;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.Tests.Fakes;
 using Flowly.Transport;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -11,16 +12,27 @@ namespace Flowly.Tests;
 
 public class EventSubmitterRegistrationExtensionsTests
 {
+    private static IFlowlyBuilder CreateBuilderWithClient(ITransportClient client)
+    {
+        var services = new ServiceCollection();
+        var registry = new MessageBusClientRegistry();
+        registry.Register("primary", client, null);
+        services.AddSingleton(new ProviderQueueManifest("primary", true, "Stub"));
+        services.AddSingleton<IMessageBusClientRegistry>(registry);
+
+        return new StubFlowlyBuilder(services);
+    }
+
     private static IFlowlyBuilder CreateBuilder(string primary, string? secondary = null)
     {
         var services = new ServiceCollection();
         var registry = new MessageBusClientRegistry();
-        registry.Register(primary, new StubMessageBusClient(), null);
+        registry.Register(primary, new FakeEventCapableClient(), null);
         services.AddSingleton(new ProviderQueueManifest(primary, true, "Stub"));
 
         if (secondary is not null)
         {
-            registry.Register(secondary, new StubMessageBusClient(), null);
+            registry.Register(secondary, new FakeEventCapableClient(), null);
             services.AddSingleton(new ProviderQueueManifest(secondary, false, "Stub"));
         }
 
@@ -31,6 +43,26 @@ public class EventSubmitterRegistrationExtensionsTests
 
     public class AddEventSubmitter
     {
+        [Fact]
+        public void WithStreamOnlyProvider_ThrowsDescriptiveError()
+        {
+            var flowlyBuilder = CreateBuilderWithClient(new FakeStreamOnlyClient());
+
+            var exception = Assert.Throws<InvalidOperationException>(() => flowlyBuilder.AddEventSubmitter<OrderPlaced>());
+
+            Assert.Contains("'primary' does not support events", exception.Message);
+        }
+
+        [Fact]
+        public void WithQueueOnlyProvider_ThrowsDescriptiveError()
+        {
+            var flowlyBuilder = CreateBuilderWithClient(new FakeMessageBusClient());
+
+            var exception = Assert.Throws<InvalidOperationException>(() => flowlyBuilder.AddEventSubmitter<OrderPlaced>());
+
+            Assert.Contains("'primary' does not support events", exception.Message);
+        }
+
         [Fact]
         public void RegistersEventSubmitterForEventType()
         {
@@ -138,39 +170,4 @@ public class EventSubmitterRegistrationExtensionsTests
 
     [ProviderAffinity("secondary")]
     private record AffinityEvent;
-
-    private sealed class StubMessageBusClient : IMessageBusClient
-    {
-        public string MessagingSystem => "Stub";
-
-        public Task<IMessageBusReceiver> CreateReceiver(string queueName)
-        {
-            throw new NotImplementedException();
-        }
-
-        public Task<IMessageBusProcessor<TMessage>> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options)
-        {
-            throw new NotImplementedException();
-        }
-
-        public Task<IExecutionLaneProcessor> CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options)
-        {
-            throw new NotImplementedException();
-        }
-
-        public Task<IMessageBusSender> CreateMessageBusSender(string queueName)
-        {
-            throw new NotImplementedException();
-        }
-
-        public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName)
-        {
-            throw new NotImplementedException();
-        }
-
-        public Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default)
-        {
-            throw new NotImplementedException();
-        }
-    }
 }

@@ -20,14 +20,9 @@ internal sealed class MessageStreamProcessingBackgroundService<TMessage, THandle
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var client = clientRegistry.GetClient(handlerSettings.ProviderName);
+        var streamCapableClient = clientRegistry.GetClient<IStreamCapableMessageBusClient>(handlerSettings.ProviderName);
 
-        if (client is not IStreamCapableMessageBusClient streamCapableClient)
-            throw new InvalidOperationException(
-                $"The message bus client for provider '{handlerSettings.ProviderName}' does not support message streaming. " +
-                $"The client must implement {nameof(IStreamCapableMessageBusClient)}.");
-
-        var messagingSystem = client.MessagingSystem;
+        var messagingSystem = streamCapableClient.MessagingSystem;
         MessageStreamCheckpointHelper.ThrowIfCheckpointRegisteredForInMemory<TMessage>(serviceScopeFactory, messagingSystem);
 
         var startPosition = await MessageStreamCheckpointHelper.ResolveStartPosition<TMessage>(

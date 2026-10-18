@@ -14,12 +14,8 @@ internal class EventSubmitter<TEvent>(
     public async Task Raise(TEvent @event, CancellationToken cancellationToken = default)
     {
         var sw = Stopwatch.StartNew();
-        var client = clientRegistry.GetClient(topicSettings.ProviderName);
-
-        if (client is not IEventCapableMessageBusClient eventCapableClient)
-            throw new InvalidOperationException(
-                $"The message bus client for provider '{topicSettings.ProviderName}' does not support event publishing. " +
-                $"The client must implement {nameof(IEventCapableMessageBusClient)}.");
+        var client = clientRegistry.GetTransportClient(topicSettings.ProviderName);
+        var eventCapableClient = client.Require<IEventCapableMessageBusClient>(topicSettings.ProviderName);
 
         var messageId = Guid.NewGuid().ToString();
         using var activity = publisherInstrumentation.StartRaising(topicSettings.TopicName, client.MessagingSystem, messageId);

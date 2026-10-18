@@ -220,6 +220,8 @@ These are easy to miss because each is a small, separate piece of wiring; a solu
 
 `MessageStreamHandler<T>` requires the resolved provider's client to implement `IStreamCapableMessageBusClient` — `RabbitMqMessageBusClient` (real broker streams) and `InMemoryMessageBusClient` (an in-process append-only log, `InMemoryStreamLog`) both do. Registering against Azure Service Bus throws `InvalidOperationException` at registration time (eager check, not a lazy runtime check like `IEventCapableMessageBusClient`). See §14 for InMemory's stream internals.
 
+A transport client can implement `IStreamCapableMessageBusClient` without `IMessageBusClient` (a stream-only transport): it hosts stream handlers and recorders, and registering a queue-based handler, submitter, call or recurring job, event handler or submitter, or a dead letter source, against it throws at registration time. No stream-only transport ships yet. The producing side calls `IStreamCapableMessageBusClient.CreateStreamSender`, whose default implementation delegates to `IMessageBusClient.CreateMessageBusSender`, so RabbitMQ and InMemory need no override.
+
 ```csharp
 public class MyStreamHandler : MessageStreamHandler<MyMessage>
 {
@@ -258,6 +260,8 @@ Once registered, `StartPosition` becomes a bootstrap value used only on the firs
 **OpenTelemetry** for checkpoints (`flowly.message.checkpoint.saved`/`.save.failed`/`.resolved`) is recorded once, in `MessageStreamCheckpointHelper` — the shared call site every checkpoint (built-in or hand-rolled) passes through — not inside any specific `MessageStreamCheckpoint<T>` implementation.
 
 **Operational reset**: `flowly message-stream list-checkpoints|reset-checkpoint` (`Flowly.Tool`, direct DB connection) and the Flowly Management API's `message-streams/checkpoints` actions (`Flowly.ManagementApi`, HTTP, feature-detected) both go through the same `MessageStreamCheckpointAdmin` helper in `Flowly.MessageStreams`. A reset only takes effect on that handler's next restart — `StartPosition` is resolved once at boot.
+
+**Management API registration** (`Flowly.ManagementApi`): `services.AddFlowlyManagementApi(options => ...)` plus `app.UseFlowlyManagementApi()` (an `IEndpointRouteBuilder` extension). Exactly one authorization mode must be configured in `options` — `RequireApiKey(...)`, `UseOAuth2(...)` (Entra ID client-credentials; matches `roles` and `scp` claims) or `RequireAuthorizationPolicies(...)` — otherwise startup throws. Routes live under `ManagementApiOptions.BasePath`, an OpenAPI discovery document is served at `{BasePath}/openapi.json`, and capabilities are feature-detected from DI (the checkpoint actions appear only when a message stream persistence store is registered). New capabilities are added as `IFlowlyManagementAction` implementations and must be mirrored by a `Flowly.PowerShell` cmdlet in the same change.
 
 **Partitioning** — `[StreamPartitions(count)]` on the message contract divides a stream into `N` independent, ordered sub-logs. Requires `IPartitionedStreamCapableMessageBusClient`; RabbitMQ (Super Streams, broker-coordinated Single Active Consumer rebalancing — needs the `RabbitMQ.Stream.Client` package, pulled in automatically) and InMemory (parity/local-dev only, no cross-instance scale-out since InMemory is single-process) both implement it; Azure Service Bus doesn't. Flowly does not implement its own cross-instance partition-assignment protocol — each transport owns ownership/rebalancing natively, and Flowly runs one independent accumulate-batch-and-retry loop per partition currently owned by this process, so a halted partition only stops that partition. `IMessageStreamContext<T>.Partition` reports which partition a batch came from. Recording takes an optional partition key: `IMessageRecorder.Record(msg, ct, partitionKey: key)` — same key always routes to the same partition; omit for round-robin. Checkpointing composes unchanged, keyed by `(ConsumerName, Partition)` as above.
 
@@ -510,6 +514,8 @@ The `connection` parameter accepts either a connection string name from `IConfig
 
 Calling either method without first registering a persistence layer throws `InvalidOperationException` at startup.
 
+**`AddDeadLetterTrackingClient(connection)`** (each backend package: `Flowly.DeadLetters.SqlServer`/`.Postgres`/`.SQLite`) is the read-only alternative to `Add<Provider>DeadLetterTracking`: it registers only the EF Core data context, repository and `IDeadLetterService` — no ingestion/cleanup/metrics background services and no migration service. Use it in processes that only query, requeue or discard dead letters (e.g. the standalone Dashboard project scaffolded by `flowlyapp --dashboard --deadletter`); the process that runs ingestion owns the schema and migrations.
+
 All three registration methods accept an optional `Action<DeadLetterTrackingOptions>` for automatic cleanup:
 
 ```csharp
@@ -624,12 +630,28 @@ The Azure Service Bus implementation of `IMessagingTopologyCreator` creates queu
 ### 10. Core Interface Reference
 
 ```
-IMessageBusClient
+ITransportClient                       // root of every transport client; implement it via the capability interfaces below
+  MessagingSystem                      // e.g. "rabbitmq", used to tag telemetry
+
+IMessageBusClient : ITransportClient   // queue-based messaging capability; not implemented by a stream-only transport
   CreateProcessor<T>(queue, options) → IMessageBusProcessor<T>
-  CreateReceiver<T>(queue)           → IMessageBusReceiver
+  CreateReceiver(queue)              → IMessageBusReceiver
   CreateMessageBusSender(queue)      → IMessageBusSender
   CreateExecutionLaneProcessor(...)  → IExecutionLaneProcessor
   CreateDeadLetterReceiver(queue)    → IDeadLetterReceiver
+  GetDeadLetterMessageCount(queue, ct) → long
+
+IStreamCapableMessageBusClient : ITransportClient   // optional; RabbitMQ + InMemory; a stream-only transport implements only this
+  CreateStreamProcessor<T>(queue, startPosition, options) → IMessageBusProcessor<T>
+  CreateStreamSender(queue)          → IMessageBusSender   // default: delegates to IMessageBusClient.CreateMessageBusSender; stream-only transports must override
+
+IPartitionedStreamCapableMessageBusClient           // optional; RabbitMQ + InMemory; does not extend IStreamCapableMessageBusClient
+  CreatePartitionedStreamConsumer<T>(queue, partitionCount, resolveStartPosition, options, logger) → IPartitionedStreamConsumer<T>
+
+IMessageBusClientRegistry              // holds one ITransportClient per provider name
+  GetClient(provider)                  → IMessageBusClient       // throws for a stream-only provider
+  GetTransportClient(provider)         → ITransportClient
+  GetClient<TCapability>(provider)     // extension; throws "does not support <capability>" naming the provider
 
 IMessageBusSender
   SendMessage<T>(message, properties)     // properties carry RetryCount + ScheduledEnqueueTime
@@ -758,7 +780,9 @@ Supports the same optional flags as `flowlyapp` — `--callhandler`/`--call`, `-
 
 Run everything with: `dotnet run --project MyApp.AppHost`
 
-**Aspire SDK version:** `Aspire.AppHost.Sdk` is referenced without a pinned version so the SDK resolver uses the version from the installed Aspire workload. `ServiceDefaults/Extensions.cs` is a verbatim copy of the Microsoft-generated boilerplate (Aspire 13.3.3) and can be regenerated with `dotnet new aspire-servicedefaults` if Aspire upgrades.
+**Aspire CLI bundle mode:** the AppHost `.csproj` sets `<AspireUseCliBundle>true</AspireUseCliBundle>` (matching Microsoft's own 13.x templates; replaces the former explicit `<IsAspireHost>`, which the SDK sets anyway) and the template root carries `aspire.config.json` pointing at `MyAspireApp.AppHost/MyAspireApp.AppHost.csproj`. In this mode `dotnet run` delegates to `aspire run` using the `aspire` on PATH or, failing that, `dnx --yes Aspire.Cli` (ships with the .NET 10 SDK; restores the CLI from NuGet on first run). Dashboard and DCP then come from the CLI bundle instead of the `Aspire.Dashboard.Sdk`/`Aspire.Hosting.Orchestration` NuGet packages. With `AspireUseCliBundle=false` (the SDK default) the build emits `ASPIRE010`. `launchSettings.json` uses the `ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL`/`ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL` variable names (the older `DOTNET_*` names are still accepted by Aspire).
+
+**Aspire SDK version:** `Aspire.AppHost.Sdk` and every `Aspire.*` package in the AppHost are pinned to one Aspire release (currently 13.6.1) — they must always move together. `ServiceDefaults/Extensions.cs` is a copy of the Microsoft-generated boilerplate (Aspire 13.6.1, comments stripped) and can be regenerated with `dotnet new aspire-servicedefaults` if Aspire upgrades.
 
 ---
 
@@ -1079,13 +1103,14 @@ Rules:
 
 ---
 
-### 19. Current Status & Roadmap Notes
+### 19. Current State Notes
 
 - Azure Service Bus and RabbitMQ are both implemented transports
-- The abstraction layer (`IMessageBusClient`, etc.) is transport-agnostic
+- The abstraction layer (`ITransportClient`, `IMessageBusClient`, `IStreamCapableMessageBusClient`, etc.) is transport-agnostic; a transport implements the capability interfaces its broker supports, and Flowly fails at registration when a handler or submitter registration needs a capability the resolved provider lacks
+- Routing is not capability-aware: a contract without `[ProviderAffinity]` goes to the first registered provider, so a stream-only provider registered first would also receive ordinary queue registrations
 - Retry delay: ASB uses `ScheduledEnqueueTime`; RabbitMQ uses per-message TTL (`x-expiration`) on a `.retry` queue with DLX routing back to the main queue
 - When `createTopology: false` on RabbitMQ, the retry topology is validated at startup via `RabbitMqRetryTopologyValidator` — missing queues cause `InvalidOperationException`
-- Dead letter management API (list, requeue, fix-and-requeue, discard via HTTP) is planned but not yet built
+- Dead letters can be listed, requeued and discarded through `IDeadLetterService` and the Dashboard's HTTP endpoints; the requeue always sends the stored message unchanged
 
 ---
 

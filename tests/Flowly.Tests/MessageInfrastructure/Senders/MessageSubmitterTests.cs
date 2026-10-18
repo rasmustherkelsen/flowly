@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.MessageInfrastructure.Senders;
 using Flowly.MessageInfrastructure.Telemetry;
+using Flowly.Tests.Fakes;
 using Flowly.Transport;
 
 namespace Flowly.Tests.MessageInfrastructure.Senders;
@@ -123,6 +124,80 @@ public class MessageSubmitterTests
             await messageSubmitter.Submit(new OrderPlaced("x"), CancellationToken.None, partitionKey: "customer-7");
 
             Assert.Equal("customer-7", capturingSender.SentMessages[0].Properties.PartitionKey);
+        }
+
+        [Fact]
+        public async Task OnStreamOnlyClient_SendsThroughStreamSender()
+        {
+            var sender = new FakeMessageBusSender();
+            var client = new FakeStreamOnlyClient(sender);
+            var messageSubmitter = CreateMessageSubmitter(client, isStream: true);
+
+            await messageSubmitter.Submit(new OrderPlaced("x"), CancellationToken.None);
+
+            Assert.Equal("order-placed", client.CreatedStreamSenderForQueue);
+            Assert.Single(sender.SentMessages);
+        }
+
+        [Fact]
+        public async Task OnStreamOnlyClient_PassesPartitionKeyOnMessageProperties()
+        {
+            var sender = new FakeMessageBusSender();
+            var messageSubmitter = CreateMessageSubmitter(new FakeStreamOnlyClient(sender), isStream: true);
+
+            await messageSubmitter.Submit(new OrderPlaced("x"), CancellationToken.None, "customer-1");
+
+            Assert.Equal("customer-1", sender.SentMessages[0].Properties.PartitionKey);
+        }
+
+        [Fact]
+        public async Task OnStreamOnlyClient_TagsInstrumentationWithClientMessagingSystem()
+        {
+            var instrumentation = new StubSubmitterInstrumentation();
+            var messageSubmitter = CreateMessageSubmitter(new FakeStreamOnlyClient(new FakeMessageBusSender()), isStream: true, instrumentation);
+
+            await messageSubmitter.Submit(new OrderPlaced("x"), CancellationToken.None);
+
+            Assert.Equal("fake-stream-only", instrumentation.Started.Single().MessagingSystem);
+        }
+
+        [Fact]
+        public async Task OnQueueAndStreamClientWithoutSenderOverride_FallsBackToMessageBusSender()
+        {
+            var sender = new FakeMessageBusSender();
+            var client = new FakeQueueAndStreamClient(sender);
+            var messageSubmitter = CreateMessageSubmitter(client, isStream: true);
+
+            await messageSubmitter.Submit(new OrderPlaced("x"), CancellationToken.None);
+
+            Assert.Equal("order-placed", client.CreatedSenderForQueue);
+            Assert.Single(sender.SentMessages);
+        }
+
+        [Fact]
+        public async Task QueueMessageOnStreamOnlyClient_ThrowsDescriptiveErrorAndRecordsFailure()
+        {
+            var instrumentation = new StubSubmitterInstrumentation();
+            var messageSubmitter = CreateMessageSubmitter(new FakeStreamOnlyClient(new FakeMessageBusSender()), isStream: false, instrumentation);
+
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => messageSubmitter.Submit(new OrderPlaced("x"), CancellationToken.None));
+
+            Assert.Contains("'primary' does not support queue-based messaging", exception.Message);
+            Assert.Single(instrumentation.Failed);
+        }
+
+        private static MessageSubmitter<OrderPlaced> CreateMessageSubmitter(
+            ITransportClient client,
+            bool isStream,
+            StubSubmitterInstrumentation? instrumentation = null)
+        {
+            var registry = new MessageBusClientRegistry();
+            registry.Register("primary", client, null);
+
+            return new MessageSubmitter<OrderPlaced>(
+                registry,
+                new MessageSubmitter<OrderPlaced>.QueueSettings("order-placed", "primary", isStream),
+                instrumentation ?? new StubSubmitterInstrumentation());
         }
     }
 

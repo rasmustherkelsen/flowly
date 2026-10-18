@@ -14,10 +14,15 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
     private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(10);
 
     private static (PartitionedMessageStreamProcessingBackgroundService<TestMessage, SpyStreamHandler> BackgroundService, FakePartitionedStreamConsumer Consumer, SpyStreamHandler Handler, SpyHandlerInstrumentation Instrumentation, FakeCheckpoint? Checkpoint)
-        CreateService(int maxMessages, int maxRetries, Func<IMessageStreamContext<TestMessage>, Task>? onHandle = null, FakeCheckpoint? checkpoint = null)
+        CreateService(
+            int maxMessages,
+            int maxRetries,
+            Func<IMessageStreamContext<TestMessage>, Task>? onHandle = null,
+            FakeCheckpoint? checkpoint = null,
+            Func<FakePartitionedStreamConsumer, ITransportClient>? clientFactory = null)
     {
         var consumer = new FakePartitionedStreamConsumer();
-        var client = new FakePartitionedStreamClient(consumer);
+        var client = clientFactory?.Invoke(consumer) ?? new FakePartitionedStreamClient(consumer);
         var registry = new MessageBusClientRegistry();
         registry.Register("primary", client, null);
 
@@ -82,6 +87,26 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
 
             Assert.Equal("telemetry-reading", consumer.Client!.ReceivedQueueName);
             Assert.Equal(3, consumer.Client.ReceivedPartitionCount);
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task OnStreamOnlyClient_ProcessesAnAssignedPartition()
+        {
+            var (backgroundService, consumer, handler, _, _) = CreateService(
+                maxMessages: 1,
+                maxRetries: 0,
+                clientFactory: streamConsumer => new StreamOnlyPartitionedClient(streamConsumer));
+
+            await backgroundService.StartAsync(CancellationToken.None);
+            await consumer.Started.Task.WaitAsync(TestTimeout);
+
+            var processor = await consumer.AssignPartition(0);
+            await processor.Deliver(new FakeReceivedMessage(new TestMessage("a")));
+
+            await handler.WaitForInvocations(1, TestTimeout);
+            Assert.Equal(0, handler.Invocations.Single().Partition);
 
             await backgroundService.StopAsync(CancellationToken.None);
         }
@@ -340,6 +365,19 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
         public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName) => throw new NotImplementedException();
 
         public Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+    }
+
+    private sealed class StreamOnlyPartitionedClient(FakePartitionedStreamConsumer consumer) : IStreamCapableMessageBusClient, IPartitionedStreamCapableMessageBusClient
+    {
+        public string MessagingSystem => "fake-stream-only-partitioned";
+
+        public Task<IPartitionedStreamConsumer<TMessage>> CreatePartitionedStreamConsumer<TMessage>(
+            string queueName, int partitionCount, Func<int, CancellationToken, Task<StartPosition>> resolveStartPosition, MessageBusProcessorOptions options,
+            ILogger logger)
+            => Task.FromResult((IPartitionedStreamConsumer<TMessage>)(object)consumer);
+
+        public Task<IMessageBusProcessor<TMessage>> CreateStreamProcessor<TMessage>(string queueName, StartPosition startPosition, MessageBusProcessorOptions options)
+            => throw new NotSupportedException();
     }
 
     private sealed class NonPartitionedClient : IMessageBusClient

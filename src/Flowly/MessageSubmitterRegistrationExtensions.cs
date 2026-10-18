@@ -1,5 +1,6 @@
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.MessageInfrastructure.Senders;
+using Flowly.Transport;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -28,7 +29,7 @@ public static class MessageSubmitterRegistrationExtensions
             return flowlyBuilder;
 
         var queueName = flowlyBuilder.TopologyNameResolver.ResolveQueueName<TMessage>();
-        var providerName = ProviderNameResolver.Resolve(flowlyBuilder.Services, typeof(TMessage));
+        var providerName = ProviderNameResolver.Resolve<IMessageBusClient>(flowlyBuilder.Services, typeof(TMessage));
 
         flowlyBuilder.Services
             .AddSingleton(new MessageSubmitter<TMessage>.QueueSettings(queueName, providerName))

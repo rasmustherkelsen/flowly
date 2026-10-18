@@ -4,8 +4,9 @@ namespace Flowly.Transport;
 
 /// <summary>
 ///     Optional capability interface for transports that support partitioned, append-only, replayable message
-///     streams (e.g. RabbitMQ Super Streams). Implemented alongside <see cref="IMessageBusClient" /> and, typically,
-///     <see cref="IStreamCapableMessageBusClient" /> by clients whose broker offers a partitioned-stream primitive.
+///     streams (e.g. RabbitMQ Super Streams). Implemented alongside <see cref="IStreamCapableMessageBusClient" /> by
+///     clients whose broker offers a partitioned-stream primitive. It does not require <see cref="IMessageBusClient" />,
+///     so a stream-only transport can implement both stream interfaces without supporting queues.
 ///     Flowly checks for this interface eagerly at registration time — registering a
 ///     <see cref="MessageStreamHandler{TMessage}" /> or <see cref="IMessageRecorder" /> for a message contract
 ///     carrying <see cref="StreamPartitionsAttribute" /> against a provider whose client does not implement it

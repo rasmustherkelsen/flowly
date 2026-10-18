@@ -6,6 +6,7 @@ using Flowly.DeadLetters.Services;
 using Flowly.DeadLetters.Telemetry;
 using Flowly.MessageInfrastructure.Model;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.Transport;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -154,7 +155,7 @@ public static class DeadLetterTrackingRegistrationExtensions
             throw new InvalidOperationException("Dead letter tracking is not configured. Call AddSqlServerDeadLetterTracking() or AddPostgresDeadLetterTracking() before using AddDeadLetterSource().");
 
         var queueName = flowlyBuilder.TopologyNameResolver.ResolveQueueName<TMessage>();
-        var providerName = ProviderNameResolver.Resolve(flowlyBuilder.Services, typeof(TMessage));
+        var providerName = ProviderNameResolver.Resolve<IMessageBusClient>(flowlyBuilder.Services, typeof(TMessage));
 
         if (flowlyBuilder.Services.Any(s => s.ServiceType == typeof(DeadLetterIngestionSettings) && s.ImplementationInstance is DeadLetterIngestionSettings ds && ds.QueueName == queueName))
             return flowlyBuilder;

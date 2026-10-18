@@ -1,4 +1,5 @@
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.Tests.Fakes;
 using Flowly.Transport;
 
 namespace Flowly.Tests.MessageInfrastructure.Registration;
@@ -50,6 +51,64 @@ public class MessageBusClientRegistryTests
             var transport = registry.GetAll().Single();
             Assert.False(transport.CreateTopologyOverride);
         }
+
+        [Fact]
+        public void StreamOnlyTransportClient_IsAccepted()
+        {
+            var registry = new MessageBusClientRegistry();
+
+            registry.Register("streams", new FakeStreamOnlyClient(), null);
+
+            Assert.True(registry.IsRegistered("streams"));
+        }
+
+        [Fact]
+        public void StreamOnlyTransportClient_DuplicateName_ThrowsInvalidOperationException()
+        {
+            var registry = new MessageBusClientRegistry();
+            registry.Register("streams", new FakeStreamOnlyClient(), null);
+
+            Assert.Throws<InvalidOperationException>(() => registry.Register("streams", new FakeStreamOnlyClient(), null));
+        }
+    }
+
+    public class GetTransportClient
+    {
+        [Fact]
+        public void StreamOnlyProvider_ReturnsRegisteredClient()
+        {
+            var registry = new MessageBusClientRegistry();
+            var client = new FakeStreamOnlyClient();
+            registry.Register("streams", client, null);
+
+            var resolved = registry.GetTransportClient("streams");
+
+            Assert.Same(client, resolved);
+        }
+
+        [Fact]
+        public void QueueProvider_ReturnsRegisteredClient()
+        {
+            var registry = new MessageBusClientRegistry();
+            var client = new StubMessageBusClient();
+            registry.Register("queues", client, null);
+
+            var resolved = registry.GetTransportClient("queues");
+
+            Assert.Same(client, resolved);
+        }
+
+        [Fact]
+        public void UnknownProvider_ThrowsInvalidOperationExceptionListingAvailableProviders()
+        {
+            var registry = new MessageBusClientRegistry();
+            registry.Register("known", new FakeStreamOnlyClient(), null);
+
+            var exception = Assert.Throws<InvalidOperationException>(() => registry.GetTransportClient("unknown"));
+
+            Assert.Contains("unknown", exception.Message);
+            Assert.Contains("known", exception.Message);
+        }
     }
 
     public class GetClient
@@ -89,6 +148,18 @@ public class MessageBusClientRegistryTests
             var resolved = registry.GetClient("myprovider");
 
             Assert.Same(client, resolved);
+        }
+
+        [Fact]
+        public void StreamOnlyProvider_ThrowsInvalidOperationExceptionNamingTheMissingCapability()
+        {
+            var registry = new MessageBusClientRegistry();
+            registry.Register("streams", new FakeStreamOnlyClient(), null);
+
+            var exception = Assert.Throws<InvalidOperationException>(() => registry.GetClient("streams"));
+
+            Assert.Contains("'streams' does not support queue-based messaging", exception.Message);
+            Assert.Contains(nameof(IMessageBusClient), exception.Message);
         }
     }
 

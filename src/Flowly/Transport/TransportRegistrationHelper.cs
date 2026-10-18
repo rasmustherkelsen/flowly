@@ -57,12 +57,7 @@ public static class TransportRegistrationHelper
         IMessagingTopologyCreator messagingTopologyCreator,
         IEventTopologyCreator eventTopologyCreator)
     {
-        services
-            .Where(s => s.ServiceType == typeof(IMessagingTopologyCreatorRegistry))
-            .Select(s => s.ImplementationInstance)
-            .OfType<IMessagingTopologyCreatorRegistry>()
-            .First()
-            .Register(effectiveName, messagingTopologyCreator);
+        RegisterTopologyCreators(services, effectiveName, messagingTopologyCreator);
 
         services
             .Where(s => s.ServiceType == typeof(IEventTopologyCreatorRegistry))
@@ -71,6 +66,26 @@ public static class TransportRegistrationHelper
             .First()
             .Register(effectiveName, eventTopologyCreator);
     }
+
+    /// <summary>
+    ///     Registers <paramref name="messagingTopologyCreator" /> for the given provider name without an event topology
+    ///     creator, for transports that do not support events (for example a stream-only transport). Event registrations
+    ///     against such a provider are not given any topology; a warning is logged at startup when topology creation is
+    ///     enabled, and nothing is logged when it is disabled.
+    /// </summary>
+    /// <param name="services">The <see cref="IServiceCollection" /> containing the topology registries.</param>
+    /// <param name="effectiveName">The resolved provider name.</param>
+    /// <param name="messagingTopologyCreator">The <see cref="IMessagingTopologyCreator" /> for this provider.</param>
+    public static void RegisterTopologyCreators(
+        IServiceCollection services,
+        string effectiveName,
+        IMessagingTopologyCreator messagingTopologyCreator)
+        => services
+            .Where(s => s.ServiceType == typeof(IMessagingTopologyCreatorRegistry))
+            .Select(s => s.ImplementationInstance)
+            .OfType<IMessagingTopologyCreatorRegistry>()
+            .First()
+            .Register(effectiveName, messagingTopologyCreator);
 
     /// <summary>
     ///     Adds a <see cref="ProviderQueueManifest" /> singleton for the provider. The manifest marks the provider as

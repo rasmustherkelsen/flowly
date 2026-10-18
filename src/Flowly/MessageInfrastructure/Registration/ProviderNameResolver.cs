@@ -1,5 +1,6 @@
 using System.Reflection;
 using Flowly.MessageInfrastructure.Receivers;
+using Flowly.Transport;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Flowly.MessageInfrastructure.Registration;
@@ -35,6 +36,30 @@ public static class ProviderNameResolver
                 $"Call UseAzureServiceBus() or UseRabbitMq() with name: \"{affinity.ProviderName}\" first.");
 
         return affinity.ProviderName;
+    }
+
+    /// <summary>
+    ///     Returns the provider name for <paramref name="messageType" /> exactly as
+    ///     <see cref="Resolve(IServiceCollection, Type)" /> does, and additionally verifies that the resolved provider's client
+    ///     supports the capability <typeparamref name="TClient" />. Used at registration time so that registering a handler or
+    ///     submitter against a provider that cannot host it (for example a queue-based handler against a stream-only
+    ///     transport) fails at startup with a descriptive error rather than at first use.
+    /// </summary>
+    /// <param name="services">The service collection used to locate the <see cref="IMessageBusClientRegistry" />.</param>
+    /// <param name="messageType">The message contract type to resolve a provider for.</param>
+    /// <typeparam name="TClient">The capability interface the registration requires, e.g. <see cref="IMessageBusClient" />.</typeparam>
+    /// <returns>The resolved provider name.</returns>
+    /// <exception cref="InvalidOperationException">
+    ///     The resolved provider is not registered or its client does not implement <typeparamref name="TClient" />.
+    /// </exception>
+    public static string Resolve<TClient>(IServiceCollection services, Type messageType)
+        where TClient : class
+    {
+        var providerName = Resolve(services, messageType);
+
+        GetRegistry(services).GetClient<TClient>(providerName);
+
+        return providerName;
     }
 
     /// <summary>

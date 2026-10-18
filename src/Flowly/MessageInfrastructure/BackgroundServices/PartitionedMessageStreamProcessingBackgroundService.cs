@@ -31,14 +31,9 @@ internal sealed class PartitionedMessageStreamProcessingBackgroundService<TMessa
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _stoppingToken = stoppingToken;
-        var client = clientRegistry.GetClient(handlerSettings.ProviderName);
+        var partitionedClient = clientRegistry.GetClient<IPartitionedStreamCapableMessageBusClient>(handlerSettings.ProviderName);
 
-        if (client is not IPartitionedStreamCapableMessageBusClient partitionedClient)
-            throw new InvalidOperationException(
-                $"The message bus client for provider '{handlerSettings.ProviderName}' does not support partitioned message streaming. " +
-                $"The client must implement {nameof(IPartitionedStreamCapableMessageBusClient)}.");
-
-        var messagingSystem = client.MessagingSystem;
+        var messagingSystem = clientRegistry.GetTransportClient(handlerSettings.ProviderName).MessagingSystem;
         MessageStreamCheckpointHelper.ThrowIfCheckpointRegisteredForInMemory<TMessage>(serviceScopeFactory, messagingSystem);
 
         _consumer = await partitionedClient.CreatePartitionedStreamConsumer<TMessage>(

@@ -5,6 +5,7 @@ using Flowly.MessageInfrastructure.Callers;
 using Flowly.MessageInfrastructure.MessageHandlingStrategies;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.Registration;
+using Flowly.Transport;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -84,7 +85,7 @@ public static class CallHandlerRegistrationExtensions
         var returnType = GetReturnType(typeof(TMessage));
         var callQueueName = flowlyBuilder.TopologyNameResolver.ResolveQueueName<TMessage>();
         var returnQueueName = flowlyBuilder.TopologyNameResolver.ResolveReplyQueueName(callQueueName, options.InstanceName);
-        var providerName = ProviderNameResolver.Resolve(flowlyBuilder.Services, typeof(TMessage));
+        var providerName = ProviderNameResolver.Resolve<IMessageBusClient>(flowlyBuilder.Services, typeof(TMessage));
 
         var queueRegistrar = serviceProvider.GetRequiredService<IQueueRegistrar>();
         queueRegistrar.Register(

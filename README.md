@@ -872,6 +872,13 @@ builder.AddDeadLetterSource<OrderCreated>();            // monitors the dead-let
 
 Calling either method without a persistence layer registered throws at startup.
 
+**Read-only client** (e.g. a standalone Dashboard project that only needs to browse, requeue or discard dead letters):
+```csharp
+builder.AddDeadLetterTrackingClient("DeadLetters");     // or the Postgres / SQLite equivalent; accepts a connection name or literal connection string
+```
+
+`AddDeadLetterTrackingClient` registers only the data context, repository and `IDeadLetterService` — no ingestion, cleanup or metrics background services and no migrations — so it never participates in ingesting dead letters. It is provided by each backend package (`Flowly.DeadLetters.SqlServer`, `.Postgres`, `.SQLite`).
+
 ### What gets stored
 
 | Field | Description |
@@ -1199,6 +1206,8 @@ Supports the same `--callhandler`, `--streamhandler`, `--partitions`, `--stream-
 dotnet run --project MyApp.AppHost
 ```
 
+The AppHost sets `<AspireUseCliBundle>true</AspireUseCliBundle>` (the default for new Aspire apps), so `dotnet run` is handed to the Aspire CLI (`aspire run`), which supplies the dashboard and orchestrator. You do not need to install anything beyond the .NET 10 SDK: if `aspire` is not on your PATH, the SDK's `dnx` fetches the matching `Aspire.Cli` package from NuGet on first run (network access required, can take a minute). A solution-root `aspire.config.json` points the CLI at the AppHost project. Set `AspireUseCliBundle` to `false` in the AppHost `.csproj` to opt out (the build then emits warning `ASPIRE010`; add `<NoWarn>$(NoWarn);ASPIRE010</NoWarn>` to silence it).
+
 ---
 
 ### `flowlyapp` — Scaffold a complete send/receive solution
@@ -1448,6 +1457,8 @@ At startup, Flowly validates cross-provider topology consistency:
 - **Same transport type + same queue name + conflicting settings** → throws `InvalidOperationException`
 - **Different transport types + same queue name** → logs a warning and continues
 - **Same queue name + identical settings** → allowed silently
+
+Providers also differ in what they support: Azure Service Bus offers queues and events, RabbitMQ and InMemory offer queues, events and message streams. Registering a handler or submitter against a provider that cannot host it (for example a `MessageHandler<T>` against a transport that only supports streams) throws at registration time with a message naming the provider and the missing capability.
 
 See **[Multi-Provider Configuration](docs/multi-provider.md)** for routing rules, all supported scenarios, and the full startup validation reference.
 

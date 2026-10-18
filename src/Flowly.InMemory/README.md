@@ -1,6 +1,6 @@
 # Flowly.InMemory
 
-In-memory transport provider for [Flowly](https://github.com/TriumfNas/SimpleTransit). All messaging operations run entirely in-process using .NET channels — no external broker is required.
+In-memory transport provider for [Flowly](https://rasmustherkelsen.github.io/flowly/). All messaging operations run entirely in-process using .NET channels — no external broker is required.
 
 ## When to use
 

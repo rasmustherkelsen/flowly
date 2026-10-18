@@ -2,6 +2,7 @@ using Flowly.MessageInfrastructure;
 using Flowly.MessageInfrastructure.Receivers;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.MessageInfrastructure.Senders;
+using Flowly.Tests.Fakes;
 using Flowly.Transport;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -26,6 +27,34 @@ public class MessageSubmitterRegistrationExtensionsTests
 
     public class AddMessageSubmitter
     {
+        [Fact]
+        public void WithStreamOnlyProvider_ThrowsDescriptiveError()
+        {
+            var services = new ServiceCollection();
+            var registry = new MessageBusClientRegistry();
+            registry.Register("streams", new FakeStreamOnlyClient(), null);
+            services.AddSingleton<IMessageBusClientRegistry>(registry);
+            var flowlyBuilder = new StubFlowlyBuilder(services);
+
+            var exception = Assert.Throws<InvalidOperationException>(() => flowlyBuilder.AddMessageSubmitter<OrderPlaced>());
+
+            Assert.Contains("'streams' does not support queue-based messaging", exception.Message);
+        }
+
+        [Fact]
+        public void QueueSettingsAreNotMarkedAsStream()
+        {
+            var flowlyBuilder = CreateBuilder("primary");
+
+            flowlyBuilder.AddMessageSubmitter<OrderPlaced>();
+
+            var queueSettings = flowlyBuilder.Services
+                .Where(s => s.ServiceType == typeof(MessageSubmitter<OrderPlaced>.QueueSettings))
+                .Select(s => (MessageSubmitter<OrderPlaced>.QueueSettings)s.ImplementationInstance!)
+                .Single();
+            Assert.False(queueSettings.IsStream);
+        }
+
         [Fact]
         public void RegistersMessageSubmitterForMessageType()
         {

@@ -1,4 +1,4 @@
-// Generated from dotnet new aspire-servicedefaults (Aspire 13.3.3).
+// Generated from dotnet new aspire-servicedefaults (Aspire 13.6.1).
 // If you upgrade Aspire, regenerate this file with: dotnet new aspire-servicedefaults -o <dir> --force
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -13,6 +13,9 @@ namespace Microsoft.Extensions.Hosting;
 
 public static class Extensions
 {
+    private const string HealthEndpointPath = "/health";
+    private const string AlivenessEndpointPath = "/alive";
+
     public static TBuilder AddServiceDefaults<TBuilder>(this TBuilder builder) where TBuilder : IHostApplicationBuilder
     {
         builder.ConfigureOpenTelemetry();
@@ -48,7 +51,11 @@ public static class Extensions
             .WithTracing(tracing =>
             {
                 tracing.AddSource(builder.Environment.ApplicationName)
-                    .AddAspNetCoreInstrumentation()
+                    .AddAspNetCoreInstrumentation(tracing =>
+                        tracing.Filter = context =>
+                            !context.Request.Path.StartsWithSegments(HealthEndpointPath)
+                            && !context.Request.Path.StartsWithSegments(AlivenessEndpointPath)
+                    )
                     .AddHttpClientInstrumentation();
             });
 
@@ -81,9 +88,9 @@ public static class Extensions
     {
         if (app.Environment.IsDevelopment())
         {
-            app.MapHealthChecks("/health");
+            app.MapHealthChecks(HealthEndpointPath);
 
-            app.MapHealthChecks("/alive", new HealthCheckOptions
+            app.MapHealthChecks(AlivenessEndpointPath, new HealthCheckOptions
             {
                 Predicate = r => r.Tags.Contains("live")
             });

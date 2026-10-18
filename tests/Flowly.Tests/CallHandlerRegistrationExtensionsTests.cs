@@ -4,6 +4,7 @@ using Flowly.MessageInfrastructure.BackgroundServices;
 using Flowly.MessageInfrastructure.Model;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.Registration;
+using Flowly.Tests.Fakes;
 using Flowly.Transport;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -15,6 +16,16 @@ public class CallHandlerRegistrationExtensionsTests
 {
     public class AddCallSubmitter
     {
+        [Fact]
+        public void WithStreamOnlyProvider_ThrowsDescriptiveError()
+        {
+            var (flowlyBuilder, _) = CreateBuilder("streams", instanceName: "sender", client: new FakeStreamOnlyClient());
+
+            var exception = Assert.Throws<InvalidOperationException>(() => flowlyBuilder.AddCallSubmitter<PingMessage>());
+
+            Assert.Contains("'streams' does not support queue-based messaging", exception.Message);
+        }
+
         [Fact]
         public void WithoutInstanceName_Throws()
         {
@@ -140,7 +151,8 @@ public class CallHandlerRegistrationExtensionsTests
     private static (IFlowlyBuilder FlowlyBuilder, ProviderQueueManifest Manifest) CreateBuilder(
         string providerName,
         string? instanceName,
-        TimeSpan? globalTimeout = null)
+        TimeSpan? globalTimeout = null,
+        ITransportClient? client = null)
     {
         var services = new ServiceCollection();
 
@@ -152,7 +164,7 @@ public class CallHandlerRegistrationExtensionsTests
         services.AddSingleton(flowlyOptions);
 
         var registry = new MessageBusClientRegistry();
-        registry.Register(providerName, new StubMessageBusClient(), null);
+        registry.Register(providerName, client ?? new StubMessageBusClient(), null);
         services.AddSingleton<IMessageBusClientRegistry>(registry);
 
         var manifest = new ProviderQueueManifest(providerName, true, "Stub");

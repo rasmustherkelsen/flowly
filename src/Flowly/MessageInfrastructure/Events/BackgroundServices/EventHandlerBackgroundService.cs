@@ -24,12 +24,8 @@ internal class EventHandlerBackgroundService<TEvent, THandler>(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var client = clientRegistry.GetClient(settings.ProviderName);
-
-        if (client is not IEventCapableMessageBusClient eventCapableClient)
-            throw new InvalidOperationException(
-                $"The message bus client for provider '{settings.ProviderName}' does not support events. " +
-                $"The client must implement {nameof(IEventCapableMessageBusClient)}.");
+        var client = clientRegistry.GetTransportClient(settings.ProviderName);
+        var eventCapableClient = client.Require<IEventCapableMessageBusClient>(settings.ProviderName);
 
         _messagingSystem = client.MessagingSystem;
 
@@ -109,8 +105,7 @@ internal class EventHandlerBackgroundService<TEvent, THandler>(
 
     private async Task RepublishForRetry(IReceivedMessage<TEvent> receivedMessage, int retryCount, CancellationToken cancellationToken)
     {
-        var client = clientRegistry.GetClient(settings.ProviderName);
-        var eventCapableClient = (IEventCapableMessageBusClient)client;
+        var eventCapableClient = clientRegistry.GetClient<IEventCapableMessageBusClient>(settings.ProviderName);
         var scheduledTime = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(settings.RetryDelaySeconds);
         var props = receivedMessage.Properties with { RetryCount = retryCount, ScheduledEnqueueTime = scheduledTime };
         var sender = await eventCapableClient.CreateEventRetrySender(settings.TopicName, settings.SubscriptionName);

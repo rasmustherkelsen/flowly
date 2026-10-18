@@ -27,6 +27,10 @@ dotnet new flowlyaspireapp --transport <rabbitmq|asb|inmemory> [options] -n <Nam
 
 **OpenTelemetry is always enabled** — no flag needed. The Aspire dashboard requires OTel; `Flowly.OpenTelemetry` is included unconditionally and every `FlowlyConfiguration` wires in `AddFlowlyInstrumentation()`.
 
+### Running the AppHost
+
+The generated AppHost sets `<AspireUseCliBundle>true</AspireUseCliBundle>` (the default for new Aspire apps) and the solution root contains an `aspire.config.json` pointing at the AppHost project. `dotnet run --project <Name>.AppHost` is therefore handed to the Aspire CLI (`aspire run`). Nothing needs installing beyond the .NET 10 SDK: when `aspire` is not on PATH, the SDK's `dnx` downloads the matching `Aspire.Cli` package from NuGet on the first run (network access required). When adding Aspire to a project that was *not* scaffolded from the template, put `<AspireUseCliBundle>true</AspireUseCliBundle>` in the AppHost `.csproj` PropertyGroup; otherwise the build emits warning `ASPIRE010`. In `Properties/launchSettings.json` use the `ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL` and `ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL` environment variable names.
+
 ### What the template generates
 
 **RabbitMQ / Azure Service Bus (multi-project):**

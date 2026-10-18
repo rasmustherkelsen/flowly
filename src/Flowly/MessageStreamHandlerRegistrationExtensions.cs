@@ -46,11 +46,9 @@ public static class MessageStreamHandlerRegistrationExtensions
                 $"{typeof(THandler).Name} is already registered as a message stream handler for {typeof(TMessage).Name}. " +
                 "Registering the same handler type twice is not supported.");
 
-        var providerName = ProviderNameResolver.Resolve(flowlyBuilder.Services, typeof(TMessage));
+        var providerName = ProviderNameResolver.Resolve<IStreamCapableMessageBusClient>(flowlyBuilder.Services, typeof(TMessage));
 
-        MessageRecorderRegistrationExtensions.ThrowIfNotStreamCapable(flowlyBuilder.Services, providerName);
-
-        var client = ProviderNameResolver.GetRegistry(flowlyBuilder.Services).GetClient(providerName);
+        var client = ProviderNameResolver.GetRegistry(flowlyBuilder.Services).GetClient<IStreamCapableMessageBusClient>(providerName);
         if (client.MessagingSystem == "in-memory" && flowlyBuilder.Services.Any(s => s.ServiceType == typeof(MessageStreamCheckpoint<TMessage>)))
             throw new InvalidOperationException(
                 $"A {nameof(MessageStreamCheckpoint<TMessage>)}<{typeof(TMessage).Name}> is registered, but InMemory-backed streams do not " +

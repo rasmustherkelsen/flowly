@@ -2,6 +2,7 @@ using Flowly.MessageInfrastructure.Events;
 using Flowly.MessageInfrastructure.Events.Registration;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.Registration;
+using Flowly.Transport;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -28,7 +29,7 @@ public static class EventSubmitterRegistrationExtensions
             return flowlyBuilder;
 
         var topicName = flowlyBuilder.TopologyNameResolver.ResolveEventName<TEvent>();
-        var providerName = ProviderNameResolver.Resolve(flowlyBuilder.Services, typeof(TEvent));
+        var providerName = ProviderNameResolver.Resolve<IEventCapableMessageBusClient>(flowlyBuilder.Services, typeof(TEvent));
 
         flowlyBuilder.AddEventRegistration(new DeferredEventRegistration(topicName, null), providerName);
 

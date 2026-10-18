@@ -1,5 +1,6 @@
 using Flowly.MessageInfrastructure.Receivers;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.Tests.Fakes;
 using Flowly.Transport;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -66,6 +67,75 @@ public class ProviderNameResolverTests
 
         [ProviderAffinity("rabbit")]
         private record RabbitTaggedMessage;
+
+        [Fact]
+        public void PrimaryProviderSupportsCapability_ReturnsPrimaryProviderName()
+        {
+            var services = BuildCapabilityServices(("queues", new FakeMessageBusClient()));
+
+            var providerName = ProviderNameResolver.Resolve<IMessageBusClient>(services, typeof(UntaggedMessage));
+
+            Assert.Equal("queues", providerName);
+        }
+
+        [Fact]
+        public void AffinityProviderSupportsCapability_ReturnsAffinityProviderName()
+        {
+            var services = BuildCapabilityServices(("queues", new FakeMessageBusClient()), ("rabbit", new FakeQueueAndStreamClient()));
+
+            var providerName = ProviderNameResolver.Resolve<IStreamCapableMessageBusClient>(services, typeof(RabbitTaggedMessage));
+
+            Assert.Equal("rabbit", providerName);
+        }
+
+        [Fact]
+        public void PrimaryProviderLacksCapability_ThrowsInvalidOperationExceptionNamingProviderAndCapability()
+        {
+            var services = BuildCapabilityServices(("queues", new FakeMessageBusClient()));
+
+            var exception = Assert.Throws<InvalidOperationException>(() =>
+                ProviderNameResolver.Resolve<IStreamCapableMessageBusClient>(services, typeof(UntaggedMessage)));
+
+            Assert.Contains("'queues' does not support message streaming", exception.Message);
+            Assert.Contains(nameof(IStreamCapableMessageBusClient), exception.Message);
+        }
+
+        [Fact]
+        public void StreamOnlyPrimaryProviderUsedForQueueCapability_ThrowsInvalidOperationException()
+        {
+            var services = BuildCapabilityServices(("streams", new FakeStreamOnlyClient()));
+
+            var exception = Assert.Throws<InvalidOperationException>(() =>
+                ProviderNameResolver.Resolve<IMessageBusClient>(services, typeof(UntaggedMessage)));
+
+            Assert.Contains("'streams' does not support queue-based messaging", exception.Message);
+        }
+
+        [Fact]
+        public void AffinityProviderLacksCapability_ThrowsInvalidOperationException()
+        {
+            var services = BuildCapabilityServices(("queues", new FakeQueueAndStreamClient()), ("rabbit", new FakeMessageBusClient()));
+
+            var exception = Assert.Throws<InvalidOperationException>(() =>
+                ProviderNameResolver.Resolve<IStreamCapableMessageBusClient>(services, typeof(RabbitTaggedMessage)));
+
+            Assert.Contains("'rabbit' does not support message streaming", exception.Message);
+        }
+
+        private static IServiceCollection BuildCapabilityServices(params (string Name, ITransportClient Client)[] providers)
+        {
+            var services = new ServiceCollection();
+            var registry = new MessageBusClientRegistry();
+
+            foreach (var provider in providers)
+            {
+                registry.Register(provider.Name, provider.Client, null);
+            }
+
+            services.AddSingleton<IMessageBusClientRegistry>(registry);
+
+            return services;
+        }
     }
 
     private sealed class StubMessageBusClient : IMessageBusClient

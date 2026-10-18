@@ -1,4 +1,5 @@
 using Flowly.DeadLetters.BackgroundServices;
+using Flowly.DeadLetters.Tests.Fakes;
 using Flowly.MessageInfrastructure;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.Transport;
@@ -31,6 +32,24 @@ public class AddDeadLetterSourceTests
             var flowlyBuilder = BuildFlowlyBuilder();
 
             Assert.Throws<InvalidOperationException>(() => flowlyBuilder.AddDeadLetterSource<OrderMessage>());
+        }
+    }
+
+    public class WhenProviderIsStreamOnly
+    {
+        [Fact]
+        public void ThrowsInvalidOperationExceptionNamingTheMissingCapability()
+        {
+            var services = new ServiceCollection();
+            var registry = new MessageBusClientRegistry();
+            registry.Register("primary", new StreamOnlyClient(), null);
+            services.AddSingleton<IMessageBusClientRegistry>(registry);
+            var flowlyBuilder = new StubFlowlyBuilder(services);
+            flowlyBuilder.AddDeadLetterTracking(_ => { });
+
+            var exception = Assert.Throws<InvalidOperationException>(() => flowlyBuilder.AddDeadLetterSource<OrderMessage>());
+
+            Assert.Contains("'primary' does not support queue-based messaging", exception.Message);
         }
     }
 
@@ -141,10 +160,18 @@ public class AddDeadLetterSourceTests
     {
         public string PrimaryProviderName => primaryProviderName;
 
-        public IMessageBusClient GetClient(string providerName) => throw new NotImplementedException();
+        public IMessageBusClient GetClient(string providerName) => new FakeMessageBusClient();
         public bool IsRegistered(string providerName) => true;
         public IReadOnlyList<RegisteredTransport> GetAll() => [new RegisteredTransport(primaryProviderName, true, null)];
         public void Register(string providerName, IMessageBusClient messageBusClient, bool? createTopologyOverride) { }
+    }
+
+    private sealed class StreamOnlyClient : IStreamCapableMessageBusClient
+    {
+        public string MessagingSystem => "stream-only";
+
+        public Task<IMessageBusProcessor<TMessage>> CreateStreamProcessor<TMessage>(string queueName, StartPosition startPosition, MessageBusProcessorOptions options)
+            => throw new NotSupportedException();
     }
 
     private record OrderMessage;

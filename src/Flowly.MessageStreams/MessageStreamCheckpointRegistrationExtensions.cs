@@ -65,7 +65,7 @@ public static class MessageStreamCheckpointRegistrationExtensions
         where TMessage : class
     {
         var providerName = ProviderNameResolver.Resolve(flowlyBuilder.Services, typeof(TMessage));
-        var client = ProviderNameResolver.GetRegistry(flowlyBuilder.Services).GetClient(providerName);
+        var client = ProviderNameResolver.GetRegistry(flowlyBuilder.Services).GetTransportClient(providerName);
 
         if (client.MessagingSystem == "in-memory")
             throw new InvalidOperationException(

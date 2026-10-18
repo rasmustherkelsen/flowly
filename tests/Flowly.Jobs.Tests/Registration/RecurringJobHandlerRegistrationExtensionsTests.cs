@@ -30,6 +30,20 @@ public class RecurringJobHandlerRegistrationExtensionsTests
     public class AddRecurringJob
     {
         [Fact]
+        public void WithStreamOnlyPrimaryProvider_ThrowsDescriptiveError()
+        {
+            var services = new ServiceCollection();
+            var registry = new MessageBusClientRegistry();
+            registry.Register("streams", new FakeStreamOnlyClient(), null);
+            services.AddSingleton<IMessageBusClientRegistry>(registry);
+            var builder = new StubFlowlyBuilder(services);
+
+            var exception = Assert.Throws<InvalidOperationException>(() => builder.AddRecurringJob<SomeRecurringJob>());
+
+            Assert.Contains("'streams' does not support queue-based messaging", exception.Message);
+        }
+
+        [Fact]
         public void RegistersHandlerAsScoped()
         {
             var builder = BuildBuilder();

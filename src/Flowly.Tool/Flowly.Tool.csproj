@@ -22,6 +22,7 @@
     <ItemGroup>
         <PackageReference Include="System.CommandLine" Version="2.0.11" />
         <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.11" />
+        <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
         <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
         <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.11" />
         <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.50.3" />
