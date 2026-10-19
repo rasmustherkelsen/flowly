@@ -53,7 +53,7 @@ tea api '/repos/{owner}/{repo}/issues/<number>'                                 
 tea api -X POST '/repos/{owner}/{repo}/projects/<id>/columns/<column_id>/issues/<global_issue_id>'   # add an issue or pull request to a column
 ```
 
-The last call takes the issue's **global** `id` from the issue JSON, not its number; a pull request has one too. A newly created project has no columns, so create them first. Move a card by adding it to another column, and keep the board current as work progresses: when work starts, the card goes to `In progress`; when the pull request merges, `Done`.
+The last call takes the issue's **global** `id`, not its number. Always read it from the **issues** endpoint, for pull requests as well (`tea api '/repos/{owner}/{repo}/issues/<pr number>'`): the `id` in the `/pulls/<number>` response is a different id and puts an unrelated old card on the board. A newly created project has no columns, so create them first. Move a card by adding it to another column, and keep the board current as work progresses: when work starts, the card goes to `In progress`; when the pull request merges, `Done`.
 
 ## Writing issues
 
