@@ -15,7 +15,9 @@ Generic statements are fine ("canonical source is a self-hosted Gitea instance",
 
 ## Merge commit messages
 
-Gitea's default merge and squash messages append a `Reviewed-on: <pull request URL>` line (and `Reviewed-by` with the reviewer's name and e-mail). That would publish the instance hostname with every merge. `.gitea/default_merge_message/` holds the merge message template that replaces the default. It is deliberately minimal: do not add `${ReviewedOn}`, `${ReviewedBy}`, `${ClosingIssues}` or `${PullRequestDescription}` to it (the last two would copy `#N` references and closing keywords, which GitHub would resolve against its own unrelated issues). If a merge is done with a hand-edited message, remove those lines.
+Gitea's default merge and squash messages append a `Reviewed-on: <pull request URL>` line (and `Reviewed-by` with the reviewer's name and e-mail). That would publish the instance hostname with every merge. `.gitea/default_merge_message/` holds the merge message template that replaces the default. It is deliberately minimal: do not add `${ReviewedOn}`, `${ReviewedBy}`, `${ClosingIssues}` or `${PullRequestDescription}` to it (the last two would copy `#N` references and closing keywords, which GitHub would resolve against its own unrelated issues).
+
+Gitea reads the template from the repository's **default branch**, not from the branch a pull request targets, so the template file must exist on that branch (currently `main`) for it to apply to merges into `development`. Keep the file identical on both branches, and when it changes, change it on the default branch too. After a merge, check the new commit message for `Reviewed-on`, `Reviewed-by` and `Closes #` lines and for pull request or issue numbers copied from the description. If a merge is done with a hand-edited message, remove those lines.
 
 ## Before committing
 
