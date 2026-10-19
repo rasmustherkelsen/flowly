@@ -227,7 +227,7 @@ Target: minor release (1.5.0), not a major bump.
 
 **Behaviour change for test doubles.** Registering a message, batch, job, call, recurring or event handler or submitter, or a dead letter source, now asks the registry for the resolved provider's `IMessageBusClient` at registration time. A hand-written `IMessageBusClientRegistry` test double whose `GetClient` throws (four in this repository's tests did: the three Jobs backend ones and the dead letter source one; the event registration tests used queue-only stubs and now use an event-capable fake) now fails at registration instead; returning a stub client fixes it. Worth a line in the release notes.
 
-**Other risks.** The Event Hubs consumer behaviour (rebalancing callbacks, starting-position resolution per partition) was checked against the SDK and the emulator ([§1](#1-how-event-hubs-maps-onto-the-stream-abstractions)); the remainder that could not be checked is in [§9](#9-unverified-assumptions). The RabbitMQ Super Stream consumer still carries its own unverified-against-a-live-broker caveat.
+**Other risks.** The Event Hubs consumer behaviour (rebalancing callbacks, starting-position resolution per partition) was checked against the SDK and the emulator ([§1](#1-how-event-hubs-maps-onto-the-stream-abstractions)); the remainder that could not be checked is in [§9](#9-unverified-assumptions). The RabbitMQ Super Stream consumer has been verified against a live broker.
 
 ## 8. Decisions
 

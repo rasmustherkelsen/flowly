@@ -26,7 +26,9 @@ public static class RabbitMqRegistration
     /// <param name="streamPort">
     ///     The RabbitMQ Stream protocol port, used only for partitioned-stream consumption (broker-coordinated
     ///     Single Active Consumer rebalancing). Defaults to <c>5552</c>, the broker's documented default. The
-    ///     stream protocol is always assumed to be on the same host as the AMQP connection.
+    ///     stream protocol is always assumed to be on the same host as the AMQP connection. Unless that host is
+    ///     loopback, the broker's <c>stream.advertised_host</c> and <c>stream.advertised_port</c> must be addresses
+    ///     this client can reach, because the consuming connection goes to the address the broker advertises.
     /// </param>
     /// <returns></returns>
     public static IFlowlyBuilder UseRabbitMq(
@@ -53,7 +55,9 @@ public static class RabbitMqRegistration
     /// <param name="streamPort">
     ///     The RabbitMQ Stream protocol port, used only for partitioned-stream consumption (broker-coordinated
     ///     Single Active Consumer rebalancing). Defaults to <c>5552</c>, the broker's documented default. The
-    ///     stream protocol is always assumed to be on the same host as the AMQP connection.
+    ///     stream protocol is always assumed to be on the same host as the AMQP connection. Unless that host is
+    ///     loopback, the broker's <c>stream.advertised_host</c> and <c>stream.advertised_port</c> must be addresses
+    ///     this client can reach, because the consuming connection goes to the address the broker advertises.
     /// </param>
     /// <returns></returns>
     public static IFlowlyBuilder UseRabbitMq(

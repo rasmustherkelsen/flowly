@@ -1,6 +1,6 @@
 # Partitioned Streams — Design Assessment
 
-**Scope:** Covers checkpointing, the core partitioning abstraction, InMemory, and RabbitMQ Super Streams (`RabbitMqPartitionedStreamConsumer`, built against the `RabbitMQ.Stream.Client` package's documented and reflected API surface and not yet verified against a live broker; see `.claude/rules/message-streaming-conventions.md` § "Partitioned streams" for exactly which parts are unverified). Event Hub and Kafka are out of scope here.
+**Scope:** Covers checkpointing, the core partitioning abstraction, InMemory, and RabbitMQ Super Streams (`RabbitMqPartitionedStreamConsumer`, built on the `RabbitMQ.Stream.Client` package and verified against a live RabbitMQ 4.3.2 broker with client 1.12.0; see `.claude/rules/message-streaming-conventions.md` § "RabbitMQ Super Streams" for what was verified and what was not). Event Hub and Kafka are out of scope here.
 **Origin:** This investigation started as a feasibility assessment of adding Azure Event Hub as a stream-only Flowly transport. That investigation surfaced the real blocker before any Event Hub-specific work began: Event Hub's native model is partitioned, and Flowly's stream abstraction (`IStreamCapableMessageBusClient`, `StartPosition`, one cursor per `MessageStreamHandler` registration) assumes a single, unpartitioned log — true of both existing stream backends today (RabbitMQ plain streams, `InMemoryStreamLog`). RabbitMQ itself has a native partitioning feature ("Super Streams") that Flowly's RabbitMQ provider doesn't use today.
 
 This document reframes the ask accordingly: instead of shipping Event Hub support directly, it assesses **partitioned streams as a first-class Flowly capability**, built and proven first against RabbitMQ (Super Streams) and InMemory (a partitioned in-process log), with an abstraction deliberately shaped so Event Hub and, later, Kafka can plug in as additional transport implementations without another redesign.
@@ -44,7 +44,13 @@ Recommended sequencing: checkpointing first (small, immediately valuable, de-ris
 
 **Direction decided: adopt `RabbitMQ.Stream.Client` for partitioned streams only** (Option A) — this follows directly from the ownership-delegation model in §2: Flowly has no distributed-coordination infrastructure of its own, so leaning on the broker's native hash-based routing and rebalancing is the right tradeoff, at the cost of a second RabbitMQ client library/connection model coexisting with the existing AMQP-based transport, scoped only to partitioned streams. The rejected alternative (Option B, hand-rolling partition-key hashing and a Flowly-owned ownership/leader-election mechanism on AMQP alone) would mean building and operating a distributed coordination primitive from scratch — significant, open-ended scope duplicating what the Stream client already solves.
 
-What remains open is **technical validation, not the choice between options**: a short spike is still needed to confirm `RabbitMQ.Stream.Client`'s .NET API actually covers what Flowly requires end to end (topology interop with the AMQP-declared partition streams, rebalancing callbacks, connection lifecycle alongside the existing AMQP connection) before implementation starts.
+The technical validation this direction depended on was done against a live broker (RabbitMQ 4.3.2, `RabbitMQ.Stream.Client` 1.12.0). The Stream client covers what Flowly requires end to end:
+
+- **Topology interop.** The exchange, `{queue}-{n}` partition streams and bindings declared over AMQP are the Super Stream the Stream client consumes, and a Super Stream created with the broker's own `rabbitmq-streams add_super_stream` tool is consumed and published to unchanged.
+- **Rebalancing callbacks.** `ConsumerUpdateListener` reports `isActive: true` and `isActive: false` as instances join, leave and crash, and the offset returned for `isActive: true` (a stored checkpoint position plus one) is honoured. The offset returned for `isActive: false` is ignored.
+- **Connection lifecycle.** The stream connection is separate from the AMQP connections (one stream connection per partition, on the Stream protocol port). The client recovers its subscriptions after a broker restart on its own, reporting `isActive: true` again without a preceding `isActive: false`, which the consumer adapter handles by revoking a still-running partition loop before assigning it again.
+
+Not covered by that validation: multi-node clusters, TLS on the stream port, other broker and client versions.
 
 ## 4. InMemory implementation path
 
@@ -123,9 +129,8 @@ Resolved through discussion — settled, not pending further input:
 - **Checkpoint design (§5)**: confirmed as specified — context shapes, `ConsumerName` identity, DI-based feature-detection, `InitializeCheckpoint` seeding, same-process duplicate-registration check (throws), documented-not-enforced cross-process constraint.
 - **`[StreamRetention]` means "per partition"** once partitioning is in play (§2) — the only interpretation consistent with how every backend investigated physically implements retention.
 - **Partition key on `Record` is optional, with a round-robin/random fallback when omitted** (§2) — matches Kafka/Event Hub producer defaults; the ordering-guarantee trade-off must be documented prominently.
-- **RabbitMQ: adopt `RabbitMQ.Stream.Client`** for partitioned streams (§3) — the direction is decided; what remains is technical validation via a spike, not a choice between options.
+- **RabbitMQ: adopt `RabbitMQ.Stream.Client`** for partitioned streams (§3) — decided, and validated against a live broker.
 - **InMemory + `MessageStreamCheckpoint<TMessage>` throws eagerly at registration** (§5) — rather than a silent no-op, mirroring the existing `ThrowIfNotStreamCapable` pattern.
 
 Naming of the new interface and attribute (`IPartitionedStreamCapableMessageBusClient` and `[StreamPartitions]`) was settled at implementation time.
 
-Verifying the RabbitMQ `Stream.Client` behaviour (topology interop with the AMQP-declared partition streams, rebalancing callbacks, connection lifecycle alongside the AMQP connection) against a live broker is tracked in Gitea, not in this document.

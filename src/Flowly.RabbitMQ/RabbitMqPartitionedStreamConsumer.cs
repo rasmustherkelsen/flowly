@@ -25,18 +25,27 @@ namespace Flowly.RabbitMQ;
 ///         rebalancing protocol.
 ///     </para>
 ///     <para>
-///         A reassignment of a given partition (a revoke immediately followed by a re-assign, e.g. a brief Single
-///         Active Consumer handover) waits for that same partition's prior revocation to finish running before the
-///         new assignment proceeds — this prevents two <see cref="RabbitMqPartitionProcessor" /> instances from
-///         momentarily existing for the same partition index. This serialization is scoped to a single partition
-///         only: it never blocks assignment of other partitions, and never blocks the revoke callback itself (a
-///         slow revoke still can't stall the broker's rebalance negotiation).
+///         A reassignment of a given partition (a revoke followed by an assign, e.g. a brief Single Active Consumer
+///         handover) waits for every earlier revocation of that same partition to finish running before the new
+///         assignment proceeds, so the new <see cref="RabbitMqPartitionProcessor" /> is never created while the
+///         previous processing loop for the partition is still draining. The <c>isActive: false</c> callback does not
+///         wait for the revocation to finish, so a slow drain never stalls the broker's rebalance negotiation; the
+///         wait happens in the next <c>isActive: true</c> callback for that same partition. This serialization is
+///         scoped to a single partition: it never blocks assignment of other partitions.
 ///     </para>
 ///     <para>
-///         <strong>Best-effort against documented API shape, not verified against a live broker.</strong> The
-///         exact semantics of <c>ConsumerUpdateListener</c>'s <c>isActive: false</c> case (whether it fires at all,
-///         and whether the returned offset is ignored) are inferred from the client's public surface, not confirmed
-///         by testing against a running RabbitMQ Super Stream. Validate before production use.
+///         The broker reports <c>isActive: false</c> to the instance that loses a partition to another instance and
+///         ignores the offset returned for that call. It reports nothing to an instance whose connection was lost:
+///         when the client recovers the subscription it reports <c>isActive: true</c> again without a preceding
+///         <c>isActive: false</c>. A partition that is assigned while this process still holds a processing loop for
+///         it is therefore treated as an implicit revocation first, and the assignment waits for that revocation as
+///         well.
+///     </para>
+///     <para>
+///         The client documents that it invokes <c>ConsumerUpdateListener</c> on the connection's socket thread and
+///         that the broker closes the connection when the callback takes longer than 60 seconds. Because the wait for a
+///         revocation happens inside that callback, a drain that runs longer than that would be affected. This
+///         behaviour is taken from the client's documentation and has not been measured.
 ///     </para>
 /// </summary>
 internal sealed class RabbitMqPartitionedStreamConsumer<TMessage>(
@@ -79,53 +88,36 @@ internal sealed class RabbitMqPartitionedStreamConsumer<TMessage>(
 
                 await processor.Dispatch(message, (long)messageContext.Offset);
             },
-            ConsumerUpdateListener = async (consumerInstance, sourceStream, isActive) =>
-            {
-                var partition = ResolvePartitionIndex(sourceStream);
-
-                if (!isActive)
-                {
-                    RemoveProcessor(partition);
-
-                    if (PartitionRevoked != null)
-                    {
-                        var revokeTask = FireRevoked(partition);
-                        lock (_lock)
-                        {
-                            _pendingRevocations[partition] = revokeTask;
-                        }
-                    }
-
-                    return new OffsetTypeFirst();
-                }
-
-                Task? pendingRevocation;
-                lock (_lock)
-                {
-                    _pendingRevocations.Remove(partition, out pendingRevocation);
-                }
-
-                if (pendingRevocation != null)
-                    await pendingRevocation;
-
-                var processor = new RabbitMqPartitionProcessor(this, logger, queueName, partition);
-                lock (_lock)
-                {
-                    _processors[partition] = processor;
-                }
-
-                if (PartitionAssigned != null)
-                    await PartitionAssigned(partition, processor);
-
-                var startPosition = await resolveStartPosition(partition, CancellationToken.None);
-
-                return startPosition.Match<IOffsetType>(
-                    first: () => new OffsetTypeFirst(),
-                    last: () => new OffsetTypeLast(),
-                    offset: n => new OffsetTypeOffset((ulong)n),
-                    timestamp: dt => new OffsetTypeTimestamp(dt));
-            }
+            ConsumerUpdateListener = (_, sourceStream, isActive) => OnConsumerUpdate(sourceStream, isActive)
         });
+    }
+
+    internal async Task<IOffsetType> OnConsumerUpdate(string sourceStream, bool isActive)
+    {
+        var partition = ResolvePartitionIndex(sourceStream);
+
+        if (!isActive)
+        {
+            RevokePartition(partition);
+            return new OffsetTypeFirst();
+        }
+
+        await RevokeBeforeAssignment(partition);
+
+        var processor = new RabbitMqPartitionProcessor(this, logger, queueName, partition);
+        lock (_lock)
+        {
+            _processors[partition] = processor;
+        }
+
+        if (PartitionAssigned != null)
+            await PartitionAssigned(partition, processor);
+
+        return (await resolveStartPosition(partition, CancellationToken.None)).Match<IOffsetType>(
+            first: () => new OffsetTypeFirst(),
+            last: () => new OffsetTypeLast(),
+            offset: n => new OffsetTypeOffset((ulong)n),
+            timestamp: dt => new OffsetTypeTimestamp(dt));
     }
 
     public async Task StopProcessing(CancellationToken cancellationToken) => await CloseConsumer();
@@ -157,6 +149,47 @@ internal sealed class RabbitMqPartitionedStreamConsumer<TMessage>(
         {
             _processors.Remove(partition);
         }
+    }
+
+    private void RevokePartition(int partition)
+    {
+        RemoveProcessor(partition);
+
+        if (PartitionRevoked == null) return;
+
+        var revokeTask = FireRevoked(partition);
+        lock (_lock)
+        {
+            _pendingRevocations[partition] = _pendingRevocations.TryGetValue(partition, out var previousRevocation)
+                ? Task.WhenAll(previousRevocation, revokeTask)
+                : revokeTask;
+        }
+    }
+
+    // The broker reports isActive: false only when another instance takes the partition over. When this
+    // process loses its connection and the client recovers the subscription, isActive: true arrives without a
+    // preceding isActive: false, so a live processor for the partition is revoked here before the new one starts.
+    private async Task RevokeBeforeAssignment(int partition)
+    {
+        Task? pendingRevocation;
+        bool replacesLiveProcessor;
+        lock (_lock)
+        {
+            _pendingRevocations.Remove(partition, out pendingRevocation);
+            replacesLiveProcessor = _processors.Remove(partition);
+        }
+
+        if (pendingRevocation != null)
+            await pendingRevocation;
+
+        if (!replacesLiveProcessor || PartitionRevoked == null) return;
+
+        logger.LogInformation(
+            "Partition {Partition} of stream queue '{QueueName}' was assigned again without being revoked first, for example because the " +
+            "stream connection was lost and recovered. The previous processing loop for the partition is stopped before the new one starts.",
+            partition, queueName);
+
+        await FireRevoked(partition);
     }
 
     private int ResolvePartitionIndex(string sourceStream)
