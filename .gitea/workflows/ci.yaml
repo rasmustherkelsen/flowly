@@ -52,6 +52,23 @@ jobs:
           fi
           echo "All template OpenTelemetry package versions match $CANONICAL"
 
+      - name: Install Aspire CLI bundle
+        run: |
+          set -euo pipefail
+          VERSION=$(grep -oP '(?<=Sdk="Aspire.AppHost.Sdk/)[^"]+' samples/RabbitMQ/Aspire/RabbitMQAspire.AppHost/RabbitMQAspire.AppHost.csproj)
+          echo "Aspire CLI version (Aspire.AppHost.Sdk of the sample AppHosts): $VERSION"
+
+          for attempt in 1 2 3 4 5; do
+            if timeout 300 dotnet dnx --yes "aspire.cli@$VERSION" -- setup --install-path "${ASPIRE_HOME:-$HOME/.aspire}"; then
+              exit 0
+            fi
+            echo "::warning::Aspire CLI bundle setup attempt $attempt failed"
+            sleep $((attempt * 15))
+          done
+
+          echo "::error::Aspire CLI bundle setup failed after 5 attempts"
+          exit 1
+
       - name: Build
         run: dotnet build --configuration Release
 
