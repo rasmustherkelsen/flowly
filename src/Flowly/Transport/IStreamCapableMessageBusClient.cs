@@ -13,7 +13,9 @@ public interface IStreamCapableMessageBusClient : ITransportClient
     /// <summary>
     ///     Creates a push-based processor consuming the given stream queue from <paramref name="startPosition" />.
     ///     The transport maps the start position onto its broker-specific consume argument (RabbitMQ:
-    ///     <c>x-stream-offset</c>).
+    ///     <c>x-stream-offset</c>). An implementation must translate <see cref="StartPosition.Last" /> so that only messages
+    ///     appended after the processor attaches are delivered, never messages already in the stream (RabbitMQ: <c>next</c>,
+    ///     not <c>last</c>).
     /// </summary>
     /// <param name="queueName">The name of the stream queue to consume.</param>
     /// <param name="startPosition">The position in the stream from which consumption begins.</param>

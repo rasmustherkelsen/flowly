@@ -476,7 +476,7 @@ Every stream handler **must** explicitly set `StartPosition` in `Configure` — 
 | Factory | Behavior |
 |---|---|
 | `StartPosition.First()` | Replay the entire retained stream from the beginning. The handler must be idempotent — every restart replays everything again. |
-| `StartPosition.Last()` | Consume only messages published after the handler attaches. Messages recorded while the process was down are missed after a restart. |
+| `StartPosition.Last()` | Consume only messages published after the handler attaches. Messages already in the stream are never delivered, and nothing is delivered until a new message is published, on RabbitMQ (the `next` offset specification) and InMemory alike; on a partitioned stream this holds for every partition. Messages recorded while the process was down are missed after a restart, unless a [checkpoint](#position-persistence) holds a stored position, which takes precedence over `StartPosition`. |
 | `StartPosition.Offset(n)` | Start at a specific numeric offset. |
 | `StartPosition.Timestamp(dt)` | Start at the first message at or after a point in time. |
 

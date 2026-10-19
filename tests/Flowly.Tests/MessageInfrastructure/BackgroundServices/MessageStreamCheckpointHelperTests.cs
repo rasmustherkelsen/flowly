@@ -74,6 +74,30 @@ public class MessageStreamCheckpointHelperTests
         }
 
         [Fact]
+        public async Task WithStoredPositionAndLastFallback_ReturnsTheStoredPosition()
+        {
+            var checkpoint = new FakeCheckpoint { StoredPosition = 41 };
+            var scopeFactory = CreateScopeFactory(checkpoint);
+
+            var startPosition = await MessageStreamCheckpointHelper.ResolveStartPosition<TestMessage>(
+                scopeFactory, "consumer", null, StartPosition.Last(), "MyHandler", "my-queue", new SpyHandlerInstrumentation(), CancellationToken.None);
+
+            Assert.Equal(StartPosition.Offset(42), startPosition);
+        }
+
+        [Fact]
+        public async Task WithNoStoredPositionAndLastFallback_ReturnsLast()
+        {
+            var checkpoint = new FakeCheckpoint();
+            var scopeFactory = CreateScopeFactory(checkpoint);
+
+            var startPosition = await MessageStreamCheckpointHelper.ResolveStartPosition<TestMessage>(
+                scopeFactory, "consumer", null, StartPosition.Last(), "MyHandler", "my-queue", new SpyHandlerInstrumentation(), CancellationToken.None);
+
+            Assert.Equal(StartPosition.Last(), startPosition);
+        }
+
+        [Fact]
         public async Task WithStoredPosition_RecordsResumedOutcome()
         {
             var checkpoint = new FakeCheckpoint { StoredPosition = 5 };

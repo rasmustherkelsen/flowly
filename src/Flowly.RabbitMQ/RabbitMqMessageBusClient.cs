@@ -122,7 +122,7 @@ internal class RabbitMqMessageBusClient(IRabbitMqConnectionPool connectionPool, 
         {
             ["x-stream-offset"] = startPosition.Match<object>(
                 () => "first",
-                () => "last",
+                () => "next",
                 offset => offset,
                 timestamp => ToAmqpTimestamp(timestamp))
         };

@@ -120,7 +120,7 @@ Rules:
 - Use primary constructor when injecting dependencies.
 - **`options.StartPosition` must be set** — ask the user which fits:
   - `StartPosition.First()` — replay the entire retained stream from the beginning on every restart. Handler must be idempotent.
-  - `StartPosition.Last()` — only new messages from now on; messages recorded while the process was down are missed after a restart.
+  - `StartPosition.Last()` — only messages published after the handler attaches (RabbitMQ `next`, same on InMemory); messages already in the stream are never delivered, on a partitioned stream per partition. Messages recorded while the process was down are missed after a restart, unless a registered checkpoint holds a stored position, which takes precedence.
   - `StartPosition.Offset(n)` / `StartPosition.Timestamp(dt)` — a specific fixed point. Warn against computing a timestamp relative to "now" (never converges across restarts).
 - For `First`/`Last` only, `[StreamStartPosition(StreamStartPositionKind.First)]` / `[StreamStartPosition(StreamStartPositionKind.Last)]` on the class is an alternative to setting `options.StartPosition` in `Configure` — `Configure` wins if both are present. `Offset`/`Timestamp` have no attribute equivalent and still require `Configure`.
 - `options.MaxMessagesBeforeProcessing` / `options.MaxWaitTime` can also be set via a `[BatchProcessing]` attribute on the class instead of `Configure` — `Configure` wins if both are present. There is no `[MaxConcurrentCalls]` for stream handlers — the batch loop only ever handles one batch at a time, so on RabbitMQ prefetch is always sized to `MaxMessagesBeforeProcessing` automatically (InMemory has no prefetch concept).

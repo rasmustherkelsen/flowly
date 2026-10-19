@@ -115,7 +115,7 @@ internal sealed class RabbitMqPartitionedStreamConsumer<TMessage>(
 
         return (await resolveStartPosition(partition, CancellationToken.None)).Match<IOffsetType>(
             first: () => new OffsetTypeFirst(),
-            last: () => new OffsetTypeLast(),
+            last: () => new OffsetTypeNext(),
             offset: n => new OffsetTypeOffset((ulong)n),
             timestamp: dt => new OffsetTypeTimestamp(dt));
     }

@@ -6,9 +6,9 @@ namespace Flowly;
 ///     <see cref="Timestamp" /> — there is no public constructor and no default value; every stream handler must pick
 ///     a start position explicitly in <see cref="MessageStreamHandler{TMessage}.Configure" />.
 ///     <para>
-///         <strong>The start position is not persisted across restarts.</strong> It is re-evaluated fresh on every
-///         process boot — Flowly does not checkpoint stream offsets. A value computed relative to the current time
-///         (e.g. <c>StartPosition.Timestamp(DateTime.UtcNow - TimeSpan.FromHours(2))</c>) is recomputed on every
+///         <strong>The start position is not persisted across restarts by default.</strong> It is re-evaluated fresh on every
+///         process boot unless a <see cref="MessageStreamCheckpoint{TMessage}" /> is registered and holds a stored
+///         position, which then takes precedence. A value computed relative to the current time (e.g. <c>StartPosition.Timestamp(DateTime.UtcNow - TimeSpan.FromHours(2))</c>) is recomputed on every
 ///         restart and will never converge on a fixed point in the stream. Reprocessing already-handled messages
 ///         (with <see cref="First" />, <see cref="Offset" />, or <see cref="Timestamp" />) or missing messages
 ///         published while the process was down (with <see cref="Last" />) is an explicit operator tradeoff.
@@ -44,7 +44,15 @@ public readonly struct StartPosition : IEquatable<StartPosition>
 
     /// <summary>
     ///     Start consuming from the tail of the stream, receiving only messages published after the handler attaches.
-    ///     Messages published while the process was down are not delivered after a restart.
+    ///     Messages already in the stream when the handler attaches are never delivered, and on a stream that is empty
+    ///     when the handler attaches nothing is delivered until a message is published. On a partitioned stream the
+    ///     rule applies to every partition. Messages published while the process was down are not delivered after a
+    ///     restart, unless a <see cref="MessageStreamCheckpoint{TMessage}" /> is registered and holds a stored position,
+    ///     which takes precedence over this value.
+    ///     <para>
+    ///         Maps to the RabbitMQ <c>next</c> offset specification (not <c>last</c>, which attaches at the last
+    ///         existing chunk and would deliver the messages in it). The InMemory transport behaves the same.
+    ///     </para>
     /// </summary>
     /// <returns>A <see cref="StartPosition" /> representing the tail of the stream.</returns>
     public static StartPosition Last() => new(Kind.Last);

@@ -43,7 +43,7 @@ public class RabbitMqPartitionedStreamConsumerTests
             var timestamp = await rabbitMqPartitionedStreamConsumer.OnConsumerUpdate("orders-3", true);
 
             Assert.IsType<OffsetTypeFirst>(first);
-            Assert.IsType<OffsetTypeLast>(last);
+            Assert.IsType<OffsetTypeNext>(last);
             Assert.IsType<OffsetTypeOffset>(offset);
             Assert.Equal(42UL, WrittenOffsetValue(offset));
             Assert.IsType<OffsetTypeTimestamp>(timestamp);
