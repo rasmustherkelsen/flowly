@@ -95,7 +95,7 @@ Yes. Both map cleanly onto the delegation model in §2: `EventProcessorClient` a
 Event Hub-specific quirks identified in the original investigation still apply *when that provider is eventually built*, unchanged by this pivot:
 
 - Partition count is fixed/immutable at hub creation (Standard tier) → still needs a Bicep-first provisioning story.
-- Consumer-group-per-registration quota (5 on Standard tier) → still a real constraint to document.
+- Consumer-group-per-registration quota (1 on Basic, 20 on Standard, 100 on Premium, 1000 on Dedicated per event hub; the figure 5 is the limit on non-exclusive receivers per partition and group, not on groups) → still a real constraint to document.
 - `MaxLengthBytes` retention has no Event Hub equivalent → still needs to be rejected or ignored explicitly at registration.
 
 None of these are blocked or contradicted by the generic architecture — they remain transport-adapter concerns, which is the point of designing the abstraction this way.
