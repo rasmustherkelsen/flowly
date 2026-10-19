@@ -34,6 +34,16 @@ namespace Flowly.RabbitMQ;
 ///         scoped to a single partition: it never blocks assignment of other partitions.
 ///     </para>
 ///     <para>
+///         The start position of a newly assigned partition is resolved before the partition's processor is registered
+///         and <see cref="PartitionAssigned" /> is raised. When resolving it fails (for example because a checkpoint
+///         store is unreachable), the failure is logged and rethrown, and no processor or processing loop exists for
+///         that partition afterwards, so <see cref="PartitionRevoked" /> has nothing to undo and no checkpoint is saved
+///         for it. The Stream client does not propagate the exception and still subscribes the partition at its own
+///         default offset (<c>next</c>), ignoring the configured or stored start position; the messages it then delivers
+///         for the partition are dropped with a warning until the broker assigns the partition again. Other partitions
+///         are unaffected.
+///     </para>
+///     <para>
 ///         The broker reports <c>isActive: false</c> to the instance that loses a partition to another instance and
 ///         ignores the offset returned for that call. It reports nothing to an instance whose connection was lost:
 ///         when the client recovers the subscription it reports <c>isActive: true</c> again without a preceding
@@ -104,6 +114,8 @@ internal sealed class RabbitMqPartitionedStreamConsumer<TMessage>(
 
         await RevokeBeforeAssignment(partition);
 
+        var startPosition = await ResolveStartPositionForAssignment(partition);
+
         var processor = new RabbitMqPartitionProcessor(this, logger, queueName, partition);
         lock (_lock)
         {
@@ -113,7 +125,7 @@ internal sealed class RabbitMqPartitionedStreamConsumer<TMessage>(
         if (PartitionAssigned != null)
             await PartitionAssigned(partition, processor);
 
-        return (await resolveStartPosition(partition, CancellationToken.None)).Match<IOffsetType>(
+        return startPosition.Match<IOffsetType>(
             first: () => new OffsetTypeFirst(),
             last: () => new OffsetTypeNext(),
             offset: n => new OffsetTypeOffset((ulong)n),
@@ -190,6 +202,26 @@ internal sealed class RabbitMqPartitionedStreamConsumer<TMessage>(
             partition, queueName);
 
         await FireRevoked(partition);
+    }
+
+    // The start position is resolved before the processor is registered and PartitionAssigned is raised, so a
+    // failure (for example an unreachable checkpoint store) leaves no processor and no processing loop behind for a
+    // subscription that never received the resolved offset. The exception is logged here because the Stream client
+    // swallows it, and rethrown so the client's own handling is unchanged.
+    private async Task<StartPosition> ResolveStartPositionForAssignment(int partition)
+    {
+        try
+        {
+            return await resolveStartPosition(partition, CancellationToken.None);
+        }
+        catch (Exception e)
+        {
+            logger.LogError(e,
+                "Resolving the start position for partition {Partition} of stream queue '{QueueName}' failed. No processing loop is " +
+                "started for the partition, so messages the stream client still delivers for it are dropped until it is assigned again.",
+                partition, queueName);
+            throw;
+        }
     }
 
     private int ResolvePartitionIndex(string sourceStream)

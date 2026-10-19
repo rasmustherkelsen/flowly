@@ -261,6 +261,88 @@ public class RabbitMqPartitionedStreamConsumerTests
         }
 
         [Fact]
+        public async Task WhenResolvingTheStartPositionFails_LeavesNoAssignedPartitionWithoutARevocation()
+        {
+            var rabbitMqPartitionedStreamConsumer = Build((_, _) => throw new InvalidOperationException("checkpoint store unavailable"));
+            var liveLoops = new HashSet<int>();
+            rabbitMqPartitionedStreamConsumer.PartitionAssigned += (partition, _) =>
+            {
+                liveLoops.Add(partition);
+                return Task.CompletedTask;
+            };
+            rabbitMqPartitionedStreamConsumer.PartitionRevoked += partition =>
+            {
+                liveLoops.Remove(partition);
+                return Task.CompletedTask;
+            };
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => rabbitMqPartitionedStreamConsumer.OnConsumerUpdate("orders-3", true));
+
+            Assert.Empty(liveLoops);
+        }
+
+        [Fact]
+        public async Task WhenResolvingTheStartPositionFails_RethrowsTheResolverException()
+        {
+            var failure = new InvalidOperationException("checkpoint store unavailable");
+            var rabbitMqPartitionedStreamConsumer = Build((_, _) => throw failure);
+
+            var thrown = await Assert.ThrowsAsync<InvalidOperationException>(() => rabbitMqPartitionedStreamConsumer.OnConsumerUpdate("orders-3", true));
+
+            Assert.Same(failure, thrown);
+        }
+
+        [Fact]
+        public async Task WhenResolvingTheStartPositionFailsForOnePartition_StillAssignsOtherPartitions()
+        {
+            var rabbitMqPartitionedStreamConsumer = Build((partition, _) => partition == 1
+                ? throw new InvalidOperationException("checkpoint store unavailable")
+                : Task.FromResult(StartPosition.First()));
+            var liveLoops = new HashSet<int>();
+            rabbitMqPartitionedStreamConsumer.PartitionAssigned += (partition, _) =>
+            {
+                liveLoops.Add(partition);
+                return Task.CompletedTask;
+            };
+            rabbitMqPartitionedStreamConsumer.PartitionRevoked += partition =>
+            {
+                liveLoops.Remove(partition);
+                return Task.CompletedTask;
+            };
+
+            await rabbitMqPartitionedStreamConsumer.OnConsumerUpdate("orders-0", true);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => rabbitMqPartitionedStreamConsumer.OnConsumerUpdate("orders-1", true));
+            await rabbitMqPartitionedStreamConsumer.OnConsumerUpdate("orders-2", true);
+
+            Assert.Equal([0, 2], liveLoops.Order());
+        }
+
+        [Fact]
+        public async Task WhenResolvingTheStartPositionFailsAndThePartitionIsAssignedAgain_AssignsItOnce()
+        {
+            var attempts = 0;
+            var rabbitMqPartitionedStreamConsumer = Build((_, _) => ++attempts == 1
+                ? throw new InvalidOperationException("checkpoint store unavailable")
+                : Task.FromResult(StartPosition.First()));
+            var liveLoops = new List<int>();
+            rabbitMqPartitionedStreamConsumer.PartitionAssigned += (partition, _) =>
+            {
+                liveLoops.Add(partition);
+                return Task.CompletedTask;
+            };
+            rabbitMqPartitionedStreamConsumer.PartitionRevoked += partition =>
+            {
+                liveLoops.Remove(partition);
+                return Task.CompletedTask;
+            };
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => rabbitMqPartitionedStreamConsumer.OnConsumerUpdate("orders-4", true));
+            await rabbitMqPartitionedStreamConsumer.OnConsumerUpdate("orders-4", true);
+
+            Assert.Equal([4], liveLoops);
+        }
+
+        [Fact]
         public async Task WhenSourceStreamPartitionSuffixIsNotANumber_Throws()
         {
             var rabbitMqPartitionedStreamConsumer = Build();
