@@ -3,6 +3,7 @@ using Flowly.Jobs.Messages;
 using Flowly.Jobs.Model;
 using Flowly.Jobs.Tests.Fakes;
 using Flowly.MessageInfrastructure;
+using Flowly.MessageInfrastructure.Registration;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Flowly.Jobs.Tests.MessageHandlers;
@@ -33,6 +34,30 @@ public class StartRecurringJobMessageHandlerTests
             Assert.Contains("flowlysys-recurring-jobs", fakeMessageBusClient.CreatedSenders);
             var sender = fakeMessageBusClient.GetSender("flowlysys-recurring-jobs");
             Assert.Single(sender.SentEmptyMessages);
+        }
+
+        [Fact]
+        public async Task WithStreamOnlyProviderRegisteredFirst_SendsViaFirstQueueCapableProvider()
+        {
+            var jobStateRepository = new FakeJobStateRepository();
+            var fakeMessageBusClient = new FakeMessageBusClient();
+            var messageBusClientRegistry = new MessageBusClientRegistry();
+            messageBusClientRegistry.Register("streams", new FakeStreamOnlyClient(), null);
+            messageBusClientRegistry.Register("queues", fakeMessageBusClient, null);
+            var knownJobId = Guid.NewGuid();
+            jobStateRepository.RecurringJobsToReturn =
+            [
+                new RecurringJob(knownJobId, "SomeJob", "desc", "* * * * *", DateTimeOffset.UtcNow, null, null)
+            ];
+            var startRecurringJobMessageHandler = new StartRecurringJobMessageHandler(
+                jobStateRepository,
+                messageBusClientRegistry,
+                new KebabCaseTopologyNameResolver(),
+                NullLogger<StartRecurringJobMessageHandler>.Instance);
+
+            await startRecurringJobMessageHandler.Handle(new TestMessageContext<FlowlysysStartRecurringJobMessage>(new FlowlysysStartRecurringJobMessage(knownJobId)));
+
+            Assert.Contains("flowlysys-recurring-jobs", fakeMessageBusClient.CreatedSenders);
         }
 
         [Fact]

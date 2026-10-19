@@ -14,11 +14,14 @@ namespace Flowly.MessageInfrastructure.Registration;
 public interface IMessageBusClientRegistry
 {
     /// <summary>
-    ///     Gets the name of the primary provider. This is the default provider that will be used when no specific provider is
-    ///     specified for a message contract. The primary provider is determined based on the registration order, with the
-    ///     first registered provider being designated as the primary provider. This property allows for easy access to the
-    ///     default provider name, ensuring that messages without explicit provider affinities are routed to the correct
-    ///     message bus client.
+    ///     Gets the name of the primary provider: the first registered provider that supports queue-based messaging
+    ///     (<see cref="IMessageBusClient" />). It is the fallback for registrations that carry no provider of their own, such
+    ///     as recurring jobs and dead-letter requeueing. A provider that does not support queue-based messaging, such as a
+    ///     stream-only transport, is never primary regardless of registration order. When every registered provider supports
+    ///     queue-based messaging this is simply the first registered provider. Message contracts without
+    ///     <see cref="ProviderAffinityAttribute" /> are not routed through this property but per capability by
+    ///     <see cref="ProviderNameResolver.Resolve{TClient}(Microsoft.Extensions.DependencyInjection.IServiceCollection, System.Type)" />.
+    ///     Throws <see cref="InvalidOperationException" /> when no registered provider supports queue-based messaging.
     /// </summary>
     string PrimaryProviderName { get; }
 
@@ -48,15 +51,16 @@ public interface IMessageBusClientRegistry
     bool IsRegistered(string providerName);
 
     /// <summary>
-    ///     Returns all registered transports, including their name, primary status, and topology-creation override.
+    ///     Returns all registered transports in registration order, including their name, primary status, and
+    ///     topology-creation override.
     /// </summary>
     /// <returns>A read-only list of all <see cref="RegisteredTransport" /> entries.</returns>
     IReadOnlyList<RegisteredTransport> GetAll();
 
     /// <summary>
     ///     Registers a transport provider. Called by transport-specific extension methods (e.g.
-    ///     <c>UseAzureServiceBus</c>, <c>UseRabbitMq</c>) during application startup. The first registration becomes the
-    ///     primary provider. Throws <see cref="InvalidOperationException" /> if a provider with the same name is already
+    ///     <c>UseAzureServiceBus</c>, <c>UseRabbitMq</c>) during application startup. The first registration that supports
+    ///     queue-based messaging becomes the primary provider. Throws <see cref="InvalidOperationException" /> if a provider with the same name is already
     ///     registered.
     /// </summary>
     /// <param name="providerName">A unique name for this provider instance.</param>

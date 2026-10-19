@@ -3,6 +3,7 @@ using Flowly.DeadLetters.DatabaseModel;
 using Flowly.DeadLetters.Services;
 using Flowly.DeadLetters.Telemetry;
 using Flowly.DeadLetters.Tests.Fakes;
+using Flowly.MessageInfrastructure.Registration;
 using Flowly.Transport;
 
 namespace Flowly.DeadLetters.Tests.Services;
@@ -80,6 +81,22 @@ public class DeadLetterServiceTests
             var sender = messageBusClient.GetSender("my-queue");
             Assert.Single(sender.SentRawMessages);
             Assert.Equal("hello", sender.SentRawMessages[0].RawBody);
+        }
+
+        [Fact]
+        public async Task WithoutIngestionSettingsAndStreamOnlyProviderRegisteredFirst_SendsViaFirstQueueCapableProvider()
+        {
+            var repository = new FakeDeadLetterRepository();
+            repository.Add(BuildDeadLetter("msg-1", DeadLetterStatus.Pending, "unmapped-queue"));
+            var messageBusClient = new FakeMessageBusClient();
+            var clientRegistry = new MessageBusClientRegistry();
+            clientRegistry.Register("streams", new FakeStreamOnlyClient(), null);
+            clientRegistry.Register("queues", messageBusClient, null);
+            var deadLetterService = new DeadLetterService(repository, clientRegistry, [], [], new NullDeadLetterOperationInstrumentation());
+
+            await deadLetterService.Requeue("msg-1");
+
+            Assert.Contains("unmapped-queue", messageBusClient.CreatedSenders);
         }
 
         [Fact]

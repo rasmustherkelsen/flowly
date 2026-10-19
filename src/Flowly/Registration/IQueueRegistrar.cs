@@ -20,8 +20,8 @@ public interface IQueueRegistrar
     /// <param name="services">The service collection to register the queue description into.</param>
     /// <param name="registration">The deferred registration descriptor produced during handler/submitter setup.</param>
     /// <param name="providerName">
-    ///     The name of the provider that owns this queue. Pass <see langword="null" /> to use the
-    ///     primary registered provider.
+    ///     The name of the provider that owns this queue. Pass <see langword="null" /> to use the primary provider, the
+    ///     first registered provider that supports queue-based messaging.
     /// </param>
     void Register(IServiceCollection services, DeferredQueueRegistration registration, string? providerName = null);
 
@@ -36,8 +36,8 @@ public interface IQueueRegistrar
     ///     processing; <see langword="false" /> otherwise.
     /// </param>
     /// <param name="providerName">
-    ///     The name of the provider that owns this queue. Pass <see langword="null" /> to use the
-    ///     primary registered provider.
+    ///     The name of the provider that owns this queue. Pass <see langword="null" /> to use the primary provider, the
+    ///     first registered provider that supports queue-based messaging.
     /// </param>
     void Register(IServiceCollection services, string queueName, bool requiresSession = false, string? providerName = null);
 }

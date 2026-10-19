@@ -1442,14 +1442,14 @@ Flowly supports running multiple message brokers in the same service. A second p
 
 ```csharp
 builder
-    .UseAzureServiceBus("AzureServiceBus")   // primary — receives messages with no explicit affinity
+    .UseAzureServiceBus("AzureServiceBus")   // first registered — receives messages and events with no explicit affinity
     .AddMessageHandler<OrderCreated, OrderCreatedHandler>()
 
-    .UseRabbitMq("Rabbit")                   // secondary
+    .UseRabbitMq("Rabbit")                   // second — also receives stream contracts with no explicit affinity
     .AddMessageHandler<AnalyticsEvent, AnalyticsEventHandler>();
 ```
 
-Pin a message type to a specific provider by annotating its message class:
+A message type without an attribute is routed per capability (queue message, event, stream) to the first registered provider that supports that capability. Pin a message type to a specific provider by annotating its message class:
 
 ```csharp
 [ProviderAffinity("Rabbit")]
@@ -1462,7 +1462,7 @@ At startup, Flowly validates cross-provider topology consistency:
 - **Different transport types + same queue name** → logs a warning and continues
 - **Same queue name + identical settings** → allowed silently
 
-Providers also differ in what they support: Azure Service Bus offers queues and events, RabbitMQ and InMemory offer queues, events and message streams. Registering a handler or submitter against a provider that cannot host it (for example a `MessageHandler<T>` against a transport that only supports streams) throws at registration time with a message naming the provider and the missing capability.
+Providers also differ in what they support: Azure Service Bus offers queues and events, RabbitMQ and InMemory offer queues, events and message streams. Routing takes that into account. With Azure Service Bus registered first and RabbitMQ second, a stream contract without `[ProviderAffinity]` goes to RabbitMQ, and everything else stays on Azure Service Bus. A transport that only supports streams is never chosen for queue messages or events, whatever order the providers are registered in. The *primary provider* — the fallback for recurring jobs, dead letter requeueing and the primary-provider queue discovery in the Aspire integration and the CLI — is the first registered provider that supports queues. Registering a handler or submitter that no provider can host, or pinning one with `[ProviderAffinity]` to a provider that cannot host it (for example a `MessageHandler<T>` against a transport that only supports streams), throws at registration time with a message naming the contract, the capability and the registered providers.
 
 See **[Multi-Provider Configuration](docs/multi-provider.md)** for routing rules, all supported scenarios, and the full startup validation reference.
 

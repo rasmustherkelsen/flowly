@@ -137,7 +137,8 @@ public class HandlerSettingsFactoryTests
 
             var exception = Assert.Throws<InvalidOperationException>(() => factory.Create<TestMessageHandler, TestMessage>(services));
 
-            Assert.Contains("'azure-service-bus' does not support queue-based messaging", exception.Message);
+            Assert.Contains("requires a provider that supports queue-based messaging", exception.Message);
+            Assert.Contains("azure-service-bus (message streaming)", exception.Message);
         }
 
         private static ServiceCollection CreateServices(ITransportClient? client = null)

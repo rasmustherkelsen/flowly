@@ -14,7 +14,7 @@ internal sealed class FakeMessageBusClientRegistry : IMessageBusClientRegistry
 
     public void Register(string providerName, ITransportClient client, bool? createTopologyOverride)
     {
-        if (_clients.Count == 0)
+        if (client is IMessageBusClient && !_clients.Values.Any(existing => existing is IMessageBusClient))
             PrimaryProviderName = providerName;
 
         _clients[providerName] = client;

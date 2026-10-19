@@ -2,7 +2,7 @@ using Flowly.Transport;
 
 namespace Flowly.MessageStreams.Tests.Fakes;
 
-internal sealed class FakeMessageBusClient(string messagingSystem) : IMessageBusClient
+internal sealed class FakeQueueOnlyClient(string messagingSystem) : IMessageBusClient
 {
     public string MessagingSystem => messagingSystem;
 

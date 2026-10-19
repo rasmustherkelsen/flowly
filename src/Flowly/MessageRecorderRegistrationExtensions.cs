@@ -59,10 +59,5 @@ public static class MessageRecorderRegistrationExtensions
     }
 
     internal static void ThrowIfNotPartitionedStreamCapable(IServiceCollection services, string providerName, Type messageType)
-    {
-        if (ProviderNameResolver.GetRegistry(services).GetTransportClient(providerName) is not IPartitionedStreamCapableMessageBusClient)
-            throw new InvalidOperationException(
-                $"{messageType.Name} carries [StreamPartitions], but the message bus client for provider '{providerName}' does not " +
-                $"support partitioned message streaming. The client must implement {nameof(IPartitionedStreamCapableMessageBusClient)}.");
-    }
+        => ProviderNameResolver.EnsureSupports<IPartitionedStreamCapableMessageBusClient>(services, messageType, providerName, "carries [StreamPartitions]");
 }

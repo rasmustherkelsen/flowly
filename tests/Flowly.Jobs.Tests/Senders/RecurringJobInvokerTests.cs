@@ -2,6 +2,7 @@ using Flowly.Jobs.Model;
 using Flowly.Jobs.Senders;
 using Flowly.Jobs.Tests.Fakes;
 using Flowly.MessageInfrastructure;
+using Flowly.MessageInfrastructure.Registration;
 
 namespace Flowly.Jobs.Tests.Senders;
 
@@ -22,6 +23,21 @@ public class RecurringJobInvokerTests
             Assert.Contains("flowlysys-recurring-jobs", fakeMessageBusClient.CreatedSenders);
             var sender = fakeMessageBusClient.GetSender("flowlysys-recurring-jobs");
             Assert.Single(sender.SentEmptyMessages);
+        }
+
+        [Fact]
+        public async Task WithStreamOnlyProviderRegisteredFirst_SendsViaFirstQueueCapableProvider()
+        {
+            var fakeMessageBusClient = new FakeMessageBusClient();
+            var messageBusClientRegistry = new MessageBusClientRegistry();
+            messageBusClientRegistry.Register("streams", new FakeStreamOnlyClient(), null);
+            messageBusClientRegistry.Register("queues", fakeMessageBusClient, null);
+            var recurringJobInvoker = new RecurringJobInvoker(messageBusClientRegistry, new KebabCaseTopologyNameResolver());
+            var recurringJob = new RecurringJob(Guid.NewGuid(), "JobTypeName", "desc", "* * * * *", DateTimeOffset.UtcNow, null, null);
+
+            await recurringJobInvoker.Submit(recurringJob);
+
+            Assert.Contains("flowlysys-recurring-jobs", fakeMessageBusClient.CreatedSenders);
         }
 
         [Fact]

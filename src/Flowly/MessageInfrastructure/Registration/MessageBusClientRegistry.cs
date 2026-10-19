@@ -9,9 +9,7 @@ internal sealed class MessageBusClientRegistry : IMessageBusClientRegistry
 
     public string PrimaryProviderName => _entries.Values
                                              .FirstOrDefault(e => e.Transport.IsPrimary).Transport?.Name
-                                         ?? throw new InvalidOperationException(
-                                             "No transport providers have been registered. " +
-                                             "Call UseAzureServiceBus() or UseRabbitMq() before registering handlers or submitters.");
+                                         ?? throw new InvalidOperationException(DescribeMissingPrimary());
 
     public void Register(string providerName, IMessageBusClient client, bool? createTopologyOverride)
         => Register(providerName, (ITransportClient)client, createTopologyOverride);
@@ -21,7 +19,7 @@ internal sealed class MessageBusClientRegistry : IMessageBusClientRegistry
         if (_entries.ContainsKey(providerName))
             throw new InvalidOperationException($"A transport provider named '{providerName}' is already registered.");
 
-        var isPrimary = _entries.Count == 0;
+        var isPrimary = client is IMessageBusClient && !_entries.Values.Any(e => e.Transport.IsPrimary);
         _entries[providerName] = (client, new RegisteredTransport(providerName, isPrimary, createTopologyOverride));
     }
 
@@ -49,4 +47,10 @@ internal sealed class MessageBusClientRegistry : IMessageBusClientRegistry
     {
         return _entries.Values.Select(e => e.Transport).ToList();
     }
+
+    private string DescribeMissingPrimary()
+        => _entries.Count == 0
+            ? "No transport providers have been registered. Call UseAzureServiceBus() or UseRabbitMq() before registering handlers or submitters."
+            : "No registered transport provider supports queue-based messaging, so there is no primary provider. " +
+              TransportClientCapability.DescribeRegistered(_entries.Values.Select(e => (e.Transport.Name, e.Client)));
 }

@@ -20,7 +20,7 @@ internal static class AzureServiceBusCommand
     private static Option<string?> CreateProviderNameOption() =>
         new Option<string?>("--provider-name")
         {
-            Description = "Filter queues by provider name. Defaults to the primary provider."
+            Description = "Filter queues by provider name. Defaults to the primary provider, the first registered provider that supports queues."
         };
 
     private static Command BuildQueuesCommand(SharedOptions shared)

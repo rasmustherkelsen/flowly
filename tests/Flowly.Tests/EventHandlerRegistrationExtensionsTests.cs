@@ -35,7 +35,8 @@ public class EventHandlerRegistrationExtensionsTests
 
             var exception = Assert.Throws<InvalidOperationException>(() => builder.AddEventHandler<OrderPlaced, OrderNotificationHandler>());
 
-            Assert.Contains("'streams' does not support events", exception.Message);
+            Assert.Contains("requires a provider that supports events", exception.Message);
+            Assert.Contains("streams (message streaming)", exception.Message);
         }
 
         [Fact]
@@ -45,7 +46,8 @@ public class EventHandlerRegistrationExtensionsTests
 
             var exception = Assert.Throws<InvalidOperationException>(() => builder.AddEventHandler<OrderPlaced, OrderNotificationHandler>());
 
-            Assert.Contains("'queues' does not support events", exception.Message);
+            Assert.Contains("requires a provider that supports events", exception.Message);
+            Assert.Contains("queues (queue-based messaging)", exception.Message);
         }
 
         [Fact]

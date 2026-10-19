@@ -29,7 +29,8 @@ public class SubmitterRegistrationExtensionsTests
 
             var exception = Assert.Throws<InvalidOperationException>(() => builder.AddJobSubmitter<SomeJobMessage>());
 
-            Assert.Contains("'primary' does not support queue-based messaging", exception.Message);
+            Assert.Contains("requires a provider that supports queue-based messaging", exception.Message);
+            Assert.Contains("primary (message streaming)", exception.Message);
         }
     }
 

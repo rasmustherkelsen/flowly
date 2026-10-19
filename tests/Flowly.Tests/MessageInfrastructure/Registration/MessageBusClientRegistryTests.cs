@@ -63,6 +63,63 @@ public class MessageBusClientRegistryTests
         }
 
         [Fact]
+        public void StreamOnlyTransportClientRegisteredFirst_IsNotPrimary()
+        {
+            var registry = new MessageBusClientRegistry();
+
+            registry.Register("streams", new FakeStreamOnlyClient(), null);
+
+            Assert.False(registry.GetAll().Single().IsPrimary);
+        }
+
+        [Fact]
+        public void QueueCapableTransportRegisteredAfterStreamOnly_BecomesThePrimaryProvider()
+        {
+            var registry = new MessageBusClientRegistry();
+            registry.Register("streams", new FakeStreamOnlyClient(), null);
+
+            registry.Register("queues", new FakeMessageBusClient(), null);
+
+            Assert.Equal("queues", registry.PrimaryProviderName);
+            Assert.Equal(["queues"], registry.GetAll().Where(t => t.IsPrimary).Select(t => t.Name));
+        }
+
+        [Fact]
+        public void SecondQueueCapableTransportAfterStreamOnly_IsNotPrimary()
+        {
+            var registry = new MessageBusClientRegistry();
+            registry.Register("streams", new FakeStreamOnlyClient(), null);
+            registry.Register("first-queues", new FakeMessageBusClient(), null);
+
+            registry.Register("second-queues", new FakeMessageBusClient(), null);
+
+            Assert.Equal("first-queues", registry.PrimaryProviderName);
+            Assert.False(registry.GetAll().Single(t => t.Name == "second-queues").IsPrimary);
+        }
+
+        [Fact]
+        public void QueueAndStreamTransportRegisteredFirst_RemainsPrimaryWhenStreamOnlyTransportFollows()
+        {
+            var registry = new MessageBusClientRegistry();
+            registry.Register("rabbit", new FakeQueueAndStreamClient(), null);
+
+            registry.Register("streams", new FakeStreamOnlyClient(), null);
+
+            Assert.Equal("rabbit", registry.PrimaryProviderName);
+        }
+
+        [Fact]
+        public void GetAll_ReturnsTransportsInRegistrationOrder()
+        {
+            var registry = new MessageBusClientRegistry();
+            registry.Register("streams", new FakeStreamOnlyClient(), null);
+            registry.Register("queues", new FakeMessageBusClient(), null);
+            registry.Register("rabbit", new FakeQueueAndStreamClient(), null);
+
+            Assert.Equal(["streams", "queues", "rabbit"], registry.GetAll().Select(t => t.Name));
+        }
+
+        [Fact]
         public void StreamOnlyTransportClient_DuplicateName_ThrowsInvalidOperationException()
         {
             var registry = new MessageBusClientRegistry();
@@ -200,6 +257,18 @@ public class MessageBusClientRegistryTests
             var registry = new MessageBusClientRegistry();
 
             Assert.Throws<InvalidOperationException>(() => registry.PrimaryProviderName);
+        }
+
+        [Fact]
+        public void WithOnlyStreamOnlyProviders_ThrowsNamingTheRegisteredProviders()
+        {
+            var registry = new MessageBusClientRegistry();
+            registry.Register("streams", new FakeStreamOnlyClient(), null);
+
+            var exception = Assert.Throws<InvalidOperationException>(() => registry.PrimaryProviderName);
+
+            Assert.Contains("no primary provider", exception.Message);
+            Assert.Contains("streams (message streaming)", exception.Message);
         }
     }
 

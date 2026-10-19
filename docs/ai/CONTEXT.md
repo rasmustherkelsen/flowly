@@ -96,6 +96,17 @@ Registration happens in `Program.cs`:
 builder.AddFlowly<MyFlowlyConfig>();
 ```
 
+#### Multiple providers and capability-aware routing
+
+More than one transport can be registered (a second `UseXxx` call with a distinct `name`). Routing is resolved at registration time, per capability (queue message, event, stream), by `ProviderNameResolver.Resolve<TCapability>(services, contractType)`:
+
+1. `[ProviderAffinity("name")]` on the contract wins. The named provider must be registered and must implement the capability the registration needs, otherwise registration throws naming the contract, the capability and the registered providers with what each supports.
+2. Without the attribute the contract goes to the **first registered provider that supports the capability**; registration order is the tie-breaker. If no registered provider supports it, registration throws with the same kind of message.
+
+Consequences: with Azure Service Bus and RabbitMQ registered, stream contracts without an attribute go to RabbitMQ and everything else stays on Azure Service Bus; with Azure Service Bus and a stream-only provider registered in either order, queue messages and events go to Azure Service Bus and streams go to the stream-only provider. A contract carrying `[StreamPartitions]` additionally needs a provider implementing `IPartitionedStreamCapableMessageBusClient`; that check is unchanged and has its own error message.
+
+`IMessageBusClientRegistry.PrimaryProviderName` (and `RegisteredTransport.IsPrimary` / `ProviderQueueManifest.IsPrimary`) means the **first registered provider that supports queue-based messaging**; a stream-only provider is never primary. It is the fallback where there is no contract to route by: recurring jobs (execution-lane queue, scheduler, `StartRecurringJobMessageHandler`, `RecurringJobInvoker`), `DeadLetterService` when no ingestion setting names the queue or topic, and the primary-provider filtering in the Aspire integration and the `flowly` CLI queue discovery. See `docs/multi-provider.md`.
+
 ---
 
 ### 2. Message Handlers
@@ -299,7 +310,7 @@ Inject `IMessageRecorder`:
 await messageRecorder.Record(new MyMessage { ... });
 ```
 
-Register: `.AddMessageRecorder<MyMessage>()`. Throws `InvalidOperationException` at registration time if the resolved provider isn't RabbitMQ.
+Register: `.AddMessageRecorder<MyMessage>()`. Without `[ProviderAffinity]` the contract routes to the first registered stream-capable provider (RabbitMQ or InMemory today). Throws `InvalidOperationException` at registration time if no registered provider supports streams, or if `[ProviderAffinity]` names one that does not.
 
 ---
 
@@ -650,7 +661,8 @@ IStreamCapableMessageBusClient : ITransportClient   // optional; RabbitMQ + InMe
 IPartitionedStreamCapableMessageBusClient           // optional; RabbitMQ + InMemory; does not extend IStreamCapableMessageBusClient
   CreatePartitionedStreamConsumer<T>(queue, partitionCount, resolveStartPosition, options, logger) → IPartitionedStreamConsumer<T>
 
-IMessageBusClientRegistry              // holds one ITransportClient per provider name
+IMessageBusClientRegistry              // holds one ITransportClient per provider name, in registration order
+  PrimaryProviderName                  → string                  // first registered provider that supports queue-based messaging; throws when there is none
   GetClient(provider)                  → IMessageBusClient       // throws for a stream-only provider
   GetTransportClient(provider)         → ITransportClient
   GetClient<TCapability>(provider)     // extension; throws "does not support <capability>" naming the provider
@@ -1109,7 +1121,7 @@ Rules:
 
 - Azure Service Bus and RabbitMQ are both implemented transports
 - The abstraction layer (`ITransportClient`, `IMessageBusClient`, `IStreamCapableMessageBusClient`, etc.) is transport-agnostic; a transport implements the capability interfaces its broker supports, and Flowly fails at registration when a handler or submitter registration needs a capability the resolved provider lacks
-- Routing is not capability-aware: a contract without `[ProviderAffinity]` goes to the first registered provider, so a stream-only provider registered first would also receive ordinary queue registrations
+- Routing is capability-aware: a contract without `[ProviderAffinity]` goes, per capability (queue message, event, stream), to the first registered provider that supports it; the primary provider is the first registered queue-capable provider
 - Retry delay: ASB uses `ScheduledEnqueueTime`; RabbitMQ uses per-message TTL (`x-expiration`) on a `.retry` queue with DLX routing back to the main queue
 - When `createTopology: false` on RabbitMQ, the retry topology is validated at startup via `RabbitMqRetryTopologyValidator` — missing queues cause `InvalidOperationException`
 - Dead letters can be listed, requeued and discarded through `IDeadLetterService` and the Dashboard's HTTP endpoints; the requeue always sends the stored message unchanged

@@ -1,6 +1,7 @@
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.MessageStreams.DatabaseModel;
 using Flowly.MessageStreams.Services;
+using Flowly.Transport;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
@@ -64,7 +65,7 @@ public static class MessageStreamCheckpointRegistrationExtensions
     public static IFlowlyBuilder UseMessageStreamCheckpoint<TMessage>(this IFlowlyBuilder flowlyBuilder, string? name = null)
         where TMessage : class
     {
-        var providerName = ProviderNameResolver.Resolve(flowlyBuilder.Services, typeof(TMessage));
+        var providerName = ProviderNameResolver.Resolve<IStreamCapableMessageBusClient>(flowlyBuilder.Services, typeof(TMessage));
         var client = ProviderNameResolver.GetRegistry(flowlyBuilder.Services).GetTransportClient(providerName);
 
         if (client.MessagingSystem == "in-memory")

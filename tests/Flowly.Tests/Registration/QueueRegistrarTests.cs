@@ -1,5 +1,6 @@
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.Registration;
+using Flowly.Tests.Fakes;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Flowly.Tests.Registration;
@@ -147,7 +148,7 @@ public class QueueRegistrarTests
     {
         var services = new ServiceCollection();
         var registry = new MessageBusClientRegistry();
-        registry.Register("azure-service-bus", null!, null);
+        registry.Register("azure-service-bus", new FakeMessageBusClient(), null);
         services.AddSingleton<IMessageBusClientRegistry>(registry);
         services.AddSingleton(new ProviderQueueManifest("azure-service-bus", true, "AzureServiceBus"));
         return services;

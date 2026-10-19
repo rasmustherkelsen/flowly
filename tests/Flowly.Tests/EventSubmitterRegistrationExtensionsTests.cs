@@ -50,7 +50,8 @@ public class EventSubmitterRegistrationExtensionsTests
 
             var exception = Assert.Throws<InvalidOperationException>(() => flowlyBuilder.AddEventSubmitter<OrderPlaced>());
 
-            Assert.Contains("'primary' does not support events", exception.Message);
+            Assert.Contains("requires a provider that supports events", exception.Message);
+            Assert.Contains("primary (message streaming)", exception.Message);
         }
 
         [Fact]
@@ -60,7 +61,8 @@ public class EventSubmitterRegistrationExtensionsTests
 
             var exception = Assert.Throws<InvalidOperationException>(() => flowlyBuilder.AddEventSubmitter<OrderPlaced>());
 
-            Assert.Contains("'primary' does not support events", exception.Message);
+            Assert.Contains("requires a provider that supports events", exception.Message);
+            Assert.Contains("primary (queue-based messaging)", exception.Message);
         }
 
         [Fact]

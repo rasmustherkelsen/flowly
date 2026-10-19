@@ -23,7 +23,8 @@ public class CallHandlerRegistrationExtensionsTests
 
             var exception = Assert.Throws<InvalidOperationException>(() => flowlyBuilder.AddCallSubmitter<PingMessage>());
 
-            Assert.Contains("'streams' does not support queue-based messaging", exception.Message);
+            Assert.Contains("requires a provider that supports queue-based messaging", exception.Message);
+            Assert.Contains("streams (message streaming)", exception.Message);
         }
 
         [Fact]

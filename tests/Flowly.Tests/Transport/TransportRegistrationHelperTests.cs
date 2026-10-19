@@ -1,4 +1,5 @@
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.Tests.Fakes;
 using Flowly.Transport;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -51,6 +52,67 @@ public class TransportRegistrationHelperTests
 
             Assert.Equal("rabbitmq-secondary", result);
         }
+    }
+
+    public class RegisterProviderManifest
+    {
+        [Fact]
+        public void FirstQueueCapableProvider_IsMarkedPrimary()
+        {
+            var services = new ServiceCollection();
+            var clientRegistry = new MessageBusClientRegistry();
+            clientRegistry.Register("queues", new FakeMessageBusClient(), null);
+
+            TransportRegistrationHelper.RegisterProviderManifest(services, clientRegistry, "queues", "Stub");
+
+            Assert.True(GetManifest(services, "queues").IsPrimary);
+        }
+
+        [Fact]
+        public void StreamOnlyProviderRegisteredFirst_IsNotMarkedPrimary()
+        {
+            var services = new ServiceCollection();
+            var clientRegistry = new MessageBusClientRegistry();
+            clientRegistry.Register("streams", new FakeStreamOnlyClient(), null);
+
+            TransportRegistrationHelper.RegisterProviderManifest(services, clientRegistry, "streams", "Stub");
+
+            Assert.False(GetManifest(services, "streams").IsPrimary);
+        }
+
+        [Fact]
+        public void QueueCapableProviderRegisteredAfterStreamOnly_IsMarkedPrimary()
+        {
+            var services = new ServiceCollection();
+            var clientRegistry = new MessageBusClientRegistry();
+            clientRegistry.Register("streams", new FakeStreamOnlyClient(), null);
+            TransportRegistrationHelper.RegisterProviderManifest(services, clientRegistry, "streams", "Stub");
+            clientRegistry.Register("queues", new FakeMessageBusClient(), null);
+
+            TransportRegistrationHelper.RegisterProviderManifest(services, clientRegistry, "queues", "Stub");
+
+            Assert.True(GetManifest(services, "queues").IsPrimary);
+            Assert.False(GetManifest(services, "streams").IsPrimary);
+        }
+
+        [Fact]
+        public void SecondQueueCapableProvider_IsNotMarkedPrimary()
+        {
+            var services = new ServiceCollection();
+            var clientRegistry = new MessageBusClientRegistry();
+            clientRegistry.Register("first", new FakeMessageBusClient(), null);
+            clientRegistry.Register("second", new FakeMessageBusClient(), null);
+
+            TransportRegistrationHelper.RegisterProviderManifest(services, clientRegistry, "second", "Stub");
+
+            Assert.False(GetManifest(services, "second").IsPrimary);
+        }
+
+        private static ProviderQueueManifest GetManifest(IServiceCollection services, string providerName)
+            => services
+                .Select(descriptor => descriptor.ImplementationInstance)
+                .OfType<ProviderQueueManifest>()
+                .Single(manifest => manifest.ProviderName == providerName);
     }
 
     public class RegisterTopologyCreators

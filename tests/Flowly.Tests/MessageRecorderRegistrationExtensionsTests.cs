@@ -45,6 +45,36 @@ public class MessageRecorderRegistrationExtensionsTests
             Assert.Contains(flowlyBuilder.Services, s => s.ServiceType == typeof(IMessageSubmitter<TelemetryReading>));
         }
 
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public void WithQueueOnlyAndStreamOnlyProvidersInEitherOrder_RoutesStreamToStreamOnlyProvider(bool queueProviderFirst)
+        {
+            var services = new ServiceCollection();
+            var registry = new MessageBusClientRegistry();
+            var streamsManifest = new ProviderQueueManifest("streams", false, "Stub");
+            var queuesManifest = new ProviderQueueManifest("queues", true, "Stub");
+            services.AddSingleton<IMessageBusClientRegistry>(registry);
+            services.AddSingleton(streamsManifest);
+            services.AddSingleton(queuesManifest);
+            var providers = new (string Name, ITransportClient Client)[] { ("queues", new StubMessageBusClient()), ("streams", new FakeStreamOnlyClient()) };
+
+            foreach (var provider in queueProviderFirst ? providers : providers.Reverse())
+            {
+                registry.Register(provider.Name, provider.Client, null);
+            }
+
+            new StubFlowlyBuilder(services).AddMessageRecorder<TelemetryReading>();
+
+            var queueSettings = services
+                .Where(s => s.ServiceType == typeof(MessageSubmitter<TelemetryReading>.QueueSettings))
+                .Select(s => (MessageSubmitter<TelemetryReading>.QueueSettings)s.ImplementationInstance!)
+                .Single();
+            Assert.Equal("streams", queueSettings.ProviderName);
+            Assert.Empty(queuesManifest.Queues);
+            Assert.Single(streamsManifest.Queues);
+        }
+
         [Fact]
         public void RegistersQueueSettingsMarkedAsStream()
         {
@@ -178,6 +208,10 @@ public class MessageRecorderRegistrationExtensionsTests
             var exception = Assert.Throws<InvalidOperationException>(() => flowlyBuilder.AddMessageRecorder<PartitionedReading>());
 
             Assert.Contains(nameof(IPartitionedStreamCapableMessageBusClient), exception.Message);
+            Assert.Contains(nameof(PartitionedReading), exception.Message);
+            Assert.Contains("[StreamPartitions]", exception.Message);
+            Assert.Contains("'primary' does not support partitioned message streaming", exception.Message);
+            Assert.Contains("primary (queue-based messaging, message streaming)", exception.Message);
         }
     }
 

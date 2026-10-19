@@ -1,13 +1,14 @@
 namespace Flowly;
 
 /// <summary>
-///     Attribute to specify the provider affinity for a message contract. This is used to determine which provider should
-///     be used for a given message contract when multiple providers are registered. The provider affinity is specified by
-///     the provider name, which should match the name of a registered provider in the Flowly framework. By applying
-///     this attribute to a message class, you can ensure that the handler processing the message is associated with the
-///     correct provider, allowing for proper routing of messages to the appropriate message broker or service. This is
-///     particularly useful in scenarios where multiple providers are used within the same application, enabling
-///     fine-grained control over which handlers are associated with which providers based on their specified affinities.
+///     Pins a message or event contract to a specific registered provider when multiple providers are registered. The
+///     provider is identified by the name used when the provider was registered (for example the <c>name</c> argument of
+///     <c>UseRabbitMq</c>). Without this attribute a contract is routed per capability (queue message, event, stream) to the
+///     first registered provider that supports that capability, so a stream contract reaches a stream-capable provider and
+///     an ordinary message reaches a queue-capable provider without any attribute. Use the attribute to override that
+///     choice, for example to send a message to the second of two queue-capable providers. Registration fails with a
+///     descriptive error when the named provider is not registered or does not support the capability the contract is
+///     registered for.
 /// </summary>
 /// <param name="providerName">The name of the provider</param>
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct)]

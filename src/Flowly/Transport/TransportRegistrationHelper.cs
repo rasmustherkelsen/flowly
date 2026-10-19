@@ -89,7 +89,8 @@ public static class TransportRegistrationHelper
 
     /// <summary>
     ///     Adds a <see cref="ProviderQueueManifest" /> singleton for the provider. The manifest marks the provider as
-    ///     primary when it is the only registered provider at this point.
+    ///     primary when the registry reports it as the primary provider, which is the first registered provider that supports
+    ///     queue-based messaging; a stream-only provider is never primary.
     /// </summary>
     /// <param name="services">The <see cref="IServiceCollection" /> to register the manifest with.</param>
     /// <param name="clientRegistry">The <see cref="IMessageBusClientRegistry" /> used to determine primary status.</param>
@@ -101,7 +102,7 @@ public static class TransportRegistrationHelper
         string effectiveName,
         string transportType)
     {
-        var isPrimary = clientRegistry.GetAll().Count == 1;
+        var isPrimary = clientRegistry.GetAll().Single(transport => transport.Name == effectiveName).IsPrimary;
         services.AddSingleton(new ProviderQueueManifest(effectiveName, isPrimary, transportType));
     }
 

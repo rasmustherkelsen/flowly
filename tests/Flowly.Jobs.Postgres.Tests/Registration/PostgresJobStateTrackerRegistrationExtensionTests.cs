@@ -107,7 +107,7 @@ public class PostgresJobStateTrackerRegistrationExtensionTests
         public void Register(string providerName, IMessageBusClient client, bool? createTopologyOverride) { }
         public IMessageBusClient GetClient(string providerName) => new StubMessageBusClient();
         public bool IsRegistered(string providerName) => false;
-        public IReadOnlyList<RegisteredTransport> GetAll() => [];
+        public IReadOnlyList<RegisteredTransport> GetAll() => [new RegisteredTransport(PrimaryProviderName, true, null)];
     }
 
     private sealed class StubMessageBusClient : IMessageBusClient

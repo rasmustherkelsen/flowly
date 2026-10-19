@@ -2,6 +2,7 @@ using Flowly.MessageInfrastructure;
 using Flowly.MessageInfrastructure.Events.Registration;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.Registration;
+using Flowly.Tests.Fakes;
 using Flowly.Transport;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -32,6 +33,25 @@ public class EventRegistrationExtensionsTests
 
     public class AddEventRegistration
     {
+        [Fact]
+        public void WithStreamOnlyProviderRegisteredFirst_AddsEventToFirstQueueCapableProviderManifest()
+        {
+            var services = new ServiceCollection();
+            var registry = new MessageBusClientRegistry();
+            registry.Register("streams", new FakeStreamOnlyClient(), null);
+            registry.Register("queues", new StubMessageBusClient(), null);
+            services.AddSingleton<IMessageBusClientRegistry>(registry);
+            var streamsManifest = new ProviderQueueManifest("streams", false, "Stub");
+            var queuesManifest = new ProviderQueueManifest("queues", true, "Stub");
+            services.AddSingleton(streamsManifest);
+            services.AddSingleton(queuesManifest);
+
+            new StubFlowlyBuilder(services).AddEventRegistration(new DeferredEventRegistration("order-placed", "audit"));
+
+            Assert.Empty(streamsManifest.Events);
+            Assert.Single(queuesManifest.Events);
+        }
+
         [Fact]
         public void AddsEventToPrimaryProviderManifest()
         {

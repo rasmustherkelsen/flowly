@@ -42,14 +42,15 @@ public class AddDeadLetterSourceTests
         {
             var services = new ServiceCollection();
             var registry = new MessageBusClientRegistry();
-            registry.Register("primary", new StreamOnlyClient(), null);
+            registry.Register("primary", new FakeStreamOnlyClient(), null);
             services.AddSingleton<IMessageBusClientRegistry>(registry);
             var flowlyBuilder = new StubFlowlyBuilder(services);
             flowlyBuilder.AddDeadLetterTracking(_ => { });
 
             var exception = Assert.Throws<InvalidOperationException>(() => flowlyBuilder.AddDeadLetterSource<OrderMessage>());
 
-            Assert.Contains("'primary' does not support queue-based messaging", exception.Message);
+            Assert.Contains("requires a provider that supports queue-based messaging", exception.Message);
+            Assert.Contains("primary (message streaming)", exception.Message);
         }
     }
 
@@ -164,14 +165,6 @@ public class AddDeadLetterSourceTests
         public bool IsRegistered(string providerName) => true;
         public IReadOnlyList<RegisteredTransport> GetAll() => [new RegisteredTransport(primaryProviderName, true, null)];
         public void Register(string providerName, IMessageBusClient messageBusClient, bool? createTopologyOverride) { }
-    }
-
-    private sealed class StreamOnlyClient : IStreamCapableMessageBusClient
-    {
-        public string MessagingSystem => "stream-only";
-
-        public Task<IMessageBusProcessor<TMessage>> CreateStreamProcessor<TMessage>(string queueName, StartPosition startPosition, MessageBusProcessorOptions options)
-            => throw new NotSupportedException();
     }
 
     private record OrderMessage;
