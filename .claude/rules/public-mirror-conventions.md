@@ -19,6 +19,8 @@ Gitea's default merge and squash messages append a `Reviewed-on: <pull request U
 
 Gitea reads the template from the repository's **default branch**, not from the branch a pull request targets, so the template file must exist on that branch (currently `main`) for it to apply to merges into `development`. Keep the file identical on both branches, and when it changes, change it on the default branch too. After a merge, check the new commit message for `Reviewed-on`, `Reviewed-by` and `Closes #` lines and for pull request or issue numbers copied from the description. If a merge is done with a hand-edited message, remove those lines.
 
+A squash merge can still carry the pull request description into the commit body, and from there to GitHub, where `Closes #N` would close or link an unrelated item with that number. Pull request descriptions therefore contain no closing keywords (`Closes`, `Fixes`, `Resolves` and variants) and no issue or pull request numbers: name the work in prose instead. The issue is closed and the project card moved in Gitea after the merge, not by the description.
+
 ## Before committing
 
 Search what you are about to commit for the categories above: local paths, private address ranges, personal e-mail domains, and the hostnames and repository slug from your local `tea` and git configuration, for example:
