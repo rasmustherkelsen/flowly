@@ -20,7 +20,8 @@ public class MessageStreamProcessingBackgroundServiceTests
             Func<IMessageStreamContext<TestMessage>, Task>? onHandle = null,
             FakeCheckpoint? checkpoint = null,
             StartPosition? startPosition = null,
-            IStreamStartOffsetResolver? startOffsetResolver = null)
+            IStreamStartOffsetResolver? startOffsetResolver = null,
+            string? consumerName = null)
     {
         var processor = new FakeStreamProcessor();
         FakeStreamClient client = startOffsetResolver is null ? new FakeStreamClient(processor) : new ResolverCapableStreamClient(processor, startOffsetResolver);
@@ -42,7 +43,7 @@ public class MessageStreamProcessingBackgroundServiceTests
                 "telemetry-reading",
                 "primary",
                 nameof(SpyStreamHandler),
-                nameof(SpyStreamHandler),
+                consumerName ?? nameof(SpyStreamHandler),
                 startPosition ?? StartPosition.First(),
                 maxMessages,
                 TimeSpan.FromSeconds(30),
@@ -111,6 +112,47 @@ public class MessageStreamProcessingBackgroundServiceTests
 
             Assert.Equal("telemetry-reading", client.ReceivedQueueName);
             Assert.Equal(StartPosition.First(), client.ReceivedStartPosition);
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task PassesTheDefaultedConsumerNameInTheProcessorOptions()
+        {
+            var (backgroundService, processor, _, _, _) = CreateService(maxMessages: 1, maxRetries: 0);
+
+            await backgroundService.StartAsync(CancellationToken.None);
+            await processor.Started.Task.WaitAsync(TestTimeout);
+
+            Assert.Equal(nameof(SpyStreamHandler), processor.Client!.ReceivedOptions!.ConsumerName);
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task PassesTheExplicitConsumerNameInTheProcessorOptions()
+        {
+            var (backgroundService, processor, _, _, _) = CreateService(maxMessages: 1, maxRetries: 0, consumerName: "reporting-group");
+
+            await backgroundService.StartAsync(CancellationToken.None);
+            await processor.Started.Task.WaitAsync(TestTimeout);
+
+            Assert.Equal("reporting-group", processor.Client!.ReceivedOptions!.ConsumerName);
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task PassesTheSameConsumerNameToTheProcessorAndTheCheckpoint()
+        {
+            var checkpoint = new FakeCheckpoint();
+            var (backgroundService, processor, _, _, _) = CreateService(maxMessages: 1, maxRetries: 0, checkpoint: checkpoint, consumerName: "reporting-group");
+
+            await backgroundService.StartAsync(CancellationToken.None);
+            await processor.Started.Task.WaitAsync(TestTimeout);
+
+            Assert.Equal("reporting-group", checkpoint.InitializeCalls.Single().ConsumerName);
+            Assert.Equal(checkpoint.InitializeCalls.Single().ConsumerName, processor.Client!.ReceivedOptions!.ConsumerName);
 
             await backgroundService.StopAsync(CancellationToken.None);
         }

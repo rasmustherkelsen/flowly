@@ -39,7 +39,9 @@ public class MessageStreamHandlerOptions
     ///     is registered — disambiguates independent readers of the same stream (e.g. two different services each
     ///     replaying the stream independently) so their stored positions don't collide. If not set, defaults to the
     ///     handler's type name. Pin this explicitly if the handler class may be renamed later, since the default
-    ///     would otherwise silently orphan a previously stored position.
+    ///     would otherwise silently orphan a previously stored position. The resolved name is also passed to the transport as
+    ///     <see cref="Transport.MessageBusProcessorOptions.ConsumerName" />, which may use it to identify the reader on the broker
+    ///     (for example as a consumer group); the RabbitMQ and InMemory transports ignore it.
     /// </summary>
     public string? ConsumerName { get; set; }
 

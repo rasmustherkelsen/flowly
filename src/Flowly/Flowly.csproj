@@ -22,6 +22,8 @@
         <InternalsVisibleTo Include="Flowly.RabbitMQ.Tests" />
         <InternalsVisibleTo Include="Flowly.InMemory" />
         <InternalsVisibleTo Include="Flowly.InMemory.Tests" />
+        <InternalsVisibleTo Include="Flowly.AzureEventHubs" />
+        <InternalsVisibleTo Include="Flowly.AzureEventHubs.Tests" />
     </ItemGroup>
 
     <ItemGroup>
