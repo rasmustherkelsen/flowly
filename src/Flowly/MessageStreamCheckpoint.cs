@@ -7,7 +7,22 @@ namespace Flowly;
 ///     — Flowly detects and uses it automatically; no separate builder call is required.
 ///     <para>
 ///         Once registered, <see cref="MessageStreamHandlerOptions.StartPosition" /> becomes a bootstrap value used
-///         only the first time this reader runs. Afterwards, the stored position takes over.
+///         only the first time this reader runs. Afterwards, the stored position takes over. The stored position means
+///         "resume at <c>position + 1</c>": it is the offset of the last processed message, so a reader that has processed
+///         nothing yet stores the offset it will start at minus one, which is <c>-1</c> for a stream that is read from its
+///         very beginning.
+///     </para>
+///     <para>
+///         <strong>The first run's position is fixed when the reader starts, not when its first batch completes.</strong> When
+///         <see cref="GetStreamPosition" /> returns <see langword="null" /> and the transport can resolve the configured
+///         <see cref="StartPosition.Last" /> or <see cref="StartPosition.Timestamp" /> to a concrete offset without consuming
+///         (see <see cref="Transport.IStreamStartOffsetResolver" />), Flowly stores that offset minus one through
+///         <see cref="SaveStreamPosition" /> before consumption starts, flagged with
+///         <see cref="MessageStreamCheckpointSaveContext.IsBootstrapSeed" />. Messages published while the process was down
+///         are then delivered after the next restart even if no batch was ever processed. <see cref="StartPosition.First" />
+///         and <see cref="StartPosition.Offset" /> do not change meaning between restarts and are not stored up front. If the
+///         transport cannot resolve the position, or storing it fails, the configured start position is used and the position
+///         is first stored after the first processed batch.
 ///     </para>
 ///     <para>
 ///         <strong>Not supported for InMemory-backed streams.</strong> The underlying in-process log has no
@@ -50,19 +65,32 @@ public abstract class MessageStreamCheckpoint<TMessage>
 
     /// <summary>
     ///     Returns the currently stored position for <paramref name="context" />, or <see langword="null" /> when
-    ///     this reader has never successfully processed a batch — in which case Flowly falls back to the
-    ///     <see cref="MessageStreamHandlerOptions.StartPosition" /> configured in
-    ///     <see cref="MessageStreamHandler{TMessage}.Configure" />.
+    ///     nothing has been saved for this reader yet — neither a processed batch nor a bootstrap seed — in which case
+    ///     Flowly resolves the <see cref="MessageStreamHandlerOptions.StartPosition" /> configured in
+    ///     <see cref="MessageStreamHandler{TMessage}.Configure" /> and, where it can, stores it through
+    ///     <see cref="SaveStreamPosition" />. Consumption resumes at the returned offset plus one.
     /// </summary>
     /// <param name="context">Identifies the reader this checkpoint belongs to.</param>
     /// <param name="cancellationToken">A cancellation token signaling when the host is shutting down.</param>
-    /// <returns>The stored stream offset, or <see langword="null" /> when none has been saved yet.</returns>
+    /// <returns>
+    ///     The stored stream offset — which can be <c>-1</c> when the reader was seeded to start at offset <c>0</c> — or
+    ///     <see langword="null" /> when none has been saved yet. An implementation must return a stored <c>-1</c> as
+    ///     <c>-1</c>, not as <see langword="null" />.
+    /// </returns>
     protected internal abstract Task<long?> GetStreamPosition(MessageStreamCheckpointContext context, CancellationToken cancellationToken);
 
     /// <summary>
     ///     Called after each batch is successfully processed, persisting the offset of the last message in the
     ///     batch. Never called for a batch that failed or is still retrying — a crash mid-batch replays at most the
     ///     last unsaved batch on restart.
+    ///     <para>
+    ///         It is also called once, before consumption starts, when Flowly fixes the start position of a reader that has
+    ///         none stored (see <see cref="MessageStreamCheckpointSaveContext.IsBootstrapSeed" />). That call happens without any
+    ///         processed batch, and its <see cref="MessageStreamCheckpointSaveContext.Position" /> can be <c>-1</c> — the
+    ///         reader will start at offset <c>0</c> — so an implementation must accept negative values and must not treat
+    ///         every call as proof that a batch was handled. A row for the reader may not exist yet: store the position
+    ///         whether or not <see cref="InitializeCheckpoint" /> created one.
+    ///     </para>
     /// </summary>
     /// <param name="context">Identifies the reader this checkpoint belongs to and the position to store.</param>
     /// <param name="cancellationToken">A cancellation token signaling when the host is shutting down.</param>

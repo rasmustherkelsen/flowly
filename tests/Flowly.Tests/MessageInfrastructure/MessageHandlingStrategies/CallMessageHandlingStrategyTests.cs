@@ -264,7 +264,7 @@ public class CallMessageHandlingStrategyTests
 
         public void RecordCheckpointSaveFailed(string handlerName, string queueName) { }
 
-        public void RecordCheckpointResolved(string handlerName, string queueName, bool resumed) { }
+        public void RecordCheckpointResolved(string handlerName, string queueName, CheckpointResolution resolution) { }
 
         public Activity? StartSendingResponse(string callQueueName, string replyQueueName, string messagingSystem, string messageId, string correlationId)
         {
@@ -301,7 +301,7 @@ public class CallMessageHandlingStrategyTests
 
         public void RecordCheckpointSaveFailed(string handlerName, string queueName) { }
 
-        public void RecordCheckpointResolved(string handlerName, string queueName, bool resumed) { }
+        public void RecordCheckpointResolved(string handlerName, string queueName, CheckpointResolution resolution) { }
 
         public Activity? StartSendingResponse(string callQueueName, string replyQueueName, string messagingSystem, string messageId, string correlationId)
         {

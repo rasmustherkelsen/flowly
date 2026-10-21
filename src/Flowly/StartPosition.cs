@@ -13,6 +13,14 @@ namespace Flowly;
 ///         (with <see cref="First" />, <see cref="Offset" />, or <see cref="Timestamp" />) or missing messages
 ///         published while the process was down (with <see cref="Last" />) is an explicit operator tradeoff.
 ///     </para>
+///     <para>
+///         <strong>With a registered checkpoint, the position is fixed on the first run.</strong> A reader that has no stored
+///         position yet has its <see cref="Last" /> or <see cref="Timestamp" /> resolved to a concrete offset and stored before
+///         it starts consuming — when the transport can resolve it (see <see cref="Transport.IStreamStartOffsetResolver" />) — so
+///         a restart before the first batch does not move it, and messages published in the meantime are delivered. A
+///         <see cref="Timestamp" /> is stored as a lower bound at the broker's resolution, so a restart can redeliver messages
+///         from before the time but never skips one.
+///     </para>
 /// </summary>
 public readonly struct StartPosition : IEquatable<StartPosition>
 {
@@ -51,7 +59,9 @@ public readonly struct StartPosition : IEquatable<StartPosition>
     ///     which takes precedence over this value.
     ///     <para>
     ///         Maps to the RabbitMQ <c>next</c> offset specification (not <c>last</c>, which attaches at the last
-    ///         existing chunk and would deliver the messages in it). The InMemory transport behaves the same.
+    ///         existing chunk and would deliver the messages in it). The InMemory transport behaves the same. With a registered
+    ///         <see cref="MessageStreamCheckpoint{TMessage}" /> the tail offset at the first run is stored up front, so messages
+    ///         published while the process was down are delivered after a restart even if no message had arrived before it.
     ///     </para>
     /// </summary>
     /// <returns>A <see cref="StartPosition" /> representing the tail of the stream.</returns>

@@ -33,7 +33,10 @@ public interface IPartitionedStreamCapableMessageBusClient
     ///     — once when this process first becomes responsible for that partition. Wired by Flowly to consult a
     ///     registered <see cref="MessageStreamCheckpoint{TMessage}" /> if present, falling back to the configured
     ///     <see cref="MessageStreamHandlerOptions.StartPosition" /> otherwise — the same precedence as the
-    ///     non-partitioned case, evaluated per partition.
+    ///     non-partitioned case, evaluated per partition. For a partition without a stored position, Flowly also resolves
+    ///     and stores the configured start position inside this delegate when the client implements
+    ///     <see cref="IStreamStartOffsetResolver" />, so the transport should call it before it subscribes the partition and
+    ///     must tolerate it taking as long as that resolution (and the checkpoint store) needs.
     /// </param>
     /// <param name="options">Processor options such as the maximum number of messages to accumulate before invoking the handler.</param>
     /// <param name="logger">

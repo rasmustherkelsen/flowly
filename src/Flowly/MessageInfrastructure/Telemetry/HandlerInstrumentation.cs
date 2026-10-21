@@ -138,13 +138,22 @@ internal sealed class HandlerInstrumentation : IHandlerInstrumentation, IDisposa
         => _checkpointSaveFailed.Add(1, new TagList { { "handler", handlerName }, { FlowlyInstrumentationConstants.MessagingDestinationName, queueName } });
 
     /// <inheritdoc />
-    public void RecordCheckpointResolved(string handlerName, string queueName, bool resumed)
+    public void RecordCheckpointResolved(string handlerName, string queueName, CheckpointResolution resolution)
         => _checkpointResolved.Add(1, new TagList
         {
             { "handler", handlerName },
             { FlowlyInstrumentationConstants.MessagingDestinationName, queueName },
-            { "outcome", resumed ? "resumed" : "fresh" },
+            { "outcome", ToOutcomeTag(resolution) },
         });
+
+    private static string ToOutcomeTag(CheckpointResolution resolution) => resolution switch
+    {
+        CheckpointResolution.Resumed => "resumed",
+        CheckpointResolution.Fresh => "fresh",
+        CheckpointResolution.Seeded => "seeded",
+        CheckpointResolution.SeedFailed => "seed_failed",
+        _ => throw new ArgumentOutOfRangeException(nameof(resolution), resolution, null)
+    };
 
     /// <inheritdoc />
     public Activity? StartSendingResponse(string callQueueName, string replyQueueName, string messagingSystem, string messageId, string correlationId)

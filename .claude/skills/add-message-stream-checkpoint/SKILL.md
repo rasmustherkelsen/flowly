@@ -57,7 +57,10 @@ namespace <HandlerProjectNamespace>;
 // Implement this checkpoint to make the "$0" stream's read position survive a
 // process restart. By default, Flowly re-evaluates the handler's StartPosition
 // fresh on every boot — registering this checkpoint replaces that with a stored
-// position after the first successful run.
+// position. For StartPosition.Last() and StartPosition.Timestamp(...), Flowly
+// resolves the start to a concrete offset and stores it on the very first run,
+// before any batch is processed (RabbitMQ), so messages published while the
+// process was down are not skipped by a restart.
 //
 // Storage is entirely up to you — a table in a database this project already
 // uses (e.g. via an existing DbContext), a distributed cache, a local file, or
@@ -81,8 +84,11 @@ internal class $0Checkpoint : MessageStreamCheckpoint<$0>
     protected internal override Task<long?> GetStreamPosition(MessageStreamCheckpointContext context, CancellationToken cancellationToken)
     {
         // Return the stored offset for (context.ConsumerName, context.Partition),
-        // or null if this reader has never successfully processed a batch yet —
-        // Flowly falls back to the handler's configured StartPosition in that case.
+        // or null if nothing has been saved for this reader yet (neither a
+        // processed batch nor a bootstrap seed) — Flowly then resolves the
+        // handler's configured StartPosition and saves it. A stored -1 is a real
+        // value ("start at offset 0"): return -1, never null, for it. Consumption
+        // resumes at the returned offset + 1.
         throw new NotImplementedException();
     }
 
@@ -92,6 +98,12 @@ internal class $0Checkpoint : MessageStreamCheckpoint<$0>
         // Called after each successfully processed batch — never for a batch that
         // failed or is still retrying, so a crash mid-batch replays at most the
         // last unsaved batch on restart.
+        //
+        // Also called once before consumption starts, with context.IsBootstrapSeed
+        // true, to fix the first run's position when nothing is stored yet. That
+        // call has no processed batch behind it, context.Position can be -1 (start
+        // at offset 0), and the row may not exist yet — so store negative values
+        // as they are and make this an upsert (insert when no row exists).
         throw new NotImplementedException();
     }
 }

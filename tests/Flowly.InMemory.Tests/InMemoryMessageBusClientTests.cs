@@ -1,3 +1,4 @@
+using Flowly.MessageInfrastructure.Registration;
 using Flowly.Transport;
 
 namespace Flowly.InMemory.Tests;
@@ -9,6 +10,186 @@ public class InMemoryMessageBusClientTests
         var options = new InMemoryOptions();
         broker = new InMemoryBroker(options);
         return new InMemoryMessageBusClient(broker, options);
+    }
+
+    private static InMemoryMessageBusClient CreateClientWithAgeRetention(out InMemoryBroker broker)
+    {
+        var options = new InMemoryOptions();
+        var manifest = new StreamQueueManifest();
+        manifest.MarkAsStream("orders", 60, null);
+        broker = new InMemoryBroker(options, manifest);
+        return new InMemoryMessageBusClient(broker, options);
+    }
+
+    private static InMemoryEnvelope CreateEnvelope(DateTimeOffset? enqueuedTime = null)
+        => new("id", """{"Value":"v"}""", [], enqueuedTime ?? DateTimeOffset.UtcNow);
+
+    public class ImplementsIStreamStartOffsetResolver
+    {
+        [Fact]
+        public void ClientIsAStartOffsetResolver()
+        {
+            var client = CreateClient(out _);
+
+            Assert.IsAssignableFrom<IStreamStartOffsetResolver>(client);
+        }
+    }
+
+    public class ResolveStartOffset
+    {
+        [Fact]
+        public async Task WithLastOnEmptyStream_ReturnsZero()
+        {
+            var client = CreateClient(out _);
+
+            var startOffset = await client.ResolveStartOffset("orders", null, StartPosition.Last(), CancellationToken.None);
+
+            Assert.Equal(0, startOffset);
+        }
+
+        [Fact]
+        public async Task WithLastOnStreamWithMessages_ReturnsTheTailOffset()
+        {
+            var client = CreateClient(out var broker);
+            var log = broker.GetOrCreateStreamLog("orders");
+            log.Append(CreateEnvelope());
+            log.Append(CreateEnvelope());
+
+            var startOffset = await client.ResolveStartOffset("orders", null, StartPosition.Last(), CancellationToken.None);
+
+            Assert.Equal(2, startOffset);
+        }
+
+        [Fact]
+        public async Task WithFirstOnEmptyStream_ReturnsZero()
+        {
+            var client = CreateClient(out _);
+
+            var startOffset = await client.ResolveStartOffset("orders", null, StartPosition.First(), CancellationToken.None);
+
+            Assert.Equal(0, startOffset);
+        }
+
+        [Fact]
+        public async Task WithFirstOnTruncatedStream_ReturnsTheFirstRetainedOffset()
+        {
+            var client = CreateClientWithAgeRetention(out var broker);
+            var log = broker.GetOrCreateStreamLog("orders");
+            log.Append(CreateEnvelope(DateTimeOffset.UtcNow.AddSeconds(-120)));
+            log.Append(CreateEnvelope());
+
+            var startOffset = await client.ResolveStartOffset("orders", null, StartPosition.First(), CancellationToken.None);
+
+            Assert.Equal(1, startOffset);
+        }
+
+        [Fact]
+        public async Task WithLastOnTruncatedStream_ReturnsTheTailOffset()
+        {
+            var client = CreateClientWithAgeRetention(out var broker);
+            var log = broker.GetOrCreateStreamLog("orders");
+            log.Append(CreateEnvelope(DateTimeOffset.UtcNow.AddSeconds(-120)));
+            log.Append(CreateEnvelope());
+
+            var startOffset = await client.ResolveStartOffset("orders", null, StartPosition.Last(), CancellationToken.None);
+
+            Assert.Equal(2, startOffset);
+        }
+
+        [Fact]
+        public async Task WithOffsetBelowTheRetentionFloor_ClampsToTheFirstRetainedOffset()
+        {
+            var client = CreateClientWithAgeRetention(out var broker);
+            var log = broker.GetOrCreateStreamLog("orders");
+            log.Append(CreateEnvelope(DateTimeOffset.UtcNow.AddSeconds(-120)));
+            log.Append(CreateEnvelope());
+
+            var startOffset = await client.ResolveStartOffset("orders", null, StartPosition.Offset(0), CancellationToken.None);
+
+            Assert.Equal(1, startOffset);
+        }
+
+        [Fact]
+        public async Task WithOffsetWithinTheStream_ReturnsThatOffset()
+        {
+            var client = CreateClient(out var broker);
+            var log = broker.GetOrCreateStreamLog("orders");
+            log.Append(CreateEnvelope());
+            log.Append(CreateEnvelope());
+            log.Append(CreateEnvelope());
+
+            var startOffset = await client.ResolveStartOffset("orders", null, StartPosition.Offset(2), CancellationToken.None);
+
+            Assert.Equal(2, startOffset);
+        }
+
+        [Fact]
+        public async Task WithTimestamp_ReturnsTheOffsetOfTheFirstEntryAtOrAfterIt()
+        {
+            var client = CreateClient(out var broker);
+            var cutoff = DateTimeOffset.UtcNow;
+            var log = broker.GetOrCreateStreamLog("orders");
+            log.Append(CreateEnvelope(cutoff.AddSeconds(-10)));
+            log.Append(CreateEnvelope(cutoff));
+            log.Append(CreateEnvelope(cutoff.AddSeconds(10)));
+
+            var startOffset = await client.ResolveStartOffset("orders", null, StartPosition.Timestamp(cutoff.UtcDateTime), CancellationToken.None);
+
+            Assert.Equal(1, startOffset);
+        }
+
+        [Fact]
+        public async Task WithTimestampAfterAllEntries_ReturnsTheTailOffset()
+        {
+            var client = CreateClient(out var broker);
+            var log = broker.GetOrCreateStreamLog("orders");
+            log.Append(CreateEnvelope());
+
+            var startOffset = await client.ResolveStartOffset("orders", null, StartPosition.Timestamp(DateTime.UtcNow.AddSeconds(30)), CancellationToken.None);
+
+            Assert.Equal(1, startOffset);
+        }
+
+        [Fact]
+        public async Task WithPartition_ResolvesAgainstThatPartitionsLogOnly()
+        {
+            var client = CreateClient(out var broker);
+            broker.GetOrCreatePartitionedStreamLog("orders", 0).Append(CreateEnvelope());
+            broker.GetOrCreatePartitionedStreamLog("orders", 0).Append(CreateEnvelope());
+            broker.GetOrCreatePartitionedStreamLog("orders", 1).Append(CreateEnvelope());
+
+            var partitionZero = await client.ResolveStartOffset("orders", 0, StartPosition.Last(), CancellationToken.None);
+            var partitionOne = await client.ResolveStartOffset("orders", 1, StartPosition.Last(), CancellationToken.None);
+            var partitionTwo = await client.ResolveStartOffset("orders", 2, StartPosition.Last(), CancellationToken.None);
+
+            Assert.Equal(2, partitionZero);
+            Assert.Equal(1, partitionOne);
+            Assert.Equal(0, partitionTwo);
+        }
+
+        [Fact]
+        public async Task WithPartition_DoesNotTouchTheNonPartitionedLog()
+        {
+            var client = CreateClient(out var broker);
+            broker.GetOrCreateStreamLog("orders").Append(CreateEnvelope());
+
+            var startOffset = await client.ResolveStartOffset("orders", 0, StartPosition.Last(), CancellationToken.None);
+
+            Assert.Equal(0, startOffset);
+        }
+
+        [Fact]
+        public async Task WithLast_ResolvedOffsetMatchesWhereAStreamProcessorStarts()
+        {
+            var client = CreateClient(out var broker);
+            var log = broker.GetOrCreateStreamLog("orders");
+            log.Append(CreateEnvelope());
+            log.Append(CreateEnvelope());
+
+            var startOffset = await client.ResolveStartOffset("orders", null, StartPosition.Last(), CancellationToken.None);
+
+            Assert.Equal(log.ResolveStartOffset(StartPosition.Last()), startOffset);
+        }
     }
 
     public class ImplementsIStreamCapableMessageBusClient

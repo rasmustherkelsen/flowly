@@ -71,7 +71,7 @@ This resolves the "no offset persistence across restarts" limitation of today's 
 
 **Shape:** a new abstract class `MessageStreamCheckpoint<TMessage>` with three members:
 
-- `InitializeCheckpoint(query context)` — called once per (stream, partition) pair before that partition's processing loop starts. Flowly resolves the configured `StartPosition` to a concrete numeric offset and passes it in, so the implementation can seed a row on first-ever run; this keeps the hot path (`SaveStreamPosition`, called on every batch) a plain update with no existence check.
+- `InitializeCheckpoint(query context)` — called once per (stream, partition) pair before that partition's processing loop starts, so the implementation can ensure a row exists; this keeps the hot path (`SaveStreamPosition`, called on every batch) a plain update with no existence check. The first run's start position is not passed in here: Flowly fixes it by resolving `Last`/`Timestamp` to a concrete offset through the transport and saving it (minus one, flagged as a bootstrap seed) through `SaveStreamPosition`, so the existing members cover it and no checkpoint has to change.
 - `GetStreamPosition(query context)` — returns the currently stored position; always well-defined once `InitializeCheckpoint` has run.
 - `SaveStreamPosition(save context)` — called after each successfully processed batch (after `Handle()` returns), persisting the position of the last-processed entry.
 

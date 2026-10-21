@@ -27,7 +27,8 @@ internal sealed class MessageStreamProcessingBackgroundService<TMessage, THandle
 
         var startPosition = await MessageStreamCheckpointHelper.ResolveStartPosition<TMessage>(
             serviceScopeFactory, handlerSettings.ConsumerName, null, handlerSettings.StartPosition,
-            handlerSettings.HandlerName, handlerSettings.QueueName, handlerInstrumentation, stoppingToken);
+            handlerSettings.HandlerName, handlerSettings.QueueName, handlerInstrumentation, logger, stoppingToken,
+            startOffsetResolver: streamCapableClient as IStreamStartOffsetResolver);
 
         var processor = await streamCapableClient.CreateStreamProcessor<TMessage>(
             handlerSettings.QueueName,

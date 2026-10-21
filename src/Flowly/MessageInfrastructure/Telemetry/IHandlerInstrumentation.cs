@@ -123,15 +123,18 @@ internal interface IHandlerInstrumentation
     void RecordCheckpointSaveFailed(string handlerName, string queueName);
 
     /// <summary>
-    ///     Increments the <c>flowly.message.checkpoint.resolved</c> counter, tagged <c>outcome=resumed</c> when a
-    ///     stored position was found or <c>outcome=fresh</c> when the handler's configured
-    ///     <see cref="MessageStreamHandlerOptions.StartPosition" /> was used instead. Called once per reader (or, for a
-    ///     partitioned stream, once per newly-assigned partition) when the start position is resolved.
+    ///     Increments the <c>flowly.message.checkpoint.resolved</c> counter, tagged with the
+    ///     <paramref name="resolution" />: <c>outcome=resumed</c> when a stored position was found, <c>outcome=seeded</c>
+    ///     when none was stored and the configured <see cref="MessageStreamHandlerOptions.StartPosition" /> was resolved to
+    ///     an offset and persisted, <c>outcome=seed_failed</c> when that resolution or persistence failed (or the transport
+    ///     could not resolve the position) and the handler fell back to the configured start position, or
+    ///     <c>outcome=fresh</c> when the configured start position was used without being persisted. Called once per
+    ///     reader (or, for a partitioned stream, once per newly-assigned partition) when the start position is resolved.
     /// </summary>
     /// <param name="handlerName">The name of the stream handler class.</param>
     /// <param name="queueName">The stream queue being resolved.</param>
-    /// <param name="resumed"><see langword="true" /> when a stored position was found; otherwise <see langword="false" />.</param>
-    void RecordCheckpointResolved(string handlerName, string queueName, bool resumed);
+    /// <param name="resolution">How the start position was determined.</param>
+    void RecordCheckpointResolved(string handlerName, string queueName, CheckpointResolution resolution);
 
     /// <summary>
     ///     Starts a <see cref="ActivityKind.Producer" /> span named <c>flowly.call.reply {callQueueName}</c> for the

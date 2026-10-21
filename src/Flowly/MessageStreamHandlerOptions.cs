@@ -23,7 +23,13 @@ public class MessageStreamHandlerOptions
     ///         Re-evaluated fresh on every process restart unless a <see cref="MessageStreamCheckpoint{TMessage}" /> is registered and
     ///         holds a stored position, which then takes precedence. Avoid values computed relative
     ///         to the current time (e.g. <c>StartPosition.Timestamp(DateTime.UtcNow - TimeSpan.FromHours(2))</c>),
-    ///         which never converge across restarts.
+    ///         which never converge across restarts without a checkpoint.
+    ///     </para>
+    ///     <para>
+    ///         With a registered checkpoint this value is only a bootstrap: on the first run
+    ///         <see cref="Flowly.StartPosition.Last" /> and <see cref="Flowly.StartPosition.Timestamp" /> are resolved to a concrete
+    ///         offset and stored before consumption starts (where the transport can resolve them), after which the stored position
+    ///         is used and changing this value has no effect.
     ///     </para>
     /// </summary>
     public StartPosition? StartPosition { get; set; }

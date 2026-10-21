@@ -6,7 +6,9 @@ namespace Flowly.Transport;
 ///     this interface is a stream-only transport and cannot host queue-based handlers or submitters. Flowly checks for this
 ///     interface eagerly at registration time — registering a <see cref="MessageStreamHandler{TMessage}" /> or
 ///     <see cref="IMessageRecorder" /> against a provider whose client does not implement it throws
-///     <see cref="InvalidOperationException" /> at startup, not at first use.
+///     <see cref="InvalidOperationException" /> at startup, not at first use. A client that can also translate a
+///     <see cref="StartPosition" /> into a concrete offset without consuming implements <see cref="IStreamStartOffsetResolver" />
+///     in addition, which lets a registered <see cref="MessageStreamCheckpoint{TMessage}" /> fix the first run's position up front.
 /// </summary>
 public interface IStreamCapableMessageBusClient : ITransportClient
 {

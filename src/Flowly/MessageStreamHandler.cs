@@ -9,7 +9,7 @@ namespace Flowly;
 ///         Messages are delivered in batches shaped by <see cref="MessageStreamHandlerOptions.MaxMessagesBeforeProcessing" />
 ///         and <see cref="MessageStreamHandlerOptions.MaxWaitTime" />. Consumption begins at the
 ///         <see cref="MessageStreamHandlerOptions.StartPosition" /> configured in <see cref="Configure" /> — a required,
-///         explicit choice that is re-evaluated on every process restart (offsets are not persisted).
+///         explicit choice that is re-evaluated on every process restart unless a <see cref="MessageStreamCheckpoint{TMessage}" /> is registered and holds a stored position.
 ///     </para>
 ///     <para>
 ///         Retry is opt-in via <see cref="RetryPolicyAttribute" /> on the handler class and runs as an in-process loop

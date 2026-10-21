@@ -28,6 +28,10 @@ builder.UseMessageStreamCheckpoint<MyMessage>("This One");
 
 The first unnamed `Add<Provider>MessageStreamPersistence` call becomes the default store, used when `UseMessageStreamCheckpoint<T>()` is called without a name. A second unnamed registration throws — give it an explicit `name:` instead.
 
+## First-run position
+
+When a reader has no stored position, Flowly resolves `StartPosition.Last()` or `StartPosition.Timestamp(...)` to a concrete offset and stores it before the handler starts consuming (RabbitMQ), so a restart before the first batch does not move the position and messages published while the process was down are delivered. A row can therefore hold the position `-1`, meaning "start at offset 0". `First()` and `Offset(n)` are not stored up front. If the offset cannot be resolved or stored, a warning is logged and the position is stored after the first processed batch instead.
+
 ## Custom (hand-rolled) checkpoints
 
 You can still implement `MessageStreamCheckpoint<T>` yourself against any storage you choose:
@@ -37,7 +41,7 @@ builder.AddMessageStreamHandler<MyMessage, MyMessageHandler>();
 builder.AddMessageStreamCheckpoint<MyMessageCheckpoint>();
 ```
 
-`AddMessageStreamCheckpoint<TCheckpoint>()` is sugar over `services.AddSingleton<MessageStreamCheckpoint<TMessage>, TCheckpoint>()` — it infers the message type from `TCheckpoint`'s base class.
+`AddMessageStreamCheckpoint<TCheckpoint>()` is sugar over `services.AddSingleton<MessageStreamCheckpoint<TMessage>, TCheckpoint>()` — it infers the message type from `TCheckpoint`'s base class. A hand-rolled checkpoint must accept a `SaveStreamPosition` call without a processed batch (`MessageStreamCheckpointSaveContext.IsBootstrapSeed` is `true`) and a negative position (`-1`), and must return a stored `-1` as `-1` rather than `null`.
 
 ## Migrations
 

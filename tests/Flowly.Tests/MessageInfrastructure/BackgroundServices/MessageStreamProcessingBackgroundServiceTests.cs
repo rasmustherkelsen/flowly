@@ -3,6 +3,7 @@ using Flowly.MessageInfrastructure.Model;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.Transport;
+using Flowly.Tests.Fakes;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -13,10 +14,16 @@ public class MessageStreamProcessingBackgroundServiceTests
     private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(10);
 
     private static (MessageStreamProcessingBackgroundService<TestMessage, SpyStreamHandler> BackgroundService, FakeStreamProcessor Processor, SpyStreamHandler Handler, SpyHandlerInstrumentation Instrumentation, FakeCheckpoint? Checkpoint)
-        CreateService(int maxMessages, int maxRetries, Func<IMessageStreamContext<TestMessage>, Task>? onHandle = null, FakeCheckpoint? checkpoint = null)
+        CreateService(
+            int maxMessages,
+            int maxRetries,
+            Func<IMessageStreamContext<TestMessage>, Task>? onHandle = null,
+            FakeCheckpoint? checkpoint = null,
+            StartPosition? startPosition = null,
+            IStreamStartOffsetResolver? startOffsetResolver = null)
     {
         var processor = new FakeStreamProcessor();
-        var client = new FakeStreamClient(processor);
+        FakeStreamClient client = startOffsetResolver is null ? new FakeStreamClient(processor) : new ResolverCapableStreamClient(processor, startOffsetResolver);
         var registry = new MessageBusClientRegistry();
         registry.Register("primary", client, null);
 
@@ -36,7 +43,7 @@ public class MessageStreamProcessingBackgroundServiceTests
                 "primary",
                 nameof(SpyStreamHandler),
                 nameof(SpyStreamHandler),
-                StartPosition.First(),
+                startPosition ?? StartPosition.First(),
                 maxMessages,
                 TimeSpan.FromSeconds(30),
                 maxRetries,
@@ -316,6 +323,92 @@ public class MessageStreamProcessingBackgroundServiceTests
         }
 
         [Fact]
+        public async Task WhenClientIsResolverCapableAndCheckpointHasNoPosition_SeedsAndStartsFromResolvedOffset()
+        {
+            var checkpoint = new FakeCheckpoint();
+            var resolver = new FakeStreamStartOffsetResolver { Result = 7 };
+            var (backgroundService, processor, _, _, _) = CreateService(
+                maxMessages: 1, maxRetries: 0, checkpoint: checkpoint, startPosition: StartPosition.Last(), startOffsetResolver: resolver);
+
+            await backgroundService.StartAsync(CancellationToken.None);
+            await processor.Started.Task.WaitAsync(TestTimeout);
+
+            Assert.Equal(StartPosition.Offset(7), processor.Client!.ReceivedStartPosition);
+            var save = Assert.Single(checkpoint.SaveCalls);
+            Assert.Equal(6, save.Position);
+            Assert.True(save.IsBootstrapSeed);
+            Assert.Equal(nameof(SpyStreamHandler), save.ConsumerName);
+            Assert.Null(save.Partition);
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task WhenClientIsResolverCapable_AsksTheResolverForTheQueueAndConfiguredStartPosition()
+        {
+            var resolver = new FakeStreamStartOffsetResolver { Result = 7 };
+            var (backgroundService, processor, _, _, _) = CreateService(
+                maxMessages: 1, maxRetries: 0, checkpoint: new FakeCheckpoint(), startPosition: StartPosition.Last(), startOffsetResolver: resolver);
+
+            await backgroundService.StartAsync(CancellationToken.None);
+            await processor.Started.Task.WaitAsync(TestTimeout);
+
+            var call = Assert.Single(resolver.Calls);
+            Assert.Equal("telemetry-reading", call.QueueName);
+            Assert.Null(call.Partition);
+            Assert.Equal(StartPosition.Last(), call.StartPosition);
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task WhenClientIsNotResolverCapable_UsesConfiguredStartPositionWithoutSeeding()
+        {
+            var checkpoint = new FakeCheckpoint();
+            var (backgroundService, processor, _, _, _) = CreateService(maxMessages: 1, maxRetries: 0, checkpoint: checkpoint, startPosition: StartPosition.Last());
+
+            await backgroundService.StartAsync(CancellationToken.None);
+            await processor.Started.Task.WaitAsync(TestTimeout);
+
+            Assert.Equal(StartPosition.Last(), processor.Client!.ReceivedStartPosition);
+            Assert.Empty(checkpoint.SaveCalls);
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task WhenClientIsResolverCapableButNoCheckpointIsRegistered_DoesNotResolve()
+        {
+            var resolver = new FakeStreamStartOffsetResolver { Result = 7 };
+            var (backgroundService, processor, _, _, _) = CreateService(maxMessages: 1, maxRetries: 0, startPosition: StartPosition.Last(), startOffsetResolver: resolver);
+
+            await backgroundService.StartAsync(CancellationToken.None);
+            await processor.Started.Task.WaitAsync(TestTimeout);
+
+            Assert.Empty(resolver.Calls);
+            Assert.Equal(StartPosition.Last(), processor.Client!.ReceivedStartPosition);
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task WhenTheResolverFails_StartsWithConfiguredStartPosition()
+        {
+            var checkpoint = new FakeCheckpoint();
+            var resolver = new FakeStreamStartOffsetResolver { ExceptionToThrow = new InvalidOperationException("broker down") };
+            var (backgroundService, processor, _, _, _) = CreateService(
+                maxMessages: 1, maxRetries: 0, checkpoint: checkpoint, startPosition: StartPosition.Last(), startOffsetResolver: resolver);
+
+            await backgroundService.StartAsync(CancellationToken.None);
+            await processor.Started.Task.WaitAsync(TestTimeout);
+
+            Assert.Equal(StartPosition.Last(), processor.Client!.ReceivedStartPosition);
+            Assert.Empty(checkpoint.SaveCalls);
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
         public async Task OnSuccess_SavesCheckpointWithLastMessageOffset()
         {
             var checkpoint = new FakeCheckpoint();
@@ -467,7 +560,7 @@ public class MessageStreamProcessingBackgroundServiceTests
         }
     }
 
-    private sealed class FakeStreamClient(FakeStreamProcessor processor) : IMessageBusClient, IStreamCapableMessageBusClient
+    private class FakeStreamClient(FakeStreamProcessor processor) : IMessageBusClient, IStreamCapableMessageBusClient
     {
         public string? ReceivedQueueName { get; private set; }
         public StartPosition? ReceivedStartPosition { get; private set; }
@@ -500,6 +593,13 @@ public class MessageStreamProcessingBackgroundServiceTests
         public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName) => throw new NotImplementedException();
 
         public Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+    }
+
+    private sealed class ResolverCapableStreamClient(FakeStreamProcessor processor, IStreamStartOffsetResolver startOffsetResolver)
+        : FakeStreamClient(processor), IStreamStartOffsetResolver
+    {
+        public Task<long?> ResolveStartOffset(string queueName, int? partition, StartPosition startPosition, CancellationToken cancellationToken)
+            => startOffsetResolver.ResolveStartOffset(queueName, partition, startPosition, cancellationToken);
     }
 
     private sealed class StreamOnlyClient(FakeStreamProcessor processor) : IStreamCapableMessageBusClient
@@ -643,7 +743,7 @@ public class MessageStreamProcessingBackgroundServiceTests
 
         public void RecordCheckpointSaveFailed(string handlerName, string queueName) { }
 
-        public void RecordCheckpointResolved(string handlerName, string queueName, bool resumed) { }
+        public void RecordCheckpointResolved(string handlerName, string queueName, CheckpointResolution resolution) { }
 
         public System.Diagnostics.Activity? StartSendingResponse(string callQueueName, string replyQueueName, string messagingSystem, string messageId, string correlationId) => null;
 

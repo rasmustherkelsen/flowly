@@ -3,6 +3,7 @@ using Flowly.MessageInfrastructure.Model;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.Transport;
+using Flowly.Tests.Fakes;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -19,10 +20,13 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
             int maxRetries,
             Func<IMessageStreamContext<TestMessage>, Task>? onHandle = null,
             FakeCheckpoint? checkpoint = null,
-            Func<FakePartitionedStreamConsumer, ITransportClient>? clientFactory = null)
+            Func<FakePartitionedStreamConsumer, ITransportClient>? clientFactory = null,
+            StartPosition? startPosition = null,
+            IStreamStartOffsetResolver? startOffsetResolver = null)
     {
         var consumer = new FakePartitionedStreamConsumer();
-        var client = clientFactory?.Invoke(consumer) ?? new FakePartitionedStreamClient(consumer);
+        ITransportClient client = clientFactory?.Invoke(consumer)
+            ?? (startOffsetResolver is null ? new FakePartitionedStreamClient(consumer) : new ResolverCapablePartitionedStreamClient(consumer, startOffsetResolver));
         var registry = new MessageBusClientRegistry();
         registry.Register("primary", client, null);
 
@@ -43,7 +47,7 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
                 nameof(SpyStreamHandler),
                 nameof(SpyStreamHandler),
                 3,
-                StartPosition.First(),
+                startPosition ?? StartPosition.First(),
                 maxMessages,
                 TimeSpan.FromSeconds(30),
                 maxRetries,
@@ -261,6 +265,86 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
         }
 
         [Fact]
+        public async Task WhenClientIsResolverCapableAndPartitionHasNoPosition_SeedsThatPartitionAndStartsFromResolvedOffset()
+        {
+            var checkpoint = new FakeCheckpoint();
+            var resolver = new FakeStreamStartOffsetResolver { Result = 30 };
+            var (backgroundService, consumer, _, _, _) = CreateService(
+                maxMessages: 1, maxRetries: 0, checkpoint: checkpoint, startPosition: StartPosition.Last(), startOffsetResolver: resolver);
+
+            await backgroundService.StartAsync(CancellationToken.None);
+            await consumer.Started.Task.WaitAsync(TestTimeout);
+
+            var startPosition = await consumer.Client!.ReceivedResolveStartPosition!(2, CancellationToken.None);
+
+            Assert.Equal(StartPosition.Offset(30), startPosition);
+            var save = Assert.Single(checkpoint.SaveCalls);
+            Assert.Equal(2, save.Partition);
+            Assert.Equal(29, save.Position);
+            Assert.True(save.IsBootstrapSeed);
+            var call = Assert.Single(resolver.Calls);
+            Assert.Equal("telemetry-reading", call.QueueName);
+            Assert.Equal(2, call.Partition);
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task WhenPartitionIsReassignedWithoutAStoredPosition_SeedsWithoutReinitializingTheCheckpoint()
+        {
+            var checkpoint = new FakeCheckpoint();
+            var resolver = new FakeStreamStartOffsetResolver { Result = 30 };
+            var (backgroundService, consumer, _, _, _) = CreateService(
+                maxMessages: 1, maxRetries: 0, checkpoint: checkpoint, startPosition: StartPosition.Last(), startOffsetResolver: resolver);
+
+            await backgroundService.StartAsync(CancellationToken.None);
+            await consumer.Started.Task.WaitAsync(TestTimeout);
+
+            await consumer.Client!.ReceivedResolveStartPosition!(2, CancellationToken.None);
+            checkpoint.StoredPosition = null;
+            await consumer.Client.ReceivedResolveStartPosition!(2, CancellationToken.None);
+
+            Assert.Single(checkpoint.InitializeCalls, c => c.Partition == 2);
+            Assert.Equal(2, checkpoint.SaveCalls.Count);
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task WhenClientIsNotResolverCapable_UsesConfiguredStartPositionWithoutSeeding()
+        {
+            var checkpoint = new FakeCheckpoint();
+            var (backgroundService, consumer, _, _, _) = CreateService(maxMessages: 1, maxRetries: 0, checkpoint: checkpoint, startPosition: StartPosition.Last());
+
+            await backgroundService.StartAsync(CancellationToken.None);
+            await consumer.Started.Task.WaitAsync(TestTimeout);
+
+            var startPosition = await consumer.Client!.ReceivedResolveStartPosition!(2, CancellationToken.None);
+
+            Assert.Equal(StartPosition.Last(), startPosition);
+            Assert.Empty(checkpoint.SaveCalls);
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task WhenClientIsResolverCapableButNoCheckpointIsRegistered_DoesNotResolve()
+        {
+            var resolver = new FakeStreamStartOffsetResolver { Result = 30 };
+            var (backgroundService, consumer, _, _, _) = CreateService(maxMessages: 1, maxRetries: 0, startPosition: StartPosition.Last(), startOffsetResolver: resolver);
+
+            await backgroundService.StartAsync(CancellationToken.None);
+            await consumer.Started.Task.WaitAsync(TestTimeout);
+
+            var startPosition = await consumer.Client!.ReceivedResolveStartPosition!(2, CancellationToken.None);
+
+            Assert.Empty(resolver.Calls);
+            Assert.Equal(StartPosition.Last(), startPosition);
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
         public async Task OnSuccess_SavesCheckpointWithPartitionAndOffset()
         {
             var checkpoint = new FakeCheckpoint();
@@ -335,7 +419,7 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
         }
     }
 
-    private sealed class FakePartitionedStreamClient(FakePartitionedStreamConsumer consumer) : IMessageBusClient, IPartitionedStreamCapableMessageBusClient
+    private class FakePartitionedStreamClient(FakePartitionedStreamConsumer consumer) : IMessageBusClient, IPartitionedStreamCapableMessageBusClient
     {
         public string? ReceivedQueueName { get; private set; }
         public int ReceivedPartitionCount { get; private set; }
@@ -365,6 +449,13 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
         public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName) => throw new NotImplementedException();
 
         public Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+    }
+
+    private sealed class ResolverCapablePartitionedStreamClient(FakePartitionedStreamConsumer consumer, IStreamStartOffsetResolver startOffsetResolver)
+        : FakePartitionedStreamClient(consumer), IStreamStartOffsetResolver
+    {
+        public Task<long?> ResolveStartOffset(string queueName, int? partition, StartPosition startPosition, CancellationToken cancellationToken)
+            => startOffsetResolver.ResolveStartOffset(queueName, partition, startPosition, cancellationToken);
     }
 
     private sealed class StreamOnlyPartitionedClient(FakePartitionedStreamConsumer consumer) : IStreamCapableMessageBusClient, IPartitionedStreamCapableMessageBusClient
@@ -538,7 +629,7 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
 
         public void RecordCheckpointSaveFailed(string handlerName, string queueName) { }
 
-        public void RecordCheckpointResolved(string handlerName, string queueName, bool resumed) { }
+        public void RecordCheckpointResolved(string handlerName, string queueName, CheckpointResolution resolution) { }
 
         public System.Diagnostics.Activity? StartSendingResponse(string callQueueName, string replyQueueName, string messagingSystem, string messageId, string correlationId) => null;
 

@@ -33,7 +33,9 @@ internal sealed class PartitionedMessageStreamProcessingBackgroundService<TMessa
         _stoppingToken = stoppingToken;
         var partitionedClient = clientRegistry.GetClient<IPartitionedStreamCapableMessageBusClient>(handlerSettings.ProviderName);
 
-        var messagingSystem = clientRegistry.GetTransportClient(handlerSettings.ProviderName).MessagingSystem;
+        var transportClient = clientRegistry.GetTransportClient(handlerSettings.ProviderName);
+        var messagingSystem = transportClient.MessagingSystem;
+        var startOffsetResolver = transportClient as IStreamStartOffsetResolver;
         MessageStreamCheckpointHelper.ThrowIfCheckpointRegisteredForInMemory<TMessage>(serviceScopeFactory, messagingSystem);
 
         _consumer = await partitionedClient.CreatePartitionedStreamConsumer<TMessage>(
@@ -41,8 +43,8 @@ internal sealed class PartitionedMessageStreamProcessingBackgroundService<TMessa
             handlerSettings.PartitionCount,
             (partition, ct) => MessageStreamCheckpointHelper.ResolveStartPosition<TMessage>(
                 serviceScopeFactory, handlerSettings.ConsumerName, partition, handlerSettings.StartPosition,
-                handlerSettings.HandlerName, handlerSettings.QueueName, handlerInstrumentation, ct,
-                initializeCheckpoint: IsFirstAssignment(partition)),
+                handlerSettings.HandlerName, handlerSettings.QueueName, handlerInstrumentation, logger, ct,
+                initializeCheckpoint: IsFirstAssignment(partition), startOffsetResolver: startOffsetResolver),
             new MessageBusProcessorOptions(handlerSettings.MaxMessagesBeforeProcessing, MessageBusReceiveMode.PeekLock),
             logger);
 

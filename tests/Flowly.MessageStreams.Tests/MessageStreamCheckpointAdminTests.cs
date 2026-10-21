@@ -36,6 +36,19 @@ public class MessageStreamCheckpointAdminTests
         }
 
         [Fact]
+        public async Task WithABootstrapSeedOfMinusOne_ReportsMinusOneAsThePosition()
+        {
+            using var fixture = new SqliteFixture();
+            await fixture.SeedRow("queue-a", "consumer-1", 3, -1);
+
+            var result = await MessageStreamCheckpointAdmin.List(fixture.DbContextFactory, null, null, CancellationToken.None);
+
+            var info = Assert.Single(result);
+            Assert.Equal(-1, info.Position);
+            Assert.Equal(3, info.Partition);
+        }
+
+        [Fact]
         public async Task NonPartitionedSentinel_IsReportedAsNullPartition()
         {
             using var fixture = new SqliteFixture();
