@@ -275,6 +275,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Receiver", "samples\RabbitM
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Messages", "samples\RabbitMQ\MessageStreamCheckPoint\Messages\Messages.csproj", "{59658005-FF44-4FF3-8869-2B447278593F}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Flowly.AzureEventHubs", "src\Flowly.AzureEventHubs\Flowly.AzureEventHubs.csproj", "{CA2267BA-E4BD-47CA-9BB9-12086525C2B6}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Flowly.AzureEventHubs.Tests", "tests\Flowly.AzureEventHubs.Tests\Flowly.AzureEventHubs.Tests.csproj", "{4476CAAD-2A3B-453B-8CB1-412B7046012E}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -1569,6 +1573,30 @@ Global
 		{59658005-FF44-4FF3-8869-2B447278593F}.Release|x64.Build.0 = Release|Any CPU
 		{59658005-FF44-4FF3-8869-2B447278593F}.Release|x86.ActiveCfg = Release|Any CPU
 		{59658005-FF44-4FF3-8869-2B447278593F}.Release|x86.Build.0 = Release|Any CPU
+		{CA2267BA-E4BD-47CA-9BB9-12086525C2B6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CA2267BA-E4BD-47CA-9BB9-12086525C2B6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CA2267BA-E4BD-47CA-9BB9-12086525C2B6}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{CA2267BA-E4BD-47CA-9BB9-12086525C2B6}.Debug|x64.Build.0 = Debug|Any CPU
+		{CA2267BA-E4BD-47CA-9BB9-12086525C2B6}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{CA2267BA-E4BD-47CA-9BB9-12086525C2B6}.Debug|x86.Build.0 = Debug|Any CPU
+		{CA2267BA-E4BD-47CA-9BB9-12086525C2B6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CA2267BA-E4BD-47CA-9BB9-12086525C2B6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CA2267BA-E4BD-47CA-9BB9-12086525C2B6}.Release|x64.ActiveCfg = Release|Any CPU
+		{CA2267BA-E4BD-47CA-9BB9-12086525C2B6}.Release|x64.Build.0 = Release|Any CPU
+		{CA2267BA-E4BD-47CA-9BB9-12086525C2B6}.Release|x86.ActiveCfg = Release|Any CPU
+		{CA2267BA-E4BD-47CA-9BB9-12086525C2B6}.Release|x86.Build.0 = Release|Any CPU
+		{4476CAAD-2A3B-453B-8CB1-412B7046012E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4476CAAD-2A3B-453B-8CB1-412B7046012E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4476CAAD-2A3B-453B-8CB1-412B7046012E}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{4476CAAD-2A3B-453B-8CB1-412B7046012E}.Debug|x64.Build.0 = Debug|Any CPU
+		{4476CAAD-2A3B-453B-8CB1-412B7046012E}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{4476CAAD-2A3B-453B-8CB1-412B7046012E}.Debug|x86.Build.0 = Debug|Any CPU
+		{4476CAAD-2A3B-453B-8CB1-412B7046012E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4476CAAD-2A3B-453B-8CB1-412B7046012E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4476CAAD-2A3B-453B-8CB1-412B7046012E}.Release|x64.ActiveCfg = Release|Any CPU
+		{4476CAAD-2A3B-453B-8CB1-412B7046012E}.Release|x64.Build.0 = Release|Any CPU
+		{4476CAAD-2A3B-453B-8CB1-412B7046012E}.Release|x86.ActiveCfg = Release|Any CPU
+		{4476CAAD-2A3B-453B-8CB1-412B7046012E}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

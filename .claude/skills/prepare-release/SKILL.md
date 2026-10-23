@@ -9,7 +9,7 @@ Run every step below in order and report the outcome of each. All findings feed 
 
 Read and cross-check these files for consistency:
 
-- `README.md` — packages table must list all 23 NuGet packages (Flowly, Flowly.AzureServiceBus, Flowly.AzureServiceBus.Aspire, Flowly.RabbitMQ, Flowly.InMemory, Flowly.OpenTelemetry, Flowly.Dashboard, Flowly.Jobs, Flowly.Jobs.SqlServer, Flowly.Jobs.Postgres, Flowly.Jobs.SQLite, Flowly.DeadLetters, Flowly.DeadLetters.SqlServer, Flowly.DeadLetters.Postgres, Flowly.DeadLetters.SQLite, Flowly.MessageStreams, Flowly.MessageStreams.SqlServer, Flowly.MessageStreams.Postgres, Flowly.MessageStreams.SQLite, Flowly.ManagementApi, Flowly.PowerShell, Flowly.Tool, Flowly.Templates)
+- `README.md` — packages table must list all 24 NuGet packages (Flowly, Flowly.AzureServiceBus, Flowly.AzureServiceBus.Aspire, Flowly.RabbitMQ, Flowly.AzureEventHubs, Flowly.InMemory, Flowly.OpenTelemetry, Flowly.Dashboard, Flowly.Jobs, Flowly.Jobs.SqlServer, Flowly.Jobs.Postgres, Flowly.Jobs.SQLite, Flowly.DeadLetters, Flowly.DeadLetters.SqlServer, Flowly.DeadLetters.Postgres, Flowly.DeadLetters.SQLite, Flowly.MessageStreams, Flowly.MessageStreams.SqlServer, Flowly.MessageStreams.Postgres, Flowly.MessageStreams.SQLite, Flowly.ManagementApi, Flowly.PowerShell, Flowly.Tool, Flowly.Templates)
 - `docs/README.md` — should be a table of contents linking to `README.md` as the full reference; no packages table of its own
 - `docs/ai/CONTEXT.md` — registration API section must reflect current code
 - `src/Flowly.Templates/README.md` — template parameters table must match the `template.json` files

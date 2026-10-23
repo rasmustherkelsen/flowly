@@ -61,6 +61,7 @@ public class OrderService(IMessageSender sender)
 |---|---|
 | `Flowly.AzureServiceBus` | Azure Service Bus transport |
 | `Flowly.RabbitMQ` | RabbitMQ transport |
+| `Flowly.AzureEventHubs` | Azure Event Hubs stream-only transport (recording, no queues) |
 | `Flowly.Jobs` + `Flowly.Jobs.SqlServer` / `.Postgres` | Job state tracking |
 | `Flowly.DeadLetters` + `Flowly.DeadLetters.SqlServer` / `.Postgres` | Dead letter tracking |
 | `Flowly.OpenTelemetry` | OpenTelemetry instrumentation |

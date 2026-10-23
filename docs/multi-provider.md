@@ -25,14 +25,14 @@ This resolution happens at **registration time** (inside `Configure`), not at se
 
 A transport client is an `ITransportClient` that implements one or more capability interfaces. What a provider can host depends on which ones it implements:
 
-| Capability | Interface | Hosts | Azure Service Bus | RabbitMQ | InMemory |
-|---|---|---|---|---|---|
-| Queues | `IMessageBusClient` | `MessageHandler<T>`, `BatchMessageHandler<T>`, `JobHandler<T>`, `RecurringJobHandler`, `CallHandler<T, TReturn>`, their submitters and dead letter sources | yes | yes | yes |
-| Events | `IEventCapableMessageBusClient` | `EventHandlerBase<TEvent>` and event submitters | yes | yes | yes |
-| Streams | `IStreamCapableMessageBusClient` | `MessageStreamHandler<T>` and `IMessageRecorder` | no | yes | yes |
-| Partitioned streams | `IPartitionedStreamCapableMessageBusClient` | contracts annotated with `[StreamPartitions]` | no | yes | yes |
+| Capability | Interface | Hosts | Azure Service Bus | RabbitMQ | InMemory | Azure Event Hubs |
+|---|---|---|---|---|---|---|
+| Queues | `IMessageBusClient` | `MessageHandler<T>`, `BatchMessageHandler<T>`, `JobHandler<T>`, `RecurringJobHandler`, `CallHandler<T, TReturn>`, their submitters and dead letter sources | yes | yes | yes | no |
+| Events | `IEventCapableMessageBusClient` | `EventHandlerBase<TEvent>` and event submitters | yes | yes | yes | no |
+| Streams | `IStreamCapableMessageBusClient` | `MessageStreamHandler<T>` and `IMessageRecorder` | no | yes | yes | recording only |
+| Partitioned streams | `IPartitionedStreamCapableMessageBusClient` | contracts annotated with `[StreamPartitions]` | no | yes | yes | recording only |
 
-A transport does not have to support queues. A **stream-only** transport implements `IStreamCapableMessageBusClient` without `IMessageBusClient`; it can host stream handlers and recorders but nothing queue-based. No stream-only transport ships with Flowly yet — the abstractions are in place for one.
+A transport does not have to support queues. A **stream-only** transport implements `IStreamCapableMessageBusClient` without `IMessageBusClient`; it can host stream handlers and recorders but nothing queue-based. `Flowly.AzureEventHubs` is the stream-only transport that ships with Flowly. Its client implements both stream capabilities but does not support consuming a stream, so it hosts `IMessageRecorder` and `[StreamPartitions]` recording only; see the [Azure Event Hubs section of the README](../README.md#azure-event-hubs-transport).
 
 Flowly checks the capability when a handler or submitter is registered, so a mismatch fails at startup rather than on first use. Both failures name the contract, the capability and the registered providers with what each supports:
 
@@ -54,11 +54,13 @@ The **primary provider** is the first registered provider that supports queue-ba
 
 ### Mixing a queue transport with a stream-only transport
 
-Because routing is per capability, the order of the `Use*` calls does not matter for a queue provider and a stream-only provider. With Azure Service Bus and a stream-only provider registered in either order, queue messages and events go to Azure Service Bus and stream contracts go to the stream-only provider, with no `[ProviderAffinity]` anywhere. A stream contract that carries `[StreamPartitions]` still needs a provider that implements `IPartitionedStreamCapableMessageBusClient`; if the provider it resolves to does not, registration fails with a message naming the contract and the providers. Flowly deliberately does not search on for a partition-capable provider: the provider is chosen by the stream capability alone, and when that is not the one you want for a partitioned contract, put `[ProviderAffinity]` on it, so the provider a contract ends up on is never a side effect of which other transports happen to be registered.
+Because routing is per capability, the order of the `Use*` calls does not matter for a queue provider and a stream-only provider. A provider registered after another one needs an explicit `name`, so the stream-only provider is usually the named one. With Azure Service Bus and Azure Event Hubs registered in either order, queue messages and events go to Azure Service Bus and stream contracts go to the stream-only provider, with no `[ProviderAffinity]` anywhere. A stream contract that carries `[StreamPartitions]` still needs a provider that implements `IPartitionedStreamCapableMessageBusClient`; if the provider it resolves to does not, registration fails with a message naming the contract and the providers. Flowly deliberately does not search on for a partition-capable provider: the provider is chosen by the stream capability alone, and when that is not the one you want for a partitioned contract, put `[ProviderAffinity]` on it, so the provider a contract ends up on is never a side effect of which other transports happen to be registered.
 
 ---
 
 ## Registering multiple providers
+
+The first provider registered gets its default name. Every later provider, of any transport, must be given an explicit `name`, otherwise registration throws. The name is also what `[ProviderAffinity]` refers to.
 
 ```csharp
 public class MyServiceConfiguration : Configuration
