@@ -38,7 +38,11 @@ public interface IPartitionedStreamCapableMessageBusClient
     ///     <see cref="IStreamStartOffsetResolver" />, so the transport should call it before it subscribes the partition and
     ///     must tolerate it taking as long as that resolution (and the checkpoint store) needs.
     /// </param>
-    /// <param name="options">Processor options such as the maximum number of messages to accumulate before invoking the handler.</param>
+    /// <param name="options">
+    ///     Processor options such as the maximum number of messages to accumulate before invoking the handler and the
+    ///     <see cref="MessageBusProcessorOptions.ConsumerName" /> of the reader, which a transport may use to identify the
+    ///     reader on the broker (for example as a consumer group).
+    /// </param>
     /// <param name="logger">
     ///     A logger scoped to the owning background service, used by transports whose delegation model can
     ///     transiently receive a message for a partition this process no longer (or does not yet) own — e.g. during

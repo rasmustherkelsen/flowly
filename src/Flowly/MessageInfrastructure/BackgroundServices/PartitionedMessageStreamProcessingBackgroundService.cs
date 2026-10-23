@@ -45,7 +45,10 @@ internal sealed class PartitionedMessageStreamProcessingBackgroundService<TMessa
                 serviceScopeFactory, handlerSettings.ConsumerName, partition, handlerSettings.StartPosition,
                 handlerSettings.HandlerName, handlerSettings.QueueName, handlerInstrumentation, logger, ct,
                 initializeCheckpoint: IsFirstAssignment(partition), startOffsetResolver: startOffsetResolver),
-            new MessageBusProcessorOptions(handlerSettings.MaxMessagesBeforeProcessing, MessageBusReceiveMode.PeekLock),
+            new MessageBusProcessorOptions(handlerSettings.MaxMessagesBeforeProcessing, MessageBusReceiveMode.PeekLock)
+            {
+                ConsumerName = handlerSettings.ConsumerName
+            },
             logger);
 
         _consumer.PartitionAssigned += (partition, processor) =>

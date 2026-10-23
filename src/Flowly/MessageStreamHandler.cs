@@ -3,7 +3,7 @@ namespace Flowly;
 /// <summary>
 ///     Base class for handlers that consume an append-only, replayable message stream. Register with
 ///     <c>AddMessageStreamHandler&lt;TMessage, THandler&gt;()</c>. Only supported on transports whose client implements
-///     <see cref="Transport.IStreamCapableMessageBusClient" /> (currently RabbitMQ or InMemory) — registration throws
+///     <see cref="Transport.IStreamCapableMessageBusClient" /> (for example RabbitMQ and InMemory) — registration throws
 ///     <see cref="InvalidOperationException" /> at startup on any other transport.
 ///     <para>
 ///         Messages are delivered in batches shaped by <see cref="MessageStreamHandlerOptions.MaxMessagesBeforeProcessing" />

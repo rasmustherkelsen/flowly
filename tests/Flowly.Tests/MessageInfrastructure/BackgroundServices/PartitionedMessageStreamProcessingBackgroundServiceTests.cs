@@ -22,7 +22,8 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
             FakeCheckpoint? checkpoint = null,
             Func<FakePartitionedStreamConsumer, ITransportClient>? clientFactory = null,
             StartPosition? startPosition = null,
-            IStreamStartOffsetResolver? startOffsetResolver = null)
+            IStreamStartOffsetResolver? startOffsetResolver = null,
+            string? consumerName = null)
     {
         var consumer = new FakePartitionedStreamConsumer();
         ITransportClient client = clientFactory?.Invoke(consumer)
@@ -45,7 +46,7 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
                 "telemetry-reading",
                 "primary",
                 nameof(SpyStreamHandler),
-                nameof(SpyStreamHandler),
+                consumerName ?? nameof(SpyStreamHandler),
                 3,
                 startPosition ?? StartPosition.First(),
                 maxMessages,
@@ -91,6 +92,48 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
 
             Assert.Equal("telemetry-reading", consumer.Client!.ReceivedQueueName);
             Assert.Equal(3, consumer.Client.ReceivedPartitionCount);
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task PassesTheDefaultedConsumerNameInTheConsumerOptions()
+        {
+            var (backgroundService, consumer, _, _, _) = CreateService(maxMessages: 1, maxRetries: 0);
+
+            await backgroundService.StartAsync(CancellationToken.None);
+            await consumer.Started.Task.WaitAsync(TestTimeout);
+
+            Assert.Equal(nameof(SpyStreamHandler), consumer.Client!.ReceivedOptions!.ConsumerName);
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task PassesTheExplicitConsumerNameInTheConsumerOptions()
+        {
+            var (backgroundService, consumer, _, _, _) = CreateService(maxMessages: 1, maxRetries: 0, consumerName: "reporting-group");
+
+            await backgroundService.StartAsync(CancellationToken.None);
+            await consumer.Started.Task.WaitAsync(TestTimeout);
+
+            Assert.Equal("reporting-group", consumer.Client!.ReceivedOptions!.ConsumerName);
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task PassesTheSameConsumerNameToTheConsumerAndTheCheckpoint()
+        {
+            var checkpoint = new FakeCheckpoint();
+            var (backgroundService, consumer, _, _, _) = CreateService(maxMessages: 1, maxRetries: 0, checkpoint: checkpoint, consumerName: "reporting-group");
+
+            await backgroundService.StartAsync(CancellationToken.None);
+            await consumer.Started.Task.WaitAsync(TestTimeout);
+            await consumer.Client!.ReceivedResolveStartPosition!(1, CancellationToken.None);
+
+            Assert.Equal("reporting-group", checkpoint.InitializeCalls.Single().ConsumerName);
+            Assert.Equal(checkpoint.InitializeCalls.Single().ConsumerName, consumer.Client.ReceivedOptions!.ConsumerName);
 
             await backgroundService.StopAsync(CancellationToken.None);
         }
@@ -423,6 +466,7 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
     {
         public string? ReceivedQueueName { get; private set; }
         public int ReceivedPartitionCount { get; private set; }
+        public MessageBusProcessorOptions? ReceivedOptions { get; private set; }
         public Func<int, CancellationToken, Task<StartPosition>>? ReceivedResolveStartPosition { get; private set; }
 
         public string MessagingSystem => "fake-partitioned-stream";
@@ -433,6 +477,7 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
         {
             ReceivedQueueName = queueName;
             ReceivedPartitionCount = partitionCount;
+            ReceivedOptions = options;
             ReceivedResolveStartPosition = resolveStartPosition;
             consumer.Client = this;
             return Task.FromResult((IPartitionedStreamConsumer<TMessage>)(object)consumer);

@@ -20,11 +20,11 @@ public static class MessageStreamHandlerRegistrationExtensions
     ///     position is configured. Retry is opt-in via <see cref="RetryPolicyAttribute" /> on the handler class and
     ///     runs in-process; when retries are exhausted the handler halts consumption entirely rather than skipping the
     ///     failed batch. Throws <see cref="InvalidOperationException" /> at registration time when the resolved
-    ///     provider's client does not implement <see cref="IStreamCapableMessageBusClient" /> (streams are currently
-    ///     supported on RabbitMQ and InMemory only), when THandler is already registered for TMessage, when a
+    ///     provider's client does not implement <see cref="IStreamCapableMessageBusClient" /> (for example Azure Service
+    ///     Bus, which has no stream primitive), when THandler is already registered for TMessage, when a
     ///     <see cref="MessageStreamCheckpoint{TMessage}" /> is registered against an InMemory-backed stream, or when
     ///     TMessage carries <see cref="StreamPartitionsAttribute" /> but the resolved provider's client does not
-    ///     implement <see cref="IPartitionedStreamCapableMessageBusClient" /> (currently RabbitMQ and InMemory).
+    ///     implement <see cref="IPartitionedStreamCapableMessageBusClient" />.
     /// </summary>
     /// <param name="flowlyBuilder">The Flowly builder to register with.</param>
     /// <typeparam name="TMessage">The message contract type consumed from the stream.</typeparam>

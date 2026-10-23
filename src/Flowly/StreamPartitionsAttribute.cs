@@ -6,9 +6,10 @@ namespace Flowly;
 ///     contract, the same way <see cref="QueueNameAttribute" /> and <see cref="StreamRetentionAttribute" /> are.
 ///     Read by both <c>AddMessageStreamHandler</c> and <c>AddMessageRecorder</c>; conflicting counts declared for the
 ///     same queue name throw <see cref="InvalidOperationException" /> at startup. Requires the resolved provider's
-///     client to implement <see cref="Transport.IPartitionedStreamCapableMessageBusClient" /> — currently RabbitMQ
-///     only. InMemory implements it too, for local development and testing parity, but gets none of the
-///     cross-instance scale-out benefit partitioning exists for, since InMemory is inherently single-process.
+///     client to implement <see cref="Transport.IPartitionedStreamCapableMessageBusClient" /> — a transport with
+///     broker-coordinated partition ownership, such as RabbitMQ. InMemory implements it too, for local development and
+///     testing parity, but gets none of the cross-instance scale-out benefit partitioning exists for, since InMemory is
+///     inherently single-process.
 /// </summary>
 [AttributeUsage(AttributeTargets.Class, Inherited = false)]
 public sealed class StreamPartitionsAttribute : Attribute

@@ -21,7 +21,10 @@ public interface IStreamCapableMessageBusClient : ITransportClient
     /// </summary>
     /// <param name="queueName">The name of the stream queue to consume.</param>
     /// <param name="startPosition">The position in the stream from which consumption begins.</param>
-    /// <param name="options">Processor options such as the maximum number of concurrent deliveries.</param>
+    /// <param name="options">
+    ///     Processor options such as the maximum number of concurrent deliveries and the <see cref="MessageBusProcessorOptions.ConsumerName" />
+    ///     of the reader, which a transport may use to identify the reader on the broker (for example as a consumer group).
+    /// </param>
     /// <typeparam name="TMessage">The expected message body type.</typeparam>
     /// <returns>A configured <see cref="IMessageBusProcessor{TMessage}" /> for the stream queue.</returns>
     Task<IMessageBusProcessor<TMessage>> CreateStreamProcessor<TMessage>(string queueName, StartPosition startPosition, MessageBusProcessorOptions options);

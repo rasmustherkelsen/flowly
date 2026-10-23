@@ -21,8 +21,8 @@ public static class MessageRecorderRegistrationExtensions
     ///     <see cref="ITopologyNameResolver" /> (override with <see cref="QueueNameAttribute" />) and retention limits
     ///     are read from <see cref="StreamRetentionAttribute" /> on the message contract. Throws
     ///     <see cref="InvalidOperationException" /> at registration time when the resolved provider's client does not
-    ///     implement <see cref="IStreamCapableMessageBusClient" /> (streams are currently supported on RabbitMQ and
-    ///     InMemory only).
+    ///     implement <see cref="IStreamCapableMessageBusClient" /> (for example Azure Service Bus, which has no stream
+    ///     primitive).
     /// </summary>
     /// <param name="flowlyBuilder">The Flowly builder to register with.</param>
     /// <typeparam name="TMessage">The message contract type to record onto its stream.</typeparam>

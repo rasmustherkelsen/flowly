@@ -33,7 +33,10 @@ internal sealed class MessageStreamProcessingBackgroundService<TMessage, THandle
         var processor = await streamCapableClient.CreateStreamProcessor<TMessage>(
             handlerSettings.QueueName,
             startPosition,
-            new MessageBusProcessorOptions(handlerSettings.MaxMessagesBeforeProcessing, MessageBusReceiveMode.PeekLock));
+            new MessageBusProcessorOptions(handlerSettings.MaxMessagesBeforeProcessing, MessageBusReceiveMode.PeekLock)
+            {
+                ConsumerName = handlerSettings.ConsumerName
+            });
 
         _runner = new StreamPartitionRunner<TMessage, THandler>(
             processor,
