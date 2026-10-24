@@ -21,6 +21,7 @@ This document gives an AI assistant the context needed to work effectively in th
 ├── Flowly.AzureServiceBus/          # Azure Service Bus transport implementation
 ├── Flowly.AzureServiceBus.Aspire/   # .NET Aspire AppHost integration (emulator queue registration)
 ├── Flowly.RabbitMQ/                 # RabbitMQ transport implementation
+├── Flowly.AzureEventHubs/           # Azure Event Hubs stream-only transport (IMessageRecorder, [StreamPartitions], startup validation of the event hub; no queues, events, jobs or dead letters)
 ├── Flowly.InMemory/                 # In-memory transport (channels; no broker required)
 ├── Flowly.OpenTelemetry/            # OpenTelemetry metrics and traces
 ├── Flowly.Dashboard/                # Embedded ASP.NET Core middleware dashboard (management UI at /flowly); opt-in OAuth2/OIDC auth (OAuthAuthenticationOptions); viewer/submitter role and policy tiers — end-user setup guide for Entra ID/Google: docs/dashboard-authentication.md. No fixed default port: embedded mode uses the host app's own Kestrel port; standalone (--dashboard) templates randomly assign one per instantiation (see below)
@@ -103,7 +104,7 @@ More than one transport can be registered (a second `UseXxx` call with a distinc
 1. `[ProviderAffinity("name")]` on the contract wins. The named provider must be registered and must implement the capability the registration needs, otherwise registration throws naming the contract, the capability and the registered providers with what each supports.
 2. Without the attribute the contract goes to the **first registered provider that supports the capability**; registration order is the tie-breaker. If no registered provider supports it, registration throws with the same kind of message.
 
-Consequences: with Azure Service Bus and RabbitMQ registered, stream contracts without an attribute go to RabbitMQ and everything else stays on Azure Service Bus; with Azure Service Bus and a stream-only provider registered in either order, queue messages and events go to Azure Service Bus and streams go to the stream-only provider. A contract carrying `[StreamPartitions]` additionally needs a provider implementing `IPartitionedStreamCapableMessageBusClient`; that check is unchanged and has its own error message.
+Consequences: with Azure Service Bus and RabbitMQ registered, stream contracts without an attribute go to RabbitMQ and everything else stays on Azure Service Bus; with Azure Service Bus and a stream-only provider (`Flowly.AzureEventHubs`) registered in either order, queue messages and events go to Azure Service Bus and streams go to the stream-only provider. A provider registered after another one needs an explicit `name` (`TransportRegistrationHelper.ResolveProviderName` throws otherwise), for example `.UseAzureServiceBus("AzureServiceBus").UseAzureEventHubs("EventHubs", name: "events")`. A contract carrying `[StreamPartitions]` additionally needs a provider implementing `IPartitionedStreamCapableMessageBusClient`; that check is unchanged and has its own error message.
 
 `IMessageBusClientRegistry.PrimaryProviderName` (and `RegisteredTransport.IsPrimary` / `ProviderQueueManifest.IsPrimary`) means the **first registered provider that supports queue-based messaging**; a stream-only provider is never primary. It is the fallback where there is no contract to route by: recurring jobs (execution-lane queue, scheduler, `StartRecurringJobMessageHandler`, `RecurringJobInvoker`), `DeadLetterService` when no ingestion setting names the queue or topic, and the primary-provider filtering in the Aspire integration and the `flowly` CLI queue discovery. See `docs/multi-provider.md`.
 
@@ -231,7 +232,7 @@ These are easy to miss because each is a small, separate piece of wiring; a solu
 
 `MessageStreamHandler<T>` requires the resolved provider's client to implement `IStreamCapableMessageBusClient` — `RabbitMqMessageBusClient` (real broker streams) and `InMemoryMessageBusClient` (an in-process append-only log, `InMemoryStreamLog`) both do. Registering against Azure Service Bus throws `InvalidOperationException` at registration time (eager check, not a lazy runtime check like `IEventCapableMessageBusClient`). See §14 for InMemory's stream internals.
 
-A transport client can implement `IStreamCapableMessageBusClient` without `IMessageBusClient` (a stream-only transport): it hosts stream handlers and recorders, and registering a queue-based handler, submitter, call or recurring job, event handler or submitter, or a dead letter source, against it throws at registration time. No stream-only transport ships yet. The consumer name of a stream handler (`MessageStreamHandlerOptions.ConsumerName`, defaulting to the handler type name — the same value that keys a registered checkpoint) is passed to the transport as `MessageBusProcessorOptions.ConsumerName` when the stream processor or partitioned consumer is created; a transport may use it, for example as a broker-side consumer group, and RabbitMQ and InMemory ignore it. The producing side calls `IStreamCapableMessageBusClient.CreateStreamSender`, whose default implementation delegates to `IMessageBusClient.CreateMessageBusSender`, so RabbitMQ and InMemory need no override.
+A transport client can implement `IStreamCapableMessageBusClient` without `IMessageBusClient` (a stream-only transport): it hosts stream handlers and recorders, and registering a queue-based handler, submitter, call or recurring job, event handler or submitter, or a dead letter source, against it throws at registration time. `Flowly.AzureEventHubs` is the stream-only transport that ships with Flowly; its client does not support consuming streams (`CreateStreamProcessor` and `CreatePartitionedStreamConsumer` throw `NotSupportedException`), so a `MessageStreamHandler<T>` cannot read from Event Hubs, while `IMessageRecorder` and `[StreamPartitions]` recording work. See §15.1. The consumer name of a stream handler (`MessageStreamHandlerOptions.ConsumerName`, defaulting to the handler type name — the same value that keys a registered checkpoint) is passed to the transport as `MessageBusProcessorOptions.ConsumerName` when the stream processor or partitioned consumer is created; a transport may use it, for example as a broker-side consumer group, and RabbitMQ and InMemory ignore it. The producing side calls `IStreamCapableMessageBusClient.CreateStreamSender`, whose default implementation delegates to `IMessageBusClient.CreateMessageBusSender`, so RabbitMQ and InMemory need no override.
 
 ```csharp
 public class MyStreamHandler : MessageStreamHandler<MyMessage>
@@ -302,7 +303,7 @@ var jobId = await jobSender.QueueJob(new MyJobMessage { ... }); // returns JobId
 
 Register: `.AddJobSubmitter<MyJobMessage>()`
 
-#### Recording onto a message stream (RabbitMQ or InMemory)
+#### Recording onto a message stream (RabbitMQ, InMemory or Azure Event Hubs)
 
 Inject `IMessageRecorder`:
 
@@ -310,7 +311,7 @@ Inject `IMessageRecorder`:
 await messageRecorder.Record(new MyMessage { ... });
 ```
 
-Register: `.AddMessageRecorder<MyMessage>()`. Without `[ProviderAffinity]` the contract routes to the first registered stream-capable provider (RabbitMQ or InMemory today). Throws `InvalidOperationException` at registration time if no registered provider supports streams, or if `[ProviderAffinity]` names one that does not.
+Register: `.AddMessageRecorder<MyMessage>()`. Without `[ProviderAffinity]` the contract routes to the first registered stream-capable provider (RabbitMQ, InMemory or Azure Event Hubs). Throws `InvalidOperationException` at registration time if no registered provider supports streams, or if `[ProviderAffinity]` names one that does not.
 
 ---
 
@@ -654,11 +655,11 @@ IMessageBusClient : ITransportClient   // queue-based messaging capability; not 
   CreateDeadLetterReceiver(queue)    → IDeadLetterReceiver
   GetDeadLetterMessageCount(queue, ct) → long
 
-IStreamCapableMessageBusClient : ITransportClient   // optional; RabbitMQ + InMemory; a stream-only transport implements only this
+IStreamCapableMessageBusClient : ITransportClient   // optional; RabbitMQ + InMemory + Azure Event Hubs; a stream-only transport (Azure Event Hubs) implements only this
   CreateStreamProcessor<T>(queue, startPosition, options) → IMessageBusProcessor<T>
   CreateStreamSender(queue)          → IMessageBusSender   // default: delegates to IMessageBusClient.CreateMessageBusSender; stream-only transports must override
 
-IPartitionedStreamCapableMessageBusClient           // optional; RabbitMQ + InMemory; does not extend IStreamCapableMessageBusClient
+IPartitionedStreamCapableMessageBusClient           // optional; RabbitMQ + InMemory + Azure Event Hubs; does not extend IStreamCapableMessageBusClient
   CreatePartitionedStreamConsumer<T>(queue, partitionCount, resolveStartPosition, options, logger) → IPartitionedStreamConsumer<T>
 
 IMessageBusClientRegistry              // holds one ITransportClient per provider name, in registration order
@@ -1028,6 +1029,16 @@ The validator uses `QueueDeclarePassiveAsync` to confirm existence. It cannot ve
 
 ---
 
+### 15.1 Transport Internals (Azure Event Hubs)
+
+`Flowly.AzureEventHubs` is the stream-only transport: `AzureEventHubsClient` implements `IStreamCapableMessageBusClient` and `IPartitionedStreamCapableMessageBusClient` and not `IMessageBusClient`, so it is never the primary provider and the capability-aware routing never sends it queue messages, events, jobs, calls or dead letter sources. It overrides `CreateStreamSender`. `CreateStreamProcessor` and `CreatePartitionedStreamConsumer` throw `NotSupportedException` (consuming is not supported by this version).
+
+Registration (`AzureEventHubsRegistration`): `UseAzureEventHubs(connection, name?, partitionOwnershipContainer?, maxMessageSizeBytes?)` and `UseAzureEventHubs(fullyQualifiedNamespaceOrConfigKey, credential, name?, partitionOwnershipContainer?, maxMessageSizeBytes?)`, flat optional parameters, no options delegate, no `createTopology`, no health check. Default provider name `azure-event-hubs` (a provider registered after another one needs an explicit `name`), `MessagingSystem` `azure-event-hubs`. The SDK clients are created lazily per event hub through `IEventHubsClientFactory`, so registering needs no network and no valid connection string: `FlowlyDesignTimeFactory.DiscoverQueues` runs `Configure` with placeholder configuration values. A connection string containing an `EntityPath` is rejected when the first event hub client is created (at startup, by the validator).
+
+Topology: the provider is registered with `createTopologyOverride: false`, because `QueueRegistrarHostedService` only runs validators when topology creation is off; a host that asks for `createTopology: true` still gets the validator and the `IMessagingTopologyCreator` registered for the provider (`AzureEventHubsTopologyCreator`, a no-op) is never called. `AzureEventHubsTopologyValidator` (an `IMessagingTopologyValidator`, like `RabbitMqPartitionedStreamTopologyValidator`) checks for every stream queue of the provider that the event hub name is valid (1 to 256 characters of letters, digits, `.`, `-`, `_`, starting and ending alphanumeric), that the event hub exists (`EventHubsException` with `ResourceNotFound` or `ServiceCommunicationProblem` becomes an `InvalidOperationException` keeping the inner exception), that its partition ids are exactly `0..n-1` for `[StreamPartitions(n)]` or exactly `0` for a non-partitioned stream (`EventHubsPartitionIds`; the id-to-partition mapping lives only there), and that the optional partition ownership `BlobContainerClient` exists. It logs a warning for `[StreamRetention] MaxLengthBytes` (ignored) and an information message for `MaxAgeSeconds` (retention is configured on the event hub and neither applied nor verified). There is no reconciliation, Flowly never creates event hubs, and a live partition count change is unsupported.
+
+Producing: `EventHubsStreamSender` sends one `EventData` per message through `IEventHubsProducer` (the SDK adapter `EventHubsProducerClientAdapter` creates a one-event `EventDataBatch` with `CreateBatchOptions.PartitionKey` and maps a failed `TryAdd` to `MessageTooLargeException`). `MessageProperties.PartitionKey` is used as the service-side Event Hubs partition key only for a partitioned contract (ignored otherwise); without a key no partition is specified and the service distributes round robin. The partition index a key maps to differs from RabbitMQ and InMemory, which hash client-side with FNV-1a. Body: UTF-8 JSON; message id, correlation id, `flowly-retry-count` (when above zero) and `traceparent`/`tracestate` travel as event properties; session id, scheduled enqueue time, reply-to and delivery count are not sent. `SendEmptyMessage` and `SendRawMessage` throw `NotSupportedException`.
+
 ### 16. Naming & Conventions
 
 - Message types are plain `record` or `class` types — no base class required for regular messages
@@ -1100,6 +1111,9 @@ Rules:
 | RabbitMQ retry DLX validation | `Flowly.RabbitMQ/RabbitMqRetryTopologyValidator.cs` |
 | RabbitMQ partitioned stream topology validation | `Flowly.RabbitMQ/RabbitMqPartitionedStreamTopologyValidator.cs` |
 | RabbitMQ connection pool | `Flowly.RabbitMQ/RabbitMqConnectionPool.cs` |
+| Azure Event Hubs wiring | `Flowly.AzureEventHubs/AzureEventHubsRegistration.cs` |
+| Azure Event Hubs stream sender | `Flowly.AzureEventHubs/EventHubsStreamSender.cs` |
+| Azure Event Hubs topology validation | `Flowly.AzureEventHubs/AzureEventHubsTopologyValidator.cs` |
 | InMemory wiring | `Flowly.InMemory/InMemoryRegistration.cs` |
 | InMemory broker (channel store) | `Flowly.InMemory/InMemoryBroker.cs` |
 | InMemory scheduler | `Flowly.InMemory/InMemoryScheduler.cs` |
@@ -1119,7 +1133,7 @@ Rules:
 
 ### 19. Current State Notes
 
-- Azure Service Bus and RabbitMQ are both implemented transports
+- Azure Service Bus, RabbitMQ and InMemory are implemented queue transports; Azure Event Hubs is a stream-only transport that records messages and validates its topology but does not consume streams
 - The abstraction layer (`ITransportClient`, `IMessageBusClient`, `IStreamCapableMessageBusClient`, etc.) is transport-agnostic; a transport implements the capability interfaces its broker supports, and Flowly fails at registration when a handler or submitter registration needs a capability the resolved provider lacks
 - Routing is capability-aware: a contract without `[ProviderAffinity]` goes, per capability (queue message, event, stream), to the first registered provider that supports it; the primary provider is the first registered queue-capable provider
 - Retry delay: ASB uses `ScheduledEnqueueTime`; RabbitMQ uses per-message TTL (`x-expiration`) on a `.retry` queue with DLX routing back to the main queue
@@ -1209,7 +1223,7 @@ Rules that describe how to *author or maintain* skills (contributor-facing meta-
 | Add a job handler | Inherit `JobHandler<T>`, register with `.AddJobHandler<>()` |
 | Add a recurring job | Inherit `RecurringJobHandler`, add `[RecurringJob]`, register with `.AddRecurringJob<>()` |
 | Add a stream handler (RabbitMQ or InMemory) | Inherit `MessageStreamHandler<T>`, set `StartPosition` in `Configure`, register with `.AddMessageStreamHandler<T, TH>()` |
-| Record onto a stream (RabbitMQ or InMemory) | Inject `IMessageRecorder`, call `.Record(msg)`; register with `.AddMessageRecorder<T>()` |
+| Record onto a stream (RabbitMQ, InMemory or Azure Event Hubs) | Inject `IMessageRecorder`, call `.Record(msg)`; register with `.AddMessageRecorder<T>()` |
 | Configure job cleanup | Pass `configure: options => { options.DeleteCompletedJobsAfter = ...; }` to `AddSqlServerJobStateTracking` |
 | Control the queue name | Add `[QueueName("name")]` to the **message contract** — only needed when auto-generation is wrong |
 | Send a message | Inject `IMessageSender`, call `.Send(msg)` |

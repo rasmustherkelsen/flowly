@@ -5,7 +5,9 @@ namespace Flowly;
 ///     <strong>message contract</strong> class (not the handler), alongside attributes like
 ///     <see cref="QueueNameAttribute" />. Only meaningful for contracts consumed via
 ///     <see cref="MessageStreamHandler{TMessage}" /> or recorded via <see cref="IMessageRecorder" /> — how a transport applies the values
-///     is up to it: RabbitMQ maps them onto the stream's <c>x-max-age</c> and <c>x-max-length-bytes</c> arguments at topology creation.
+///     is up to it: RabbitMQ maps them onto the stream's <c>x-max-age</c> and <c>x-max-length-bytes</c> arguments at topology creation, while
+///     Azure Event Hubs configures retention on the event hub itself, ignores <see cref="MaxLengthBytes" /> with a startup warning and neither applies
+///     nor verifies <see cref="MaxAgeSeconds" />.
 ///     <para>
 ///         When neither limit is set the stream retains every message indefinitely and grows unbounded — a broker
 ///         disk exhaustion risk. Set at least one limit for production streams.

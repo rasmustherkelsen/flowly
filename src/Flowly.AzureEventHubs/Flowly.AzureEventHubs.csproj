@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <PackageId>Flowly.AzureEventHubs</PackageId>
+        <Description>Azure Event Hubs stream-only transport for Flowly. Records messages onto Event Hubs through IMessageRecorder and validates the hub topology at startup. It does not support queues, events, jobs, call handlers or dead letter tracking; use Flowly.AzureServiceBus or Flowly.RabbitMQ next to it for those.</Description>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>Flowly.AzureEventHubs.Tests</_Parameter1>
+        </AssemblyAttribute>
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Azure.Messaging.EventHubs" Version="5.12.2" />
+        <PackageReference Include="Azure.Storage.Blobs" Version="12.23.0" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Flowly\Flowly.csproj" />
+    </ItemGroup>
+
+</Project>
