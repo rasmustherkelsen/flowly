@@ -12,7 +12,17 @@ namespace Flowly.AzureEventHubs;
 ///     hub: the hub exists, it has the partitions the contract declares through <see cref="StreamPartitionsAttribute" />
 ///     (partition ids <c>0</c> to <c>n-1</c>, or exactly <c>0</c> for a non-partitioned stream), and the partition ownership
 ///     blob container exists when one is configured. It also reports the stream retention settings a contract declares
-///     that Event Hubs does not take from Flowly. The provider is registered with topology creation forced off so that the
+///     that Event Hubs does not take from Flowly, and warns when an event hub is geo-replicated while a message stream checkpoint store is
+///     registered (<c>isCheckpointStoreRegistered</c>), because Azure documents that the offsets of the same data can differ between regions after a forced failover.
+///     <para>
+///         The hub side of that warning is exact: <c>IsGeoReplicationEnabled</c> is read for each event hub that has a stream registered on the provider,
+///         producer-only hubs included. The checkpoint side is host-wide: <c>isCheckpointStoreRegistered</c> only reports whether any
+///         <c>MessageStreamCheckpoint&lt;T&gt;</c> is registered anywhere in the host, not whether one belongs to a message type read from that event hub. It can
+///         therefore warn when no Event Hubs position is stored (a checkpoint registered only for a RabbitMQ stream handler, or a hub the host only writes to
+///         with <c>IMessageRecorder</c>), and it never misses a checkpoint for a handler that reads a geo-replicated hub, so it errs towards false positives.
+///         It is a single startup warning per event hub and never fails startup. Without a registered checkpoint nothing is stored and nothing can go stale.
+///     </para>
+///     The provider is registered with topology creation forced off so that the
 ///     framework always runs this validator; there is no reconciliation.
 /// </summary>
 internal sealed partial class AzureEventHubsTopologyValidator(
@@ -20,6 +30,7 @@ internal sealed partial class AzureEventHubsTopologyValidator(
     IEventHubsClientFactory clientFactory,
     BlobContainerClient? partitionOwnershipContainer,
     StreamQueueManifest streamQueueManifest,
+    Func<bool> isCheckpointStoreRegistered,
     ILogger<AzureEventHubsTopologyValidator> logger) : IMessagingTopologyValidator
 {
     public string ProviderName => providerName;
@@ -48,19 +59,20 @@ internal sealed partial class AzureEventHubsTopologyValidator(
                 $"and must be 1 to 256 characters of letters, digits, '.', '-' or '_', starting and ending with a letter or digit. Use [QueueName] on the message contract to choose a valid name.");
 
         var declaredPartitionCount = streamQueueManifest.GetPartitionCount(eventHubName);
-        var actualPartitionIds = await GetPartitionIds(eventHubName, declaredPartitionCount, cancellationToken);
+        var eventHubInfo = await GetEventHubInfo(eventHubName, declaredPartitionCount, cancellationToken);
 
-        if (!EventHubsPartitionIds.Matches(actualPartitionIds, declaredPartitionCount))
-            throw new InvalidOperationException(DescribePartitionMismatch(eventHubName, declaredPartitionCount, actualPartitionIds));
+        if (!EventHubsPartitionIds.Matches(eventHubInfo.PartitionIds, declaredPartitionCount))
+            throw new InvalidOperationException(DescribePartitionMismatch(eventHubName, declaredPartitionCount, eventHubInfo.PartitionIds));
 
         LogRetention(eventHubName);
+        LogGeoReplication(eventHubName, eventHubInfo);
     }
 
-    private async Task<IReadOnlyCollection<string>> GetPartitionIds(string eventHubName, int? declaredPartitionCount, CancellationToken cancellationToken)
+    private async Task<EventHubsInfo> GetEventHubInfo(string eventHubName, int? declaredPartitionCount, CancellationToken cancellationToken)
     {
         try
         {
-            return await clientFactory.GetInspector(eventHubName).GetPartitionIds(cancellationToken);
+            return await clientFactory.GetInspector(eventHubName).GetEventHubInfo(cancellationToken);
         }
         catch (EventHubsException exception) when (exception.Reason is EventHubsException.FailureReason.ResourceNotFound or EventHubsException.FailureReason.ServiceCommunicationProblem)
         {
@@ -98,6 +110,18 @@ internal sealed partial class AzureEventHubsTopologyValidator(
                 "Stream '{EventHubName}' declares MaxAgeSeconds = {MaxAgeSeconds}. Azure Event Hubs retention is configured on the event hub, so the value is neither applied nor verified.",
                 eventHubName,
                 maxAgeSeconds);
+    }
+
+    private void LogGeoReplication(string eventHubName, EventHubsInfo eventHubInfo)
+    {
+        if (!eventHubInfo.IsGeoReplicationEnabled || !isCheckpointStoreRegistered())
+            return;
+
+        logger.LogWarning(
+            "Event hub '{EventHubName}' is geo-replicated and a message stream checkpoint store is registered. " +
+            "Azure documents that after a forced failover the offsets of the same data can differ between regions, " +
+            "so a stored position may no longer be valid after such a failover. Flowly does not detect or correct this.",
+            eventHubName);
     }
 
     private static string DescribePartitionMismatch(string eventHubName, int? declaredPartitionCount, IReadOnlyCollection<string> actualPartitionIds)

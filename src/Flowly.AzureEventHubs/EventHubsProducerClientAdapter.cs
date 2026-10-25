@@ -16,8 +16,19 @@ internal sealed class EventHubsProducerClientAdapter(string eventHubName, EventH
         await producerClient.SendAsync(batch, cancellationToken);
     }
 
-    public async Task<IReadOnlyCollection<string>> GetPartitionIds(CancellationToken cancellationToken)
-        => (await producerClient.GetEventHubPropertiesAsync(cancellationToken)).PartitionIds;
+    public async Task<EventHubsInfo> GetEventHubInfo(CancellationToken cancellationToken)
+    {
+        var properties = await producerClient.GetEventHubPropertiesAsync(cancellationToken);
+
+        return new EventHubsInfo(properties.PartitionIds, properties.IsGeoReplicationEnabled);
+    }
+
+    public async Task<EventHubsPartitionState> GetPartitionState(string partitionId, CancellationToken cancellationToken)
+    {
+        var properties = await producerClient.GetPartitionPropertiesAsync(partitionId, cancellationToken);
+
+        return new EventHubsPartitionState(properties.BeginningSequenceNumber, properties.LastEnqueuedSequenceNumber, properties.LastEnqueuedTime, properties.IsEmpty);
+    }
 
     public ValueTask DisposeAsync() => producerClient.DisposeAsync();
 }

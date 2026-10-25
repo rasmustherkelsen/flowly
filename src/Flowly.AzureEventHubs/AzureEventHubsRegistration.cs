@@ -11,10 +11,10 @@ namespace Flowly.AzureEventHubs;
 
 /// <summary>
 ///     Provides extension methods for registering Azure Event Hubs as a stream-only message bus provider in the Flowly
-///     framework. Azure Event Hubs supports <see cref="IMessageRecorder" /> and, for partitioned contracts,
-///     <see cref="StreamPartitionsAttribute" />; it does not support queue-based messaging, events, jobs, call handlers or
-///     dead letter tracking, so registering any of those against it fails at startup with a descriptive error. Register it
-///     alongside a queue-capable provider such as Azure Service Bus or RabbitMQ when the application needs both: a message
+///     framework. Azure Event Hubs supports <see cref="IMessageRecorder" />, <see cref="MessageStreamHandler{TMessage}" /> and, for
+///     partitioned contracts, <see cref="StreamPartitionsAttribute" />; it does not support queue-based messaging, events, jobs, call
+///     handlers or dead letter tracking, so registering any of those against it fails at startup with a descriptive error. Register
+///     it alongside a queue-capable provider such as Azure Service Bus or RabbitMQ when the application needs both: a message
 ///     contract without <see cref="ProviderAffinityAttribute" /> is routed, per capability, to the first registered provider
 ///     that supports it.
 ///     <para>
@@ -22,6 +22,13 @@ namespace Flowly.AzureEventHubs;
 ///         <see cref="QueueNameAttribute" />), so the connection must be namespace level. Flowly does not create event hubs:
 ///         topology creation is always off for this provider and the framework instead validates at startup that each event
 ///         hub exists and that its partitions match <see cref="StreamPartitionsAttribute" />.
+///     </para>
+///     <para>
+///         A stream handler reads an event hub through the consumer group named by its
+///         <see cref="MessageStreamHandlerOptions.ConsumerName" /> (the handler type name unless overridden), which must exist on the
+///         event hub; <c>"$Default"</c> selects the default consumer group. The instances of an application that share a consumer
+///         group share the partitions of the event hub through the Azure Event Hubs SDK's own load balancing; Flowly adds no
+///         assignment protocol. Without a <c>partitionOwnershipContainer</c> a single instance owns every partition in-process.
 ///     </para>
 /// </summary>
 public static class AzureEventHubsRegistration
@@ -49,6 +56,15 @@ public static class AzureEventHubsRegistration
     ///     container must already exist; it is validated at startup and never created implicitly. When it is omitted a single
     ///     instance owns its partitions in-process and no storage is needed.
     /// </param>
+    /// <param name="loadBalancingInterval">
+    ///     Optional interval at which the instances sharing a consumer group check and renew the partitions they own and claim partitions that are not owned. Defaults to
+    ///     null, which leaves the Azure Event Hubs SDK default (30 seconds). Must be greater than zero.
+    /// </param>
+    /// <param name="partitionOwnershipExpiration">
+    ///     Optional time after which a partition whose owner has not renewed it is considered abandoned and can be claimed by another instance, which is how a crashed instance
+    ///     is replaced. Defaults to null, which leaves the Azure Event Hubs SDK default (2 minutes). Must be greater than zero and greater than the effective
+    ///     <paramref name="loadBalancingInterval" />; set both when moving one past the other's default.
+    /// </param>
     /// <param name="maxMessageSizeBytes">
     ///     Optional maximum message body size in bytes that <see cref="IMessageRecorder" /> accepts. Defaults to null, which
     ///     leaves the limit to Azure Event Hubs (256 KB on Basic, 1 MB on Standard and Premium, 20 MB on Dedicated). A larger
@@ -60,12 +76,20 @@ public static class AzureEventHubsRegistration
         string connection,
         string? name = null,
         BlobContainerClient? partitionOwnershipContainer = null,
+        TimeSpan? loadBalancingInterval = null,
+        TimeSpan? partitionOwnershipExpiration = null,
         long? maxMessageSizeBytes = null)
-        => flowlyBuilder.RegisterAzureEventHubs(
-            EventHubsClientFactory.ForConnectionString(flowlyBuilder.Configuration.GetConnectionString(connection) ?? connection),
+    {
+        var connectionString = flowlyBuilder.Configuration.GetConnectionString(connection) ?? connection;
+        var ownershipOptions = EventHubsOwnershipOptions.Create(partitionOwnershipContainer, loadBalancingInterval, partitionOwnershipExpiration);
+
+        return flowlyBuilder.RegisterAzureEventHubs(
+            EventHubsClientFactory.ForConnectionString(connectionString),
+            EventHubsProcessorFactory.ForConnectionString(connectionString, ownershipOptions),
             name,
-            partitionOwnershipContainer,
+            ownershipOptions,
             maxMessageSizeBytes);
+    }
 
     /// <summary>
     ///     Registers Azure Event Hubs as a stream-only provider using Microsoft Entra ID authentication with a
@@ -87,6 +111,15 @@ public static class AzureEventHubsRegistration
     ///     container must already exist; it is validated at startup and never created implicitly. When it is omitted a single
     ///     instance owns its partitions in-process and no storage is needed.
     /// </param>
+    /// <param name="loadBalancingInterval">
+    ///     Optional interval at which the instances sharing a consumer group check and renew the partitions they own and claim partitions that are not owned. Defaults to
+    ///     null, which leaves the Azure Event Hubs SDK default (30 seconds). Must be greater than zero.
+    /// </param>
+    /// <param name="partitionOwnershipExpiration">
+    ///     Optional time after which a partition whose owner has not renewed it is considered abandoned and can be claimed by another instance, which is how a crashed instance
+    ///     is replaced. Defaults to null, which leaves the Azure Event Hubs SDK default (2 minutes). Must be greater than zero and greater than the effective
+    ///     <paramref name="loadBalancingInterval" />; set both when moving one past the other's default.
+    /// </param>
     /// <param name="maxMessageSizeBytes">
     ///     Optional maximum message body size in bytes that <see cref="IMessageRecorder" /> accepts. Defaults to null, which
     ///     leaves the limit to Azure Event Hubs. A larger message throws <see cref="MessageTooLargeException" />.
@@ -98,18 +131,27 @@ public static class AzureEventHubsRegistration
         TokenCredential credential,
         string? name = null,
         BlobContainerClient? partitionOwnershipContainer = null,
+        TimeSpan? loadBalancingInterval = null,
+        TimeSpan? partitionOwnershipExpiration = null,
         long? maxMessageSizeBytes = null)
-        => flowlyBuilder.RegisterAzureEventHubs(
-            EventHubsClientFactory.ForCredential(flowlyBuilder.Configuration[fullyQualifiedNamespaceOrConfigKey] ?? fullyQualifiedNamespaceOrConfigKey, credential),
+    {
+        var fullyQualifiedNamespace = flowlyBuilder.Configuration[fullyQualifiedNamespaceOrConfigKey] ?? fullyQualifiedNamespaceOrConfigKey;
+        var ownershipOptions = EventHubsOwnershipOptions.Create(partitionOwnershipContainer, loadBalancingInterval, partitionOwnershipExpiration);
+
+        return flowlyBuilder.RegisterAzureEventHubs(
+            EventHubsClientFactory.ForCredential(fullyQualifiedNamespace, credential),
+            EventHubsProcessorFactory.ForCredential(fullyQualifiedNamespace, credential, ownershipOptions),
             name,
-            partitionOwnershipContainer,
+            ownershipOptions,
             maxMessageSizeBytes);
+    }
 
     internal static IFlowlyBuilder RegisterAzureEventHubs(
         this IFlowlyBuilder flowlyBuilder,
         IEventHubsClientFactory clientFactory,
+        IEventHubsProcessorFactory processorFactory,
         string? name,
-        BlobContainerClient? partitionOwnershipContainer,
+        EventHubsOwnershipOptions ownershipOptions,
         long? maxMessageSizeBytes)
     {
         var services = flowlyBuilder.Services;
@@ -122,7 +164,7 @@ public static class AzureEventHubsRegistration
             "Secondary Azure Event Hubs providers must have an explicit name. Pass name: \"...\" to UseAzureEventHubs().");
 
         var streamQueueManifest = StreamQueueManifest.GetOrCreate(services);
-        var client = new AzureEventHubsClient(clientFactory, maxMessageSizeBytes, streamQueueManifest);
+        var client = new AzureEventHubsClient(clientFactory, processorFactory, maxMessageSizeBytes, streamQueueManifest, ownershipOptions.IsShared, TimeProvider.System);
 
         clientRegistry.Register(effectiveName, client, createTopologyOverride: false);
 
@@ -133,12 +175,16 @@ public static class AzureEventHubsRegistration
         services.AddSingleton<IMessagingTopologyValidator>(serviceProvider => new AzureEventHubsTopologyValidator(
             effectiveName,
             clientFactory,
-            partitionOwnershipContainer,
+            ownershipOptions.Container,
             streamQueueManifest,
+            () => IsCheckpointStoreRegistered(services),
             serviceProvider.GetRequiredService<ILogger<AzureEventHubsTopologyValidator>>()));
 
         TransportRegistrationHelper.RegisterProviderManifest(services, clientRegistry, effectiveName, TransportType);
 
         return flowlyBuilder;
     }
+
+    private static bool IsCheckpointStoreRegistered(IServiceCollection services)
+        => services.Any(descriptor => descriptor.ServiceType.IsGenericType && descriptor.ServiceType.GetGenericTypeDefinition() == typeof(MessageStreamCheckpoint<>));
 }

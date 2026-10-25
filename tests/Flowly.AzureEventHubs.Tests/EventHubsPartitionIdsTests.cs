@@ -73,4 +73,39 @@ public class EventHubsPartitionIdsTests
             Assert.False(EventHubsPartitionIds.Matches(["0", "0"], 2));
         }
     }
+
+    public class ToPartition
+    {
+        [Theory]
+        [InlineData("0", 0)]
+        [InlineData("7", 7)]
+        [InlineData("31", 31)]
+        public void WithCanonicalNumber_ReturnsThePartition(string partitionId, int expected)
+        {
+            Assert.Equal(expected, EventHubsPartitionIds.ToPartition(partitionId));
+        }
+
+        [Theory]
+        [InlineData("-1")]
+        [InlineData("01")]
+        [InlineData("+1")]
+        [InlineData(" 1")]
+        [InlineData("1.0")]
+        [InlineData("a")]
+        [InlineData("")]
+        [InlineData("99999999999")]
+        public void WithAnythingElse_ReturnsNull(string partitionId)
+        {
+            Assert.Null(EventHubsPartitionIds.ToPartition(partitionId));
+        }
+    }
+
+    public class ToPartitionId
+    {
+        [Fact]
+        public void IsTheInverseOfToPartition()
+        {
+            Assert.Equal(12, EventHubsPartitionIds.ToPartition(EventHubsPartitionIds.ToPartitionId(12)));
+        }
+    }
 }

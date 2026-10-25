@@ -1,5 +1,4 @@
 using Flowly.AzureEventHubs.Tests.Fakes;
-using Flowly.MessageInfrastructure.Registration;
 
 namespace Flowly.AzureEventHubs.Tests;
 
@@ -11,7 +10,7 @@ public class AzureEventHubsConnectionLifetimeTests
         public async Task DoesNotDisposeTheClient()
         {
             var clientFactory = new FakeEventHubsClientFactory();
-            var azureEventHubsConnectionLifetime = new AzureEventHubsConnectionLifetime(new AzureEventHubsClient(clientFactory, null, new StreamQueueManifest()));
+            var azureEventHubsConnectionLifetime = new AzureEventHubsConnectionLifetime(TestAzureEventHubsClient.Create(clientFactory));
 
             await azureEventHubsConnectionLifetime.StartAsync(CancellationToken.None);
 
@@ -25,7 +24,7 @@ public class AzureEventHubsConnectionLifetimeTests
         public async Task DisposesTheClient()
         {
             var clientFactory = new FakeEventHubsClientFactory();
-            var azureEventHubsConnectionLifetime = new AzureEventHubsConnectionLifetime(new AzureEventHubsClient(clientFactory, null, new StreamQueueManifest()));
+            var azureEventHubsConnectionLifetime = new AzureEventHubsConnectionLifetime(TestAzureEventHubsClient.Create(clientFactory));
 
             await azureEventHubsConnectionLifetime.StopAsync(CancellationToken.None);
 

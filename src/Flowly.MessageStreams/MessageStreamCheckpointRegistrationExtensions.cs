@@ -52,7 +52,7 @@ public static class MessageStreamCheckpointRegistrationExtensions
     ///     persistence store registered earlier via <c>Add&lt;Provider&gt;MessageStreamPersistence</c>. Can be called
     ///     either before or after <see cref="MessageStreamHandlerRegistrationExtensions.AddMessageStreamHandler{TMessage,THandler}" />.
     ///     Throws <see cref="InvalidOperationException" /> when the resolved provider for <typeparamref name="TMessage" />
-    ///     is InMemory (checkpointing is RabbitMQ-only), or when <paramref name="name" /> does not match a registered
+    ///     is InMemory (checkpointing needs a transport whose stream survives a restart), or when <paramref name="name" /> does not match a registered
     ///     persistence store.
     /// </summary>
     /// <typeparam name="TMessage">The message contract type whose stream position should be persisted.</typeparam>

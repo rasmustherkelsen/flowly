@@ -29,10 +29,10 @@ A transport client is an `ITransportClient` that implements one or more capabili
 |---|---|---|---|---|---|---|
 | Queues | `IMessageBusClient` | `MessageHandler<T>`, `BatchMessageHandler<T>`, `JobHandler<T>`, `RecurringJobHandler`, `CallHandler<T, TReturn>`, their submitters and dead letter sources | yes | yes | yes | no |
 | Events | `IEventCapableMessageBusClient` | `EventHandlerBase<TEvent>` and event submitters | yes | yes | yes | no |
-| Streams | `IStreamCapableMessageBusClient` | `MessageStreamHandler<T>` and `IMessageRecorder` | no | yes | yes | recording only |
-| Partitioned streams | `IPartitionedStreamCapableMessageBusClient` | contracts annotated with `[StreamPartitions]` | no | yes | yes | recording only |
+| Streams | `IStreamCapableMessageBusClient` | `MessageStreamHandler<T>` and `IMessageRecorder` | no | yes | yes | yes |
+| Partitioned streams | `IPartitionedStreamCapableMessageBusClient` | contracts annotated with `[StreamPartitions]` | no | yes | yes | yes |
 
-A transport does not have to support queues. A **stream-only** transport implements `IStreamCapableMessageBusClient` without `IMessageBusClient`; it can host stream handlers and recorders but nothing queue-based. `Flowly.AzureEventHubs` is the stream-only transport that ships with Flowly. Its client implements both stream capabilities but does not support consuming a stream, so it hosts `IMessageRecorder` and `[StreamPartitions]` recording only; see the [Azure Event Hubs section of the README](../README.md#azure-event-hubs-transport).
+A transport does not have to support queues. A **stream-only** transport implements `IStreamCapableMessageBusClient` without `IMessageBusClient`; it can host stream handlers and recorders but nothing queue-based. `Flowly.AzureEventHubs` is the stream-only transport that ships with Flowly. Its client implements both stream capabilities, so it hosts `MessageStreamHandler<T>`, `IMessageRecorder` and `[StreamPartitions]`; see the [Azure Event Hubs section of the README](../README.md#azure-event-hubs-transport).
 
 Flowly checks the capability when a handler or submitter is registered, so a mismatch fails at startup rather than on first use. Both failures name the contract, the capability and the registered providers with what each supports:
 

@@ -14,7 +14,7 @@ builder.AddMessageStreamHandler<MyMessage, MyMessageHandler>();
 builder.UseMessageStreamCheckpoint<MyMessage>();
 ```
 
-`UseMessageStreamCheckpoint<TMessage>()` can be called before or after `AddMessageStreamHandler`. Position persistence is RabbitMQ-only — InMemory-backed streams throw `InvalidOperationException` if you try to use a built-in (or hand-rolled) checkpoint against them, since the in-process log has no cross-restart persistence of its own.
+`UseMessageStreamCheckpoint<TMessage>()` can be called before or after `AddMessageStreamHandler`. Position persistence works with every stream transport except InMemory — InMemory-backed streams throw `InvalidOperationException` if you try to use a built-in (or hand-rolled) checkpoint against them, since the in-process log has no cross-restart persistence of its own. The stores contain no transport-specific code: a position is keyed by consumer name, queue name (the event hub name on Azure Event Hubs) and partition, and it is the stream offset of the last processed message, which on Azure Event Hubs is the event's sequence number within its partition.
 
 ## Multiple, named persistence stores
 
@@ -30,7 +30,7 @@ The first unnamed `Add<Provider>MessageStreamPersistence` call becomes the defau
 
 ## First-run position
 
-When a reader has no stored position, Flowly resolves `StartPosition.Last()` or `StartPosition.Timestamp(...)` to a concrete offset and stores it before the handler starts consuming (RabbitMQ), so a restart before the first batch does not move the position and messages published while the process was down are delivered. A row can therefore hold the position `-1`, meaning "start at offset 0". `First()` and `Offset(n)` are not stored up front. If the offset cannot be resolved or stored, a warning is logged and the position is stored after the first processed batch instead.
+When a reader has no stored position, Flowly resolves `StartPosition.Last()` or `StartPosition.Timestamp(...)` to a concrete offset and stores it before the handler starts consuming (where the transport can resolve it: RabbitMQ, and Azure Event Hubs for `Last()` and for a `Timestamp(...)` later than the last enqueued event), so a restart before the first batch does not move the position and messages published while the process was down are delivered. A row can therefore hold the position `-1`, meaning "start at offset 0". `First()` and `Offset(n)` are not stored up front. If the offset cannot be resolved or stored, a warning is logged and the position is stored after the first processed batch instead.
 
 ## Custom (hand-rolled) checkpoints
 

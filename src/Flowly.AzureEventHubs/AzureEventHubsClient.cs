@@ -7,12 +7,14 @@ namespace Flowly.AzureEventHubs;
 
 internal sealed class AzureEventHubsClient(
     IEventHubsClientFactory clientFactory,
+    IEventHubsProcessorFactory processorFactory,
     long? maxMessageSizeBytes,
-    StreamQueueManifest streamQueueManifest) : IStreamCapableMessageBusClient, IPartitionedStreamCapableMessageBusClient, IAsyncDisposable
+    StreamQueueManifest streamQueueManifest,
+    bool sharesPartitionOwnership,
+    TimeProvider timeProvider) : IStreamCapableMessageBusClient, IPartitionedStreamCapableMessageBusClient, IStreamStartOffsetResolver, IAsyncDisposable
 {
-    private const string ConsumptionNotSupportedMessage = "Consuming streams from Azure Event Hubs is not supported by this version of Flowly.AzureEventHubs. Azure Event Hubs can currently only be used to record messages with IMessageRecorder.";
-
     private readonly ConcurrentDictionary<string, IMessageBusSender> _senders = new(StringComparer.Ordinal);
+    private readonly EventHubsStartOffsetResolver _startOffsetResolver = new(clientFactory);
 
     public string MessagingSystem => "azure-event-hubs";
 
@@ -26,7 +28,13 @@ internal sealed class AzureEventHubsClient(
                 streamQueueManifest.GetPartitionCount(eventHubName) is not null)));
 
     public Task<IMessageBusProcessor<TMessage>> CreateStreamProcessor<TMessage>(string queueName, StartPosition startPosition, MessageBusProcessorOptions options)
-        => Task.FromException<IMessageBusProcessor<TMessage>>(new NotSupportedException(ConsumptionNotSupportedMessage));
+        => Task.FromResult<IMessageBusProcessor<TMessage>>(new EventHubsStreamProcessor<TMessage>(
+            processorFactory,
+            queueName,
+            EventHubsConsumerGroup.FromConsumerName(queueName, options.ConsumerName),
+            startPosition,
+            sharesPartitionOwnership,
+            timeProvider));
 
     public Task<IPartitionedStreamConsumer<TMessage>> CreatePartitionedStreamConsumer<TMessage>(
         string queueName,
@@ -34,7 +42,18 @@ internal sealed class AzureEventHubsClient(
         Func<int, CancellationToken, Task<StartPosition>> resolveStartPosition,
         MessageBusProcessorOptions options,
         ILogger logger)
-        => Task.FromException<IPartitionedStreamConsumer<TMessage>>(new NotSupportedException(ConsumptionNotSupportedMessage));
+        => Task.FromResult<IPartitionedStreamConsumer<TMessage>>(new EventHubsPartitionedStreamConsumer<TMessage>(
+            processorFactory,
+            queueName,
+            EventHubsConsumerGroup.FromConsumerName(queueName, options.ConsumerName),
+            partitionCount,
+            resolveStartPosition,
+            sharesPartitionOwnership,
+            logger,
+            timeProvider));
+
+    public Task<long?> ResolveStartOffset(string queueName, int? partition, StartPosition startPosition, CancellationToken cancellationToken)
+        => _startOffsetResolver.ResolveStartOffset(queueName, partition, startPosition, cancellationToken);
 
     public ValueTask DisposeAsync() => clientFactory.DisposeAsync();
 }

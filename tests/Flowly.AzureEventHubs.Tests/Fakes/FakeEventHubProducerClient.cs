@@ -3,7 +3,7 @@ using Azure.Messaging.EventHubs.Producer;
 
 namespace Flowly.AzureEventHubs.Tests.Fakes;
 
-internal sealed class FakeEventHubProducerClient(int batchSizeBytes = 1024, IReadOnlyList<string>? partitionIds = null) : EventHubProducerClient
+internal sealed class FakeEventHubProducerClient(int batchSizeBytes = 1024, IReadOnlyList<string>? partitionIds = null, bool isGeoReplicationEnabled = false, PartitionProperties? partitionProperties = null) : EventHubProducerClient
 {
     public List<CreateBatchOptions?> BatchOptions { get; } = [];
 
@@ -48,7 +48,10 @@ internal sealed class FakeEventHubProducerClient(int batchSizeBytes = 1024, IRea
     }
 
     public override Task<EventHubProperties> GetEventHubPropertiesAsync(CancellationToken cancellationToken = default)
-        => Task.FromResult(EventHubsModelFactory.EventHubProperties("hub", DateTimeOffset.UtcNow, [.. partitionIds ?? ["0"]]));
+        => Task.FromResult(EventHubsModelFactory.EventHubProperties("hub", DateTimeOffset.UtcNow, [.. partitionIds ?? ["0"]], isGeoReplicationEnabled));
+
+    public override Task<PartitionProperties> GetPartitionPropertiesAsync(string partitionId, CancellationToken cancellationToken = default)
+        => Task.FromResult(partitionProperties ?? throw new InvalidOperationException("No partition properties configured."));
 
     public override ValueTask DisposeAsync()
     {

@@ -7,10 +7,9 @@ Azure Event Hubs stream-only transport for [Flowly](https://rasmustherkelsen.git
 | Supported | Not supported |
 |---|---|
 | `IMessageRecorder` and `[StreamPartitions]` | `MessageHandler<T>`, `BatchMessageHandler<T>`, `JobHandler<T>` and `RecurringJobHandler` |
-| Startup validation of the event hub and its partitions | `CallHandler<T, TReturn>` |
-| | Dead letter tracking |
+| `MessageStreamHandler<T>`, including `[StreamPartitions]`, `StartPosition` and `MessageStreamCheckpoint<T>` | `CallHandler<T, TReturn>` |
+| Startup validation of the event hub and its partitions | Dead letter tracking |
 | | `EventHandlerBase<TEvent>` and event submitters |
-| | `MessageStreamHandler<T>`: consuming a stream from Event Hubs is not supported by this version |
 
 Registering anything that is not supported against this provider fails at startup with a message naming the contract, the capability and the registered providers. Because the transport is stream-only, it is never the primary provider. To use queues, events, jobs or dead letter tracking in the same service, register a queue transport as well, see [Using it next to another transport](#using-it-next-to-another-transport).
 
@@ -19,7 +18,25 @@ Registering anything that is not supported against this provider fails at startu
 ```csharp
 builder.AddFlowly(configure => configure
     .UseAzureEventHubs("EventHubs")
-    .AddMessageRecorder<TelemetryReading>());
+    .AddMessageRecorder<TelemetryReading>()
+    .AddMessageStreamHandler<TelemetryReading, TelemetryStreamHandler>());
+```
+
+```csharp
+public class TelemetryStreamHandler : MessageStreamHandler<TelemetryReading>
+{
+    public override void Configure(MessageStreamHandlerOptions options)
+    {
+        options.StartPosition = StartPosition.First();
+        options.ConsumerName = "telemetry-reader";   // the Event Hubs consumer group, it must exist on the event hub
+    }
+
+    public override async Task Handle(IMessageStreamContext<TelemetryReading> messageContext)
+    {
+        foreach (var reading in messageContext.Messages)
+            await Save(reading);
+    }
+}
 ```
 
 ```json
@@ -41,12 +58,14 @@ builder.UseAzureEventHubs("my-namespace.servicebus.windows.net", new DefaultAzur
 
 ### Registration parameters
 
-`UseAzureEventHubs(connection, name?, partitionOwnershipContainer?, maxMessageSizeBytes?)` and `UseAzureEventHubs(fullyQualifiedNamespace, credential, name?, partitionOwnershipContainer?, maxMessageSizeBytes?)`:
+`UseAzureEventHubs(connection, name?, partitionOwnershipContainer?, loadBalancingInterval?, partitionOwnershipExpiration?, maxMessageSizeBytes?)` and `UseAzureEventHubs(fullyQualifiedNamespace, credential, name?, partitionOwnershipContainer?, loadBalancingInterval?, partitionOwnershipExpiration?, maxMessageSizeBytes?)`:
 
 | Parameter | Meaning |
 |---|---|
 | `name` | Provider name. Defaults to `azure-event-hubs` when it is the first provider registered; a provider registered after another one needs an explicit name. |
 | `partitionOwnershipContainer` | Optional `BlobContainerClient` used to share partition ownership between several instances of the application. The container must already exist; it is checked at startup and never created. Without it a single instance owns its partitions in-process and no storage is needed. |
+| `loadBalancingInterval` | Optional interval at which the instances sharing a consumer group check and renew the partitions they own and claim partitions that are not owned. Defaults to the SDK default (30 seconds). Must be greater than zero. |
+| `partitionOwnershipExpiration` | Optional time after which a partition whose owner has not renewed it is considered abandoned and can be claimed by another instance, which is how a crashed instance is replaced. Defaults to the SDK default (2 minutes). Must be greater than zero and greater than the effective `loadBalancingInterval`, so set both when moving one past the other's default. |
 | `maxMessageSizeBytes` | Optional limit on the serialized message body. A larger message throws `MessageTooLargeException` before anything is sent. Without it the limit is the one of the Event Hubs tier (256 KB on Basic, 1 MB on Standard and Premium, 20 MB on Dedicated). |
 
 There is no `createTopology` and no health check parameter. Topology creation is always off for this provider, see below.
@@ -63,6 +82,8 @@ Flowly does not create event hubs. The provider is registered with topology crea
 
 A failed check stops the host. There is no reconciliation, and changing the partition count of an existing event hub while the application runs is not supported.
 
+When an event hub reports that it is geo-replicated and a message stream checkpoint store is registered, a warning is logged at startup: Azure documents that after a forced failover the offsets of the same data can differ between regions, so a stored position may no longer be valid afterwards. Flowly does not detect or correct this. The hub side is exact: the validator reads `IsGeoReplicationEnabled` for each event hub that has a stream registered on the Event Hubs provider, producer-only hubs included. The checkpoint side is host-wide: it only asks whether any `MessageStreamCheckpoint<T>` is registered anywhere in the host, not whether one belongs to a message type read from that event hub. It can therefore warn when no Event Hubs position is stored, for example when the only checkpoint belongs to a RabbitMQ stream handler while a geo-replicated event hub is also used, or when the host only writes to the geo-replicated event hub with `IMessageRecorder`. It never misses the real case, a checkpoint for a handler that reads a geo-replicated event hub, so it errs towards false positives; it is a single startup warning per event hub and never fails startup. It matters only with a registered checkpoint: without one nothing is stored, so there is nothing to go stale, and with one Azure documents that the offsets of the same data can differ between regions after a forced failover. Flowly does not detect or correct this, and the claim rests on Azure documentation, not on a run against the service.
+
 ## Producing
 
 ```csharp
@@ -74,6 +95,48 @@ await messageRecorder.Record(new TelemetryReading("sensor-1", 21.5), cancellatio
 - On a contract without `[StreamPartitions]` the key is ignored.
 - Each message is one event. The body is the same UTF-8 JSON the other transports send; the message id, the correlation id, the retry count and the W3C trace context travel as event properties. Session id, scheduled enqueue time, reply-to and delivery count have no Event Hubs counterpart and are not sent.
 - Delivery is at-least-once.
+
+## Consuming
+
+A `MessageStreamHandler<T>` reads the event hub of its message contract. The handler, batching, in-process retry and halting behave as for the other stream transports; what Event Hubs adds is below.
+
+### Consumer group
+
+The consumer group is the handler's `ConsumerName`, which defaults to the handler type name. The consumer group must already exist on the event hub: create it, or set `ConsumerName = "$Default"` to read through the default consumer group. One consumer group is one independent reader of the event hub, so two handlers that read the same event hub need different `ConsumerName` values.
+
+A `ConsumerName` that is not a valid consumer group name fails startup and names the offending value: a consumer group name is 1 to 50 characters of letters, digits, `.`, `-` and `_`, starting and ending with a letter or digit (`"$Default"` is the exception), which excludes the default name of a generic handler type. A consumer group that does not exist on the event hub fails startup with a message naming the consumer group and how to fix it.
+
+### Start positions
+
+| Flowly | Event Hubs |
+|---|---|
+| `StartPosition.First()` | `EventPosition.Earliest`: the first retained event |
+| `StartPosition.Last()` | `EventPosition.Latest`: only events enqueued after the handler attaches, as on the other transports |
+| `StartPosition.Offset(n)` | the event with sequence number `n`; sequence numbers are per partition and start at zero. A partition and a sequence number identify an event, so `Offset(n)` on a partitioned stream applies `n` to every partition on its own |
+| `StartPosition.Timestamp(dt)` | `EventPosition.FromEnqueuedTime`: the first event enqueued at or after the time; a `DateTime` of kind `Unspecified` is read as UTC |
+
+Flowly reads from a position as "after the previous sequence number": a stored position is the sequence number of the last processed event, and reading resumes at the event after it. This form is also valid when the partition is empty or fully caught up, where asking for the next sequence number inclusively would fail.
+
+A registered `MessageStreamCheckpoint<T>` wins over `StartPosition`, which then only seeds the first run. Position persistence works with the built-in stores (`Flowly.MessageStreams`) and with hand-rolled checkpoints; the position Flowly stores is `MessageProperties.StreamOffset`, which for Event Hubs is the event's sequence number. With a checkpoint registered, the first run's position is fixed before the first event is read, when Flowly can resolve it from the partition properties:
+
+- `Last()` is stored as the last enqueued sequence number, and `-1` for an empty partition (meaning "start at the first event ever sent"), so events enqueued while the process was down are delivered after a restart.
+- `Timestamp(dt)` is resolved only when `dt` is later than the last enqueued event, or the partition is empty. Event Hubs cannot translate an earlier time into a sequence number without reading events, so then the position is stored after the first processed batch and a warning is logged.
+- `First()` and `Offset(n)` do not change between restarts and are not stored up front.
+
+### Partition ownership
+
+The Azure Event Hubs SDK balances the partitions of an event hub across the instances that share a consumer group, and Flowly leaves ownership to it: a partition the SDK initializes becomes a partition assigned to this process, and a partition the SDK reports lost becomes a partition revoked. Flowly adds no assignment protocol of its own.
+
+- Without a `partitionOwnershipContainer`, ownership is kept in the process. A single instance owns every partition and needs no storage. A second process reading the same consumer group without a container is not coordinated with the first and also receives the events, and losing a partition is logged as a warning naming the consumer group and suggesting the container, because it can mean another reader is consuming that consumer group (it is also reported when reading the partition fails, after which the partition is initialized again).
+- With a `partitionOwnershipContainer`, the instances that share a consumer group and a container split the partitions, and a partition moves to another instance when its owner stops or expires (`partitionOwnershipExpiration`). Flowly never writes checkpoints to the container, only ownership.
+- Register a checkpoint store when running several instances. Without one, the configured `StartPosition` is evaluated again for every partition an instance takes over, so events enqueued between the previous owner's last event and the new start can be skipped with `Last()`.
+- When a partition changes owner, the batch that was in flight on the previous owner has not been checkpointed and is handled again: handlers are at-least-once and must be idempotent.
+- A non-partitioned handler is a single reader of one partition. Running more than one instance of it against a shared checkpoint store is not supported.
+- A halted partition (its retries are exhausted) keeps the SDK's ownership: the batch callback of that partition stays blocked until the partition is lost or the host stops, so no other instance takes over the poison batch, and the other partitions keep running.
+
+Events are buffered per partition without a bound until the handler loop takes them, on top of the SDK's own prefetch, which Flowly does not expose.
+
+The consuming behaviour described here follows the Azure Event Hubs SDK documentation; the tests in this repository exercise it against fakes of the SDK, not against the service.
 
 ## Retention
 

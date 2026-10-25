@@ -167,6 +167,59 @@ public class AzureEventHubsRegistrationTests
 
             Assert.Equal("queues", ProviderNameResolver.GetRegistry(builder.Services).PrimaryProviderName);
         }
+        [Fact]
+        public void WithLoadBalancingIntervalAndPartitionOwnershipExpiration_RegistersTheProvider()
+        {
+            var builder = TestFlowlyBuilder.Create();
+
+            builder.UseAzureEventHubs(ConnectionString, loadBalancingInterval: TimeSpan.FromSeconds(10), partitionOwnershipExpiration: TimeSpan.FromSeconds(60));
+
+            Assert.Single(ProviderNameResolver.GetRegistry(builder.Services).GetAll());
+        }
+
+        [Fact]
+        public void WithCredentialAndIntervals_RegistersTheProvider()
+        {
+            var builder = TestFlowlyBuilder.Create();
+
+            builder.UseAzureEventHubs("example.servicebus.windows.net", new FakeTokenCredential(), loadBalancingInterval: TimeSpan.FromSeconds(10), partitionOwnershipExpiration: TimeSpan.FromSeconds(60));
+
+            Assert.Single(ProviderNameResolver.GetRegistry(builder.Services).GetAll());
+        }
+
+        [Fact]
+        public void WithLoadBalancingIntervalOfZero_ThrowsAndRegistersNothing()
+        {
+            var builder = TestFlowlyBuilder.Create();
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => builder.UseAzureEventHubs(ConnectionString, loadBalancingInterval: TimeSpan.Zero));
+            Assert.Empty(ProviderNameResolver.GetRegistry(builder.Services).GetAll());
+        }
+
+        [Fact]
+        public void WithPartitionOwnershipExpirationOfZero_Throws()
+        {
+            var builder = TestFlowlyBuilder.Create();
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => builder.UseAzureEventHubs(ConnectionString, partitionOwnershipExpiration: TimeSpan.Zero));
+        }
+
+        [Fact]
+        public void WithExpirationNotGreaterThanTheInterval_Throws()
+        {
+            var builder = TestFlowlyBuilder.Create();
+
+            Assert.Throws<ArgumentException>(() => builder.UseAzureEventHubs(ConnectionString, loadBalancingInterval: TimeSpan.FromSeconds(60), partitionOwnershipExpiration: TimeSpan.FromSeconds(30)));
+        }
+
+        [Fact]
+        public void WithCredentialAndExpirationNotGreaterThanTheInterval_Throws()
+        {
+            var builder = TestFlowlyBuilder.Create();
+
+            Assert.Throws<ArgumentException>(
+                () => builder.UseAzureEventHubs("example.servicebus.windows.net", new FakeTokenCredential(), loadBalancingInterval: TimeSpan.FromMinutes(5)));
+        }
     }
 
     public class Routing
@@ -302,9 +355,55 @@ public class AzureEventHubsRegistrationTests
             Assert.Equal(1, inspector.Calls);
         }
 
-        private static async Task StartQueueRegistrar(IFlowlyBuilder builder, bool createTopology)
+        [Fact]
+        public async Task WithAGeoReplicatedEventHubAndARegisteredCheckpointStore_WarnsAtStartup()
+        {
+            var clientFactory = new FakeEventHubsClientFactory();
+            clientFactory.Inspectors["telemetry-reading"] = new FakeEventHubsInspector(["0"], isGeoReplicationEnabled: true);
+            var builder = TestFlowlyBuilder.Create().WithEventHubs(clientFactory);
+            builder.AddMessageRecorder<TelemetryReading>();
+            builder.Services.AddSingleton<MessageStreamCheckpoint<TelemetryReading>, FakeMessageStreamCheckpoint<TelemetryReading>>();
+            var logger = new RecordingLogger<AzureEventHubsTopologyValidator>();
+
+            await StartQueueRegistrar(builder, createTopology: false, logger);
+
+            Assert.Contains(logger.Entries, entry => entry.Level == LogLevel.Warning && entry.Message.Contains("geo-replicated"));
+        }
+
+        [Fact]
+        public async Task WithACheckpointStoreRegisteredAfterTheProvider_StillWarnsAtStartup()
+        {
+            var clientFactory = new FakeEventHubsClientFactory();
+            clientFactory.Inspectors["telemetry-reading"] = new FakeEventHubsInspector(["0"], isGeoReplicationEnabled: true);
+            var builder = TestFlowlyBuilder.Create().WithEventHubs(clientFactory);
+            builder.Services.AddSingleton<MessageStreamCheckpoint<TelemetryReading>, FakeMessageStreamCheckpoint<TelemetryReading>>();
+            builder.AddMessageRecorder<TelemetryReading>();
+            var logger = new RecordingLogger<AzureEventHubsTopologyValidator>();
+
+            await StartQueueRegistrar(builder, createTopology: false, logger);
+
+            Assert.Contains(logger.Entries, entry => entry.Message.Contains("geo-replicated"));
+        }
+
+        [Fact]
+        public async Task WithAGeoReplicatedEventHubAndNoCheckpointStore_DoesNotWarn()
+        {
+            var clientFactory = new FakeEventHubsClientFactory();
+            clientFactory.Inspectors["telemetry-reading"] = new FakeEventHubsInspector(["0"], isGeoReplicationEnabled: true);
+            var builder = TestFlowlyBuilder.Create().WithEventHubs(clientFactory);
+            builder.AddMessageRecorder<TelemetryReading>();
+            var logger = new RecordingLogger<AzureEventHubsTopologyValidator>();
+
+            await StartQueueRegistrar(builder, createTopology: false, logger);
+
+            Assert.DoesNotContain(logger.Entries, entry => entry.Message.Contains("geo-replicated"));
+        }
+
+        private static async Task StartQueueRegistrar(IFlowlyBuilder builder, bool createTopology, ILogger<AzureEventHubsTopologyValidator>? validatorLogger = null)
         {
             builder.Services.AddSingleton(typeof(ILogger<>), typeof(NullLogger<>));
+            if (validatorLogger is not null)
+                builder.Services.AddSingleton(validatorLogger);
             builder.Services.AddSingleton<ICrossProviderConflictValidator, CrossProviderConflictValidator>();
             await using var serviceProvider = builder.Services.BuildServiceProvider();
 

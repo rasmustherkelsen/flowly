@@ -62,6 +62,7 @@ public readonly struct StartPosition : IEquatable<StartPosition>
     ///         existing chunk and would deliver the messages in it). The InMemory transport behaves the same. With a registered
     ///         <see cref="MessageStreamCheckpoint{TMessage}" /> the tail offset at the first run is stored up front, so messages
     ///         published while the process was down are delivered after a restart even if no message had arrived before it.
+    ///         Azure Event Hubs maps it to <c>EventPosition.Latest</c>.
     ///     </para>
     /// </summary>
     /// <returns>A <see cref="StartPosition" /> representing the tail of the stream.</returns>
@@ -69,7 +70,8 @@ public readonly struct StartPosition : IEquatable<StartPosition>
 
     /// <summary>
     ///     Start consuming from a specific numeric offset in the stream. Offsets below the retention floor are clamped
-    ///     to the first retained message by the broker.
+    ///     to the first retained message by the broker. On Azure Event Hubs the offset is the sequence number of the event within its
+    ///     partition (sequence numbers start at zero in every partition).
     /// </summary>
     /// <param name="offset">The zero-based stream offset to start from.</param>
     /// <returns>A <see cref="StartPosition" /> representing the given offset.</returns>

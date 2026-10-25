@@ -26,6 +26,11 @@ internal static class TestFlowlyBuilder
         return flowlyBuilder;
     }
 
-    public static IFlowlyBuilder WithEventHubs(this IFlowlyBuilder flowlyBuilder, FakeEventHubsClientFactory? clientFactory = null, string name = "azure-event-hubs", Azure.Storage.Blobs.BlobContainerClient? container = null)
-        => flowlyBuilder.RegisterAzureEventHubs(clientFactory ?? new FakeEventHubsClientFactory(), name, container, null);
+    public static IFlowlyBuilder WithEventHubs(this IFlowlyBuilder flowlyBuilder, FakeEventHubsClientFactory? clientFactory = null, string name = "azure-event-hubs", Azure.Storage.Blobs.BlobContainerClient? container = null, FakeEventHubsProcessorFactory? processorFactory = null)
+        => flowlyBuilder.RegisterAzureEventHubs(
+            clientFactory ?? new FakeEventHubsClientFactory(),
+            processorFactory ?? new FakeEventHubsProcessorFactory(),
+            name,
+            EventHubsOwnershipOptions.Create(container, null, null),
+            null);
 }

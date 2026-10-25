@@ -13,13 +13,14 @@ public class AzureEventHubsTopologyValidatorTests
         => [.. queueNames.Select(queueName => (IQueueDescription)new QueueDescription(queueName, TimeSpan.FromDays(1), true, TimeSpan.FromMinutes(5), false))];
 
     private static (AzureEventHubsTopologyValidator Validator, FakeEventHubsClientFactory ClientFactory, StreamQueueManifest Manifest, RecordingLogger<AzureEventHubsTopologyValidator> Logger) Create(
-        BlobContainerClient? container = null)
+        BlobContainerClient? container = null,
+        bool checkpointStoreRegistered = false)
     {
         var clientFactory = new FakeEventHubsClientFactory();
         var manifest = new StreamQueueManifest();
         var logger = new RecordingLogger<AzureEventHubsTopologyValidator>();
 
-        return (new AzureEventHubsTopologyValidator("azure-event-hubs", clientFactory, container, manifest, logger), clientFactory, manifest, logger);
+        return (new AzureEventHubsTopologyValidator("azure-event-hubs", clientFactory, container, manifest, () => checkpointStoreRegistered, logger), clientFactory, manifest, logger);
     }
 
     public class ProviderName
@@ -320,6 +321,58 @@ public class AzureEventHubsTopologyValidatorTests
             var (azureEventHubsTopologyValidator, clientFactory, manifest, logger) = Create();
             manifest.MarkAsStream("readings", null, 1024, 2);
             clientFactory.Inspectors["readings"] = new FakeEventHubsInspector(["0"]);
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => azureEventHubsTopologyValidator.Validate(Queues("readings"), CancellationToken.None));
+
+            Assert.Empty(logger.Entries);
+        }
+
+        [Fact]
+        public async Task GeoReplicatedEventHubWithACheckpointStore_LogsAWarningNamingTheEventHub()
+        {
+            var (azureEventHubsTopologyValidator, clientFactory, manifest, logger) = Create(checkpointStoreRegistered: true);
+            manifest.MarkAsStream("readings", null, null);
+            clientFactory.Inspectors["readings"] = new FakeEventHubsInspector(["0"], isGeoReplicationEnabled: true);
+
+            await azureEventHubsTopologyValidator.Validate(Queues("readings"), CancellationToken.None);
+
+            var entry = Assert.Single(logger.Entries);
+            Assert.Equal(LogLevel.Warning, entry.Level);
+            Assert.Contains("'readings'", entry.Message);
+            Assert.Contains("geo-replicated", entry.Message);
+            Assert.Contains("forced failover", entry.Message);
+        }
+
+        [Fact]
+        public async Task GeoReplicatedEventHubWithoutACheckpointStore_LogsNothing()
+        {
+            var (azureEventHubsTopologyValidator, clientFactory, manifest, logger) = Create(checkpointStoreRegistered: false);
+            manifest.MarkAsStream("readings", null, null);
+            clientFactory.Inspectors["readings"] = new FakeEventHubsInspector(["0"], isGeoReplicationEnabled: true);
+
+            await azureEventHubsTopologyValidator.Validate(Queues("readings"), CancellationToken.None);
+
+            Assert.Empty(logger.Entries);
+        }
+
+        [Fact]
+        public async Task EventHubWithoutGeoReplicationAndWithACheckpointStore_LogsNothing()
+        {
+            var (azureEventHubsTopologyValidator, clientFactory, manifest, logger) = Create(checkpointStoreRegistered: true);
+            manifest.MarkAsStream("readings", null, null);
+            clientFactory.Inspectors["readings"] = new FakeEventHubsInspector(["0"], isGeoReplicationEnabled: false);
+
+            await azureEventHubsTopologyValidator.Validate(Queues("readings"), CancellationToken.None);
+
+            Assert.Empty(logger.Entries);
+        }
+
+        [Fact]
+        public async Task GeoReplicatedEventHubThatFailsValidation_ThrowsWithoutTheGeoReplicationWarning()
+        {
+            var (azureEventHubsTopologyValidator, clientFactory, manifest, logger) = Create(checkpointStoreRegistered: true);
+            manifest.MarkAsStream("readings", null, null, 2);
+            clientFactory.Inspectors["readings"] = new FakeEventHubsInspector(["0"], isGeoReplicationEnabled: true);
 
             await Assert.ThrowsAsync<InvalidOperationException>(() => azureEventHubsTopologyValidator.Validate(Queues("readings"), CancellationToken.None));
 

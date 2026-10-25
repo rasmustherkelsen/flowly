@@ -47,7 +47,7 @@ public class EventHubsProducerClientAdapterTests
         }
     }
 
-    public class GetPartitionIds
+    public class GetEventHubInfo
     {
         [Fact]
         public async Task ReturnsThePartitionIdsOfTheEventHub()
@@ -55,7 +55,49 @@ public class EventHubsProducerClientAdapterTests
             var producerClient = new FakeEventHubProducerClient(partitionIds: ["0", "1", "2"]);
             var eventHubsProducerClientAdapter = new EventHubsProducerClientAdapter("readings", producerClient);
 
-            Assert.Equal(["0", "1", "2"], await eventHubsProducerClientAdapter.GetPartitionIds(CancellationToken.None));
+            var eventHubInfo = await eventHubsProducerClientAdapter.GetEventHubInfo(CancellationToken.None);
+
+            Assert.Equal(["0", "1", "2"], eventHubInfo.PartitionIds);
+        }
+
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public async Task ReturnsWhetherGeoReplicationIsEnabled(bool isGeoReplicationEnabled)
+        {
+            var producerClient = new FakeEventHubProducerClient(isGeoReplicationEnabled: isGeoReplicationEnabled);
+            var eventHubsProducerClientAdapter = new EventHubsProducerClientAdapter("readings", producerClient);
+
+            var eventHubInfo = await eventHubsProducerClientAdapter.GetEventHubInfo(CancellationToken.None);
+
+            Assert.Equal(isGeoReplicationEnabled, eventHubInfo.IsGeoReplicationEnabled);
+        }
+    }
+
+    public class GetPartitionState
+    {
+        [Fact]
+        public async Task ReturnsTheSequenceNumbersAndLastEnqueuedTimeOfThePartition()
+        {
+            var lastEnqueuedTime = new DateTimeOffset(2026, 3, 4, 5, 6, 7, TimeSpan.Zero);
+            var producerClient = new FakeEventHubProducerClient(partitionProperties: EventHubsModelFactory.PartitionProperties("readings", "0", false, 3, 9, "offset", lastEnqueuedTime));
+            var eventHubsProducerClientAdapter = new EventHubsProducerClientAdapter("readings", producerClient);
+
+            var partitionState = await eventHubsProducerClientAdapter.GetPartitionState("0", CancellationToken.None);
+
+            Assert.Equal(new EventHubsPartitionState(3, 9, lastEnqueuedTime, false), partitionState);
+        }
+
+        [Fact]
+        public async Task OfAnEmptyPartition_IsReportedEmpty()
+        {
+            var producerClient = new FakeEventHubProducerClient(partitionProperties: EventHubsModelFactory.PartitionProperties("readings", "0", true, -1, -1, "offset", default));
+            var eventHubsProducerClientAdapter = new EventHubsProducerClientAdapter("readings", producerClient);
+
+            var partitionState = await eventHubsProducerClientAdapter.GetPartitionState("0", CancellationToken.None);
+
+            Assert.True(partitionState.IsEmpty);
+            Assert.Equal(-1, partitionState.LastEnqueuedSequenceNumber);
         }
     }
 

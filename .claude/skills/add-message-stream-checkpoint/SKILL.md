@@ -1,6 +1,6 @@
 ---
 name: add-message-stream-checkpoint
-description: Add restart-survival to an existing Flowly MessageStreamHandler<T> by scaffolding a hand-rolled MessageStreamCheckpoint<T> against custom storage — RabbitMQ only. If the user wants SQL Server/Postgres/SQLite instead, use the add-message-stream-persistence skill (Flowly's built-in checkpoint providers) rather than this one. Scaffolds the class with no default storage implementation, just method stubs and guidance comments, since the storage choice (database, cache, file, etc.) belongs to the user. Use when the user asks to persist a stream's read position across restarts, or to make a stream handler resume where it left off after a restart.
+description: Add restart-survival to an existing Flowly MessageStreamHandler<T> by scaffolding a hand-rolled MessageStreamCheckpoint<T> against custom storage — RabbitMQ or Azure Event Hubs, not InMemory. If the user wants SQL Server/Postgres/SQLite instead, use the add-message-stream-persistence skill (Flowly's built-in checkpoint providers) rather than this one. Scaffolds the class with no default storage implementation, just method stubs and guidance comments, since the storage choice (database, cache, file, etc.) belongs to the user. Use when the user asks to persist a stream's read position across restarts, or to make a stream handler resume where it left off after a restart.
 arguments:
   - name: messageName
     description: "PascalCase message class name of the existing stream, including the Message suffix. Example: TelemetryReadingMessage"
@@ -10,7 +10,7 @@ arguments:
 Add a `MessageStreamCheckpoint<$0>` for an **existing** `MessageStreamHandler<$0>` registration, so the stream's read position survives a process restart instead of being re-evaluated fresh from `StartPosition` on every boot. Follow all steps below.
 
 > **Important constraints to communicate upfront:**
-> - **RabbitMQ only.** Registering a `MessageStreamCheckpoint<T>` against an InMemory-backed stream throws `InvalidOperationException` at registration time — the in-process log itself has no cross-restart persistence, so a saved position would point at data that no longer exists after a restart.
+> - **Not for InMemory.** Registering a `MessageStreamCheckpoint<T>` against an InMemory-backed stream throws `InvalidOperationException` at registration time — the in-process log itself has no cross-restart persistence, so a saved position would point at data that no longer exists after a restart. RabbitMQ and Azure Event Hubs streams support checkpoints; on Azure Event Hubs the offset Flowly hands to `SaveStreamPosition` is the event's sequence number within its partition (it starts at `0`, and the seed for an empty partition is `-1`).
 > - **No default storage implementation is provided.** This skill scaffolds the class shape with method stubs and comments describing the decision — it does not pick a database, cache, or file for the user. Ask what durable storage this project already has (an existing `DbContext`, a distributed cache, etc.) before filling in the bodies, and only fill them in if the user wants that done now.
 > - **Checkpoint identity is `(ConsumerName, Partition)`** — this disambiguates independent readers of the same stream. `ConsumerName` defaults to the handler type name; `Partition` is `null` for a non-partitioned stream.
 > - **Only one live instance per non-partitioned handler registration** may run against a shared checkpoint store at a time — Flowly does not coordinate exclusive access across processes, and running more than one will corrupt the stored position.
@@ -25,15 +25,15 @@ grep -rn "MessageStreamHandler<$0>" --include="*.cs" .
 - **No match** → stop and tell the user: "No `MessageStreamHandler<$0>` was found. A checkpoint attaches to an existing stream handler — use `/create-message-stream-handler` first if `$0` doesn't have one yet." Do not scaffold a checkpoint with nothing to attach it to.
 - **Match found** → note the handler's project and namespace; the checkpoint class goes in the **same project** as the handler (the consumer side), not the producer.
 
-## Step 2 — Confirm the transport is RabbitMQ
+## Step 2 — Confirm the transport is RabbitMQ or Azure Event Hubs
 
 ```bash
-grep -r "UseRabbitMq\|UseInMemory\|UseAzureServiceBus" --include="*.cs" <handler project path>
+grep -r "UseRabbitMq\|UseAzureEventHubs\|UseInMemory\|UseAzureServiceBus" --include="*.cs" <handler project path>
 ```
 
-- **RabbitMQ found** → proceed.
-- **InMemory found** → stop and tell the user: "This stream is InMemory-backed. Registering a checkpoint against it throws `InvalidOperationException` — the in-process log has no cross-restart persistence for a saved position to point at. Checkpoints are RabbitMQ-only." Do not scaffold the class.
-- **Azure Service Bus found, or no transport found** → this shouldn't be possible for a project that already has a `MessageStreamHandler` (streams require RabbitMQ or InMemory), but if it happens, stop and flag it to the user as unexpected before proceeding.
+- **RabbitMQ or Azure Event Hubs found** → proceed.
+- **InMemory found** → stop and tell the user: "This stream is InMemory-backed. Registering a checkpoint against it throws `InvalidOperationException` — the in-process log has no cross-restart persistence for a saved position to point at. Checkpoints need RabbitMQ or Azure Event Hubs." Do not scaffold the class.
+- **Azure Service Bus found, or no transport found** → this shouldn't be possible for a project that already has a `MessageStreamHandler` (streams require RabbitMQ, InMemory or Azure Event Hubs), but if it happens, stop and flag it to the user as unexpected before proceeding.
 
 ## Step 3 — Ask what storage this checkpoint should use
 
@@ -59,7 +59,7 @@ namespace <HandlerProjectNamespace>;
 // fresh on every boot — registering this checkpoint replaces that with a stored
 // position. For StartPosition.Last() and StartPosition.Timestamp(...), Flowly
 // resolves the start to a concrete offset and stores it on the very first run,
-// before any batch is processed (RabbitMQ), so messages published while the
+// before any batch is processed (RabbitMQ and Azure Event Hubs, where the transport can resolve it), so messages published while the
 // process was down are not skipped by a restart.
 //
 // Storage is entirely up to you — a table in a database this project already
@@ -139,7 +139,7 @@ Fix any errors before reporting the task as complete.
 ## Checklist
 
 - [ ] Confirmed `MessageStreamHandler<$0>` already exists (did not scaffold a checkpoint with nothing to attach it to)
-- [ ] Confirmed the target project uses RabbitMQ, not InMemory
+- [ ] Confirmed the target project uses RabbitMQ or Azure Event Hubs, not InMemory
 - [ ] Asked the user what durable storage to use, without guessing
 - [ ] `$0Checkpoint` class created in the handler's project (`internal`, inherits `MessageStreamCheckpoint<$0>`), with stub bodies left as `NotImplementedException` unless the user asked for the implementation now
 - [ ] If implemented now with EF Core storage, injected `IDbContextFactory<T>` (not `DbContext` directly) — required for thread safety on partitioned streams and to avoid a DI captive-dependency bug

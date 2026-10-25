@@ -46,7 +46,7 @@ internal sealed class EventHubsClientFactory(Func<string, EventHubProducerClient
         }
     }
 
-    private static string RejectEntityPath(string connectionString)
+    internal static string RejectEntityPath(string connectionString)
     {
         if (!string.IsNullOrEmpty(EventHubsConnectionStringProperties.Parse(connectionString).EventHubName))
             throw new InvalidOperationException(

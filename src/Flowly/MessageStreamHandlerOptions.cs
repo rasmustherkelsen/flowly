@@ -41,7 +41,8 @@ public class MessageStreamHandlerOptions
     ///     handler's type name. Pin this explicitly if the handler class may be renamed later, since the default
     ///     would otherwise silently orphan a previously stored position. The resolved name is also passed to the transport as
     ///     <see cref="Transport.MessageBusProcessorOptions.ConsumerName" />, which may use it to identify the reader on the broker
-    ///     (for example as a consumer group); the RabbitMQ and InMemory transports ignore it.
+    ///     (for example as a consumer group): Azure Event Hubs reads the event hub through the consumer group with this name, which must
+    ///     exist on the event hub (<c>"$Default"</c> selects the default consumer group), while the RabbitMQ and InMemory transports ignore it.
     /// </summary>
     public string? ConsumerName { get; set; }
 

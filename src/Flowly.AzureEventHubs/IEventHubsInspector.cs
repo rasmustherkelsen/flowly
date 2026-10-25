@@ -2,5 +2,7 @@ namespace Flowly.AzureEventHubs;
 
 internal interface IEventHubsInspector
 {
-    Task<IReadOnlyCollection<string>> GetPartitionIds(CancellationToken cancellationToken);
+    Task<EventHubsInfo> GetEventHubInfo(CancellationToken cancellationToken);
+
+    Task<EventHubsPartitionState> GetPartitionState(string partitionId, CancellationToken cancellationToken);
 }

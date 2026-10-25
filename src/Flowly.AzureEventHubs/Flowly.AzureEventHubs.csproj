@@ -5,7 +5,7 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <PackageId>Flowly.AzureEventHubs</PackageId>
-        <Description>Azure Event Hubs stream-only transport for Flowly. Records messages onto Event Hubs through IMessageRecorder and validates the hub topology at startup. It does not support queues, events, jobs, call handlers or dead letter tracking; use Flowly.AzureServiceBus or Flowly.RabbitMQ next to it for those.</Description>
+        <Description>Azure Event Hubs stream-only transport for Flowly. Records messages onto Event Hubs through IMessageRecorder, consumes them with MessageStreamHandler (partitioned or not, with start positions and checkpoints) and validates the hub topology at startup. It does not support queues, events, jobs, call handlers or dead letter tracking; use Flowly.AzureServiceBus or Flowly.RabbitMQ next to it for those.</Description>
         <PackageReadmeFile>README.md</PackageReadmeFile>
     </PropertyGroup>
 
@@ -16,6 +16,7 @@
     </ItemGroup>
 
     <ItemGroup>
+        <PackageReference Include="Azure.Messaging.EventHubs.Processor" Version="5.12.2" />
         <PackageReference Include="Azure.Messaging.EventHubs" Version="5.12.2" />
         <PackageReference Include="Azure.Storage.Blobs" Version="12.23.0" />
     </ItemGroup>
