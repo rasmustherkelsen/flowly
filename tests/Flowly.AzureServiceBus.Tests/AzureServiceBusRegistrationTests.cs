@@ -29,6 +29,17 @@ public class AzureServiceBusRegistrationTests
     public class UseAzureServiceBusWithTokenCredential
     {
         [Fact]
+        public void RegistersTopologyCreatorForTheProvider()
+        {
+            var (builder, _) = CreateBuilder();
+
+            builder.UseAzureServiceBus("testnamespace.servicebus.windows.net", new FakeTokenCredential());
+
+            var topologyRegistry = builder.Services.Select(service => service.ImplementationInstance).OfType<FakeMessagingTopologyCreatorRegistry>().Single();
+            Assert.NotNull(topologyRegistry.Creators["azure-service-bus"]);
+        }
+
+        [Fact]
         public void RegistersProviderAsPrimary()
         {
             var (builder, registry) = CreateBuilder();
@@ -164,8 +175,11 @@ public class AzureServiceBusRegistrationTests
 
     private sealed class FakeMessagingTopologyCreatorRegistry : IMessagingTopologyCreatorRegistry
     {
+        public Dictionary<string, IMessagingTopologyCreator> Creators { get; } = [];
+
         public void Register(string providerName, IMessagingTopologyCreator creator)
         {
+            Creators[providerName] = creator;
         }
 
         public IMessagingTopologyCreator GetCreator(string providerName)

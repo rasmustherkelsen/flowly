@@ -5,6 +5,11 @@ namespace Flowly.Transport;
 ///     to provision queues in the underlying message broker. Implement this interface in your transport provider and
 ///     register it so that Flowly can create all queues described by the registered handlers and submitters before the
 ///     application begins processing messages.
+///     <para>
+///         Registering one is optional. A stream-only provider, whose streams are created outside Flowly or validated by an
+///         <see cref="IMessagingTopologyValidator" />, registers no creator; queue topology creation is then skipped for
+///         that provider.
+///     </para>
 /// </summary>
 public interface IMessagingTopologyCreator
 {

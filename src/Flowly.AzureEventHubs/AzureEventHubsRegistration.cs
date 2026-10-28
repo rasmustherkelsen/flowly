@@ -20,8 +20,9 @@ namespace Flowly.AzureEventHubs;
 ///     <para>
 ///         The event hub name is the stream queue name resolved for the message contract (override it with
 ///         <see cref="QueueNameAttribute" />), so the connection must be namespace level. Flowly does not create event hubs:
-///         topology creation is always off for this provider and the framework instead validates at startup that each event
-///         hub exists and that its partitions match <see cref="StreamPartitionsAttribute" />.
+///         topology creation is always off for this provider, so no <see cref="IMessagingTopologyCreator" /> is registered
+///         for it, and the framework instead validates at startup that each event hub exists and that its partitions match
+///         <see cref="StreamPartitionsAttribute" />, even when the host requests topology creation.
 ///     </para>
 ///     <para>
 ///         A stream handler reads an event hub through the consumer group named by its
@@ -169,8 +170,6 @@ public static class AzureEventHubsRegistration
         clientRegistry.Register(effectiveName, client, createTopologyOverride: false);
 
         services.AddSingleton<IHostedService>(new AzureEventHubsConnectionLifetime(client));
-
-        TransportRegistrationHelper.RegisterTopologyCreators(services, effectiveName, new AzureEventHubsTopologyCreator());
 
         services.AddSingleton<IMessagingTopologyValidator>(serviceProvider => new AzureEventHubsTopologyValidator(
             effectiveName,

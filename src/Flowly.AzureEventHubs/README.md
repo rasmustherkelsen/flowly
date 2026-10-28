@@ -74,7 +74,7 @@ There is no `createTopology` and no health check parameter. Topology creation is
 
 The event hub name is the stream queue name Flowly resolves for the message contract, so `TelemetryReading` records to the event hub `telemetry-reading` with the default naming, and `[QueueName("readings")]` overrides it. Event hub names are 1 to 256 characters of letters, digits, `.`, `-` and `_`, starting and ending with a letter or digit.
 
-Flowly does not create event hubs. The provider is registered with topology creation forced off, even when the host asks for `createTopology: true`, so that the validator always runs. At startup, for every stream registered against the provider, Flowly checks that:
+Flowly does not create event hubs. The provider is registered with topology creation forced off, even when the host asks for `createTopology: true`, so that the validator always runs; it registers no queue topology creator, since there is nothing for one to do. At startup, for every stream registered against the provider, Flowly checks that:
 
 - the event hub exists and can be read with the configured credentials;
 - its partitions match the contract: the partition ids are exactly `0` to `n-1` for `[StreamPartitions(n)]`, and exactly `0` for a contract without `[StreamPartitions]`. Flowly maps partition id `k` to partition `k`, so an event hub with any other ids fails startup with the ids it found listed;

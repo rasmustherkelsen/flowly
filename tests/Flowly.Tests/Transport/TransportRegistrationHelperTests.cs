@@ -155,6 +155,18 @@ public class TransportRegistrationHelperTests
             Assert.Same(messagingCreator, messagingRegistry.GetCreator("streams"));
         }
 
+        [Fact]
+        public void WhenNotCalledForAProvider_ThatProviderHasNoMessagingCreator()
+        {
+            var (services, messagingRegistry, _) = CreateServices();
+            var messagingCreator = new StubMessagingTopologyCreator();
+
+            TransportRegistrationHelper.RegisterTopologyCreators(services, "queues", messagingCreator);
+
+            Assert.Same(messagingCreator, messagingRegistry.TryGetCreator("queues"));
+            Assert.Null(messagingRegistry.TryGetCreator("streams"));
+        }
+
         private static (IServiceCollection Services, MessagingTopologyCreatorRegistry MessagingRegistry, EventTopologyCreatorRegistry EventRegistry) CreateServices()
         {
             var messagingRegistry = new MessagingTopologyCreatorRegistry();

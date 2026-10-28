@@ -7,6 +7,11 @@ namespace Flowly.Transport;
 ///     Shared helpers for transport provider registration. Centralises the boilerplate that every
 ///     transport provider (<c>UseRabbitMq</c>, <c>UseAzureServiceBus</c>, <c>UseInMemory</c>, …) needs
 ///     when wiring itself into the Flowly infrastructure.
+///     <para>
+///         Registering an <see cref="IMessagingTopologyCreator" /> is optional: a stream-only provider that creates no queues
+///         does not call <see cref="RegisterTopologyCreators(IServiceCollection, string, IMessagingTopologyCreator)" /> at all,
+///         and the framework then skips queue topology creation for it.
+///     </para>
 /// </summary>
 public static class TransportRegistrationHelper
 {
