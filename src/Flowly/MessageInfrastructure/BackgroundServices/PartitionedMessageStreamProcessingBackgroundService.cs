@@ -44,7 +44,8 @@ internal sealed class PartitionedMessageStreamProcessingBackgroundService<TMessa
             (partition, ct) => MessageStreamCheckpointHelper.ResolveStartPosition<TMessage>(
                 serviceScopeFactory, handlerSettings.ConsumerName, partition, handlerSettings.StartPosition,
                 handlerSettings.HandlerName, handlerSettings.QueueName, handlerInstrumentation, logger, ct,
-                initializeCheckpoint: IsFirstAssignment(partition), startOffsetResolver: startOffsetResolver),
+                initializeCheckpoint: !IsCheckpointInitialized(partition), startOffsetResolver: startOffsetResolver,
+                checkpointInitialized: () => MarkCheckpointInitialized(partition)),
             new MessageBusProcessorOptions(handlerSettings.MaxMessagesBeforeProcessing, MessageBusReceiveMode.PeekLock)
             {
                 ConsumerName = handlerSettings.ConsumerName
@@ -72,11 +73,19 @@ internal sealed class PartitionedMessageStreamProcessingBackgroundService<TMessa
         }
     }
 
-    private bool IsFirstAssignment(int partition)
+    private bool IsCheckpointInitialized(int partition)
     {
         lock (_lock)
         {
-            return _initializedPartitions.Add(partition);
+            return _initializedPartitions.Contains(partition);
+        }
+    }
+
+    private void MarkCheckpointInitialized(int partition)
+    {
+        lock (_lock)
+        {
+            _initializedPartitions.Add(partition);
         }
     }
 

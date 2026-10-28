@@ -42,7 +42,8 @@ internal static class MessageStreamCheckpointHelper
         ILogger logger,
         CancellationToken cancellationToken,
         bool initializeCheckpoint = true,
-        IStreamStartOffsetResolver? startOffsetResolver = null)
+        IStreamStartOffsetResolver? startOffsetResolver = null,
+        Action? checkpointInitialized = null)
     {
         await using var scope = serviceScopeFactory.CreateAsyncScope();
         var checkpoint = scope.ServiceProvider.GetService<MessageStreamCheckpoint<TMessage>>();
@@ -51,7 +52,10 @@ internal static class MessageStreamCheckpointHelper
         var context = new MessageStreamCheckpointContext(consumerName, partition);
 
         if (initializeCheckpoint)
+        {
             await checkpoint.InitializeCheckpoint(context, cancellationToken);
+            checkpointInitialized?.Invoke();
+        }
 
         var storedPosition = await checkpoint.GetStreamPosition(context, cancellationToken);
 

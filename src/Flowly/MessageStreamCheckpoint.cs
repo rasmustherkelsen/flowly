@@ -55,9 +55,16 @@ namespace Flowly;
 public abstract class MessageStreamCheckpoint<TMessage>
 {
     /// <summary>
-    ///     Called once before this reader's processing loop starts, so an implementation can ensure a row exists
+    ///     Called before this reader's processing loop starts, so an implementation can ensure a row exists
     ///     ahead of time — keeping <see cref="SaveStreamPosition" />, called on every processed batch, a plain
     ///     update with no existence check on the hot path.
+    ///     <para>
+    ///         Flowly calls it until it has completed once per reader (per partition on a partitioned stream): when it
+    ///         throws, the start position is not resolved and the reader does not start, and it is called again the next
+    ///         time the reader is started (for a partitioned stream, the next time the partition is assigned to this
+    ///         process). After it has completed it is not called again for that reader for the lifetime of the process,
+    ///         so an implementation should still tolerate being called again after a process restart.
+    ///     </para>
     /// </summary>
     /// <param name="context">Identifies the reader this checkpoint belongs to.</param>
     /// <param name="cancellationToken">A cancellation token signaling when the host is shutting down.</param>

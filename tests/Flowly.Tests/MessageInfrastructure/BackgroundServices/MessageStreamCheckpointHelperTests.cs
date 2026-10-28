@@ -52,6 +52,44 @@ public class MessageStreamCheckpointHelperTests
         }
 
         [Fact]
+        public async Task WhenInitializeCheckpointCompletes_InvokesCheckpointInitializedAfterIt()
+        {
+            var events = new List<string>();
+            var checkpoint = new FakeCheckpoint(events);
+
+            await MessageStreamCheckpointHelper.ResolveStartPosition<TestMessage>(
+                CreateScopeFactory(checkpoint), "consumer", 1, StartPosition.First(), "MyHandler", "my-queue", new SpyHandlerInstrumentation(), NullLogger.Instance,
+                CancellationToken.None, checkpointInitialized: () => events.Add("Initialized"));
+
+            Assert.Equal(["Initialize", "Initialized", "Get"], events);
+        }
+
+        [Fact]
+        public async Task WhenInitializeCheckpointThrows_DoesNotInvokeCheckpointInitialized()
+        {
+            var checkpoint = new FakeCheckpoint { InitializeException = new InvalidOperationException("store unavailable") };
+            var initialized = false;
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => MessageStreamCheckpointHelper.ResolveStartPosition<TestMessage>(
+                CreateScopeFactory(checkpoint), "consumer", 1, StartPosition.First(), "MyHandler", "my-queue", new SpyHandlerInstrumentation(), NullLogger.Instance,
+                CancellationToken.None, checkpointInitialized: () => initialized = true));
+
+            Assert.False(initialized);
+        }
+
+        [Fact]
+        public async Task WithInitializeCheckpointFalse_DoesNotInvokeCheckpointInitialized()
+        {
+            var initialized = false;
+
+            await MessageStreamCheckpointHelper.ResolveStartPosition<TestMessage>(
+                CreateScopeFactory(new FakeCheckpoint()), "consumer", 1, StartPosition.First(), "MyHandler", "my-queue", new SpyHandlerInstrumentation(), NullLogger.Instance,
+                CancellationToken.None, initializeCheckpoint: false, checkpointInitialized: () => initialized = true);
+
+            Assert.False(initialized);
+        }
+
+        [Fact]
         public async Task DefaultsToInitializingTheCheckpoint()
         {
             var checkpoint = new FakeCheckpoint();
@@ -551,6 +589,7 @@ public class MessageStreamCheckpointHelperTests
     {
         public long? StoredPosition { get; set; }
         public Exception? SaveException { get; set; }
+        public Exception? InitializeException { get; set; }
         public List<MessageStreamCheckpointContext> InitializeCalls { get; } = [];
         public List<MessageStreamCheckpointSaveContext> SaveCalls { get; } = [];
 
@@ -558,7 +597,7 @@ public class MessageStreamCheckpointHelperTests
         {
             events?.Add("Initialize");
             InitializeCalls.Add(context);
-            return Task.CompletedTask;
+            return InitializeException is null ? Task.CompletedTask : Task.FromException(InitializeException);
         }
 
         protected internal override Task<long?> GetStreamPosition(MessageStreamCheckpointContext context, CancellationToken cancellationToken)

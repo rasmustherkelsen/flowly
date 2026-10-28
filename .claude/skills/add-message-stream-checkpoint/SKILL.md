@@ -74,7 +74,8 @@ internal class $0Checkpoint : MessageStreamCheckpoint<$0>
 {
     protected internal override Task InitializeCheckpoint(MessageStreamCheckpointContext context, CancellationToken cancellationToken)
     {
-        // Called once before this reader's processing loop starts. Use this to
+        // Called before this reader's processing loop starts, and again on the
+        // next start if it threw, until it has completed once. Use this to
         // ensure a row/entry exists ahead of time for (context.ConsumerName,
         // context.Partition), so SaveStreamPosition can be a plain update with
         // no existence check on the hot path.
