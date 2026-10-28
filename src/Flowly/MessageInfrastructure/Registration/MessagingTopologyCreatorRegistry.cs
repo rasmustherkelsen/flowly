@@ -14,13 +14,4 @@ internal sealed class MessagingTopologyCreatorRegistry : IMessagingTopologyCreat
 
     public IMessagingTopologyCreator? TryGetCreator(string providerName)
         => _creators.GetValueOrDefault(providerName);
-
-    public IMessagingTopologyCreator GetCreator(string providerName)
-    {
-        if (_creators.TryGetValue(providerName, out var creator))
-            return creator;
-
-        throw new InvalidOperationException(
-            $"No topology creator registered for provider '{providerName}'.");
-    }
 }

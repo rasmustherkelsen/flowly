@@ -169,9 +169,9 @@ public class RabbitMqRegistrationTests
             Creators[providerName] = creator;
         }
 
-        public IMessagingTopologyCreator GetCreator(string providerName)
+        public IMessagingTopologyCreator? TryGetCreator(string providerName)
         {
-            throw new NotImplementedException();
+            return Creators.GetValueOrDefault(providerName);
         }
     }
 

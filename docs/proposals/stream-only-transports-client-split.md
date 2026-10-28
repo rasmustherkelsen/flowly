@@ -147,7 +147,7 @@ Existing design decisions that help:
 
 1. **One registry, typed to `IMessageBusClient`.** `IMessageBusClientRegistry.GetClient(provider)` is called from about two dozen places across core, Jobs and DeadLetters. Stream and event paths each repeat their own `client is not IXxxCapable...` check, in three or four places apiece. The queue paths do not check at all, so a `MessageHandler` on a stream-only provider would fail at runtime.
 2. **The stream producer side depends on the queue client.** `IMessageRecorder` goes through `MessageSubmitter` to `IMessageBusClient.CreateMessageBusSender`. `IStreamCapableMessageBusClient` only has `CreateStreamProcessor`, so a stream-only transport would have no way to produce.
-3. **Topology registration assumes both creators.** `TransportRegistrationHelper.RegisterTopologyCreators` requires a messaging and an event topology creator, and `QueueRegistrarHostedService` requires the queue creator when reading (`GetCreator` throws for a provider without one), whereas it already treats the event creator as optional (`TryGetCreator`).
+3. **Topology registration assumes both creators.** `TransportRegistrationHelper.RegisterTopologyCreators` requires a messaging and an event topology creator, and `QueueRegistrarHostedService` requires the queue creator when reading (the registry's lookup throws for a provider without one), whereas it already treats the event creator as optional (`TryGetCreator` returns `null`).
 
 ## 3. Proposed interface shape
 
@@ -200,7 +200,9 @@ public interface IStreamCapableMessageBusClient : ITransportClient
 
 Make the event creator optional in `RegisterTopologyCreators` (an overload), and make the queue creator optional as well: a stream-only provider may register no `IMessagingTopologyCreator`, the way the event creator is already optional. Creating a hub, its partition count, its retention or its consumer groups is a management-plane operation for Event Hubs; the data-plane SDK cannot do it ([§1.7](#17-topology)), so an Event Hubs creator would have nothing to do. The provider is registered with topology creation forced off, so that its validator always runs, and the registrar never calls a queue creator for it; a creator registered only to satisfy registration would be dead code.
 
-The registrar looks the queue creator up with `IMessagingTopologyCreatorRegistry.TryGetCreator` and, when topology creation is on and the provider has none, skips queue topology creation for it and continues with the event step. Nothing changes for a provider that registers a creator, and validators still run exactly when topology creation is off. `TryGetCreator` is a default interface member that calls `GetCreator` and maps `InvalidOperationException` to `null`, so a hand-written registry written before the member existed keeps compiling and working.
+The registrar looks the queue creator up with `IMessagingTopologyCreatorRegistry.TryGetCreator` and, when topology creation is on and the provider has none, skips queue topology creation for it and continues with the event step. Nothing changes for a provider that registers a creator, and validators still run exactly when topology creation is off. `IMessagingTopologyCreatorRegistry` has the same shape as `IEventTopologyCreatorRegistry`: `Register` and a required `TryGetCreator` that returns `null` for an unknown provider. The throwing `GetCreator` is removed, since the registrar was its only caller and an interface member nothing calls is dead code.
+
+The alternative considered was keeping `GetCreator` and adding `TryGetCreator` as a default interface member that wraps it and maps `InvalidOperationException` to `null`. That would have kept hand-written registries compiling, but it leaves two lookup members with overlapping meaning on a public interface, a default implementation whose exception mapping every implementer inherits, and a throwing member nothing in the framework uses. The registry interface is implemented in practice by the framework's own internal registry and by test doubles, so the source break for an external implementer (implement `TryGetCreator`, drop `GetCreator`) was judged a smaller cost than carrying the compatibility member.
 
 The stream facts a transport needs (partition count, retention) reach every stream transport through `StreamQueueManifest`, and for a stream queue the registrar fills the queue-only fields on the description (`LockDuration`, `RequiresSession`, time to live, dead-letter-on-expiry) with fixed defaults that no stream code reads. Splitting the topology interfaces so that a stream has its own creator and description (name, partition count, retention) is not designed here: it needs a stream-only transport that creates topology, so that the interfaces are shaped by a real provider and not guessed from RabbitMQ alone.
 
@@ -215,7 +217,7 @@ The split is a standalone refactor: no new package, and the existing suites stay
 
 ## 7. Compatibility
 
-Target: minor release (1.5.0), not a major bump.
+Target: minor release (1.5.0). The registry interface change in the last row is a deliberate source break accepted for the reasons given in section 5; every other row is compatible.
 
 | Public surface | Treatment | Break? |
 |---|---|---|
@@ -225,11 +227,11 @@ Target: minor release (1.5.0), not a major bump.
 | `IMessageBusClientRegistry.Register(...)` | existing overload kept; new overload added as a default interface method | none |
 | New `GetTransportClient` / `GetClient<T>` | default interface method / extension method | none |
 | `TransportRegistrationHelper.RegisterTopologyCreators` | new overload with optional event creator; a provider may skip the call altogether | none |
-| `IMessagingTopologyCreatorRegistry.TryGetCreator` | default interface member wrapping `GetCreator`; the internal registry overrides it | none: existing implementers compile and keep working |
+| `IMessagingTopologyCreatorRegistry.TryGetCreator` / `GetCreator` | `TryGetCreator` is a required member, mirroring `IEventTopologyCreatorRegistry`; `GetCreator` is removed | source break for a hand-written implementer of the registry interface, who must implement `TryGetCreator` (return `null` for an unknown provider) and drop `GetCreator`; callers of the registry through DI are unaffected unless they called `GetCreator` |
 
 **Verification.** Both claims were checked rather than assumed. A minimal class that implements `string IMessageBusClient.MessagingSystem` explicitly compiles against the new interfaces and returns the value through both `IMessageBusClient` and `ITransportClient`; it did not compile before `MessagingSystem` was redeclared. A `Flowly.RabbitMQ` assembly built from `development` (compiled against the old interfaces) was loaded against the new `Flowly.dll`: every interface method maps, including the new `ITransportClient` and `CreateStreamSender` members through their default implementations, and both views of `MessagingSystem` work. That covers upgrading core `Flowly` alone while a satellite package stays on 1.4.x.
 
-**Residual risk.** None known at the API level. Third-party transports are out of scope: package download volume is too low to justify designing around them, so compatibility was verified only against the in-repository transports and the minimal cases above.
+**Residual risk.** The `IMessagingTopologyCreatorRegistry` break above is the only known API-level incompatibility. Third-party transports are out of scope: package download volume is too low to justify designing around them, so compatibility was verified only against the in-repository transports and the minimal cases above.
 
 **Behaviour change for test doubles.** Registering a message, batch, job, call, recurring or event handler or submitter, or a dead letter source, now asks the registry for the resolved provider's `IMessageBusClient` at registration time. A hand-written `IMessageBusClientRegistry` test double whose `GetClient` throws (four in this repository's tests did: the three Jobs backend ones and the dead letter source one; the event registration tests used queue-only stubs and now use an event-capable fake) now fails at registration instead; returning a stub client fixes it. Worth a line in the release notes. Routing without `[ProviderAffinity]` additionally reads `GetAll()` and `GetTransportClient(name)`, so a hand-written registry double must report its transports through `GetAll()` as well.
 

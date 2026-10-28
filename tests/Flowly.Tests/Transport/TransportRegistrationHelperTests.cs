@@ -126,7 +126,7 @@ public class TransportRegistrationHelperTests
 
             TransportRegistrationHelper.RegisterTopologyCreators(services, "rabbit", messagingCreator, eventCreator);
 
-            Assert.Same(messagingCreator, messagingRegistry.GetCreator("rabbit"));
+            Assert.Same(messagingCreator, messagingRegistry.TryGetCreator("rabbit"));
             Assert.Same(eventCreator, eventRegistry.TryGetCreator("rabbit"));
         }
 
@@ -138,7 +138,7 @@ public class TransportRegistrationHelperTests
 
             TransportRegistrationHelper.RegisterTopologyCreators(services, "streams", messagingCreator);
 
-            Assert.Same(messagingCreator, messagingRegistry.GetCreator("streams"));
+            Assert.Same(messagingCreator, messagingRegistry.TryGetCreator("streams"));
             Assert.Null(eventRegistry.TryGetCreator("streams"));
         }
 
@@ -152,7 +152,7 @@ public class TransportRegistrationHelperTests
 
             TransportRegistrationHelper.RegisterTopologyCreators(services, "streams", messagingCreator);
 
-            Assert.Same(messagingCreator, messagingRegistry.GetCreator("streams"));
+            Assert.Same(messagingCreator, messagingRegistry.TryGetCreator("streams"));
         }
 
         [Fact]
