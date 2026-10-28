@@ -27,6 +27,17 @@ public class RabbitMqRegistrationTests
     public class UseRabbitMq
     {
         [Fact]
+        public void RegistersTopologyCreatorForTheProvider()
+        {
+            var (builder, _) = CreateBuilder();
+
+            builder.UseRabbitMq();
+
+            var topologyRegistry = builder.Services.Select(service => service.ImplementationInstance).OfType<FakeMessagingTopologyCreatorRegistry>().Single();
+            Assert.NotNull(topologyRegistry.Creators["rabbitmq"]);
+        }
+
+        [Fact]
         public void RegistersProviderAsPrimary()
         {
             var (builder, registry) = CreateBuilder();
@@ -151,8 +162,11 @@ public class RabbitMqRegistrationTests
 
     private sealed class FakeMessagingTopologyCreatorRegistry : IMessagingTopologyCreatorRegistry
     {
+        public Dictionary<string, IMessagingTopologyCreator> Creators { get; } = [];
+
         public void Register(string providerName, IMessagingTopologyCreator creator)
         {
+            Creators[providerName] = creator;
         }
 
         public IMessagingTopologyCreator GetCreator(string providerName)

@@ -80,6 +80,28 @@ public class AzureEventHubsRegistrationTests
         }
 
         [Fact]
+        public void RegistersNoQueueTopologyCreator()
+        {
+            var builder = TestFlowlyBuilder.Create();
+
+            builder.UseAzureEventHubs(ConnectionString);
+
+            var topologyRegistry = builder.Services.Select(service => service.ImplementationInstance).OfType<IMessagingTopologyCreatorRegistry>().Single();
+            Assert.Null(topologyRegistry.TryGetCreator("azure-event-hubs"));
+        }
+
+        [Fact]
+        public void RegistersNoEventTopologyCreator()
+        {
+            var builder = TestFlowlyBuilder.Create();
+
+            builder.UseAzureEventHubs(ConnectionString);
+
+            var eventTopologyRegistry = builder.Services.Select(service => service.ImplementationInstance).OfType<IEventTopologyCreatorRegistry>().Single();
+            Assert.Null(eventTopologyRegistry.TryGetCreator("azure-event-hubs"));
+        }
+
+        [Fact]
         public void IsNeverThePrimaryProvider()
         {
             var builder = TestFlowlyBuilder.Create();
@@ -328,6 +350,19 @@ public class AzureEventHubsRegistrationTests
             await StartQueueRegistrar(builder, createTopology: true);
 
             Assert.Equal(1, inspector.Calls);
+        }
+
+        [Fact]
+        public async Task WithCreateTopologyRequested_StartsWithoutAQueueTopologyCreator()
+        {
+            var clientFactory = new FakeEventHubsClientFactory();
+            clientFactory.Inspectors["telemetry-reading"] = new FakeEventHubsInspector(["0"]);
+            var builder = TestFlowlyBuilder.Create().WithEventHubs(clientFactory);
+            builder.AddMessageRecorder<TelemetryReading>();
+
+            await StartQueueRegistrar(builder, createTopology: true);
+
+            Assert.Null(builder.Services.Select(service => service.ImplementationInstance).OfType<IMessagingTopologyCreatorRegistry>().Single().TryGetCreator("azure-event-hubs"));
         }
 
         [Fact]

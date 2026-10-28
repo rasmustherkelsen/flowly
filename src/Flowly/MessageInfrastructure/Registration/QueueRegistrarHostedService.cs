@@ -46,8 +46,11 @@ internal class QueueRegistrarHostedService(
 
             logger.LogDebug("Creating messaging topology for provider '{Provider}'", manifest.ProviderName);
 
-            var topologyCreator = topologyRegistry.GetCreator(manifest.ProviderName);
-            await topologyCreator.CreateTopology(queueDescriptions, cancellationToken);
+            var topologyCreator = topologyRegistry.TryGetCreator(manifest.ProviderName);
+            if (topologyCreator != null)
+                await topologyCreator.CreateTopology(queueDescriptions, cancellationToken);
+            else
+                logger.LogDebug("Skipping queue topology creation for provider '{Provider}': no queue topology creator is registered", manifest.ProviderName);
 
             var eventDescriptions = ResolveEventDescriptions(manifest);
             if (eventDescriptions.Count > 0)
