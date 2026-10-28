@@ -1037,6 +1037,8 @@ A partition count on the broker that differs from the `[StreamPartitions(n)]` co
 
 Flowly never deletes or re-creates partition streams or bindings to make the broker match the contract; resolving drift is an operator action on the broker. Changing the partition count of a live stream is not supported and is treated as drift. Because the check uses the Stream protocol, a sender-only host with `createTopology: true` also needs the stream port reachable at startup.
 
+A Super Stream created outside Flowly (for example with `rabbitmq-streams add_super_stream`) is used with `createTopology: false`. `RabbitMqMessagingTopologyCreator`'s AMQP declaration is not compatible with such a Super Stream — the broker rejects it with `PRECONDITION_FAILED - inequivalent arg 'x-queue-leader-locator'`, before the partition count is compared — and it is deliberately not made compatible. With `createTopology: false` the Super Stream is consumed and published to unchanged and `RabbitMqPartitionedStreamTopologyValidator` still compares the partition count.
+
 ---
 
 ### 15.1 Transport Internals (Azure Event Hubs)

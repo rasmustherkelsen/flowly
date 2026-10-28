@@ -46,7 +46,7 @@ Recommended sequencing: checkpointing first (small, immediately valuable, de-ris
 
 The technical validation this direction depended on was done against a live broker (RabbitMQ 4.3.2, `RabbitMQ.Stream.Client` 1.12.0). The Stream client covers what Flowly requires end to end:
 
-- **Topology interop.** The exchange, `{queue}-{n}` partition streams and bindings declared over AMQP are the Super Stream the Stream client consumes, and a Super Stream created with the broker's own `rabbitmq-streams add_super_stream` tool is consumed and published to unchanged.
+- **Topology interop.** The exchange, `{queue}-{n}` partition streams and bindings declared over AMQP are the Super Stream the Stream client consumes, and a Super Stream created with the broker's own `rabbitmq-streams add_super_stream` tool is consumed and published to unchanged when the host uses `createTopology: false` (Flowly's own declaration is not compatible with a Super Stream created outside Flowly, so `createTopology: true` is not supported for it).
 - **Rebalancing callbacks.** `ConsumerUpdateListener` reports `isActive: true` and `isActive: false` as instances join, leave and crash, and the offset returned for `isActive: true` (a stored checkpoint position plus one) is honoured. The offset returned for `isActive: false` is ignored.
 - **Connection lifecycle.** The stream connection is separate from the AMQP connections (one stream connection per partition, on the Stream protocol port). The client recovers its subscriptions after a broker restart on its own, reporting `isActive: true` again without a preceding `isActive: false`, which the consumer adapter handles by revoking a still-running partition loop before assigning it again.
 
