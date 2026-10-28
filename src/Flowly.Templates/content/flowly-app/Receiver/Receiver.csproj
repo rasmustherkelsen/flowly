@@ -9,6 +9,8 @@
     <ItemGroup>
         <!--#if (UseRabbitMQ)-->
         <PackageReference Include="Flowly.RabbitMQ" Version="1.2.0" />
+        <!--#elseif (UseAzureEventHubs)-->
+        <PackageReference Include="Flowly.AzureEventHubs" Version="1.2.0" />
         <!--#else-->
         <PackageReference Include="Flowly.AzureServiceBus" Version="1.2.0" />
         <!--#endif-->

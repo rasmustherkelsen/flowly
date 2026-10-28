@@ -32,6 +32,8 @@ The package ships four templates:
 | `azureservicebus` | `asb` | Azure Service Bus |
 | `inmemory` | `inm` | In-Memory (no broker) |
 
+`flowlyapp` and `flowlyaspireapp` additionally accept `eventhubs` (alias `eh`, Azure Event Hubs). It is a stream-only transport: it implies `--stream` and rejects `--call`, `--jobs` and `--deadletter` at scaffold time (through the conditionally required `eventhubs-streams-only-remove-call-jobs-deadletter` parameter). The `flowly` template does not offer it. Templates stay single-transport: never scaffold two transports in one project.
+
 Transport is a single `--transport` parameter, **not** individual boolean flags. Do not document or generate commands like `--rabbitmq` or `--AzureServiceBus`.
 
 Optional feature flags: `--jobtracking` / `--jobs`, `--deadlettertracking` / `--deadletter`, `--opentelemetry` / `--otel`, `--inline`.

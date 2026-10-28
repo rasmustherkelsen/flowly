@@ -114,7 +114,7 @@ Rules:
 
 ### 3f — Update Aspire to the latest release
 
-Aspire ships as one release train: `Aspire.AppHost.Sdk` and every `Aspire.*` package (e.g. `Aspire.Hosting.RabbitMQ`, `Aspire.Hosting.Azure.ServiceBus`, `Aspire.Hosting.SqlServer`, `Aspire.Hosting.PostgreSQL`, `Aspire.Hosting.JavaScript`, `Aspire.Azure.Messaging.ServiceBus`) must be on the **same version**. Mixing versions causes restore downgrade errors or runtime mismatches.
+Aspire ships as one release train: `Aspire.AppHost.Sdk` and every `Aspire.*` package (e.g. `Aspire.Hosting.RabbitMQ`, `Aspire.Hosting.Azure.ServiceBus`, `Aspire.Hosting.Azure.EventHubs`, `Aspire.Hosting.Azure.Storage`, `Aspire.Hosting.SqlServer`, `Aspire.Hosting.PostgreSQL`, `Aspire.Hosting.JavaScript`, `Aspire.Azure.Messaging.ServiceBus`) must be on the **same version**. Mixing versions causes restore downgrade errors or runtime mismatches.
 
 1. Find the latest stable Aspire version (not a preview):
 
@@ -132,7 +132,7 @@ grep -rnE 'Aspire\.AppHost\.Sdk/|Include="Aspire\.' --include="*.csproj" src sam
    - `src/Flowly.Templates/content/flowly-aspire-app/MyAspireApp.AppHost/MyAspireApp.AppHost.csproj`
    - every AppHost and service project under `samples/` (e.g. `samples/RabbitMQ/Aspire/`, `samples/AzureServiceBus/Aspire/`)
    - any `tests/` project that references Aspire
-4. `src/Flowly.AzureServiceBus.Aspire` and `src/Flowly.AzureServiceBus` also reference `Aspire.*` packages. Per the floor policy in 3e, leave those at their current version unless the code needs the newer API. The sample and template AppHosts on the newer Aspire are what prove the floor still works with it (Step 4 `TestAspireAsb` and `TestAspireRabbitMq` also exercise it).
+4. `src/Flowly.AzureServiceBus.Aspire` and `src/Flowly.AzureServiceBus` also reference `Aspire.*` packages. Per the floor policy in 3e, leave those at their current version unless the code needs the newer API. The sample and template AppHosts on the newer Aspire are what prove the floor still works with it (Step 4 `TestAspireAsb`, `TestAspireRabbitMq` and `TestAspireEventHubs` also exercise it; the Event Hubs variant is the only one that uses `Aspire.Hosting.Azure.EventHubs` and `Aspire.Hosting.Azure.Storage`).
 5. Regenerate the Aspire ServiceDefaults boilerplate so it matches the new release:
 
 ```bash
@@ -231,6 +231,21 @@ find . -name "*.csproj" | xargs sed -i '' 's/\(Include="Flowly[^"]*"\) Version="
 | TestJobs | `dotnet new flowlyapp --transport rabbitmq --jobs --db sqlite -n TestJobs` |
 | TestDeadLetters | `dotnet new flowlyapp --transport rabbitmq --deadletter --db sqlite -n TestDeadLetters` |
 | TestFull | `dotnet new flowlyapp --transport rabbitmq --jobs --deadletter --db sqlite --dashboard -n TestFull` |
+| TestEventHubs | `dotnet new flowlyapp --transport eventhubs -n TestEventHubs` |
+| TestEventHubsPartitioned | `dotnet new flowlyapp --transport eventhubs --partitions 4 --stream-checkpoint sqlite -n TestEventHubsPartitioned` |
+| TestEventHubsSqlServer | `dotnet new flowlyapp --transport eventhubs --stream-checkpoint sqlserver -n TestEventHubsSqlServer` |
+| TestEventHubsDashboard | `dotnet new flowlyapp --transport eventhubs --dashboard --otel-export jaeger -n TestEventHubsDashboard` |
+| TestAspireEventHubs | `dotnet new flowlyaspireapp --transport eventhubs -n TestAspireEventHubs` |
+| TestAspireEventHubsPartitioned | `dotnet new flowlyaspireapp --transport eventhubs --partitions 4 --stream-checkpoint sqlite -n TestAspireEventHubsPartitioned` |
+| TestAspireEventHubsSqlServer | `dotnet new flowlyaspireapp --transport eventhubs --stream-checkpoint sqlserver -n TestAspireEventHubsSqlServer` |
+
+Azure Event Hubs hosts streams only, so `--call`, `--jobs` and `--deadletter` must be **rejected** at scaffold time for both templates. Run each of these and record PASS when `dotnet new` fails with `Missing mandatory option(s) ... '--eventhubs-streams-only-remove-call-jobs-deadletter'` and creates nothing:
+
+| Test name | Command (expected to fail) |
+|---|---|
+| RejectEventHubsCall | `dotnet new flowlyapp --transport eventhubs --call -n RejectEventHubsCall` |
+| RejectEventHubsJobs | `dotnet new flowlyapp --transport eventhubs --jobs --db sqlite -n RejectEventHubsJobs` |
+| RejectEventHubsDeadLetter | `dotnet new flowlyaspireapp --transport eventhubs --deadletter --db sqlite -n RejectEventHubsDeadLetter` |
 
 ### 4e — Clean up
 
@@ -263,6 +278,6 @@ Report the status of every item:
 - [ ] Aspire is on the latest stable release everywhere (`Aspire.AppHost.Sdk` and all `Aspire.*` packages on one version in the template AppHost and every sample), ServiceDefaults boilerplate is re-synced, and docs state the right version
 - [ ] Template-only third-party packages (Aspire.Hosting.*, Microsoft.Extensions.Http.Resilience/ServiceDiscovery, OpenTelemetry.*) are current
 - [ ] Template OpenTelemetry package versions match `Flowly.OpenTelemetry.csproj` per `.claude/rules/template-otel-versions.md`
-- [ ] All 10 template variants scaffold and build successfully
+- [ ] All 17 template variants scaffold and build successfully, and the Azure Event Hubs rejection cases fail at scaffold time
 - [ ] `dotnet build Flowly.sln` passes
 - [ ] `dotnet test Flowly.sln` passes

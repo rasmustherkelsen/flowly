@@ -1210,10 +1210,10 @@ dotnet new install Flowly.Templates
 Generates a full .NET Aspire solution — AppHost, ServiceDefaults, Messages, Sender, and Receiver — wired for your chosen transport. OpenTelemetry is always enabled. Aspire provisions all infrastructure; no docker-compose or sbconfig.json required.
 
 ```bash
-dotnet new flowlyaspireapp --transport <rabbitmq|asb|inmemory> [options] -n <SolutionName>
+dotnet new flowlyaspireapp --transport <rabbitmq|asb|eventhubs|inmemory> [options] -n <SolutionName>
 ```
 
-Supports the same `--callhandler`, `--streamhandler`, `--partitions`, `--stream-checkpoint`, `--jobs`, `--deadletter`, `--db`, and `--dashboard` flags as `flowlyapp`, with the same architecture: `--jobs` scaffolds a dedicated `JobTracker` project and `--deadletter` scaffolds a dedicated `DeadLetterTracker` project — the Receiver stays a pure message-processing worker. For RabbitMQ, `--partitions` also makes the AppHost bind-mount the plugin/config files and pin the Stream protocol port to `5552` on the RabbitMQ container, mirroring what `flowlyapp`'s `docker-compose.yml` does. `--stream-checkpoint` (SQL Server/PostgreSQL) provisions a `MsgStreamDb` AppHost database off the same resource `--db` already provisions when the engine matches — SQLite gets a static connection string instead, no AppHost resource needed. Run everything with:
+Supports the same `--callhandler`, `--streamhandler`, `--partitions`, `--stream-checkpoint`, `--jobs`, `--deadletter`, `--db`, and `--dashboard` flags as `flowlyapp`, with the same architecture: `--jobs` scaffolds a dedicated `JobTracker` project and `--deadletter` scaffolds a dedicated `DeadLetterTracker` project — the Receiver stays a pure message-processing worker. For RabbitMQ, `--partitions` also makes the AppHost bind-mount the plugin/config files and pin the Stream protocol port to `5552` on the RabbitMQ container, mirroring what `flowlyapp`'s `docker-compose.yml` does. `--stream-checkpoint` (SQL Server/PostgreSQL) provisions a `MsgStreamDb` AppHost database off the same resource `--db` already provisions when the engine matches — SQLite gets a static connection string instead, no AppHost resource needed. `--transport eventhubs` (alias `eh`) scaffolds an Azure Event Hubs stream (always the `MessageStreamHandler<T>`/`IMessageRecorder` pair, so `--stream` is implied; `--call`, `--jobs` and `--deadletter` are rejected because Event Hubs hosts streams only): the AppHost uses Aspire's Azure Event Hubs and Azure Storage hosting integrations to run the Event Hubs emulator and Azurite, declares the event hub (with `--partitions` as its partition count, one partition otherwise), its consumer group, and the blob service the Receiver uses for partition ownership. Run everything with:
 
 ```bash
 dotnet run --project MyApp.AppHost
@@ -1237,18 +1237,19 @@ dotnet new flowlyapp --transport <transport> [options] -n <SolutionName>
 |---|---|---|
 | `rabbitmq` | `rmq` | RabbitMQ |
 | `azureservicebus` | `asb` | Azure Service Bus |
+| `eventhubs` | `eh` | Azure Event Hubs (message streams only; implies `--stream`) |
 | `inmemory` | `inm` | In-Memory (no broker) |
 
 Optional features:
 
 | Flag | Alias | Description |
 |---|---|---|
-| `--callhandler` | `--call` | Scaffold as RPC-style call/response — `MyMessage` implements `IReturns<MyReturnMessage>`; the sender uses `IMessageCaller.Call` and blocks for the response. |
-| `--streamhandler` | `--stream` | Scaffold the main message as an append-only, replayable stream — `MyMessage` gets `[StreamRetention]`, the Receiver's handler becomes a `MessageStreamHandler<T>`, and the sender uses `IMessageRecorder.Record`. RabbitMQ or InMemory only; incompatible with `--call`. |
-| `--partitions <n>` | | Partition the stream into `n` independent, ordered sub-logs via `[StreamPartitions(n)]`. `0` (default) = non-partitioned. Requires `--stream`. On RabbitMQ, the generated `docker-compose.yml` also publishes the Stream protocol port (`5552`) and enables the `rabbitmq_stream` plugin needed for partitioned consumption. |
-| `--stream-checkpoint <value>` | | Add built-in message stream checkpoint persistence (`sqlserver`, `postgres`, or `sqlite`) — wires `Add<Provider>MessageStreamPersistence("MsgStreamDb")` and `UseMessageStreamCheckpoint<T>()` into the Receiver, plus a matching connection string and (SQL Server/PostgreSQL) `docker-compose.yml` container, reused when `--db` already provisions the same engine. Requires `--stream` and `--transport rabbitmq` — silently has no effect otherwise, the same way `--db` has no effect without `--jobs`/`--deadletter`. |
-| `--jobtracking` | `--jobs` | Job state tracking — adds `ProcessJobMessage`, `ProcessJobHandler`, `JobSubmitterService`, and a `JobTracker` infrastructure project. Requires a DB flag. |
-| `--deadlettertracking` | `--deadletter` | Dead-letter tracking — adds `DeadLetterSampleMessage`, `DeadLetterSampleMessageHandler` with `[RetryPolicy]`, and `FailingMessageSenderService`. Requires a DB flag. |
+| `--callhandler` | `--call` | Scaffold as RPC-style call/response — `MyMessage` implements `IReturns<MyReturnMessage>`; the sender uses `IMessageCaller.Call` and blocks for the response. Rejected with `--transport eventhubs`. |
+| `--streamhandler` | `--stream` | Scaffold the main message as an append-only, replayable stream — `MyMessage` gets `[StreamRetention]`, the Receiver's handler becomes a `MessageStreamHandler<T>`, and the sender uses `IMessageRecorder.Record`. RabbitMQ, InMemory or Azure Event Hubs (always on for `--transport eventhubs`); incompatible with `--call`. |
+| `--partitions <n>` | | Partition the stream into `n` independent, ordered sub-logs via `[StreamPartitions(n)]`. `0` (default) = non-partitioned. Requires `--stream`. On RabbitMQ, the generated `docker-compose.yml` also publishes the Stream protocol port (`5552`) and enables the `rabbitmq_stream` plugin needed for partitioned consumption. On Azure Event Hubs, the generated `ehconfig.json` declares the event hub with exactly `n` partitions (one partition when not used), because Flowly never creates event hubs and requires the partition ids to match the contract. |
+| `--stream-checkpoint <value>` | | Add built-in message stream checkpoint persistence (`sqlserver`, `postgres`, or `sqlite`) — wires `Add<Provider>MessageStreamPersistence("MsgStreamDb")` and `UseMessageStreamCheckpoint<T>()` into the Receiver, plus a matching connection string and (SQL Server/PostgreSQL) `docker-compose.yml` container, reused when `--db` already provisions the same engine. Requires `--stream` and `--transport rabbitmq` or `--transport eventhubs` (where `--stream` is implied) — silently has no effect otherwise (not on InMemory), the same way `--db` has no effect without `--jobs`/`--deadletter`. |
+| `--jobtracking` | `--jobs` | Job state tracking — adds `ProcessJobMessage`, `ProcessJobHandler`, `JobSubmitterService`, and a `JobTracker` infrastructure project. Requires a DB flag. Rejected with `--transport eventhubs`. |
+| `--deadlettertracking` | `--deadletter` | Dead-letter tracking — adds `DeadLetterSampleMessage`, `DeadLetterSampleMessageHandler` with `[RetryPolicy]`, and `FailingMessageSenderService`. Requires a DB flag. Rejected with `--transport eventhubs`. |
 | `--opentelemetry` | `--otel` | Add Flowly.OpenTelemetry instrumentation. No exporter — signals are collected but not emitted unless `--otel-export` is also specified. |
 | `--otel-export <value>` | `--oe` | Add Flowly.OpenTelemetry instrumentation **and** wire an exporter. Values: `default` (OTLP, gated on `OTEL_EXPORTER_OTLP_ENDPOINT`), `jaeger` (OTLP unconditional + Jaeger in docker-compose), `zipkin` (Zipkin + Zipkin in docker-compose). Implies `--otel`. |
 | `--dashboard` | | Scaffold a standalone `Dashboard/` project hosting the Flowly management UI at `/`. Its port is randomly assigned per instantiation (HTTP 5000–5300, HTTPS 7000–7300 for `flowlyapp`; HTTP 5400–5499, HTTPS 7400–7499 for `flowlyaspireapp`) — see `Dashboard/Properties/launchSettings.json`. For InMemory transport the dashboard is embedded in `App/` instead. |
@@ -1273,6 +1274,9 @@ dotnet new flowlyapp --transport rabbitmq --stream --partitions 4 -n MyApp
 
 # Message stream with built-in checkpoint persistence (RabbitMQ, SQLite)
 dotnet new flowlyapp --transport rabbitmq --stream --stream-checkpoint sqlite -n MyApp
+
+# Partitioned message stream on Azure Event Hubs with checkpoint persistence (emulator + Azurite in docker-compose)
+dotnet new flowlyapp --transport eventhubs --partitions 4 --stream-checkpoint sqlite -n MyApp
 
 # RabbitMQ with job tracking and dead-letter tracking (SQLite)
 dotnet new flowlyapp --transport rabbitmq --jobs --deadletter --db sqlite -n MyApp
@@ -1300,6 +1304,8 @@ MyApp/
 ├── docker-compose.yml   ← broker (+ SQL Server / Postgres when applicable)
 └── sbconfig.json        ← ASB only
 ```
+
+**Azure Event Hubs** generates the same `Messages`/`Sender`/`Receiver` solution as a RabbitMQ stream, plus a `docker-compose.yml` with the Event Hubs emulator and Azurite and an `ehconfig.json` that declares the event hub `my`, its partition count and the consumer group `MyMessageHandler` (the emulator has no management plane and Flowly never creates event hubs). The Receiver is registered with a blob container on Azurite for partition ownership, so a second Receiver instance shares the partitions. The emulator needs its license terms accepted: start it with `ACCEPT_EULA=Y docker compose up -d`.
 
 **InMemory** generates a single-project solution (`App/`) with sender, receiver, and optionally job/dead-letter tracking in the same process. With `--dashboard`, the management UI is embedded in `App/`.
 
@@ -1556,6 +1562,7 @@ Use Microsoft Entra ID with `UseAzureEventHubs("my-namespace.servicebus.windows.
 - **Retention is configured on the event hub.** `[StreamRetention(maxLengthBytes: ...)]` is ignored and logs a warning at startup; `[StreamRetention(maxAgeSeconds: ...)]` is neither applied nor verified and logs an information message.
 - **Geo-replicated namespaces.** When an event hub reports geo-replication and a message stream checkpoint store is registered, a warning is logged at startup: Azure documents that after a forced failover the offsets of the same data can differ between regions, so a stored position may no longer be valid afterwards. The hub side is exact: the validator reads `IsGeoReplicationEnabled` for each event hub that has a stream registered on the Event Hubs provider, producer-only hubs included. The checkpoint side is host-wide: it only asks whether any `MessageStreamCheckpoint<T>` is registered anywhere in the host, not whether one belongs to a message type read from that event hub. It can therefore warn when no Event Hubs position is stored, for example when the only checkpoint belongs to a RabbitMQ stream handler while a geo-replicated event hub is also used, or when the host only writes to the geo-replicated event hub with `IMessageRecorder`. It never misses the real case, a checkpoint for a handler that reads a geo-replicated event hub, so it errs towards false positives; it is a single startup warning per event hub and never fails startup. It matters only with a registered checkpoint: without one nothing is stored, so there is nothing to go stale, and with one Azure documents that the offsets of the same data can differ between regions after a forced failover. Flowly does not detect or correct this, and the claim rests on Azure documentation, not on a run against the service.
 - **Next to a queue transport** no `[ProviderAffinity]` is needed (see [Multi-Provider](#multi-provider)); give the second provider an explicit name: `.UseAzureServiceBus("AzureServiceBus").UseAzureEventHubs("EventHubs", name: "events")`.
+- **Project templates.** `dotnet new flowlyapp --transport eventhubs` and `dotnet new flowlyaspireapp --transport eventhubs` scaffold a stream solution against the Event Hubs emulator (see [Project Templates](#project-templates)); they reject `--call`, `--jobs` and `--deadletter` because this transport hosts streams only.
 
 The consuming and producing behaviour above was run against Microsoft's Event Hubs emulator (with Azurite) and `Azure.Messaging.EventHubs` 5.12.2, including restart and seeding with a checkpoint, halting, two instances sharing a blob container and the startup failures; see the [`Flowly.AzureEventHubs` readme](src/Flowly.AzureEventHubs/README.md#verification) for the scope and the [`MessageStreamWithCheckpoint` sample](samples/AzureEventHubs/MessageStreamWithCheckpoint/README.md). The emulator has no management plane and its own limits, so retention floors, service limits and tiers, Microsoft Entra authentication, geo-replication and real-namespace latencies were not verified and rest on the Azure documentation.
 
@@ -1711,6 +1718,7 @@ Flowly ships with a set of [Claude Code](https://claude.ai/code) skills that giv
 | Skill | Command | What it does |
 |---|---|---|
 | Setup Azure Service Bus | `/flowly-setup-azure-service-bus` | Adds Flowly with Azure Service Bus to a project — packages, `FlowlyConfiguration`, `Program.cs` wiring, connection strings, and optional extensions |
+| Setup Azure Event Hubs | `/flowly-setup-azure-event-hubs` | Adds Flowly with Azure Event Hubs (stream-only) to a project — template-first, or packages, `FlowlyConfiguration`, the event hub and consumer group, partition ownership, the local emulator and Aspire AppHost wiring |
 | Create message handler | `/create-message-handler OrderPlacedMessage` | Scaffolds a complete handler: message contract record, handler class, registration snippet, and unit tests |
 | Create recurring job | `/create-recurring-job NightlyCleanupHandler` | Scaffolds a `RecurringJobHandler` with `[RecurringJob]` attribute, registration, and unit tests |
 | Create contracts assembly | `/create-contracts-assembly` | Creates a shared message contracts project for solutions where multiple services exchange the same message types |

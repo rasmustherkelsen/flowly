@@ -1,0 +1,26 @@
+{
+  "UserConfig": {
+    "NamespaceConfig": [
+      {
+        "Type": "EventHub",
+        "Name": "emulatorNs1",
+        "Entities": [
+          {
+            "Name": "my",
+//#if (UseStreamPartitions)
+            "PartitionCount": "424242",
+//#else
+            "PartitionCount": "1",
+//#endif
+            "ConsumerGroups": [
+              { "Name": "MyMessageHandler" }
+            ]
+          }
+        ]
+      }
+    ],
+    "LoggingConfig": {
+      "Type": "Console"
+    }
+  }
+}

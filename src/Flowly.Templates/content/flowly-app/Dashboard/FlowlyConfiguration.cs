@@ -1,6 +1,8 @@
 using Flowly;
 #if (UseRabbitMQ)
 using Flowly.RabbitMQ;
+#elif (UseAzureEventHubs)
+using Flowly.AzureEventHubs;
 #else
 using Flowly.AzureServiceBus;
 #endif
@@ -21,13 +23,15 @@ internal class FlowlyConfiguration : Configuration
     {
 #if (UseRabbitMQ)
         builder.UseRabbitMq(connection: "RabbitMQ");
+#elif (UseAzureEventHubs)
+        builder.UseAzureEventHubs(connection: "EventHubs");
 #else
         builder.UseAzureServiceBus(connection: "AzureServiceBus");
 #endif
 
 #if (UseCallHandler)
         builder.AddCallSubmitter<MyMessage>();
-#else
+#elif (!UseAzureEventHubs)
         builder.AddMessageSubmitter<MyMessage>();
 #endif
 #if (UseDeadLetterTracking)

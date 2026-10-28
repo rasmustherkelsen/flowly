@@ -10,13 +10,14 @@ Guide the user through setting up Flowly under .NET Aspire. Work through each se
 The fastest starting point is the `flowlyaspireapp` template, which generates a complete, ready-to-run Aspire solution:
 
 ```bash
-dotnet new flowlyaspireapp --transport <rabbitmq|asb|inmemory> [options] -n <Name>
+dotnet new flowlyaspireapp --transport <rabbitmq|asb|eventhubs|inmemory> [options] -n <Name>
 ```
 
 | Flag | Alias | Effect |
 |---|---|---|
 | `--transport rabbitmq` | `rmq` | RabbitMQ transport |
 | `--transport azureservicebus` | `asb` | Azure Service Bus transport |
+| `--transport eventhubs` | `eh` | Azure Event Hubs transport (message streams only; implies a stream scaffold, rejects `--call`, `--jobs` and `--deadletter`; see `/flowly-setup-azure-event-hubs`) |
 | `--transport inmemory` | `inm` | In-memory transport (no broker) |
 | `--call` | `--callhandler` | RPC call handler instead of fire-and-forget |
 | `--jobs` | `--jobtracking` | Job state tracking (requires `--db` or `--database`) |
@@ -43,6 +44,8 @@ The generated AppHost sets `<AspireUseCliBundle>true</AspireUseCliBundle>` (the 
 ├── <Name>.Sender/          — sends messages / makes calls
 └── <Name>.Receiver/        — handles messages; job + dead-letter tracking if enabled
 ```
+
+**Azure Event Hubs (multi-project, streams only):** the same layout as RabbitMQ / Azure Service Bus; the AppHost runs the Event Hubs emulator and an Azure Storage emulator.
 
 **InMemory (single project):**
 ```
@@ -126,6 +129,26 @@ builder.AddFlowly<FlowlyConfiguration>(options => options.CreateTopology = false
 ```
 
 `azureServiceBus.AddFlowly(project)` loads the project assembly at AppHost startup to discover queues. The project must be **built** before the AppHost starts. Only class-based `FlowlyConfiguration` (inheriting `Flowly.Configuration`) is supported — inline `AddFlowly()` registrations are not discoverable.
+
+### Azure Event Hubs
+
+Aspire's own `Aspire.Hosting.Azure.EventHubs` and `Aspire.Hosting.Azure.Storage` integrations (on the same version as `Aspire.AppHost.Sdk`) run the emulators. Flowly never creates event hubs or consumer groups, so the AppHost declares them, use `CreateTopology = false` in service projects, and reference the namespace resource (not the hub) so the connection string stays namespace level. The Receiver creates the partition ownership blob container itself.
+
+```csharp
+// AppHost Program.cs
+var eventHubs = builder.AddAzureEventHubs("EventHubs").RunAsEmulator();
+var myHub = eventHubs.AddHub("my");
+myHub.WithProperties(hub => hub.PartitionCount = 4); // must equal [StreamPartitions(n)], or 1 without it
+myHub.AddConsumerGroup("MyMessageHandler");          // must match options.ConsumerName set in the handler
+var partitionOwnership = builder.AddAzureStorage("Storage").RunAsEmulator().AddBlobs("PartitionOwnership");
+
+builder.AddProject<Projects.MyApp_Sender>("sender").WithReference(eventHubs).WaitFor(eventHubs);
+var receiver = builder.AddProject<Projects.MyApp_Receiver>("receiver");
+receiver.WithReference(eventHubs).WaitFor(eventHubs);
+receiver.WithReference(partitionOwnership).WaitFor(partitionOwnership);
+```
+
+See `/flowly-setup-azure-event-hubs` for the full setup.
 
 ### InMemory
 
@@ -259,7 +282,7 @@ Fix any errors before reporting the task as complete.
 - [ ] Template scaffolded or projects created manually
 - [ ] AppHost references all broker and DB resources
 - [ ] Each service project calls `builder.AddServiceDefaults()` and `app.MapDefaultEndpoints()`
-- [ ] `CreateTopology = true` for RabbitMQ / `= false` for Azure Service Bus
+- [ ] `CreateTopology = true` for RabbitMQ / `= false` for Azure Service Bus and Azure Event Hubs
 - [ ] (ASB) `Flowly.AzureServiceBus.Aspire` referenced in AppHost with `IsAspireProjectResource="false"`
 - [ ] (ASB) `azureServiceBus.AddFlowly(project)` called for each service project
 - [ ] (ASB + call handler) Sender's `FlowlyConfiguration` overrides `InstanceName`; AppHost calls `azureServiceBus.AddFlowly(sender)`

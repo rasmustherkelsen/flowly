@@ -22,6 +22,22 @@ var azureServiceBus = builder
     .AddAzureServiceBus("AzureServiceBus")
     .RunAsEmulator();
 #endif
+#if (UseAzureEventHubs)
+var eventHubs = builder
+    .AddAzureEventHubs("EventHubs")
+    .RunAsEmulator();
+var myHub = eventHubs.AddHub("my");
+#if (UseStreamPartitions)
+myHub.WithProperties(hub => hub.PartitionCount = 424242);
+#else
+myHub.WithProperties(hub => hub.PartitionCount = 1);
+#endif
+myHub.AddConsumerGroup("MyMessageHandler");
+var partitionOwnership = builder
+    .AddAzureStorage("Storage")
+    .RunAsEmulator()
+    .AddBlobs("PartitionOwnership");
+#endif
 #if (NeedsSqlServerInfrastructure)
 var sqlServer = builder
     .AddSqlServer("SqlServer", builder.AddParameter("sql-password", secret: true, value: "Fl0wly_Dev_Pass!"))
@@ -85,11 +101,18 @@ sender.WithReference(rabbitMq).WaitFor(rabbitMq);
 #if (UseAzureServiceBus)
 sender.WithReference(azureServiceBus).WaitFor(azureServiceBus);
 #endif
+#if (UseAzureEventHubs)
+sender.WithReference(eventHubs).WaitFor(eventHubs);
+#endif
 #if (UseRabbitMQ)
 receiver.WithReference(rabbitMq).WaitFor(rabbitMq);
 #endif
 #if (UseAzureServiceBus)
 receiver.WithReference(azureServiceBus).WaitFor(azureServiceBus);
+#endif
+#if (UseAzureEventHubs)
+receiver.WithReference(eventHubs).WaitFor(eventHubs);
+receiver.WithReference(partitionOwnership).WaitFor(partitionOwnership);
 #endif
 #if (UseStream && (UseStreamCheckpointSqlServer || UseStreamCheckpointPostgres))
 receiver.WithReference(msgStreamDb).WaitFor(msgStreamDb);
@@ -125,6 +148,9 @@ dashboard.WithReference(rabbitMq).WaitFor(rabbitMq);
 #endif
 #if (UseAzureServiceBus)
 dashboard.WithReference(azureServiceBus).WaitFor(azureServiceBus);
+#endif
+#if (UseAzureEventHubs)
+dashboard.WithReference(eventHubs).WaitFor(eventHubs);
 #endif
 #if (UseJobTracking && (UseSqlServer || UsePostgres))
 dashboard.WithReference(flowlyJobsDb).WaitFor(flowlyJobsDb);

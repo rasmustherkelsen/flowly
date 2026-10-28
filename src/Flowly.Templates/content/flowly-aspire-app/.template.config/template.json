@@ -25,7 +25,9 @@
         { "choice": "azureservicebus", "description": "Azure Service Bus transport." },
         { "choice": "asb",             "description": "Alias for azureservicebus." },
         { "choice": "inmemory",        "description": "In-memory transport (no broker required)." },
-        { "choice": "inm",             "description": "Alias for inmemory." }
+        { "choice": "inm",             "description": "Alias for inmemory." },
+        { "choice": "eventhubs",       "description": "Azure Event Hubs transport (message streams only; implies --stream)." },
+        { "choice": "eh",              "description": "Alias for eventhubs." }
       ]
     },
     "UseRabbitMQ": {
@@ -40,9 +42,13 @@
       "type": "computed",
       "value": "(transport == \"inmemory\" || transport == \"inm\")"
     },
+    "UseAzureEventHubs": {
+      "type": "computed",
+      "value": "(transport == \"eventhubs\" || transport == \"eh\")"
+    },
     "HasTransportConnectionString": {
       "type": "computed",
-      "value": "(UseRabbitMQ || UseAzureServiceBus)"
+      "value": "(UseRabbitMQ || UseAzureServiceBus || UseAzureEventHubs)"
     },
     "jobtracking": {
       "type": "parameter",
@@ -100,7 +106,7 @@
       "datatype": "bool",
       "defaultValue": "false",
       "displayName": "Stream handler",
-      "description": "Scaffold the main message as an append-only, replayable stream using MessageStreamHandler<T> and IMessageRecorder instead of the default fire-and-forget MessageHandler. RabbitMQ or InMemory only; incompatible with --call.",
+      "description": "Scaffold the main message as an append-only, replayable stream using MessageStreamHandler<T> and IMessageRecorder instead of the default fire-and-forget MessageHandler. RabbitMQ, InMemory or Azure Event Hubs (always on for Event Hubs); incompatible with --call.",
       "isEnabled": "(!callhandler && !call && transport != \"azureservicebus\" && transport != \"asb\")"
     },
     "stream": {
@@ -112,14 +118,14 @@
     },
     "UseStream": {
       "type": "computed",
-      "value": "(streamhandler || stream)"
+      "value": "(streamhandler || stream || UseAzureEventHubs)"
     },
     "partitions": {
       "type": "parameter",
       "datatype": "integer",
       "defaultValue": "0",
       "displayName": "Stream partitions",
-      "description": "Number of partitions for the stream via [StreamPartitions(n)] on the message contract. 0 (default) = non-partitioned. Requires --stream.",
+      "description": "Number of partitions for the stream via [StreamPartitions(n)] on the message contract. 0 (default) = non-partitioned (on Azure Event Hubs: an event hub with exactly one partition). Requires --stream.",
       "replaces": "424242"
     },
     "UseStreamPartitions": {
@@ -133,10 +139,10 @@
     "stream-checkpoint": {
       "type": "parameter",
       "datatype": "choice",
-      "isEnabled": "(transport == \"rabbitmq\" || transport == \"rmq\")",
+      "isEnabled": "(transport == \"rabbitmq\" || transport == \"rmq\" || transport == \"eventhubs\" || transport == \"eh\")",
       "defaultValue": "none",
       "displayName": "Stream checkpoint persistence",
-      "description": "Built-in database-backed position persistence for the stream handler. Requires --stream (has no effect without it) and --transport rabbitmq.",
+      "description": "Built-in database-backed position persistence for the stream handler. Requires --stream (has no effect without it, except on Azure Event Hubs where streaming is implied) and --transport rabbitmq or eventhubs.",
       "choices": [
         { "choice": "none",      "description": "No built-in checkpoint persistence." },
         { "choice": "sqlserver", "description": "SQL Server" },
@@ -159,6 +165,17 @@
     "UseStreamCheckpoint": {
       "type": "computed",
       "value": "(UseStreamCheckpointSqlServer || UseStreamCheckpointPostgres || UseStreamCheckpointSQLite)"
+    },
+    "eventhubs-streams-only-remove-call-jobs-deadletter": {
+      "type": "parameter",
+      "datatype": "choice",
+      "isRequired": true,
+      "isEnabled": "((transport == \"eventhubs\" || transport == \"eh\") && (callhandler || call || jobtracking || jobs || deadlettertracking || deadletter))",
+      "displayName": "Azure Event Hubs hosts streams only",
+      "description": "Azure Event Hubs hosts message streams only: --call, --jobs and --deadletter cannot be combined with --transport eventhubs.",
+      "choices": [
+        { "choice": "unsupported", "description": "Not a usable value. Remove --call, --jobs and --deadletter instead." }
+      ]
     },
     "UseDatabase": {
       "type": "computed",
