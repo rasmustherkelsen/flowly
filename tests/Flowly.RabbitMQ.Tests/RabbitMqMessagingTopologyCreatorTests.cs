@@ -154,10 +154,58 @@ public class RabbitMqMessagingTopologyCreatorTests
 
     public class CreateTopologyForPartitionedStreamQueues
     {
-        private static (DeclareCapturingChannel Channel, RabbitMqMessagingTopologyCreator Creator) Build(StreamQueueManifest streamQueueManifest)
+        private static (DeclareCapturingChannel Channel, RabbitMqMessagingTopologyCreator Creator) Build(StreamQueueManifest streamQueueManifest, int brokerPartitionsBeforeDeclaration = 0)
         {
             var channel = new DeclareCapturingChannel();
-            return (channel, new RabbitMqMessagingTopologyCreator(new StreamConnectionPool(channel), streamQueueManifest));
+            return (channel, new RabbitMqMessagingTopologyCreator(new StreamConnectionPool(channel, brokerPartitionsBeforeDeclaration), streamQueueManifest));
+        }
+
+        [Fact]
+        public async Task WhenBrokerHasMorePartitionsThanDeclared_ThrowsWithBothCounts()
+        {
+            var streamQueueManifest = new StreamQueueManifest();
+            streamQueueManifest.MarkAsStream("orders", null, null, partitionCount: 2);
+            var (_, creator) = Build(streamQueueManifest, brokerPartitionsBeforeDeclaration: 4);
+
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => creator.CreateTopology([new FakeQueueDescription("orders")], CancellationToken.None));
+
+            Assert.Contains("orders", exception.Message);
+            Assert.Contains("4 partition stream(s)", exception.Message);
+            Assert.Contains("StreamPartitions(2)", exception.Message);
+        }
+
+        [Fact]
+        public async Task WhenBrokerHasMorePartitionsThanDeclared_DeclaresOnlyTheDeclaredPartitions()
+        {
+            var streamQueueManifest = new StreamQueueManifest();
+            streamQueueManifest.MarkAsStream("orders", null, null, partitionCount: 2);
+            var (channel, creator) = Build(streamQueueManifest, brokerPartitionsBeforeDeclaration: 4);
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => creator.CreateTopology([new FakeQueueDescription("orders")], CancellationToken.None));
+
+            Assert.Equal(["orders-0", "orders-1"], channel.DeclaredQueues.Select(q => q.Queue).OrderBy(q => q));
+        }
+
+        [Fact]
+        public async Task WhenBrokerHasFewerPartitionsThanDeclared_CreatesTheMissingOnesAndDoesNotThrow()
+        {
+            var streamQueueManifest = new StreamQueueManifest();
+            streamQueueManifest.MarkAsStream("orders", null, null, partitionCount: 4);
+            var (channel, creator) = Build(streamQueueManifest, brokerPartitionsBeforeDeclaration: 2);
+
+            await creator.CreateTopology([new FakeQueueDescription("orders")], CancellationToken.None);
+
+            Assert.Contains(channel.Bindings, b => b.Queue == "orders-3" && b.RoutingKey == "3");
+        }
+
+        [Fact]
+        public async Task WhenBrokerPartitionCountMatchesDeclared_DoesNotThrow()
+        {
+            var streamQueueManifest = new StreamQueueManifest();
+            streamQueueManifest.MarkAsStream("orders", null, null, partitionCount: 3);
+            var (_, creator) = Build(streamQueueManifest, brokerPartitionsBeforeDeclaration: 3);
+
+            await creator.CreateTopology([new FakeQueueDescription("orders")], CancellationToken.None);
         }
 
         [Fact]
@@ -247,7 +295,7 @@ public class RabbitMqMessagingTopologyCreatorTests
         }
     }
 
-    private sealed class StreamConnectionPool(IChannel channel) : IRabbitMqConnectionPool
+    private sealed class StreamConnectionPool(DeclareCapturingChannel channel, int brokerPartitionsBeforeDeclaration = 0) : IRabbitMqConnectionPool
     {
         public Task<IConnection> GetPublisherConnection(CancellationToken cancellationToken = default) => throw new NotImplementedException();
 
@@ -255,7 +303,12 @@ public class RabbitMqMessagingTopologyCreatorTests
 
         public Task<global::RabbitMQ.Stream.Client.StreamSystem> GetStreamSystem(CancellationToken cancellationToken = default) => throw new NotImplementedException();
 
-        public Task<string[]> QueryStreamPartitions(string superStreamName, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<string[]> QueryStreamPartitions(string superStreamName, CancellationToken cancellationToken = default)
+            => Task.FromResult(
+                Enumerable.Range(0, brokerPartitionsBeforeDeclaration)
+                    .Select(partition => RabbitMqMessagingTopologyCreator.PartitionStreamName(superStreamName, partition))
+                    .Union(channel.Bindings.Where(b => b.Exchange == superStreamName).Select(b => b.Queue))
+                    .ToArray());
     }
 
     private sealed class StreamConnection(IChannel channel) : IConnection
