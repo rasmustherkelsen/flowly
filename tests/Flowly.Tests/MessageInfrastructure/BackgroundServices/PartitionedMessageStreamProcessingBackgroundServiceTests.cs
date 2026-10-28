@@ -291,6 +291,123 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
         }
 
         [Fact]
+        public async Task WhenInitializeCheckpointFailsOnFirstAssignment_InitializesAgainOnNextAssignmentOfThatPartition()
+        {
+            var attempts = 0;
+            var checkpoint = new FakeCheckpoint
+            {
+                StoredPosition = 9,
+                OnInitialize = _ => ++attempts == 1 ? throw new InvalidOperationException("store unavailable") : Task.CompletedTask
+            };
+            var (backgroundService, consumer, _, _, _) = CreateService(maxMessages: 1, maxRetries: 0, checkpoint: checkpoint);
+
+            await backgroundService.StartAsync(CancellationToken.None);
+            await consumer.Started.Task.WaitAsync(TestTimeout);
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => consumer.Client!.ReceivedResolveStartPosition!(2, CancellationToken.None));
+            var startPosition = await consumer.Client!.ReceivedResolveStartPosition!(2, CancellationToken.None);
+
+            Assert.Equal(StartPosition.Offset(10), startPosition);
+            Assert.Equal(2, checkpoint.InitializeCalls.Count(c => c.Partition == 2));
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task WhenInitializeCheckpointSucceededAfterAFailure_DoesNotInitializeThatPartitionAgain()
+        {
+            var attempts = 0;
+            var checkpoint = new FakeCheckpoint
+            {
+                StoredPosition = 9,
+                OnInitialize = _ => ++attempts == 1 ? throw new InvalidOperationException("store unavailable") : Task.CompletedTask
+            };
+            var (backgroundService, consumer, _, _, _) = CreateService(maxMessages: 1, maxRetries: 0, checkpoint: checkpoint);
+
+            await backgroundService.StartAsync(CancellationToken.None);
+            await consumer.Started.Task.WaitAsync(TestTimeout);
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => consumer.Client!.ReceivedResolveStartPosition!(2, CancellationToken.None));
+            await consumer.Client!.ReceivedResolveStartPosition!(2, CancellationToken.None);
+            await consumer.Client.ReceivedResolveStartPosition!(2, CancellationToken.None);
+
+            Assert.Equal(2, checkpoint.InitializeCalls.Count(c => c.Partition == 2));
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task WhenInitializeCheckpointSucceeds_DoesNotInitializeThatPartitionAgain()
+        {
+            var checkpoint = new FakeCheckpoint { StoredPosition = 9 };
+            var (backgroundService, consumer, _, _, _) = CreateService(maxMessages: 1, maxRetries: 0, checkpoint: checkpoint);
+
+            await backgroundService.StartAsync(CancellationToken.None);
+            await consumer.Started.Task.WaitAsync(TestTimeout);
+
+            await consumer.Client!.ReceivedResolveStartPosition!(2, CancellationToken.None);
+            await consumer.Client.ReceivedResolveStartPosition!(2, CancellationToken.None);
+            await consumer.Client.ReceivedResolveStartPosition!(2, CancellationToken.None);
+
+            Assert.Single(checkpoint.InitializeCalls, c => c.Partition == 2);
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task WhenInitializeCheckpointFailsForOnePartition_StillInitializesOtherPartitionsOnce()
+        {
+            var checkpoint = new FakeCheckpoint
+            {
+                StoredPosition = 9,
+                OnInitialize = context => context.Partition == 0 ? throw new InvalidOperationException("store unavailable") : Task.CompletedTask
+            };
+            var (backgroundService, consumer, _, _, _) = CreateService(maxMessages: 1, maxRetries: 0, checkpoint: checkpoint);
+
+            await backgroundService.StartAsync(CancellationToken.None);
+            await consumer.Started.Task.WaitAsync(TestTimeout);
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => consumer.Client!.ReceivedResolveStartPosition!(0, CancellationToken.None));
+            await consumer.Client!.ReceivedResolveStartPosition!(1, CancellationToken.None);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => consumer.Client.ReceivedResolveStartPosition!(0, CancellationToken.None));
+            await consumer.Client.ReceivedResolveStartPosition!(1, CancellationToken.None);
+
+            Assert.Equal(2, checkpoint.InitializeCalls.Count(c => c.Partition == 0));
+            Assert.Single(checkpoint.InitializeCalls, c => c.Partition == 1);
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task WhenDifferentPartitionsAreFirstAssignedConcurrently_InitializesEachPartitionOnce()
+        {
+            var entered = 0;
+            var allEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var checkpoint = new FakeCheckpoint
+            {
+                StoredPosition = 9,
+                OnInitialize = async _ =>
+                {
+                    if (Interlocked.Increment(ref entered) == 3)
+                        allEntered.SetResult();
+
+                    await allEntered.Task;
+                }
+            };
+            var (backgroundService, consumer, _, _, _) = CreateService(maxMessages: 1, maxRetries: 0, checkpoint: checkpoint);
+
+            await backgroundService.StartAsync(CancellationToken.None);
+            await consumer.Started.Task.WaitAsync(TestTimeout);
+
+            await Task.WhenAll(Enumerable.Range(0, 3).Select(partition => consumer.Client!.ReceivedResolveStartPosition!(partition, CancellationToken.None))).WaitAsync(TestTimeout);
+            await Task.WhenAll(Enumerable.Range(0, 3).Select(partition => consumer.Client!.ReceivedResolveStartPosition!(partition, CancellationToken.None))).WaitAsync(TestTimeout);
+
+            Assert.Equal([0, 1, 2], checkpoint.InitializeCalls.Select(c => c.Partition!.Value).Order());
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
         public async Task ResolveStartPositionIsCalledPerPartitionWithConsumerNameAndPartition()
         {
             var checkpoint = new FakeCheckpoint { StoredPosition = 9 };
@@ -609,14 +726,21 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
 
     private sealed class FakeCheckpoint : MessageStreamCheckpoint<TestMessage>
     {
+        private readonly Lock _initializeLock = new();
+
         public long? StoredPosition { get; set; }
+        public Func<MessageStreamCheckpointContext, Task>? OnInitialize { get; set; }
         public List<MessageStreamCheckpointContext> InitializeCalls { get; } = [];
         public List<MessageStreamCheckpointSaveContext> SaveCalls { get; } = [];
 
         protected internal override Task InitializeCheckpoint(MessageStreamCheckpointContext context, CancellationToken cancellationToken)
         {
-            InitializeCalls.Add(context);
-            return Task.CompletedTask;
+            lock (_initializeLock)
+            {
+                InitializeCalls.Add(context);
+            }
+
+            return OnInitialize?.Invoke(context) ?? Task.CompletedTask;
         }
 
         protected internal override Task<long?> GetStreamPosition(MessageStreamCheckpointContext context, CancellationToken cancellationToken)
