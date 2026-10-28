@@ -17,7 +17,7 @@ namespace Flowly.AzureEventHubs;
 ///     </para>
 ///     <para>
 ///         A halted partition (its retries are exhausted) keeps the batch callback of that partition blocked until the partition is lost or the host stops, so the SDK keeps
-///         the ownership and no other instance takes the partition over.
+///         the ownership renewed, so the partition is not given away because its ownership expired. Rebalancing can still move it when another instance joins.
 ///     </para>
 /// </summary>
 internal sealed class EventHubsPartitionedStreamConsumer<TMessage>(

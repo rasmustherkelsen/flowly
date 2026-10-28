@@ -1,0 +1,207 @@
+{
+  "UserConfig": {
+    "NamespaceConfig": [
+      {
+        "Type": "EventHub",
+        "Name": "emulatorNs1",
+        "Entities": [
+          {
+            "Name": "it-single",
+            "PartitionCount": "1",
+            "ConsumerGroups": [
+              {
+                "Name": "cg01"
+              },
+              {
+                "Name": "cg02"
+              },
+              {
+                "Name": "cg03"
+              },
+              {
+                "Name": "cg04"
+              },
+              {
+                "Name": "cg05"
+              },
+              {
+                "Name": "cg06"
+              },
+              {
+                "Name": "cg07"
+              },
+              {
+                "Name": "cg08"
+              },
+              {
+                "Name": "cg09"
+              },
+              {
+                "Name": "cg10"
+              },
+              {
+                "Name": "cg11"
+              },
+              {
+                "Name": "cg12"
+              },
+              {
+                "Name": "cg13"
+              },
+              {
+                "Name": "cg14"
+              },
+              {
+                "Name": "cg15"
+              },
+              {
+                "Name": "cg16"
+              },
+              {
+                "Name": "cg17"
+              },
+              {
+                "Name": "cg18"
+              },
+              {
+                "Name": "cg19"
+              },
+              {
+                "Name": "cg20"
+              }
+            ]
+          },
+          {
+            "Name": "it-partitioned",
+            "PartitionCount": "4",
+            "ConsumerGroups": [
+              {
+                "Name": "cg01"
+              },
+              {
+                "Name": "cg02"
+              },
+              {
+                "Name": "cg03"
+              },
+              {
+                "Name": "cg04"
+              },
+              {
+                "Name": "cg05"
+              },
+              {
+                "Name": "cg06"
+              },
+              {
+                "Name": "cg07"
+              },
+              {
+                "Name": "cg08"
+              },
+              {
+                "Name": "cg09"
+              },
+              {
+                "Name": "cg10"
+              },
+              {
+                "Name": "cg11"
+              },
+              {
+                "Name": "cg12"
+              },
+              {
+                "Name": "cg13"
+              },
+              {
+                "Name": "cg14"
+              },
+              {
+                "Name": "cg15"
+              },
+              {
+                "Name": "cg16"
+              },
+              {
+                "Name": "cg17"
+              },
+              {
+                "Name": "cg18"
+              },
+              {
+                "Name": "cg19"
+              },
+              {
+                "Name": "cg20"
+              }
+            ]
+          },
+          {
+            "Name": "it-ownership",
+            "PartitionCount": "4",
+            "ConsumerGroups": [
+              {
+                "Name": "cg01"
+              },
+              {
+                "Name": "cg02"
+              },
+              {
+                "Name": "cg03"
+              },
+              {
+                "Name": "cg04"
+              },
+              {
+                "Name": "cg05"
+              },
+              {
+                "Name": "cg06"
+              },
+              {
+                "Name": "cg07"
+              },
+              {
+                "Name": "cg08"
+              },
+              {
+                "Name": "cg09"
+              },
+              {
+                "Name": "cg10"
+              }
+            ]
+          },
+          {
+            "Name": "it-empty",
+            "PartitionCount": "2",
+            "ConsumerGroups": [
+              {
+                "Name": "cg01"
+              },
+              {
+                "Name": "cg02"
+              }
+            ]
+          },
+          {
+            "Name": "it-first-event",
+            "PartitionCount": "1",
+            "ConsumerGroups": [
+              {
+                "Name": "cg01"
+              },
+              {
+                "Name": "cg02"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "LoggingConfig": {
+      "Type": "Console"
+    }
+  }
+}

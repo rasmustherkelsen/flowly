@@ -29,6 +29,12 @@ Each sample is self-contained and runnable. Pick the one matching your transport
 | [SendReceivePartitionedMessageStream](RabbitMQ/SendReceivePartitionedMessageStream/README.md) | Partitioned message stream using `[StreamPartitions]` against a RabbitMQ Super Stream |
 | [MessageStreamCheckPoint](RabbitMQ/MessageStreamCheckPoint/README.md) | Partitioned message stream with restart-survival via `UseMessageStreamCheckpoint<T>()` and a PostgreSQL-backed checkpoint store |
 
+## Azure Event Hubs
+
+| Sample | What it shows |
+|---|---|
+| [MessageStreamWithCheckpoint](AzureEventHubs/MessageStreamWithCheckpoint/README.md) | Partitioned message stream on Azure Event Hubs against the local emulator via Docker Compose, with partition-keyed recording, a consumer group, SQLite checkpoint persistence and shared partition ownership between `Receiver` instances |
+
 ## InMemory
 
 | Sample | What it shows |
