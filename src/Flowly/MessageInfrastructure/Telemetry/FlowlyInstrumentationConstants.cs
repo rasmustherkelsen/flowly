@@ -46,6 +46,15 @@ public static class FlowlyInstrumentationConstants
     /// <summary>Counter: number of times a stream handler halted consumption after exhausting its in-process retries.</summary>
     public const string HandlerMessagesHalted = "flowly.message.handler.halted";
 
+    /// <summary>
+    ///     Gauge: the current state of each stream partition owned by this process, as <c>0</c> (running), <c>1</c> (waiting for an
+    ///     unresolved start position) or <c>2</c> (halted after exhausted retries); a partition that is revoked stops being reported.
+    /// </summary>
+    public const string StreamPartitionCurrentState = "flowly.message.stream.partition.state";
+
+    /// <summary>Counter: number of times a stream partition entered a state, tagged <c>state=running|waiting|halted</c>.</summary>
+    public const string StreamPartitionTransitions = "flowly.message.stream.partition.transitions";
+
     /// <summary>Histogram: message processing duration in milliseconds for handlers.</summary>
     public const string HandlerProcessingDuration = "flowly.message.handler.duration";
 

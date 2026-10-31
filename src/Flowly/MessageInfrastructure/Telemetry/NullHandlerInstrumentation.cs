@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Flowly.MessageInfrastructure.StreamPartitions;
 
 namespace Flowly.MessageInfrastructure.Telemetry;
 
@@ -21,6 +22,8 @@ internal sealed class NullHandlerInstrumentation : IHandlerInstrumentation
     public void RecordRetried(string handlerName, string queueName, long count = 1) { }
 
     public void RecordHalted(string handlerName, string queueName, string reason) { }
+
+    public void RecordStreamPartitionTransition(string handlerName, string queueName, string consumerName, int? partition, StreamPartitionState state) { }
 
     public void RecordCheckpointSaved(string handlerName, string queueName, double durationMs) { }
 

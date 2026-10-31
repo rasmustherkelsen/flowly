@@ -2,6 +2,7 @@ using System.Reflection;
 using Flowly.MessageInfrastructure.Events.Telemetry;
 using Flowly.MessageInfrastructure.Model;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessageInfrastructure.StreamPartitions;
 using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.Registration;
 using Flowly.Services;
@@ -112,10 +113,8 @@ public static class AddFlowlyExtension
         var topologyNameResolver = (ITopologyNameResolver)Activator.CreateInstance(options.TopologyNameResolverType)!;
         services.TryAddSingleton(topologyNameResolver);
 
-        IHandlerInstrumentation handlerInstrumentation = options.EnableTelemetry
-            ? new HandlerInstrumentation()
-            : new NullHandlerInstrumentation();
-        
+        var streamPartitionStates = StreamPartitionStateRegistry.GetOrCreate(services);
+
         ISubmitterInstrumentation submitterInstrumentation = options.EnableTelemetry
             ? new SubmitterInstrumentation()
             : new NullSubmitterInstrumentation();
@@ -132,7 +131,8 @@ public static class AddFlowlyExtension
             ? new CallerInstrumentation()
             : new NullCallerInstrumentation();
 
-        services.TryAddSingleton(handlerInstrumentation);
+        services.TryAddSingleton<IHandlerInstrumentation>(
+            _ => options.EnableTelemetry ? new HandlerInstrumentation(streamPartitionStates) : new NullHandlerInstrumentation());
         services.TryAddSingleton(submitterInstrumentation);
         services.TryAddSingleton(eventHandlerInstrumentation);
         services.TryAddSingleton(eventPublisherInstrumentation);

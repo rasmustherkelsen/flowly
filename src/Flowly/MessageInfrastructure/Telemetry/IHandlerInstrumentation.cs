@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Flowly.MessageInfrastructure.StreamPartitions;
 
 namespace Flowly.MessageInfrastructure.Telemetry;
 
@@ -104,6 +105,19 @@ internal interface IHandlerInstrumentation
     /// <param name="queueName">The stream queue the handler stopped consuming.</param>
     /// <param name="reason">The failure reason that caused the halt.</param>
     void RecordHalted(string handlerName, string queueName, string reason);
+
+    /// <summary>
+    ///     Increments the <c>flowly.message.stream.partition.transitions</c> counter, tagged with the state the partition
+    ///     entered (<c>state=running|waiting|halted</c>). Called once when a stream partition owned by this process enters
+    ///     a state it was not in before, never per message and not when a partition is revoked. The current state of every
+    ///     owned partition is reported separately by the <c>flowly.message.stream.partition.state</c> gauge.
+    /// </summary>
+    /// <param name="handlerName">The name of the stream handler class.</param>
+    /// <param name="queueName">The stream queue the partition belongs to.</param>
+    /// <param name="consumerName">The consumer name of the stream handler.</param>
+    /// <param name="partition">The partition index, or <see langword="null" /> for a non-partitioned stream.</param>
+    /// <param name="state">The state the partition entered.</param>
+    void RecordStreamPartitionTransition(string handlerName, string queueName, string consumerName, int? partition, StreamPartitionState state);
 
     /// <summary>
     ///     Increments the <c>flowly.message.checkpoint.saved</c> counter and records the save duration. Called after a

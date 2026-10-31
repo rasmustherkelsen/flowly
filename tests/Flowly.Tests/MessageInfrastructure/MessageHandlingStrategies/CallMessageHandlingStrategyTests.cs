@@ -1,3 +1,4 @@
+using Flowly.MessageInfrastructure.StreamPartitions;
 using System.Diagnostics;
 using Flowly.MessageInfrastructure.MessageHandlingStrategies;
 using Flowly.MessageInfrastructure.Model;
@@ -260,6 +261,8 @@ public class CallMessageHandlingStrategyTests
 
         public void RecordHalted(string handlerName, string queueName, string reason) { }
 
+        public void RecordStreamPartitionTransition(string handlerName, string queueName, string consumerName, int? partition, StreamPartitionState state) { }
+
         public void RecordCheckpointSaved(string handlerName, string queueName, double durationMs) { }
 
         public void RecordCheckpointSaveFailed(string handlerName, string queueName) { }
@@ -296,6 +299,8 @@ public class CallMessageHandlingStrategyTests
         public void RecordRetried(string handlerName, string queueName, long count = 1) { }
 
         public void RecordHalted(string handlerName, string queueName, string reason) { }
+
+        public void RecordStreamPartitionTransition(string handlerName, string queueName, string consumerName, int? partition, StreamPartitionState state) { }
 
         public void RecordCheckpointSaved(string handlerName, string queueName, double durationMs) { }
 

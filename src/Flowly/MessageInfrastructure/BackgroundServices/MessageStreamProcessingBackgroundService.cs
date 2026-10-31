@@ -1,5 +1,6 @@
 using Flowly.MessageInfrastructure.Model;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessageInfrastructure.StreamPartitions;
 using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.Transport;
 using Microsoft.Extensions.DependencyInjection;
@@ -12,10 +13,14 @@ internal sealed class MessageStreamProcessingBackgroundService<TMessage, THandle
     MessageStreamHandlerSettings<TMessage, THandler> handlerSettings,
     IServiceScopeFactory serviceScopeFactory,
     ILogger<MessageStreamProcessingBackgroundService<TMessage, THandler>> logger,
-    IHandlerInstrumentation handlerInstrumentation) : MessageProcessingBackgroundServiceBase<TMessage>
+    IHandlerInstrumentation handlerInstrumentation,
+    IStreamPartitionStateRegistry stateRegistry) : MessageProcessingBackgroundServiceBase<TMessage>
     where TMessage : class
     where THandler : MessageStreamHandler<TMessage>
 {
+    private readonly StreamPartitionStateReporter _stateReporter = new(
+        stateRegistry, handlerInstrumentation, handlerSettings.HandlerName, handlerSettings.QueueName, handlerSettings.ConsumerName);
+
     private StreamPartitionRunner<TMessage, THandler>? _runner;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -51,19 +56,27 @@ internal sealed class MessageStreamProcessingBackgroundService<TMessage, THandle
             messagingSystem,
             serviceScopeFactory,
             logger,
-            handlerInstrumentation);
+            handlerInstrumentation,
+            _stateReporter.Running(null));
 
         await _runner.Run(stoppingToken);
     }
 
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
-        if (_runner != null)
+        try
         {
-            await _runner.StopProcessing(cancellationToken);
-            await _runner.DisposeAsync();
-        }
+            if (_runner != null)
+            {
+                await _runner.StopProcessing(cancellationToken);
+                await _runner.DisposeAsync();
+            }
 
-        await base.StopAsync(cancellationToken);
+            await base.StopAsync(cancellationToken);
+        }
+        finally
+        {
+            _stateReporter.Stopped();
+        }
     }
 }

@@ -1,3 +1,4 @@
+using Flowly.MessageInfrastructure.StreamPartitions;
 using System.Diagnostics;
 using Flowly;
 using Flowly.MessageInfrastructure;
@@ -412,6 +413,8 @@ public class RecurringJobHandlerBackgroundServiceTests
         public void RecordRetried(string handlerName, string queueName, long count = 1) { }
 
         public void RecordHalted(string handlerName, string queueName, string reason) { }
+
+        public void RecordStreamPartitionTransition(string handlerName, string queueName, string consumerName, int? partition, StreamPartitionState state) { }
 
         public void RecordCheckpointSaved(string handlerName, string queueName, double durationMs) { }
 

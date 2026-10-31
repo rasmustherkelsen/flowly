@@ -9,6 +9,8 @@ internal sealed class FakeMessageStreamCheckpoint<TMessage> : MessageStreamCheck
 
     public List<(int? Partition, long Position, bool IsBootstrapSeed)> Saves { get; } = [];
 
+    public Exception? GetPositionFailure { get; set; }
+
     public void Store(int? partition, long position)
     {
         lock (_gate)
@@ -21,6 +23,9 @@ internal sealed class FakeMessageStreamCheckpoint<TMessage> : MessageStreamCheck
 
     protected internal override Task<long?> GetStreamPosition(MessageStreamCheckpointContext context, CancellationToken cancellationToken)
     {
+        if (GetPositionFailure is { } failure)
+            throw failure;
+
         lock (_gate)
         {
             return Task.FromResult<long?>(_positions.TryGetValue(context.Partition ?? NonPartitioned, out var position) ? position : null);
