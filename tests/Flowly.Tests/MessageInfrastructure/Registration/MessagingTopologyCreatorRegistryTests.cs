@@ -15,7 +15,7 @@ public class MessagingTopologyCreatorRegistryTests
 
             messagingTopologyCreatorRegistry.Register("primary", creator);
 
-            Assert.Same(creator, messagingTopologyCreatorRegistry.GetCreator("primary"));
+            Assert.Same(creator, messagingTopologyCreatorRegistry.TryGetCreator("primary"));
         }
 
         [Fact]
@@ -28,44 +28,7 @@ public class MessagingTopologyCreatorRegistryTests
             messagingTopologyCreatorRegistry.Register("primary", firstCreator);
             messagingTopologyCreatorRegistry.Register("primary", secondCreator);
 
-            Assert.Same(secondCreator, messagingTopologyCreatorRegistry.GetCreator("primary"));
-        }
-    }
-
-    public class GetCreator
-    {
-        [Fact]
-        public void LookupIsCaseInsensitive()
-        {
-            var messagingTopologyCreatorRegistry = new MessagingTopologyCreatorRegistry();
-            var creator = new StubMessagingTopologyCreator();
-            messagingTopologyCreatorRegistry.Register("Primary", creator);
-
-            Assert.Same(creator, messagingTopologyCreatorRegistry.GetCreator("primary"));
-        }
-
-        [Fact]
-        public void UnknownProvider_ThrowsInvalidOperationException()
-        {
-            var messagingTopologyCreatorRegistry = new MessagingTopologyCreatorRegistry();
-
-            var exception = Assert.Throws<InvalidOperationException>(() =>
-                messagingTopologyCreatorRegistry.GetCreator("missing"));
-
-            Assert.Contains("missing", exception.Message);
-        }
-
-        [Fact]
-        public void DifferentProvidersResolveIndependently()
-        {
-            var messagingTopologyCreatorRegistry = new MessagingTopologyCreatorRegistry();
-            var firstCreator = new StubMessagingTopologyCreator();
-            var secondCreator = new StubMessagingTopologyCreator();
-            messagingTopologyCreatorRegistry.Register("first", firstCreator);
-            messagingTopologyCreatorRegistry.Register("second", secondCreator);
-
-            Assert.Same(firstCreator, messagingTopologyCreatorRegistry.GetCreator("first"));
-            Assert.Same(secondCreator, messagingTopologyCreatorRegistry.GetCreator("second"));
+            Assert.Same(secondCreator, messagingTopologyCreatorRegistry.TryGetCreator("primary"));
         }
     }
 
@@ -100,6 +63,19 @@ public class MessagingTopologyCreatorRegistryTests
         }
 
         [Fact]
+        public void DifferentProvidersResolveIndependently()
+        {
+            var messagingTopologyCreatorRegistry = new MessagingTopologyCreatorRegistry();
+            var firstCreator = new StubMessagingTopologyCreator();
+            var secondCreator = new StubMessagingTopologyCreator();
+            messagingTopologyCreatorRegistry.Register("first", firstCreator);
+            messagingTopologyCreatorRegistry.Register("second", secondCreator);
+
+            Assert.Same(firstCreator, messagingTopologyCreatorRegistry.TryGetCreator("first"));
+            Assert.Same(secondCreator, messagingTopologyCreatorRegistry.TryGetCreator("second"));
+        }
+
+        [Fact]
         public void ProviderWithoutCreatorDoesNotAffectProviderWithCreator()
         {
             var messagingTopologyCreatorRegistry = new MessagingTopologyCreatorRegistry();
@@ -109,49 +85,6 @@ public class MessagingTopologyCreatorRegistryTests
             Assert.Same(creator, messagingTopologyCreatorRegistry.TryGetCreator("queues"));
             Assert.Null(messagingTopologyCreatorRegistry.TryGetCreator("streams"));
         }
-    }
-
-    public class TryGetCreatorDefaultImplementation
-    {
-        [Fact]
-        public void RegistryThatOnlyImplementsGetCreator_ReturnsTheCreatorItReturns()
-        {
-            var creator = new StubMessagingTopologyCreator();
-            IMessagingTopologyCreatorRegistry messagingTopologyCreatorRegistry = new GetCreatorOnlyRegistry(creator);
-
-            Assert.Same(creator, messagingTopologyCreatorRegistry.TryGetCreator("known"));
-        }
-
-        [Fact]
-        public void RegistryWhoseGetCreatorThrowsInvalidOperationException_ReturnsNull()
-        {
-            IMessagingTopologyCreatorRegistry messagingTopologyCreatorRegistry = new GetCreatorOnlyRegistry(new StubMessagingTopologyCreator());
-
-            Assert.Null(messagingTopologyCreatorRegistry.TryGetCreator("unknown"));
-        }
-
-        [Fact]
-        public void RegistryWhoseGetCreatorThrowsAnotherException_PropagatesIt()
-        {
-            IMessagingTopologyCreatorRegistry messagingTopologyCreatorRegistry = new GetCreatorOnlyRegistry(new StubMessagingTopologyCreator());
-
-            Assert.Throws<NotSupportedException>(() => messagingTopologyCreatorRegistry.TryGetCreator("unsupported"));
-        }
-    }
-
-    private sealed class GetCreatorOnlyRegistry(IMessagingTopologyCreator knownCreator) : IMessagingTopologyCreatorRegistry
-    {
-        public void Register(string providerName, IMessagingTopologyCreator creator)
-        {
-        }
-
-        public IMessagingTopologyCreator GetCreator(string providerName)
-            => providerName switch
-            {
-                "known" => knownCreator,
-                "unsupported" => throw new NotSupportedException(),
-                _ => throw new InvalidOperationException($"No topology creator registered for provider '{providerName}'.")
-            };
     }
 
     private class StubMessagingTopologyCreator : IMessagingTopologyCreator

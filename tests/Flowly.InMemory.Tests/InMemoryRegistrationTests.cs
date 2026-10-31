@@ -204,7 +204,7 @@ public class InMemoryRegistrationTests
             Creators[providerName] = creator;
         }
 
-        public IMessagingTopologyCreator GetCreator(string providerName) => throw new NotImplementedException();
+        public IMessagingTopologyCreator? TryGetCreator(string providerName) => Creators.GetValueOrDefault(providerName);
     }
 
     private sealed class FakeEventTopologyCreatorRegistry : IEventTopologyCreatorRegistry
