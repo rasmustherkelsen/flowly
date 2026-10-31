@@ -11,8 +11,10 @@ namespace Flowly.MessageInfrastructure.BackgroundServices;
 /// <summary>
 ///     Supervises one <see cref="StreamPartitionRunner{TMessage,THandler}" /> per partition currently owned by this
 ///     process, starting and stopping them as <see cref="IPartitionedStreamConsumer{TMessage}" /> reports ownership
-///     changes. A halted partition (retries exhausted) only stops that partition — the others, and the service
-///     itself, keep running, since partitions are independent logs. Records the state of every partition this process
+///     changes. A halted partition (retries exhausted) only holds that partition — its runner keeps the failed batch and
+///     applies backpressure until it is resumed or revoked, while the others, and the service itself, keep running, since
+///     partitions are independent logs. A runner is always cancelled before its processor is stopped, so a runner held by
+///     backpressure cannot keep the transport from stopping. Records the state of every partition this process
 ///     owns (running, waiting for an unresolved start position, halted) into the <see cref="IStreamPartitionStateRegistry" />;
 ///     the transport only reports assignment and revocation.
 /// </summary>
@@ -22,7 +24,8 @@ internal sealed class PartitionedMessageStreamProcessingBackgroundService<TMessa
     IServiceScopeFactory serviceScopeFactory,
     ILogger<PartitionedMessageStreamProcessingBackgroundService<TMessage, THandler>> logger,
     IHandlerInstrumentation handlerInstrumentation,
-    IStreamPartitionStateRegistry stateRegistry) : MessageProcessingBackgroundServiceBase<TMessage>
+    IStreamPartitionStateRegistry stateRegistry,
+    IStreamPartitionResumeRegistry resumeRegistry) : MessageProcessingBackgroundServiceBase<TMessage>
     where TMessage : class
     where THandler : MessageStreamHandler<TMessage>
 {
@@ -135,7 +138,8 @@ internal sealed class PartitionedMessageStreamProcessingBackgroundService<TMessa
             serviceScopeFactory,
             logger,
             handlerInstrumentation,
-            _stateReporter.Running(partition));
+            _stateReporter.Running(partition),
+            resumeRegistry);
 
         var cts = CancellationTokenSource.CreateLinkedTokenSource(_stoppingToken);
         var runTask = runner.Run(cts.Token);
@@ -220,7 +224,6 @@ internal sealed class PartitionedMessageStreamProcessingBackgroundService<TMessa
 
         foreach (var entry in entries)
         {
-            await entry.Runner.StopProcessing(cancellationToken);
             await entry.Cts.CancelAsync();
 
             try
@@ -231,6 +234,7 @@ internal sealed class PartitionedMessageStreamProcessingBackgroundService<TMessa
             {
             }
 
+            await entry.Runner.StopProcessing(cancellationToken);
             await DisposeEntry(entry);
         }
 

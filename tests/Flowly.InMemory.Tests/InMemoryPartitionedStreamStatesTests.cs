@@ -28,7 +28,8 @@ public class InMemoryPartitionedStreamStatesTests
             serviceProvider.GetRequiredService<IServiceScopeFactory>(),
             NullLogger<PartitionedMessageStreamProcessingBackgroundService<OrderPlaced, OrderPlacedHandler>>.Instance,
             new NullHandlerInstrumentation(),
-            stateRegistry);
+            stateRegistry,
+            new StreamPartitionResumeRegistry());
 
         return (service, stateRegistry);
     }

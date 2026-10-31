@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using Flowly.Transport;
 using Microsoft.Extensions.Logging.Abstractions;
 using RabbitMQ.Stream.Client;
+using RabbitMQ.Stream.Client.AMQP;
 
 namespace Flowly.RabbitMQ.Tests;
 
@@ -365,6 +366,58 @@ public class RabbitMqPartitionedStreamConsumerTests
 
             await Assert.ThrowsAsync<InvalidOperationException>(() => rabbitMqPartitionedStreamConsumer.OnConsumerUpdate("invoices-1", true));
         }
+    }
+
+    public class PartitionProcessorDispatch
+    {
+        [Fact]
+        public async Task WhileAProcessMessageHandlerIsPending_TheDispatchDoesNotComplete()
+        {
+            var rabbitMqPartitionedStreamConsumer = Build();
+            IMessageBusProcessor<OrderMessage>? processor = null;
+            rabbitMqPartitionedStreamConsumer.PartitionAssigned += (_, assigned) =>
+            {
+                processor = assigned;
+                return Task.CompletedTask;
+            };
+            await rabbitMqPartitionedStreamConsumer.OnConsumerUpdate("orders-0", true);
+            var pending = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            processor!.ProcessMessage += (_, _) => pending.Task;
+
+            var dispatch = Dispatch(processor, """{"Id":"1"}""");
+
+            Assert.False(dispatch.IsCompleted);
+
+            pending.SetResult();
+            await dispatch.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+
+        [Fact]
+        public async Task WhenAProcessMessageHandlerThrows_RaisesProcessErrorAndCompletes()
+        {
+            var rabbitMqPartitionedStreamConsumer = Build();
+            IMessageBusProcessor<OrderMessage>? processor = null;
+            rabbitMqPartitionedStreamConsumer.PartitionAssigned += (_, assigned) =>
+            {
+                processor = assigned;
+                return Task.CompletedTask;
+            };
+            await rabbitMqPartitionedStreamConsumer.OnConsumerUpdate("orders-0", true);
+            var errors = new List<ErrorDetails>();
+            processor!.ProcessMessage += (_, _) => throw new InvalidOperationException("handler failure");
+            processor.ProcessError += error =>
+            {
+                errors.Add(error);
+                return Task.CompletedTask;
+            };
+
+            await Dispatch(processor, """{"Id":"1"}""");
+
+            Assert.Equal("handler failure", Assert.Single(errors).Exception.Message);
+        }
+
+        private static Task Dispatch(IMessageBusProcessor<OrderMessage> processor, string json)
+            => (Task)processor.GetType().GetMethod("Dispatch")!.Invoke(processor, [new Message(System.Text.Encoding.UTF8.GetBytes(json)), 0L])!;
     }
 
     private static RabbitMqPartitionedStreamConsumer<OrderMessage> Build(Func<int, CancellationToken, Task<StartPosition>>? resolveStartPosition = null)

@@ -14,10 +14,11 @@ namespace Flowly;
 ///     <para>
 ///         Retry is opt-in via <see cref="RetryPolicyAttribute" /> on the handler class and runs as an in-process loop
 ///         over the same batch — failed messages are never re-published to the stream, which would permanently corrupt
-///         the replayable log. When retries are exhausted the handler <strong>halts consumption entirely</strong>
-///         rather than skipping the failed batch: the stream offset never advances past it, a critical log entry and a
-///         <c>flowly.message.handler.halted</c> metric are emitted, and manual intervention (fix and restart) is
-///         required. Dead letter tracking is not supported.
+///         the replayable log. When retries are exhausted the handler <strong>halts consumption</strong>
+///         of that stream (or partition) rather than skipping the failed batch: the stream offset never advances past it, a critical log entry and a
+///         <c>flowly.message.handler.halted</c> metric are emitted, the failed batch is held and the transport stops receiving (nothing is dropped; the
+///         broker keeps the rest of the stream), and manual intervention is required. Fixing the handler and restarting the process replays the failed
+///         batch from the stored position. Dead letter tracking is not supported.
 ///     </para>
 /// </summary>
 /// <typeparam name="TMessage">The message contract type consumed from the stream.</typeparam>

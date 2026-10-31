@@ -10,8 +10,9 @@ namespace Flowly.AzureEventHubs;
 ///     of the event hub. The start position it is given is the one Flowly resolved, from a stored checkpoint position or the handler's configuration. When the SDK
 ///     reports the partition lost and initializes it again, reading resumes after the last event handed to the handler's loop instead of at that start position.
 ///     <para>
-///         <see cref="StopProcessing" /> only stops dispatching, which is what a halted stream needs: the batch callback blocks and the SDK keeps the partition.
-///         <see cref="DisposeAsync" /> stops the SDK processor and releases the partition.
+///         A halted stream needs no call into the processor: the handler's loop holds the failed batch and stops taking events, so the awaited
+///         <see cref="IMessageBusProcessor{TMessage}.ProcessMessage" /> delegate does not complete, the batch callback blocks and the SDK keeps the partition.
+///         <see cref="StopProcessing" /> only stops dispatching and <see cref="DisposeAsync" /> stops the SDK processor and releases the partition.
 ///     </para>
 /// </summary>
 internal sealed class EventHubsStreamProcessor<TMessage>(

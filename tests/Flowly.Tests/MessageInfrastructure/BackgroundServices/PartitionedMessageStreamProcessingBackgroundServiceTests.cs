@@ -1,3 +1,4 @@
+using System.Threading.Channels;
 using Flowly.MessageInfrastructure.StreamPartitions;
 using Flowly.MessageInfrastructure.BackgroundServices;
 using Flowly.MessageInfrastructure.Model;
@@ -25,7 +26,8 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
             StartPosition? startPosition = null,
             IStreamStartOffsetResolver? startOffsetResolver = null,
             string? consumerName = null,
-            StreamPartitionStateRegistry? stateRegistry = null)
+            StreamPartitionStateRegistry? stateRegistry = null,
+            StreamPartitionResumeRegistry? resumeRegistry = null)
     {
         var consumer = new FakePartitionedStreamConsumer();
         ITransportClient client = clientFactory?.Invoke(consumer)
@@ -58,7 +60,8 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
             serviceProvider.GetRequiredService<IServiceScopeFactory>(),
             NullLogger<PartitionedMessageStreamProcessingBackgroundService<TestMessage, SpyStreamHandler>>.Instance,
             instrumentation,
-                stateRegistry ?? new StreamPartitionStateRegistry(TimeProvider.System));
+                stateRegistry ?? new StreamPartitionStateRegistry(TimeProvider.System),
+                resumeRegistry ?? new StreamPartitionResumeRegistry());
 
         return (backgroundService, consumer, handler, instrumentation, checkpoint);
     }
@@ -77,7 +80,8 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
                 new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
                 NullLogger<PartitionedMessageStreamProcessingBackgroundService<TestMessage, SpyStreamHandler>>.Instance,
                 new SpyHandlerInstrumentation(),
-                new StreamPartitionStateRegistry(TimeProvider.System));
+                new StreamPartitionStateRegistry(TimeProvider.System),
+                new StreamPartitionResumeRegistry());
 
             await Assert.ThrowsAsync<InvalidOperationException>(async () =>
             {
@@ -242,7 +246,7 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
             var processorOne = await consumer.AssignPartition(1);
 
             await processorZero.Deliver(new FakeReceivedMessage(new TestMessage("poison")));
-            await WaitUntil(() => instrumentation.HaltedReasons.Count > 0, TestTimeout);
+            await instrumentation.NextHalt();
             Assert.Contains("permanent failure", instrumentation.HaltedReasons);
 
             await processorOne.Deliver(new FakeReceivedMessage(new TestMessage("still-works")));
@@ -254,7 +258,7 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
         }
 
         [Fact]
-        public async Task WhenPartitionHalts_DisposesItsProcessor()
+        public async Task WhenPartitionHalts_KeepsItsProcessorUntilItIsRevoked()
         {
             var (backgroundService, consumer, _, instrumentation, _) = CreateService(
                 maxMessages: 1,
@@ -266,9 +270,13 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
 
             var processor = await consumer.AssignPartition(0);
             await processor.Deliver(new FakeReceivedMessage(new TestMessage("poison")));
+            await instrumentation.NextHalt();
 
-            await WaitUntil(() => instrumentation.HaltedReasons.Count == 1, TestTimeout);
-            await WaitUntil(() => processor.DisposeAsyncCallCount == 1, TestTimeout);
+            Assert.Equal(0, processor.DisposeAsyncCallCount);
+
+            await consumer.RevokePartition(0);
+
+            Assert.Equal(1, processor.DisposeAsyncCallCount);
 
             await backgroundService.StopAsync(CancellationToken.None);
         }
@@ -578,7 +586,7 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
         }
 
         [Fact]
-        public async Task WhenAPartitionHalts_RecordsHaltedWithTheLastErrorAndKeepsItAfterItsLoopEnded()
+        public async Task WhenAPartitionHalts_RecordsHaltedWithTheLastError()
         {
             var registry = new StreamPartitionStateRegistry(TimeProvider.System);
             var (backgroundService, consumer, _, instrumentation, _) = CreateService(
@@ -592,7 +600,7 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
             await consumer.AssignPartition(1);
 
             await processorZero.Deliver(new FakeReceivedMessage(new TestMessage("poison")));
-            await processorZero.Disposed.Task.WaitAsync(TestTimeout);
+            await instrumentation.NextHalt();
 
             var halted = registry.Get(Key(0))!;
             Assert.Equal(StreamPartitionState.Halted, halted.State);
@@ -608,7 +616,7 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
         public async Task WhenAHaltedPartitionIsRevoked_RemovesItsEntry()
         {
             var registry = new StreamPartitionStateRegistry(TimeProvider.System);
-            var (backgroundService, consumer, _, _, _) = CreateService(
+            var (backgroundService, consumer, _, instrumentation, _) = CreateService(
                 maxMessages: 1,
                 maxRetries: 0,
                 onHandle: _ => throw new InvalidOperationException("permanent failure"),
@@ -617,7 +625,7 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
             await consumer.Started.Task.WaitAsync(TestTimeout);
             var processor = await consumer.AssignPartition(0);
             await processor.Deliver(new FakeReceivedMessage(new TestMessage("poison")));
-            await processor.Disposed.Task.WaitAsync(TestTimeout);
+            await instrumentation.NextHalt();
 
             await consumer.RevokePartition(0);
 
@@ -630,7 +638,7 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
         public async Task WhenAHaltedPartitionIsAssignedAgain_RecordsRunning()
         {
             var registry = new StreamPartitionStateRegistry(TimeProvider.System);
-            var (backgroundService, consumer, _, _, _) = CreateService(
+            var (backgroundService, consumer, _, instrumentation, _) = CreateService(
                 maxMessages: 1,
                 maxRetries: 0,
                 onHandle: _ => throw new InvalidOperationException("permanent failure"),
@@ -639,7 +647,7 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
             await consumer.Started.Task.WaitAsync(TestTimeout);
             var processor = await consumer.AssignPartition(0);
             await processor.Deliver(new FakeReceivedMessage(new TestMessage("poison")));
-            await processor.Disposed.Task.WaitAsync(TestTimeout);
+            await instrumentation.NextHalt();
 
             await consumer.RevokePartition(0);
             await consumer.AssignPartition(0);
@@ -817,6 +825,179 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
             Assert.Equal("second", remaining.Key.ConsumerName);
 
             await second.StopAsync(CancellationToken.None);
+        }
+    }
+
+    public class HaltedPartitions
+    {
+        private static StreamPartitionKey Key(int partition) => new("telemetry-reading", nameof(SpyStreamHandler), partition);
+
+        [Fact]
+        public async Task WhenResumed_RunsTheHeldBatchAgainAndContinuesWithTheMessagesBehindIt()
+        {
+            var failures = 1;
+            var resumeRegistry = new StreamPartitionResumeRegistry();
+            var (backgroundService, consumer, handler, instrumentation, _) = CreateService(
+                maxMessages: 1,
+                maxRetries: 0,
+                onHandle: _ => Interlocked.Decrement(ref failures) >= 0 ? throw new InvalidOperationException("transient") : Task.CompletedTask,
+                resumeRegistry: resumeRegistry);
+            await backgroundService.StartAsync(CancellationToken.None);
+            await consumer.Started.Task.WaitAsync(TestTimeout);
+            var processor = await consumer.AssignPartition(0);
+            await processor.Deliver(new FakeReceivedMessage(new TestMessage("a")));
+            await instrumentation.NextHalt();
+            await processor.Deliver(new FakeReceivedMessage(new TestMessage("b")));
+            var blocked = processor.Deliver(new FakeReceivedMessage(new TestMessage("c")));
+
+            var result = resumeRegistry.Resume(Key(0));
+            await blocked.WaitAsync(TestTimeout);
+            await handler.WaitForInvocations(4, TestTimeout);
+
+            Assert.Equal(StreamPartitionResumeResult.Resumed, result);
+            Assert.Equal(["a", "a", "b", "c"], handler.Invocations.SelectMany(invocation => invocation.Messages).Select(message => message.Payload));
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task WhileTheBatchIsHeld_DoesNotCheckpointAndAfterResumeCheckpointsTheHeldBatch()
+        {
+            var failures = 1;
+            var resumeRegistry = new StreamPartitionResumeRegistry();
+            var checkpoint = new FakeCheckpoint();
+            var (backgroundService, consumer, handler, instrumentation, _) = CreateService(
+                maxMessages: 1,
+                maxRetries: 0,
+                onHandle: _ => Interlocked.Decrement(ref failures) >= 0 ? throw new InvalidOperationException("transient") : Task.CompletedTask,
+                checkpoint: checkpoint,
+                resumeRegistry: resumeRegistry);
+            await backgroundService.StartAsync(CancellationToken.None);
+            await consumer.Started.Task.WaitAsync(TestTimeout);
+            var processor = await consumer.AssignPartition(2);
+            await processor.Deliver(new FakeReceivedMessage(new TestMessage("a"), streamOffset: 11));
+            await instrumentation.NextHalt();
+
+            Assert.Empty(checkpoint.SaveCalls);
+
+            resumeRegistry.Resume(Key(2));
+            await checkpoint.FirstSaved.Task.WaitAsync(TestTimeout);
+
+            var save = Assert.Single(checkpoint.SaveCalls);
+            Assert.Equal(2, save.Partition);
+            Assert.Equal(11, save.Position);
+            Assert.Equal(2, handler.Invocations.Count);
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task WhenRevokedWhileHeld_ReleasesTheBlockedDeliveryAndRemovesTheHandle()
+        {
+            var resumeRegistry = new StreamPartitionResumeRegistry();
+            var registry = new StreamPartitionStateRegistry(TimeProvider.System);
+            var (backgroundService, consumer, _, instrumentation, _) = CreateService(
+                maxMessages: 1,
+                maxRetries: 0,
+                onHandle: _ => throw new InvalidOperationException("permanent failure"),
+                stateRegistry: registry,
+                resumeRegistry: resumeRegistry);
+            await backgroundService.StartAsync(CancellationToken.None);
+            await consumer.Started.Task.WaitAsync(TestTimeout);
+            var processor = await consumer.AssignPartition(0);
+            await processor.Deliver(new FakeReceivedMessage(new TestMessage("a")));
+            await instrumentation.NextHalt();
+            await processor.Deliver(new FakeReceivedMessage(new TestMessage("b")));
+            var blocked = processor.Deliver(new FakeReceivedMessage(new TestMessage("c")));
+
+            await consumer.RevokePartition(0);
+            await blocked.WaitAsync(TestTimeout);
+
+            Assert.Equal(StreamPartitionResumeResult.NotOwned, resumeRegistry.Resume(Key(0)));
+            Assert.Null(registry.Get(Key(0)));
+            Assert.Equal(1, processor.DisposeAsyncCallCount);
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task WhenAssignedAgainAfterBeingHeld_RunsNormallyWithoutAHeldBatch()
+        {
+            var resumeRegistry = new StreamPartitionResumeRegistry();
+            var (backgroundService, consumer, handler, instrumentation, _) = CreateService(
+                maxMessages: 1,
+                maxRetries: 0,
+                onHandle: context => context.Messages.Any(message => message.Payload == "poison") ? throw new InvalidOperationException("permanent failure") : Task.CompletedTask,
+                resumeRegistry: resumeRegistry);
+            await backgroundService.StartAsync(CancellationToken.None);
+            await consumer.Started.Task.WaitAsync(TestTimeout);
+            var first = await consumer.AssignPartition(0);
+            await first.Deliver(new FakeReceivedMessage(new TestMessage("poison")));
+            await instrumentation.NextHalt();
+            await consumer.RevokePartition(0);
+
+            var second = await consumer.AssignPartition(0);
+            await second.Deliver(new FakeReceivedMessage(new TestMessage("after")));
+            await handler.WaitForInvocations(2, TestTimeout);
+
+            Assert.Equal(StreamPartitionResumeResult.NotHalted, resumeRegistry.Resume(Key(0)));
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task WhenStoppedWhileHeld_CompletesAndReleasesTheBlockedDelivery()
+        {
+            var resumeRegistry = new StreamPartitionResumeRegistry();
+            var registry = new StreamPartitionStateRegistry(TimeProvider.System);
+            var (backgroundService, consumer, _, instrumentation, _) = CreateService(
+                maxMessages: 1,
+                maxRetries: 0,
+                onHandle: _ => throw new InvalidOperationException("permanent failure"),
+                stateRegistry: registry,
+                resumeRegistry: resumeRegistry);
+            await backgroundService.StartAsync(CancellationToken.None);
+            await consumer.Started.Task.WaitAsync(TestTimeout);
+            var processor = await consumer.AssignPartition(1);
+            await processor.Deliver(new FakeReceivedMessage(new TestMessage("a")));
+            await instrumentation.NextHalt();
+            await processor.Deliver(new FakeReceivedMessage(new TestMessage("b")));
+            var blocked = processor.Deliver(new FakeReceivedMessage(new TestMessage("c")));
+
+            await backgroundService.StopAsync(CancellationToken.None).WaitAsync(TestTimeout);
+            await blocked.WaitAsync(TestTimeout);
+
+            Assert.Equal(StreamPartitionResumeResult.NotOwned, resumeRegistry.Resume(Key(1)));
+            Assert.Empty(registry.GetAll());
+            Assert.Equal(1, processor.DisposeAsyncCallCount);
+        }
+
+        [Fact]
+        public async Task WhenOnePartitionIsResumed_AnotherHeldPartitionStaysHalted()
+        {
+            var failures = 1;
+            var resumeRegistry = new StreamPartitionResumeRegistry();
+            var registry = new StreamPartitionStateRegistry(TimeProvider.System);
+            var (backgroundService, consumer, _, instrumentation, _) = CreateService(
+                maxMessages: 1,
+                maxRetries: 0,
+                onHandle: context => context.Partition == 1 || Interlocked.Decrement(ref failures) >= 0 ? throw new InvalidOperationException("failure") : Task.CompletedTask,
+                stateRegistry: registry,
+                resumeRegistry: resumeRegistry);
+            await backgroundService.StartAsync(CancellationToken.None);
+            await consumer.Started.Task.WaitAsync(TestTimeout);
+            var zero = await consumer.AssignPartition(0);
+            var one = await consumer.AssignPartition(1);
+            await zero.Deliver(new FakeReceivedMessage(new TestMessage("a")));
+            await instrumentation.NextHalt();
+            await one.Deliver(new FakeReceivedMessage(new TestMessage("b")));
+            await instrumentation.NextHalt();
+
+            resumeRegistry.Resume(Key(0));
+
+            Assert.Equal(StreamPartitionState.Halted, registry.Get(Key(1))!.State);
+
+            await backgroundService.StopAsync(CancellationToken.None);
         }
     }
 
@@ -1016,6 +1197,7 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
         private readonly Lock _initializeLock = new();
 
         public long? StoredPosition { get; set; }
+        public TaskCompletionSource FirstSaved { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public Func<MessageStreamCheckpointContext, Task>? OnInitialize { get; set; }
         public List<MessageStreamCheckpointContext> InitializeCalls { get; } = [];
         public List<MessageStreamCheckpointSaveContext> SaveCalls { get; } = [];
@@ -1037,6 +1219,7 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
         {
             SaveCalls.Add(context);
             StoredPosition = context.Position;
+            FirstSaved.TrySetResult();
             return Task.CompletedTask;
         }
     }
@@ -1063,6 +1246,9 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
         public List<long> RetriedCounts { get; } = [];
         public List<string> HaltedReasons { get; } = [];
         public List<(int? Partition, StreamPartitionState State)> Transitions { get; } = [];
+        public Channel<string> Halts { get; } = Channel.CreateUnbounded<string>();
+
+        public async Task NextHalt() => await Halts.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
 
         public bool IsEnabled => false;
 
@@ -1080,7 +1266,11 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
 
         public void RecordRetried(string handlerName, string queueName, long count = 1) => RetriedCounts.Add(count);
 
-        public void RecordHalted(string handlerName, string queueName, string reason) => HaltedReasons.Add(reason);
+        public void RecordHalted(string handlerName, string queueName, string reason)
+        {
+            HaltedReasons.Add(reason);
+            Halts.Writer.TryWrite(reason);
+        }
 
         public void RecordStreamPartitionTransition(string handlerName, string queueName, string consumerName, int? partition, StreamPartitionState state)
             => Transitions.Add((partition, state));

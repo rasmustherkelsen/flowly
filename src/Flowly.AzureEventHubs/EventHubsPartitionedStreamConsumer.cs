@@ -16,8 +16,10 @@ namespace Flowly.AzureEventHubs;
 ///         the SDK, so no processing loop is started for a partition whose position is unknown.
 ///     </para>
 ///     <para>
-///         A halted partition (its retries are exhausted) keeps the batch callback of that partition blocked until the partition is lost or the host stops, so the SDK keeps
-///         the ownership renewed, so the partition is not given away because its ownership expired. Rebalancing can still move it when another instance joins.
+///         A halted partition (its retries are exhausted) keeps the batch callback of that partition blocked, because the partition's processing loop holds the failed batch and
+///         stops taking events, so the awaited <see cref="IMessageBusProcessor{TMessage}.ProcessMessage" /> delegate does not complete. The callback stays blocked until the
+///         partition is resumed, lost or the host stops, and the SDK keeps the ownership renewed, so the partition is not given away because its ownership expired.
+///         Rebalancing can still move it when another instance joins.
 ///     </para>
 /// </summary>
 internal sealed class EventHubsPartitionedStreamConsumer<TMessage>(

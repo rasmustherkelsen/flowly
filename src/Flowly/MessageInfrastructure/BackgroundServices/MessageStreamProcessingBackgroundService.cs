@@ -14,7 +14,8 @@ internal sealed class MessageStreamProcessingBackgroundService<TMessage, THandle
     IServiceScopeFactory serviceScopeFactory,
     ILogger<MessageStreamProcessingBackgroundService<TMessage, THandler>> logger,
     IHandlerInstrumentation handlerInstrumentation,
-    IStreamPartitionStateRegistry stateRegistry) : MessageProcessingBackgroundServiceBase<TMessage>
+    IStreamPartitionStateRegistry stateRegistry,
+    IStreamPartitionResumeRegistry resumeRegistry) : MessageProcessingBackgroundServiceBase<TMessage>
     where TMessage : class
     where THandler : MessageStreamHandler<TMessage>
 {
@@ -57,7 +58,8 @@ internal sealed class MessageStreamProcessingBackgroundService<TMessage, THandle
             serviceScopeFactory,
             logger,
             handlerInstrumentation,
-            _stateReporter.Running(null));
+            _stateReporter.Running(null),
+            resumeRegistry);
 
         await _runner.Run(stoppingToken);
     }
@@ -66,13 +68,13 @@ internal sealed class MessageStreamProcessingBackgroundService<TMessage, THandle
     {
         try
         {
+            await base.StopAsync(cancellationToken);
+
             if (_runner != null)
             {
                 await _runner.StopProcessing(cancellationToken);
                 await _runner.DisposeAsync();
             }
-
-            await base.StopAsync(cancellationToken);
         }
         finally
         {

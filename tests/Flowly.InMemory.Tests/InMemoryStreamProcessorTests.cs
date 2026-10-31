@@ -145,6 +145,71 @@ public class InMemoryStreamProcessorTests
         }
 
         [Fact]
+        public async Task WhileAProcessMessageHandlerIsPending_DoesNotDeliverTheNextMessage()
+        {
+            var log = new InMemoryStreamLog(default, referencePassingEnabled: false);
+            var processor = CreateProcessor(log, startOffset: 0);
+            var pending = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var allDelivered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var delivered = new List<string>();
+
+            processor.ProcessMessage += (msg, _) =>
+            {
+                lock (delivered)
+                {
+                    delivered.Add(msg.Body.Value);
+                    if (delivered.Count == 3)
+                        allDelivered.TrySetResult();
+                }
+
+                entered.TrySetResult();
+                return pending.Task;
+            };
+
+            using var cts = new CancellationTokenSource();
+            await processor.StartProcessingMessages(cts.Token);
+            log.Append(CreateEnvelope("first"));
+            log.Append(CreateEnvelope("second"));
+            log.Append(CreateEnvelope("third"));
+
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            string[] deliveredWhilePending;
+            lock (delivered)
+            {
+                deliveredWhilePending = [.. delivered];
+            }
+
+            pending.SetResult();
+            await allDelivered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await processor.StopProcessing(CancellationToken.None);
+
+            Assert.Equal(["first"], deliveredWhilePending);
+            Assert.Equal(["first", "second", "third"], delivered);
+        }
+
+        [Fact]
+        public async Task WhenStoppedWhileAProcessMessageHandlerIsPending_CancelsTheTokenPassedToTheHandlerAndCompletes()
+        {
+            var log = new InMemoryStreamLog(default, referencePassingEnabled: false);
+            var processor = CreateProcessor(log, startOffset: 0);
+            var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            processor.ProcessMessage += async (_, cancellationToken) =>
+            {
+                entered.TrySetResult();
+                await Task.Delay(Timeout.Infinite, cancellationToken);
+            };
+
+            using var cts = new CancellationTokenSource();
+            await processor.StartProcessingMessages(cts.Token);
+            log.Append(CreateEnvelope("first"));
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            await processor.StopProcessing(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
+        }
+
+        [Fact]
         public async Task InvokesProcessErrorHandlerWhenMessageHandlerThrows()
         {
             var log = new InMemoryStreamLog(default, referencePassingEnabled: false);
