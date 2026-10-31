@@ -24,6 +24,7 @@
         <InternalsVisibleTo Include="Flowly.InMemory.Tests" />
         <InternalsVisibleTo Include="Flowly.AzureEventHubs" />
         <InternalsVisibleTo Include="Flowly.AzureEventHubs.Tests" />
+        <InternalsVisibleTo Include="Flowly.ManagementApi" />
     </ItemGroup>
 
     <ItemGroup>
@@ -32,6 +33,7 @@
         <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.0" />
         <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.0" />
         <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
+        <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="10.0.0" />
         <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.0" />
         <PackageReference Include="System.CommandLine" Version="2.0.11" />
     </ItemGroup>

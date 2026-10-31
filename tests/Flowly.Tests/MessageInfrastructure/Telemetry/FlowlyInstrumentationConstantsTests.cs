@@ -167,6 +167,21 @@ public class FlowlyInstrumentationConstantsTests
         }
     }
 
+    public class StreamPartitionMetricNames
+    {
+        [Fact]
+        public void StreamPartitionCurrentState_UsesFlowlyPrefix()
+        {
+            Assert.Equal("flowly.message.stream.partition.state", FlowlyInstrumentationConstants.StreamPartitionCurrentState);
+        }
+
+        [Fact]
+        public void StreamPartitionTransitions_UsesFlowlyPrefix()
+        {
+            Assert.Equal("flowly.message.stream.partition.transitions", FlowlyInstrumentationConstants.StreamPartitionTransitions);
+        }
+    }
+
     public class EventPublisherMetricNames
     {
         [Fact]

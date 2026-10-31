@@ -1,3 +1,4 @@
+using Flowly.MessageInfrastructure.StreamPartitions;
 using Flowly.MessageInfrastructure;
 using Flowly.MessageInfrastructure.Events.Telemetry;
 using Flowly.MessageInfrastructure.Model;
@@ -135,6 +136,18 @@ public class AddFlowlyExtensionTests
             var handlerInstrumentation = serviceProvider.GetRequiredService<IHandlerInstrumentation>();
 
             Assert.IsType<HandlerInstrumentation>(handlerInstrumentation);
+        }
+
+        [Fact]
+        public void RegistersTheStreamPartitionStateRegistryOnceAsWriterAndReader()
+        {
+            var hostApplicationBuilder = new StubHostApplicationBuilder();
+
+            hostApplicationBuilder.AddFlowly<RecordingFlowlyConfiguration>();
+
+            using var serviceProvider = hostApplicationBuilder.Services.BuildServiceProvider();
+            Assert.Same(serviceProvider.GetRequiredService<IStreamPartitionStateRegistry>(), serviceProvider.GetRequiredService<IStreamPartitionStateReader>());
+            Assert.Single(hostApplicationBuilder.Services, descriptor => descriptor.ServiceType == typeof(IStreamPartitionStateRegistry));
         }
 
         [Fact]

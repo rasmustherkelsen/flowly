@@ -130,6 +130,7 @@ Rules:
   - `messageContext.Messages` — `IReadOnlyCollection<T>` of the batch
   - `messageContext.CancellationToken`
   - `messageContext.Partition` — which partition this batch came from, or `null` for a non-partitioned stream (see Step 4a). Every message in one batch is from the same partition.
+- **Make a stuck partition visible** — every owned partition is reported as running, waiting (start position unresolved) or halted (retries exhausted) by the `flowly.message.stream.partition.state` metric. Offer to register the health check in the `FlowlyConfiguration` with `builder.AddMessageStreamHealthCheck()` (unhealthy while a partition is halted or waiting; pass `failureStatus: HealthStatus.Degraded` to keep the instance in rotation). It only has an effect when the host maps health checks (for example `app.MapHealthChecks("/health")`).
 - **Retry is optional** — add `[RetryPolicy(maxRetries: N, delaySeconds: M)]` to opt in. Unlike every other handler type, this retries the same in-memory batch in-process (no requeue) and **halts the queue entirely** once exhausted — it does not dead-letter or skip. Tell the user this means a stuck poison message requires manual intervention (fix + restart), and ask if that tradeoff is acceptable before adding retry with a low `maxRetries`.
 - **No dead letter tracking support** — do not chain `.WithDeadLetterTracking()`.
 

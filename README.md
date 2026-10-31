@@ -516,9 +516,29 @@ Omitting both parameters means the stream retains every message forever — a br
 
 `[RetryPolicy(maxRetries, delaySeconds)]` on the handler class enables retry, but the mechanism is different from every other handler type: retries run **in-process**, re-invoking the handler on the same in-memory batch — messages are never re-published to the stream, which would permanently write retry noise into an immutable, replayable log.
 
-When retries are exhausted, the handler **halts consumption of that queue entirely** rather than skipping the failed batch: the stream offset never advances past it, a critical log entry and a `flowly.message.handler.halted` metric are emitted, and no further messages are processed until the process is fixed and restarted. Dead letter tracking is not supported for stream handlers.
+When retries are exhausted, the handler **halts consumption of that queue entirely** rather than skipping the failed batch: the stream offset never advances past it, a critical log entry and a `flowly.message.handler.halted` metric are emitted, and no further messages are processed until the process is fixed and restarted. The partition is reported as `Halted` with its last error by the [partition state](#partition-state-and-health) metrics and health check. Dead letter tracking is not supported for stream handlers.
 
 `MessageStreamHandlerOptions` does not inherit the queue options used by other handlers — `LockDuration`, `DeadLetterOnMessageExpiration`, and `Configure`-based retry settings don't apply to streams (there's no per-message peek-lock, and retention replaces TTL).
+
+### Partition state and health
+
+Every stream partition this process owns (a non-partitioned stream counts as one partition) is in one of three states, kept by Flowly itself and therefore the same on RabbitMQ, Azure Event Hubs and InMemory:
+
+| State | Meaning |
+|---|---|
+| `Running` | A processing loop exists for the partition and is consuming. |
+| `Waiting` | The partition's start position could not be resolved (for example the checkpoint store is unavailable), so no processing loop exists for it yet. Messages the transport still delivers for it are dropped until it is assigned again; with a checkpoint they are redelivered from the stored position. Only partitioned streams report this state. |
+| `Halted` | The partition exhausted its in-process retries and stopped consuming; the stream offset does not advance past the failed batch. |
+
+For each partition Flowly also keeps the last error (message and exception type) and when it happened, and when the partition entered its current state. A revoked partition is no longer reported. The states describe what happens today; they do not change halting, dropping or recovery. Two metrics report them (see [OpenTelemetry](#metrics)): `flowly.message.stream.partition.state`, a gauge with the current state of each owned partition (`0` running, `1` waiting, `2` halted), and `flowly.message.stream.partition.transitions`, a counter of state changes tagged `state=running|waiting|halted`.
+
+Register the health check to expose a stuck partition to your load balancer or orchestrator:
+
+```csharp
+builder.AddMessageStreamHealthCheck();
+```
+
+It is unhealthy while any owned partition is `Halted` or `Waiting` and healthy otherwise, including while the process owns no partition. The result lists each failing partition by queue, consumer and partition with its state, since when, and last error. A halted partition means consumption has stopped and needs operator action, so the default is `Unhealthy`; pass `failureStatus: HealthStatus.Degraded` to keep the instance in rotation. The check is registered under the name `flowly-message-streams` with the tag `message-streams` (both overridable) and works for every stream transport.
 
 ### Position persistence
 
@@ -1658,6 +1678,9 @@ All metrics use the meter name `"Flowly"` and follow the `messaging.*` semantic 
 | `flowly.message.submitter.sent` | Counter | Messages sent by submitters |
 | `flowly.message.submitter.failed` | Counter | Send failures |
 | `flowly.message.submitter.duration` | Histogram (ms) | Send duration |
+| `flowly.message.handler.halted` | Counter | Stream handlers that halted after exhausting their in-process retries |
+| `flowly.message.stream.partition.state` | Gauge | Current state of each stream partition owned by this process: `0` running, `1` waiting for an unresolved start position, `2` halted. Tagged `handler`, `messaging.destination.name`, `consumer` and `partition` (omitted for a non-partitioned stream); a revoked partition is no longer reported |
+| `flowly.message.stream.partition.transitions` | Counter | Stream partition state changes, tagged `handler`, `messaging.destination.name`, `consumer`, `partition` (omitted for a non-partitioned stream) and `state=running\|waiting\|halted` (the state entered) |
 | `flowly.message.checkpoint.saved` | Counter | Message stream checkpoint positions successfully saved (built-in or hand-rolled) |
 | `flowly.message.checkpoint.save.duration` | Histogram (ms) | Checkpoint save duration |
 | `flowly.message.checkpoint.save.failed` | Counter | Checkpoint save failures |

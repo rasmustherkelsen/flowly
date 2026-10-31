@@ -1,3 +1,4 @@
+using Flowly.MessageInfrastructure.StreamPartitions;
 using Flowly.MessageInfrastructure.Telemetry;
 
 namespace Flowly.Tests.MessageInfrastructure.Telemetry;
@@ -87,6 +88,17 @@ public class NullHandlerInstrumentationTests
             var nullHandlerInstrumentation = new NullHandlerInstrumentation();
 
             nullHandlerInstrumentation.RecordRetried("MyHandler", "my-queue");
+        }
+    }
+
+    public class RecordStreamPartitionTransition
+    {
+        [Fact]
+        public void DoesNotThrow()
+        {
+            var nullHandlerInstrumentation = new NullHandlerInstrumentation();
+
+            nullHandlerInstrumentation.RecordStreamPartitionTransition("MyHandler", "my-queue", "MyConsumer", 1, StreamPartitionState.Halted);
         }
     }
 }

@@ -1,3 +1,4 @@
+using Flowly.MessageInfrastructure.StreamPartitions;
 using Azure.Messaging.EventHubs.Consumer;
 using Flowly.AzureEventHubs.Tests.Fakes;
 using Flowly.MessageInfrastructure.BackgroundServices;
@@ -34,6 +35,7 @@ public class EventHubsStreamBackgroundServicesTests
         registry.Register(ProviderName, TestAzureEventHubsClient.Create(clientFactory, processorFactory), null);
 
         var handler = new SpyStreamHandler(onHandle);
+        var stateRegistry = new StreamPartitionStateRegistry(TimeProvider.System);
         var checkpoint = new FakeMessageStreamCheckpoint<string>();
         var services = new ServiceCollection();
         services.AddScoped<SpyStreamHandler>(_ => handler);
@@ -55,9 +57,10 @@ public class EventHubsStreamBackgroundServicesTests
                 0),
             serviceProvider.GetRequiredService<IServiceScopeFactory>(),
             NullLogger<MessageStreamProcessingBackgroundService<string, SpyStreamHandler>>.Instance,
-            new NullHandlerInstrumentation());
+            new NullHandlerInstrumentation(),
+                stateRegistry);
 
-        return new Harness { ProcessorFactory = processorFactory, Inspector = inspector, Checkpoint = checkpoint, Handler = handler, Service = service };
+        return new Harness { StateRegistry = stateRegistry, ProcessorFactory = processorFactory, Inspector = inspector, Checkpoint = checkpoint, Handler = handler, Service = service };
     }
 
     private static PartitionedHarness CreatePartitionedHarness(
@@ -74,6 +77,7 @@ public class EventHubsStreamBackgroundServicesTests
         registry.Register(ProviderName, TestAzureEventHubsClient.Create(clientFactory, processorFactory), null);
 
         var handler = new SpyStreamHandler(onHandle);
+        var stateRegistry = new StreamPartitionStateRegistry(TimeProvider.System);
         var checkpoint = new FakeMessageStreamCheckpoint<string>();
         var services = new ServiceCollection();
         services.AddScoped<SpyStreamHandler>(_ => handler);
@@ -96,9 +100,10 @@ public class EventHubsStreamBackgroundServicesTests
                 0),
             serviceProvider.GetRequiredService<IServiceScopeFactory>(),
             NullLogger<PartitionedMessageStreamProcessingBackgroundService<string, SpyStreamHandler>>.Instance,
-            new NullHandlerInstrumentation());
+            new NullHandlerInstrumentation(),
+                stateRegistry);
 
-        return new PartitionedHarness { ProcessorFactory = processorFactory, Checkpoint = checkpoint, Handler = handler, Service = service };
+        return new PartitionedHarness { StateRegistry = stateRegistry, ProcessorFactory = processorFactory, Checkpoint = checkpoint, Handler = handler, Service = service };
     }
 
     private static async Task<Task> DeliverUntilBlocked(FakeEventHubsProcessor processor, string partitionId)
@@ -276,6 +281,34 @@ public class EventHubsStreamBackgroundServicesTests
         }
 
         [Fact]
+        public async Task RecordsTheSinglePartitionAsRunningAndRemovesItOnStop()
+        {
+            var harness = CreateHarness();
+            await harness.Start();
+
+            Assert.Equal(StreamPartitionState.Running, harness.StateRegistry.Get(new StreamPartitionKey(EventHubName, "ReadingsHandler", null))!.State);
+
+            await harness.Service.StopAsync(CancellationToken.None);
+
+            Assert.Empty(harness.StateRegistry.GetAll());
+        }
+
+        [Fact]
+        public async Task WhenRetriesAreExhausted_RecordsTheSinglePartitionAsHaltedWithTheError()
+        {
+            var harness = CreateHarness(onHandle: _ => throw new InvalidOperationException("handler failed"));
+            await harness.Start();
+
+            await harness.Processor.Deliver("0", TestEvents.Create(0, "poison"));
+            await harness.Service.ExecuteTask!.WaitAsync(TestTimeout);
+
+            var status = harness.StateRegistry.Get(new StreamPartitionKey(EventHubName, "ReadingsHandler", null))!;
+            Assert.Equal(StreamPartitionState.Halted, status.State);
+            Assert.Equal("handler failed", status.LastError!.Message);
+            await harness.Service.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
         public async Task OnStop_StopsTheSdkProcessor()
         {
             var harness = CreateHarness();
@@ -420,6 +453,79 @@ public class EventHubsStreamBackgroundServicesTests
         }
 
         [Fact]
+        public async Task RecordsEachAssignedPartitionAsRunningAndRemovesALostOne()
+        {
+            var harness = CreatePartitionedHarness();
+            await harness.Start();
+            await harness.Processor.Assign("0");
+            await harness.Processor.Assign("1");
+
+            await harness.Processor.Lose("0");
+
+            Assert.Null(harness.StateRegistry.Get(PartitionKey(0)));
+            Assert.Equal(StreamPartitionState.Running, harness.StateRegistry.Get(PartitionKey(1))!.State);
+            await harness.Service.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task WhenOnePartitionHalts_RecordsItAsHaltedAndKeepsTheOtherRunning()
+        {
+            var harness = CreatePartitionedHarness(onHandle: context => context.Partition == 0 ? throw new InvalidOperationException("handler failed") : Task.CompletedTask);
+            await harness.Start();
+            await harness.Processor.Assign("0");
+            await harness.Processor.Assign("1");
+
+            await harness.Processor.Deliver("0", TestEvents.Create(0, "poison"));
+            var blocked = await DeliverUntilBlocked(harness.Processor, "0");
+
+            var halted = harness.StateRegistry.Get(PartitionKey(0))!;
+            Assert.Equal(StreamPartitionState.Halted, halted.State);
+            Assert.Equal("handler failed", halted.LastError!.Message);
+            Assert.Equal(StreamPartitionState.Running, harness.StateRegistry.Get(PartitionKey(1))!.State);
+
+            await harness.Processor.Lose("0");
+            await blocked.WaitAsync(TestTimeout);
+
+            Assert.Null(harness.StateRegistry.Get(PartitionKey(0)));
+            await harness.Service.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task WhenTheStartPositionCannotBeResolved_RecordsWaitingUntilTheSdkInitializesThePartitionAgain()
+        {
+            var harness = CreatePartitionedHarness(withCheckpoint: true);
+            harness.Checkpoint.GetPositionFailure = new TimeoutException("store down");
+            await harness.Start();
+
+            await Assert.ThrowsAsync<TimeoutException>(() => harness.Processor.Assign("0"));
+
+            var waiting = harness.StateRegistry.Get(PartitionKey(0))!;
+            Assert.Equal(StreamPartitionState.Waiting, waiting.State);
+            Assert.Equal("store down", waiting.LastError!.Message);
+
+            harness.Checkpoint.GetPositionFailure = null;
+            await harness.Processor.Assign("0");
+
+            Assert.Equal(StreamPartitionState.Running, harness.StateRegistry.Get(PartitionKey(0))!.State);
+            await harness.Service.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task OnStop_RemovesEveryPartition()
+        {
+            var harness = CreatePartitionedHarness();
+            await harness.Start();
+            await harness.Processor.Assign("0");
+            await harness.Processor.Assign("1");
+
+            await harness.Service.StopAsync(CancellationToken.None);
+
+            Assert.Empty(harness.StateRegistry.GetAll());
+        }
+
+        private static StreamPartitionKey PartitionKey(int partition) => new(EventHubName, "ReadingsHandler", partition);
+
+        [Fact]
         public async Task OnStop_StopsTheSdkProcessor()
         {
             var harness = CreatePartitionedHarness();
@@ -444,6 +550,8 @@ public class EventHubsStreamBackgroundServicesTests
 
     private sealed class Harness
     {
+        public required StreamPartitionStateRegistry StateRegistry { get; init; }
+
         public required FakeEventHubsProcessorFactory ProcessorFactory { get; init; }
 
         public required FakeEventHubsInspector Inspector { get; init; }
@@ -465,6 +573,8 @@ public class EventHubsStreamBackgroundServicesTests
 
     private sealed class PartitionedHarness
     {
+        public required StreamPartitionStateRegistry StateRegistry { get; init; }
+
         public required FakeEventHubsProcessorFactory ProcessorFactory { get; init; }
 
         public required FakeMessageStreamCheckpoint<string> Checkpoint { get; init; }

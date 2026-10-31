@@ -1,3 +1,4 @@
+using Flowly.MessageInfrastructure.StreamPartitions;
 using Flowly.MessageInfrastructure;
 using Flowly.MessageInfrastructure.BackgroundServices;
 using Flowly.MessageInfrastructure.Model;
@@ -69,6 +70,16 @@ public class MessageStreamHandlerRegistrationExtensionsTests
             Assert.Contains(
                 flowlyBuilder.Services,
                 s => s.ServiceType == typeof(MessageStreamHandlerSettings<TelemetryReading, TelemetryReadingHandler>));
+        }
+
+        [Fact]
+        public void RegistersTheStreamPartitionStateRegistry()
+        {
+            var flowlyBuilder = CreateBuilder("streams");
+
+            flowlyBuilder.AddMessageStreamHandler<TelemetryReading, TelemetryReadingHandler>();
+
+            Assert.Single(flowlyBuilder.Services, descriptor => descriptor.ServiceType == typeof(IStreamPartitionStateRegistry));
         }
 
         [Theory]

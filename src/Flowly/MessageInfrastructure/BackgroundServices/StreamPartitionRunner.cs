@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Threading.Channels;
 using Flowly.MessageInfrastructure.Model;
+using Flowly.MessageInfrastructure.StreamPartitions;
 using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.Transport;
 using Microsoft.Extensions.DependencyInjection;
@@ -29,7 +30,8 @@ internal sealed class StreamPartitionRunner<TMessage, THandler>(
     string messagingSystem,
     IServiceScopeFactory serviceScopeFactory,
     ILogger logger,
-    IHandlerInstrumentation handlerInstrumentation)
+    IHandlerInstrumentation handlerInstrumentation,
+    StreamPartitionStateSession stateSession)
     where TMessage : class
     where THandler : MessageStreamHandler<TMessage>
 {
@@ -152,6 +154,7 @@ internal sealed class StreamPartitionRunner<TMessage, THandler>(
                 }
 
                 handlerInstrumentation.RecordHalted(handlerName, queueName, e.Message);
+                stateSession.Halted(e);
                 logger.LogCritical(e,
                     "{HandlerName} exhausted {MaxRetries} in-process retries on stream queue '{QueueName}' partition {Partition} — halting consumption. " +
                     "The failed batch is not acknowledged, the stream offset will not advance past it, and no further messages will be processed. " +

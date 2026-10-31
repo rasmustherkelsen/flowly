@@ -2,6 +2,7 @@ using Flowly.MessageInfrastructure.BackgroundServices;
 using Flowly.MessageInfrastructure.Model;
 using Flowly.MessageInfrastructure.Receivers;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessageInfrastructure.StreamPartitions;
 using Flowly.Registration;
 using Flowly.Transport;
 using Microsoft.Extensions.DependencyInjection;
@@ -62,6 +63,7 @@ public static class MessageStreamHandlerRegistrationExtensions
             .MarkAsStream(resolved.QueueName, resolved.MaxAgeSeconds, resolved.MaxLengthBytes, resolved.PartitionCount);
 
         flowlyBuilder.Services.AddScoped<THandler>();
+        StreamPartitionStateRegistry.GetOrCreate(flowlyBuilder.Services);
 
         if (resolved.PartitionCount is { } partitionCount)
         {
