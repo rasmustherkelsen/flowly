@@ -28,7 +28,9 @@ internal sealed class StreamPartitionStateReporter(
 
     public void Stopped() => registry.RemoveAll(queueName, consumerName);
 
-    internal void Halted(int? partition, long version, Exception error) => Set(partition, StreamPartitionState.Halted, error, version);
+    internal StreamPartitionUpdate Halted(int? partition, long version, Exception error) => Set(partition, StreamPartitionState.Halted, error, version);
+
+    internal StreamPartitionUpdate Resumed(int? partition, long version) => Set(partition, StreamPartitionState.Running, null, version);
 
     private StreamPartitionUpdate Set(int? partition, StreamPartitionState state, Exception? error, long? expectedVersion)
     {

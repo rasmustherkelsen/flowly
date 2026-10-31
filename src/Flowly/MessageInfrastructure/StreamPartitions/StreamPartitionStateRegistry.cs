@@ -95,6 +95,7 @@ internal sealed class StreamPartitionStateRegistry(TimeProvider timeProvider) : 
         var registry = new StreamPartitionStateRegistry(TimeProvider.System);
         services.AddSingleton<IStreamPartitionStateRegistry>(registry);
         services.AddSingleton<IStreamPartitionStateReader>(registry);
+        StreamPartitionResumeRegistry.GetOrCreate(services);
 
         return registry;
     }

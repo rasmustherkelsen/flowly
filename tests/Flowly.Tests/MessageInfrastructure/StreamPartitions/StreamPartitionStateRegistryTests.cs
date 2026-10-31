@@ -241,6 +241,17 @@ public class StreamPartitionStateRegistryTests
         }
 
         [Fact]
+        public void AlsoRegistersTheResumeRegistryNextToIt()
+        {
+            var services = new ServiceCollection();
+
+            StreamPartitionStateRegistry.GetOrCreate(services);
+
+            using var serviceProvider = services.BuildServiceProvider();
+            Assert.Same(serviceProvider.GetRequiredService<IStreamPartitionResumeRegistry>(), serviceProvider.GetRequiredService<IStreamPartitionResumer>());
+        }
+
+        [Fact]
         public void CalledTwice_ReturnsTheSameRegistryAndRegistersItOnce()
         {
             var services = new ServiceCollection();

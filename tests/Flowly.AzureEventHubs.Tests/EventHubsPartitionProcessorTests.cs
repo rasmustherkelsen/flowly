@@ -125,6 +125,58 @@ public class EventHubsPartitionProcessorTests
         }
 
         [Fact]
+        public async Task WhileAHandlerIsPending_DoesNotDispatchTheNextEventAndDoesNotCompleteTheBatch()
+        {
+            var eventHubsPartitionProcessor = new EventHubsPartitionProcessor<string>("readings");
+            var pending = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var bodies = new List<string>();
+            eventHubsPartitionProcessor.ProcessMessage += (message, _) =>
+            {
+                lock (bodies)
+                {
+                    bodies.Add(message.Body);
+                }
+
+                entered.TrySetResult();
+
+                return pending.Task;
+            };
+
+            var dispatch = eventHubsPartitionProcessor.Dispatch([TestEvents.Create(0, "a"), TestEvents.Create(1, "b")], CancellationToken.None);
+            await entered.Task.WaitAsync(TestTimeout);
+
+            Assert.False(dispatch.IsCompleted);
+            Assert.Null(eventHubsPartitionProcessor.LastDispatchedSequenceNumber);
+
+            pending.SetResult();
+            await dispatch.WaitAsync(TestTimeout);
+
+            Assert.Equal(["a", "b"], bodies);
+            Assert.Equal(1, eventHubsPartitionProcessor.LastDispatchedSequenceNumber);
+        }
+
+        [Fact]
+        public async Task WhenTheSdkCancelsTheBatchWhileAHandlerIsPending_PropagatesTheCancellationWithoutRememberingTheEvent()
+        {
+            var eventHubsPartitionProcessor = new EventHubsPartitionProcessor<string>("readings");
+            var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            eventHubsPartitionProcessor.ProcessMessage += async (_, cancellationToken) =>
+            {
+                entered.TrySetResult();
+                await Task.Delay(Timeout.Infinite, cancellationToken);
+            };
+            using var cancellationTokenSource = new CancellationTokenSource();
+            var dispatch = eventHubsPartitionProcessor.Dispatch([TestEvents.Create(0, "a")], cancellationTokenSource.Token);
+            await entered.Task.WaitAsync(TestTimeout);
+
+            await cancellationTokenSource.CancelAsync();
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => dispatch.WaitAsync(TestTimeout));
+            Assert.Null(eventHubsPartitionProcessor.LastDispatchedSequenceNumber);
+        }
+
+        [Fact]
         public async Task AfterStopProcessing_BlocksUntilReleasedWithoutDispatching()
         {
             var eventHubsPartitionProcessor = new EventHubsPartitionProcessor<string>("readings");

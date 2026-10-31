@@ -16,6 +16,12 @@ public interface IMessageBusProcessor<TMessage> : IAsyncDisposable
     ///     deserialises the body, executes the registered <see cref="MessageHandler{TMessage}" />, and then calls
     ///     <see cref="IReceivedMessage{TMessage}.Complete" /> or <see cref="IReceivedMessage{TMessage}.DeadLetter" />
     ///     according to the outcome.
+    ///     <para>
+    ///         For a stream processor the returned task is the backpressure signal: it does not complete while the handler's loop cannot take
+    ///         another message (for example while a halted partition holds its failed batch). Implementations must await it before delivering
+    ///         the next message of the same queue or partition, and must not drop the message or buffer further messages without bound while it
+    ///         is pending, so the broker keeps the data. The token passed to the delegate is cancelled when the transport itself is stopping.
+    ///     </para>
     /// </summary>
     event Func<IReceivedMessage<TMessage>, CancellationToken, Task> ProcessMessage;
 
@@ -35,7 +41,8 @@ public interface IMessageBusProcessor<TMessage> : IAsyncDisposable
 
     /// <summary>
     ///     Gracefully stops the processor. Called by the background service during application shutdown. After this
-    ///     method completes no further <see cref="ProcessMessage" /> events should be raised.
+    ///     method completes no further <see cref="ProcessMessage" /> events should be raised. The caller cancels the consumer of
+    ///     <see cref="ProcessMessage" /> before calling this, so a delegate that is still pending because of backpressure has completed.
     /// </summary>
     /// <param name="cancellationToken">A cancellation token that limits the time allowed for a graceful stop.</param>
     Task StopProcessing(CancellationToken cancellationToken);

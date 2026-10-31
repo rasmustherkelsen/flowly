@@ -19,7 +19,7 @@ public static class MessageStreamHealthCheckRegistrationExtensions
     /// <summary>
     ///     Registers a health check that reports <paramref name="failureStatus" /> (<see cref="HealthStatus.Unhealthy" /> by default)
     ///     while any <see cref="MessageStreamHandler{TMessage}" /> partition owned by this process is halted (its in-process retries
-    ///     are exhausted and it stopped consuming) or waiting (its start position could not be resolved, so it is not consuming),
+    ///     are exhausted, so it holds the failed batch and stopped consuming) or waiting (its start position could not be resolved, so it is not consuming),
     ///     and <see cref="HealthStatus.Healthy" /> otherwise, including while the process owns no stream partition. A non-partitioned
     ///     stream counts as one partition. The result's data lists each failing partition by queue, consumer and partition with its
     ///     state and last error. Requires the health checks to be mapped by the host, for example with <c>MapHealthChecks</c>.

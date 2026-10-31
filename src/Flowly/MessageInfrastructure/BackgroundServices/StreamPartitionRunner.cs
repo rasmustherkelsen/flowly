@@ -16,6 +16,13 @@ namespace Flowly.MessageInfrastructure.BackgroundServices;
 ///     <c>partition: null</c>; <see cref="PartitionedMessageStreamProcessingBackgroundService{TMessage,THandler}" />
 ///     creates one per partition currently owned by this process. Batches never mix partitions — this is what
 ///     preserves per-partition ordering guarantees at the handler's <see cref="IMessageStreamContext{T}" />.
+///     <para>
+///         A batch that exhausts its in-process retries is held, not dropped: the runner stays alive, keeps the failed batch and its
+///         processor, and waits for <see cref="Resume" />. Meanwhile it reads nothing from its bounded buffer, so the buffer fills and
+///         the processor's <see cref="IMessageBusProcessor{TMessage}.ProcessMessage" /> delegate stops completing — the transport awaits
+///         it, stops receiving, and the broker keeps the rest of the stream. <see cref="Resume" /> re-runs the held batch in place with
+///         a fresh set of retries. Cancelling the token passed to <see cref="Run" /> ends a held runner.
+///     </para>
 /// </summary>
 internal sealed class StreamPartitionRunner<TMessage, THandler>(
     IMessageBusProcessor<TMessage> processor,
@@ -31,19 +38,26 @@ internal sealed class StreamPartitionRunner<TMessage, THandler>(
     IServiceScopeFactory serviceScopeFactory,
     ILogger logger,
     IHandlerInstrumentation handlerInstrumentation,
-    StreamPartitionStateSession stateSession)
+    StreamPartitionStateSession stateSession,
+    IStreamPartitionResumeRegistry resumeRegistry) : IResumableStreamPartition
     where TMessage : class
     where THandler : MessageStreamHandler<TMessage>
 {
-    private readonly Channel<IReceivedMessage<TMessage>> _buffer = Channel.CreateUnbounded<IReceivedMessage<TMessage>>();
+    private readonly Channel<IReceivedMessage<TMessage>> _buffer = Channel.CreateBounded<IReceivedMessage<TMessage>>(
+        new BoundedChannelOptions(Math.Max(1, maxMessagesBeforeProcessing))
+        {
+            FullMode = BoundedChannelFullMode.Wait,
+            SingleReader = true
+        });
+
+    private readonly Lock _resumeLock = new();
+    private TaskCompletionSource? _resumeSignal;
 
     public async Task Run(CancellationToken stoppingToken)
     {
-        processor.ProcessMessage += (receivedMessage, _) =>
-        {
-            _buffer.Writer.TryWrite(receivedMessage);
-            return Task.CompletedTask;
-        };
+        using var resumeRegistration = resumeRegistry.Register(new StreamPartitionKey(queueName, consumerName, partition), this);
+
+        processor.ProcessMessage += (receivedMessage, transportToken) => Buffer(receivedMessage, transportToken, stoppingToken);
 
         processor.ProcessError += errorDetails =>
         {
@@ -61,11 +75,12 @@ internal sealed class StreamPartitionRunner<TMessage, THandler>(
                 var batch = await AccumulateBatch(stoppingToken);
                 if (batch.Count == 0) continue;
 
-                var halted = !await ProcessBatch(batch, stoppingToken);
-                if (!halted) continue;
+                handlerInstrumentation.RecordReceived(handlerName, queueName, batch.Count);
 
-                await processor.StopProcessing(stoppingToken);
-                return;
+                while (await ProcessBatch(batch, stoppingToken) is { } resumed)
+                {
+                    await HoldUntilResumed(resumed, stoppingToken);
+                }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -78,9 +93,70 @@ internal sealed class StreamPartitionRunner<TMessage, THandler>(
         }
     }
 
+    public bool Resume()
+    {
+        TaskCompletionSource? resumeSignal;
+        lock (_resumeLock)
+        {
+            resumeSignal = _resumeSignal;
+            if (resumeSignal is null) return false;
+
+            _resumeSignal = null;
+            stateSession.Resumed();
+        }
+
+        resumeSignal.TrySetResult();
+
+        return true;
+    }
+
     public Task StopProcessing(CancellationToken cancellationToken) => processor.StopProcessing(cancellationToken);
 
     public ValueTask DisposeAsync() => processor.DisposeAsync();
+
+    private Task Buffer(IReceivedMessage<TMessage> receivedMessage, CancellationToken transportToken, CancellationToken stoppingToken)
+        => _buffer.Writer.TryWrite(receivedMessage) ? Task.CompletedTask : BufferWhenThereIsRoom(receivedMessage, transportToken, stoppingToken);
+
+    private async Task BufferWhenThereIsRoom(IReceivedMessage<TMessage> receivedMessage, CancellationToken transportToken, CancellationToken stoppingToken)
+    {
+        using var writeCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, transportToken);
+
+        try
+        {
+            await _buffer.Writer.WriteAsync(receivedMessage, writeCts.Token);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+        }
+    }
+
+    private Task MarkHalted(Exception failure)
+    {
+        var resumeSignal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        lock (_resumeLock)
+        {
+            _resumeSignal = resumeSignal;
+            stateSession.Halted(failure);
+        }
+
+        return resumeSignal.Task;
+    }
+
+    private async Task HoldUntilResumed(Task resumed, CancellationToken stoppingToken)
+    {
+        try
+        {
+            await resumed.WaitAsync(stoppingToken);
+        }
+        finally
+        {
+            lock (_resumeLock)
+            {
+                if (_resumeSignal is not null && ReferenceEquals(_resumeSignal.Task, resumed))
+                    _resumeSignal = null;
+            }
+        }
+    }
 
     private async Task<List<IReceivedMessage<TMessage>>> AccumulateBatch(CancellationToken stoppingToken)
     {
@@ -104,10 +180,8 @@ internal sealed class StreamPartitionRunner<TMessage, THandler>(
         return batch;
     }
 
-    private async Task<bool> ProcessBatch(IReadOnlyList<IReceivedMessage<TMessage>> batch, CancellationToken stoppingToken)
+    private async Task<Task?> ProcessBatch(IReadOnlyList<IReceivedMessage<TMessage>> batch, CancellationToken stoppingToken)
     {
-        handlerInstrumentation.RecordReceived(handlerName, queueName, batch.Count);
-
         var links = batch
             .Select(m => ActivityContextParser.Parse(m.Properties))
             .Where(ctx => ctx != default)
@@ -133,7 +207,7 @@ internal sealed class StreamPartitionRunner<TMessage, THandler>(
 
                 handlerInstrumentation.RecordSucceeded(handlerName, queueName, sw.Elapsed.TotalMilliseconds, batch.Count);
                 logger.LogInformation("{HandlerName} completed {Count} stream messages (partition {Partition})", handlerName, batch.Count, partition);
-                return true;
+                return null;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -153,14 +227,15 @@ internal sealed class StreamPartitionRunner<TMessage, THandler>(
                     continue;
                 }
 
+                var resumed = MarkHalted(e);
                 handlerInstrumentation.RecordHalted(handlerName, queueName, e.Message);
-                stateSession.Halted(e);
                 logger.LogCritical(e,
                     "{HandlerName} exhausted {MaxRetries} in-process retries on stream queue '{QueueName}' partition {Partition} — halting consumption. " +
-                    "The failed batch is not acknowledged, the stream offset will not advance past it, and no further messages will be processed. " +
-                    "Manual intervention required: fix the handler and restart the process.",
+                    "The failed batch is held and not acknowledged, the stream offset will not advance past it, and no further messages will be processed " +
+                    "or dropped: the transport stops receiving and the broker keeps the rest of the stream. The partition stays halted until it is " +
+                    "resumed (the held batch is then run again) or revoked, or the process stops (the batch is then replayed from the stored position).",
                     handlerName, maxRetries, queueName, partition);
-                return false;
+                return resumed;
             }
         }
     }

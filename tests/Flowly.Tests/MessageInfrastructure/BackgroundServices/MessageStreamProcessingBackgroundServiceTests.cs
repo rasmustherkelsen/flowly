@@ -1,3 +1,4 @@
+using System.Threading.Channels;
 using Flowly.MessageInfrastructure.StreamPartitions;
 using Flowly.MessageInfrastructure.BackgroundServices;
 using Flowly.MessageInfrastructure.Model;
@@ -23,7 +24,8 @@ public class MessageStreamProcessingBackgroundServiceTests
             StartPosition? startPosition = null,
             IStreamStartOffsetResolver? startOffsetResolver = null,
             string? consumerName = null,
-            StreamPartitionStateRegistry? stateRegistry = null)
+            StreamPartitionStateRegistry? stateRegistry = null,
+            StreamPartitionResumeRegistry? resumeRegistry = null)
     {
         var processor = new FakeStreamProcessor();
         FakeStreamClient client = startOffsetResolver is null ? new FakeStreamClient(processor) : new ResolverCapableStreamClient(processor, startOffsetResolver);
@@ -54,7 +56,8 @@ public class MessageStreamProcessingBackgroundServiceTests
             serviceProvider.GetRequiredService<IServiceScopeFactory>(),
             NullLogger<MessageStreamProcessingBackgroundService<TestMessage, SpyStreamHandler>>.Instance,
             instrumentation,
-                stateRegistry ?? new StreamPartitionStateRegistry(TimeProvider.System));
+                stateRegistry ?? new StreamPartitionStateRegistry(TimeProvider.System),
+                resumeRegistry ?? new StreamPartitionResumeRegistry());
 
         return (backgroundService, processor, handler, instrumentation, checkpoint);
     }
@@ -73,7 +76,8 @@ public class MessageStreamProcessingBackgroundServiceTests
                 new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
                 NullLogger<MessageStreamProcessingBackgroundService<TestMessage, SpyStreamHandler>>.Instance,
                 new SpyHandlerInstrumentation(),
-                new StreamPartitionStateRegistry(TimeProvider.System));
+                new StreamPartitionStateRegistry(TimeProvider.System),
+                new StreamPartitionResumeRegistry());
 
             await Assert.ThrowsAsync<InvalidOperationException>(async () =>
             {
@@ -110,7 +114,8 @@ public class MessageStreamProcessingBackgroundServiceTests
                 new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
                 NullLogger<MessageStreamProcessingBackgroundService<TestMessage, SpyStreamHandler>>.Instance,
                 new SpyHandlerInstrumentation(),
-                new StreamPartitionStateRegistry(TimeProvider.System));
+                new StreamPartitionStateRegistry(TimeProvider.System),
+                new StreamPartitionResumeRegistry());
 
             await backgroundService.StartAsync(CancellationToken.None);
             await processor.Started.Task.WaitAsync(TestTimeout);
@@ -240,12 +245,12 @@ public class MessageStreamProcessingBackgroundServiceTests
             var message = new FakeReceivedMessage(new TestMessage("a"));
             await processor.Deliver(message);
 
-            await backgroundService.ExecuteTask!.WaitAsync(TestTimeout);
+            await instrumentation.NextHalt();
 
             Assert.Equal(2, handler.Invocations.Count);
             Assert.False(message.Completed.Task.IsCompleted);
             Assert.Equal(["permanent failure"], instrumentation.HaltedReasons);
-            Assert.True(processor.StopProcessingCalled);
+            Assert.False(processor.StopProcessingCalled);
 
             await backgroundService.StopAsync(CancellationToken.None);
         }
@@ -253,7 +258,7 @@ public class MessageStreamProcessingBackgroundServiceTests
         [Fact]
         public async Task AfterHalt_ProcessesNoFurtherMessages()
         {
-            var (backgroundService, processor, handler, _, _) = CreateService(
+            var (backgroundService, processor, handler, instrumentation, _) = CreateService(
                 maxMessages: 1,
                 maxRetries: 0,
                 onHandle: _ => throw new InvalidOperationException("permanent failure"));
@@ -262,7 +267,7 @@ public class MessageStreamProcessingBackgroundServiceTests
             await processor.Started.Task.WaitAsync(TestTimeout);
 
             await processor.Deliver(new FakeReceivedMessage(new TestMessage("a")));
-            await backgroundService.ExecuteTask!.WaitAsync(TestTimeout);
+            await instrumentation.NextHalt();
 
             await processor.Deliver(new FakeReceivedMessage(new TestMessage("b")));
 
@@ -298,7 +303,8 @@ public class MessageStreamProcessingBackgroundServiceTests
                 serviceProvider.GetRequiredService<IServiceScopeFactory>(),
                 NullLogger<MessageStreamProcessingBackgroundService<TestMessage, SpyStreamHandler>>.Instance,
                 new SpyHandlerInstrumentation(),
-                new StreamPartitionStateRegistry(TimeProvider.System));
+                new StreamPartitionStateRegistry(TimeProvider.System),
+                new StreamPartitionResumeRegistry());
 
             var backgroundServiceTwo = new MessageStreamProcessingBackgroundService<TestMessage, SpyStreamHandlerTwo>(
                 registry,
@@ -307,7 +313,8 @@ public class MessageStreamProcessingBackgroundServiceTests
                 serviceProvider.GetRequiredService<IServiceScopeFactory>(),
                 NullLogger<MessageStreamProcessingBackgroundService<TestMessage, SpyStreamHandlerTwo>>.Instance,
                 new SpyHandlerInstrumentation(),
-                new StreamPartitionStateRegistry(TimeProvider.System));
+                new StreamPartitionStateRegistry(TimeProvider.System),
+                new StreamPartitionResumeRegistry());
 
             await backgroundServiceOne.StartAsync(CancellationToken.None);
             await backgroundServiceTwo.StartAsync(CancellationToken.None);
@@ -500,7 +507,7 @@ public class MessageStreamProcessingBackgroundServiceTests
         public async Task WhenRetriesExhausted_DoesNotSaveCheckpoint()
         {
             var checkpoint = new FakeCheckpoint();
-            var (backgroundService, processor, _, _, _) = CreateService(
+            var (backgroundService, processor, _, instrumentation, _) = CreateService(
                 maxMessages: 1,
                 maxRetries: 0,
                 onHandle: _ => throw new InvalidOperationException("permanent failure"),
@@ -510,7 +517,7 @@ public class MessageStreamProcessingBackgroundServiceTests
             await processor.Started.Task.WaitAsync(TestTimeout);
 
             await processor.Deliver(new FakeReceivedMessage(new TestMessage("a"), streamOffset: 5));
-            await backgroundService.ExecuteTask!.WaitAsync(TestTimeout);
+            await instrumentation.NextHalt();
 
             Assert.Empty(checkpoint.SaveCalls);
 
@@ -560,7 +567,7 @@ public class MessageStreamProcessingBackgroundServiceTests
             await processor.Started.Task.WaitAsync(TestTimeout);
 
             await processor.Deliver(new FakeReceivedMessage(new TestMessage("a")));
-            await backgroundService.ExecuteTask!.WaitAsync(TestTimeout);
+            await instrumentation.NextHalt();
 
             var halted = registry.Get(Key)!;
             Assert.Equal(StreamPartitionState.Halted, halted.State);
@@ -610,7 +617,7 @@ public class MessageStreamProcessingBackgroundServiceTests
         public async Task OnStopAfterAHalt_RemovesTheEntry()
         {
             var registry = new StreamPartitionStateRegistry(TimeProvider.System);
-            var (backgroundService, processor, _, _, _) = CreateService(
+            var (backgroundService, processor, _, instrumentation, _) = CreateService(
                 maxMessages: 1,
                 maxRetries: 0,
                 onHandle: _ => throw new InvalidOperationException("permanent failure"),
@@ -618,7 +625,7 @@ public class MessageStreamProcessingBackgroundServiceTests
             await backgroundService.StartAsync(CancellationToken.None);
             await processor.Started.Task.WaitAsync(TestTimeout);
             await processor.Deliver(new FakeReceivedMessage(new TestMessage("a")));
-            await backgroundService.ExecuteTask!.WaitAsync(TestTimeout);
+            await instrumentation.NextHalt();
 
             await backgroundService.StopAsync(CancellationToken.None);
 
@@ -640,6 +647,77 @@ public class MessageStreamProcessingBackgroundServiceTests
     }
 
     private record TestMessage(string Payload);
+
+    public class HaltedStream
+    {
+        private static readonly StreamPartitionKey Key = new("telemetry-reading", nameof(SpyStreamHandler), null);
+
+        [Fact]
+        public async Task WhenResumed_RunsTheHeldBatchAgainAndContinuesWithTheMessagesBehindIt()
+        {
+            var failures = 1;
+            var resumeRegistry = new StreamPartitionResumeRegistry();
+            var (backgroundService, processor, handler, instrumentation, _) = CreateService(
+                maxMessages: 1,
+                maxRetries: 0,
+                onHandle: _ => Interlocked.Decrement(ref failures) >= 0 ? throw new InvalidOperationException("transient") : Task.CompletedTask,
+                resumeRegistry: resumeRegistry);
+            await backgroundService.StartAsync(CancellationToken.None);
+            await processor.Started.Task.WaitAsync(TestTimeout);
+            await processor.Deliver(new FakeReceivedMessage(new TestMessage("a")));
+            await instrumentation.NextHalt();
+            await processor.Deliver(new FakeReceivedMessage(new TestMessage("b")));
+            var blocked = processor.Deliver(new FakeReceivedMessage(new TestMessage("c")));
+
+            var result = resumeRegistry.Resume(Key);
+            await blocked.WaitAsync(TestTimeout);
+            await handler.WaitForInvocations(4, TestTimeout);
+
+            Assert.Equal(StreamPartitionResumeResult.Resumed, result);
+            Assert.Equal(["a", "a", "b", "c"], handler.Invocations.SelectMany(invocation => invocation).Select(message => message.Payload));
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task WhenStoppedWhileHeld_StopsTheProcessorAndReleasesTheBlockedDelivery()
+        {
+            var resumeRegistry = new StreamPartitionResumeRegistry();
+            var registry = new StreamPartitionStateRegistry(TimeProvider.System);
+            var (backgroundService, processor, _, instrumentation, _) = CreateService(
+                maxMessages: 1,
+                maxRetries: 0,
+                onHandle: _ => throw new InvalidOperationException("permanent failure"),
+                stateRegistry: registry,
+                resumeRegistry: resumeRegistry);
+            await backgroundService.StartAsync(CancellationToken.None);
+            await processor.Started.Task.WaitAsync(TestTimeout);
+            await processor.Deliver(new FakeReceivedMessage(new TestMessage("a")));
+            await instrumentation.NextHalt();
+            await processor.Deliver(new FakeReceivedMessage(new TestMessage("b")));
+            var blocked = processor.Deliver(new FakeReceivedMessage(new TestMessage("c")));
+
+            await backgroundService.StopAsync(CancellationToken.None).WaitAsync(TestTimeout);
+            await blocked.WaitAsync(TestTimeout);
+
+            Assert.True(processor.StopProcessingCalled);
+            Assert.Equal(StreamPartitionResumeResult.NotOwned, resumeRegistry.Resume(Key));
+            Assert.Empty(registry.GetAll());
+        }
+
+        [Fact]
+        public async Task WhenNotHalted_ResumeReportsNotHalted()
+        {
+            var resumeRegistry = new StreamPartitionResumeRegistry();
+            var (backgroundService, processor, _, _, _) = CreateService(maxMessages: 1, maxRetries: 0, resumeRegistry: resumeRegistry);
+            await backgroundService.StartAsync(CancellationToken.None);
+            await processor.Started.Task.WaitAsync(TestTimeout);
+
+            Assert.Equal(StreamPartitionResumeResult.NotHalted, resumeRegistry.Resume(Key));
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+    }
 
     private sealed class SpyStreamHandler(Func<IMessageStreamContext<TestMessage>, Task>? onHandle) : MessageStreamHandler<TestMessage>
     {
@@ -883,6 +961,9 @@ public class MessageStreamProcessingBackgroundServiceTests
         public List<long> RetriedCounts { get; } = [];
         public List<string> HaltedReasons { get; } = [];
         public List<(int? Partition, StreamPartitionState State)> Transitions { get; } = [];
+        public Channel<string> Halts { get; } = Channel.CreateUnbounded<string>();
+
+        public async Task NextHalt() => await Halts.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
 
         public bool IsEnabled => false;
 
@@ -900,7 +981,11 @@ public class MessageStreamProcessingBackgroundServiceTests
 
         public void RecordRetried(string handlerName, string queueName, long count = 1) => RetriedCounts.Add(count);
 
-        public void RecordHalted(string handlerName, string queueName, string reason) => HaltedReasons.Add(reason);
+        public void RecordHalted(string handlerName, string queueName, string reason)
+        {
+            HaltedReasons.Add(reason);
+            Halts.Writer.TryWrite(reason);
+        }
 
         public void RecordStreamPartitionTransition(string handlerName, string queueName, string consumerName, int? partition, StreamPartitionState state)
             => Transitions.Add((partition, state));
