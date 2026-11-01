@@ -41,7 +41,7 @@ git tag --sort=-version:refname | head -5
 
 Report any mismatch. If the template version does not match the latest tag, flag it — the release workflow's `sed` step updates them at publish time, but confirm they look correct for the upcoming release.
 
-`ModuleVersion` in `src/Flowly.PowerShell/Flowly.psd1` is a placeholder (`0.0.0`) that the same workflow overwrites from the tag, together with the manifest's `Prerelease` label for a tag with a suffix. Confirm the file still has both lines and was not bumped by hand.
+`ModuleVersion` in `src/Flowly.PowerShell/Flowly.PowerShell.psd1` is a placeholder (`0.0.0`) that the same workflow overwrites from the tag, together with the manifest's `Prerelease` label for a tag with a suffix. Confirm the file still has both lines and was not bumped by hand.
 
 ---
 
