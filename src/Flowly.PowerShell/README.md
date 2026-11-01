@@ -2,6 +2,8 @@
 
 A thin C# (binary) PowerShell client for the [Flowly Management API](https://rasmustherkelsen.github.io/flowly/). Requires PowerShell 7.4+.
 
+The module version is the release version: it equals the version of the `Flowly.ManagementApi` package published from the same release, and a prerelease release (for example `1.5.0-rc1`) is marked with the manifest's prerelease label (`rc1`).
+
 ```powershell
 Connect-Flowly -BaseUri https://myapp.example.com/flowly/management -ApiKey $env:FLOWLY_API_KEY
 # or, for Entra ID client-credentials:

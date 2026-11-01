@@ -1,6 +1,7 @@
 @{
     RootModule           = 'Flowly.PowerShell.dll'
-    ModuleVersion        = '1.0.0'
+    # Placeholder: the release workflow overwrites ModuleVersion and Prerelease with the version of the release tag.
+    ModuleVersion        = '0.0.0'
     GUID                 = 'b3c0b6ea-9a2f-4c9f-9b2b-2f7f7a2f3b10'
     Author               = 'Rasmus Therkelsen'
     CompanyName          = 'Flowly'
@@ -20,6 +21,7 @@
         PSData = @{
             Tags       = @('Flowly', 'Messaging', 'RabbitMQ')
             ProjectUri = 'https://github.com/rasmustherkelsen/flowly'
+            Prerelease = ''
         }
     }
 }
