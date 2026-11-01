@@ -1,5 +1,7 @@
 using System.Buffers.Binary;
+using Flowly.RabbitMQ.Tests.Fakes;
 using Flowly.Transport;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using RabbitMQ.Stream.Client;
 using RabbitMQ.Stream.Client.AMQP;
@@ -262,9 +264,10 @@ public class RabbitMqPartitionedStreamConsumerTests
         }
 
         [Fact]
-        public async Task WhenResolvingTheStartPositionFails_LeavesNoAssignedPartitionWithoutARevocation()
+        public async Task WhenResolvingTheStartPositionFailsUntilTheWindowEnds_LeavesNoAssignedPartitionWithoutARevocation()
         {
-            var rabbitMqPartitionedStreamConsumer = Build((_, _) => throw new InvalidOperationException("checkpoint store unavailable"));
+            var time = new ManualTimeProvider();
+            var rabbitMqPartitionedStreamConsumer = Build((_, _) => throw new InvalidOperationException("checkpoint store unavailable"), time);
             var liveLoops = new HashSet<int>();
             rabbitMqPartitionedStreamConsumer.PartitionAssigned += (partition, _) =>
             {
@@ -277,28 +280,34 @@ public class RabbitMqPartitionedStreamConsumerTests
                 return Task.CompletedTask;
             };
 
-            await Assert.ThrowsAsync<InvalidOperationException>(() => rabbitMqPartitionedStreamConsumer.OnConsumerUpdate("orders-3", true));
+            var update = rabbitMqPartitionedStreamConsumer.OnConsumerUpdate("orders-3", true);
+            await ExpireWindow(time);
 
+            await Assert.ThrowsAsync<InvalidOperationException>(() => update);
             Assert.Empty(liveLoops);
         }
 
         [Fact]
-        public async Task WhenResolvingTheStartPositionFails_RethrowsTheResolverException()
+        public async Task WhenResolvingTheStartPositionFailsUntilTheWindowEnds_RethrowsTheResolverException()
         {
             var failure = new InvalidOperationException("checkpoint store unavailable");
-            var rabbitMqPartitionedStreamConsumer = Build((_, _) => throw failure);
+            var time = new ManualTimeProvider();
+            var rabbitMqPartitionedStreamConsumer = Build((_, _) => throw failure, time);
 
-            var thrown = await Assert.ThrowsAsync<InvalidOperationException>(() => rabbitMqPartitionedStreamConsumer.OnConsumerUpdate("orders-3", true));
+            var update = rabbitMqPartitionedStreamConsumer.OnConsumerUpdate("orders-3", true);
+            await ExpireWindow(time);
 
+            var thrown = await Assert.ThrowsAsync<InvalidOperationException>(() => update);
             Assert.Same(failure, thrown);
         }
 
         [Fact]
         public async Task WhenResolvingTheStartPositionFailsForOnePartition_StillAssignsOtherPartitions()
         {
+            var time = new ManualTimeProvider();
             var rabbitMqPartitionedStreamConsumer = Build((partition, _) => partition == 1
                 ? throw new InvalidOperationException("checkpoint store unavailable")
-                : Task.FromResult(StartPosition.First()));
+                : Task.FromResult(StartPosition.First()), time);
             var liveLoops = new HashSet<int>();
             rabbitMqPartitionedStreamConsumer.PartitionAssigned += (partition, _) =>
             {
@@ -312,35 +321,164 @@ public class RabbitMqPartitionedStreamConsumerTests
             };
 
             await rabbitMqPartitionedStreamConsumer.OnConsumerUpdate("orders-0", true);
-            await Assert.ThrowsAsync<InvalidOperationException>(() => rabbitMqPartitionedStreamConsumer.OnConsumerUpdate("orders-1", true));
+            var failingUpdate = rabbitMqPartitionedStreamConsumer.OnConsumerUpdate("orders-1", true);
             await rabbitMqPartitionedStreamConsumer.OnConsumerUpdate("orders-2", true);
+            await ExpireWindow(time);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => failingUpdate);
 
             Assert.Equal([0, 2], liveLoops.Order());
         }
 
         [Fact]
-        public async Task WhenResolvingTheStartPositionFailsAndThePartitionIsAssignedAgain_AssignsItOnce()
+        public async Task WhenResolvingTheStartPositionFailsOnceWithinTheWindow_RetriesAndAssignsThePartitionOnce()
         {
             var attempts = 0;
+            var time = new ManualTimeProvider();
             var rabbitMqPartitionedStreamConsumer = Build((_, _) => ++attempts == 1
                 ? throw new InvalidOperationException("checkpoint store unavailable")
-                : Task.FromResult(StartPosition.First()));
+                : Task.FromResult(StartPosition.Offset(9)), time);
             var liveLoops = new List<int>();
             rabbitMqPartitionedStreamConsumer.PartitionAssigned += (partition, _) =>
             {
                 liveLoops.Add(partition);
                 return Task.CompletedTask;
             };
-            rabbitMqPartitionedStreamConsumer.PartitionRevoked += partition =>
+
+            var update = rabbitMqPartitionedStreamConsumer.OnConsumerUpdate("orders-4", true);
+            await time.WhenTimerArmed(Timings.ResolveBackoffInitial);
+            time.Advance(Timings.ResolveBackoffInitial);
+            var offset = await update;
+
+            Assert.Equal([4], liveLoops);
+            Assert.Equal(2, attempts);
+            Assert.Equal(9UL, WrittenOffsetValue(offset));
+        }
+
+        [Fact]
+        public async Task WhenResolvingTheStartPositionKeepsFailing_DoublesTheDelayUpToTheCeilingBetweenAttempts()
+        {
+            var attemptTimes = new List<long>();
+            var time = new ManualTimeProvider();
+            var rabbitMqPartitionedStreamConsumer = Build((_, _) =>
             {
-                liveLoops.Remove(partition);
+                attemptTimes.Add(time.GetTimestamp());
+                throw new InvalidOperationException("checkpoint store unavailable");
+            }, time);
+
+            var update = rabbitMqPartitionedStreamConsumer.OnConsumerUpdate("orders-1", true);
+            foreach (var delay in new[] { 0.5, 1, 2, 4, 5, 5 })
+            {
+                await time.WhenTimerArmed(TimeSpan.FromSeconds(delay));
+                time.Advance(TimeSpan.FromSeconds(delay));
+            }
+
+            await time.WhenTimerArmed(TimeSpan.FromSeconds(5));
+            time.Advance(Timings.ResolveWindow);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => update);
+
+            Assert.Equal(
+                [0, 0.5, 1.5, 3.5, 7.5, 12.5, 17.5],
+                attemptTimes.Take(7).Select(ticks => TimeSpan.FromTicks(ticks).TotalSeconds));
+        }
+
+        [Fact]
+        public async Task WhenResolvingTheStartPositionNeverCompletes_ThrowsATimeoutExceptionWhenTheWindowEnds()
+        {
+            var time = new ManualTimeProvider();
+            var rabbitMqPartitionedStreamConsumer = Build((_, _) => new TaskCompletionSource<StartPosition>().Task, time);
+
+            var update = rabbitMqPartitionedStreamConsumer.OnConsumerUpdate("orders-1", true);
+            await time.WhenTimerArmed(Timings.ResolveWindow);
+            time.Advance(Timings.ResolveWindow);
+
+            await Assert.ThrowsAsync<TimeoutException>(() => update);
+        }
+
+        [Fact]
+        public async Task WhenResolvingTheStartPositionFailsUntilTheWindowEnds_LogsTheFailureAsAnError()
+        {
+            var time = new ManualTimeProvider();
+            var logger = new RecordingLogger();
+            var rabbitMqPartitionedStreamConsumer = Build((_, _) => throw new InvalidOperationException("checkpoint store unavailable"), time, logger: logger);
+
+            var update = rabbitMqPartitionedStreamConsumer.OnConsumerUpdate("orders-1", true);
+            await ExpireWindow(time);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => update);
+
+            Assert.Single(logger.Entries, entry => entry.Level == LogLevel.Error);
+        }
+
+        [Fact]
+        public async Task WhenResolvingTheStartPositionFailsOnceWithinTheWindow_DoesNotReportTheRetryWindowAsEnded()
+        {
+            var attempts = 0;
+            var time = new ManualTimeProvider();
+            var rabbitMqPartitionedStreamConsumer = Build((_, _) => ++attempts == 1
+                ? throw new InvalidOperationException("checkpoint store unavailable")
+                : Task.FromResult(StartPosition.First()), time);
+            var exhausted = new List<(int Partition, Exception Exception)>();
+            rabbitMqPartitionedStreamConsumer.StartPositionResolutionExhausted += (partition, exception) => exhausted.Add((partition, exception));
+
+            var update = rabbitMqPartitionedStreamConsumer.OnConsumerUpdate("orders-4", true);
+            await time.WhenTimerArmed(Timings.ResolveBackoffInitial);
+            time.Advance(Timings.ResolveBackoffInitial);
+            await update;
+
+            Assert.Empty(exhausted);
+        }
+
+        [Fact]
+        public async Task WhenResolvingTheStartPositionFailsUntilTheWindowEnds_ReportsTheRetryWindowAsEndedOnceWithTheLastFailure()
+        {
+            var failure = new InvalidOperationException("checkpoint store unavailable");
+            var time = new ManualTimeProvider();
+            var rabbitMqPartitionedStreamConsumer = Build((_, _) => throw failure, time);
+            var exhausted = new List<(int Partition, Exception Exception)>();
+            rabbitMqPartitionedStreamConsumer.StartPositionResolutionExhausted += (partition, exception) => exhausted.Add((partition, exception));
+
+            var update = rabbitMqPartitionedStreamConsumer.OnConsumerUpdate("orders-3", true);
+            await ExpireWindow(time);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => update);
+
+            var reported = Assert.Single(exhausted);
+            Assert.Equal(3, reported.Partition);
+            Assert.Same(failure, reported.Exception);
+        }
+
+        [Fact]
+        public async Task WhenTheConsumerIsStoppedWhileResolving_DoesNotReportTheRetryWindowAsEnded()
+        {
+            var time = new ManualTimeProvider();
+            var reported = false;
+            var rabbitMqPartitionedStreamConsumer = Build((_, _) => throw new InvalidOperationException("checkpoint store unavailable"), time);
+            rabbitMqPartitionedStreamConsumer.StartPositionResolutionExhausted += (_, _) => reported = true;
+
+            var update = rabbitMqPartitionedStreamConsumer.OnConsumerUpdate("orders-1", true);
+            await time.WhenTimerArmed(Timings.ResolveBackoffInitial);
+            await rabbitMqPartitionedStreamConsumer.StopProcessing(CancellationToken.None);
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => update);
+
+            Assert.False(reported);
+        }
+
+        [Fact]
+        public async Task WhenTheConsumerIsStoppedWhileResolving_AbortsWithoutAssigningThePartition()
+        {
+            var time = new ManualTimeProvider();
+            var assigned = false;
+            var rabbitMqPartitionedStreamConsumer = Build((_, _) => throw new InvalidOperationException("checkpoint store unavailable"), time);
+            rabbitMqPartitionedStreamConsumer.PartitionAssigned += (_, _) =>
+            {
+                assigned = true;
                 return Task.CompletedTask;
             };
 
-            await Assert.ThrowsAsync<InvalidOperationException>(() => rabbitMqPartitionedStreamConsumer.OnConsumerUpdate("orders-4", true));
-            await rabbitMqPartitionedStreamConsumer.OnConsumerUpdate("orders-4", true);
+            var update = rabbitMqPartitionedStreamConsumer.OnConsumerUpdate("orders-1", true);
+            await time.WhenTimerArmed(Timings.ResolveBackoffInitial);
+            await rabbitMqPartitionedStreamConsumer.StopProcessing(CancellationToken.None);
 
-            Assert.Equal([4], liveLoops);
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => update);
+            Assert.False(assigned);
         }
 
         [Fact]
@@ -367,6 +505,383 @@ public class RabbitMqPartitionedStreamConsumerTests
             await Assert.ThrowsAsync<InvalidOperationException>(() => rabbitMqPartitionedStreamConsumer.OnConsumerUpdate("invoices-1", true));
         }
     }
+
+    public class OnMessage
+    {
+        [Fact]
+        public async Task WhenThePartitionHasAProcessor_DispatchesTheMessageWithItsOffset()
+        {
+            var rabbitMqPartitionedStreamConsumer = Build();
+            long? handledOffset = null;
+            rabbitMqPartitionedStreamConsumer.PartitionAssigned += (_, processor) =>
+            {
+                processor.ProcessMessage += (message, _) =>
+                {
+                    handledOffset = message.Properties.StreamOffset;
+                    return Task.CompletedTask;
+                };
+                return Task.CompletedTask;
+            };
+            await rabbitMqPartitionedStreamConsumer.OnConsumerUpdate("orders-2", true);
+
+            await rabbitMqPartitionedStreamConsumer.OnMessage("orders-2", 41, new Message([1]));
+
+            Assert.Equal(41, handledOffset);
+        }
+
+        [Fact]
+        public async Task WhenThePartitionHasNoProcessor_DoesNotDispatchAndLogsASummaryOfTheFirstDrop()
+        {
+            var logger = new RecordingLogger();
+            var rabbitMqPartitionedStreamConsumer = Build(logger: logger);
+
+            await rabbitMqPartitionedStreamConsumer.OnMessage("orders-2", 7, new Message([1]));
+
+            var warning = Assert.Single(logger.Entries, entry => entry.Level == LogLevel.Warning);
+            Assert.Contains("Dropped 1 stream message(s) for partition 2", warning.Message);
+        }
+
+        [Fact]
+        public async Task WhenManyMessagesAreDroppedWithinTheInterval_LogsOneSummaryInsteadOfOneWarningPerMessage()
+        {
+            var logger = new RecordingLogger();
+            var rabbitMqPartitionedStreamConsumer = Build(logger: logger);
+
+            for (var offset = 0; offset < 50; offset++)
+            {
+                await rabbitMqPartitionedStreamConsumer.OnMessage("orders-2", offset, new Message([1]));
+            }
+
+            Assert.Single(logger.Entries, entry => entry.Level == LogLevel.Warning);
+        }
+
+        [Fact]
+        public async Task WhenTheLastStartPositionResolutionFailed_IncludesThatErrorInTheSummary()
+        {
+            var time = new ManualTimeProvider();
+            var logger = new RecordingLogger();
+            var rabbitMqPartitionedStreamConsumer = Build((_, _) => throw new InvalidOperationException("checkpoint store unavailable"), time, logger: logger);
+            var update = rabbitMqPartitionedStreamConsumer.OnConsumerUpdate("orders-2", true);
+            await ExpireWindow(time);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => update);
+
+            await rabbitMqPartitionedStreamConsumer.OnMessage("orders-2", 7, new Message([1]));
+
+            var warning = Assert.Single(logger.Entries, entry => entry.Level == LogLevel.Warning && entry.Message.StartsWith("Dropped"));
+            Assert.Contains("InvalidOperationException: checkpoint store unavailable", warning.Message);
+        }
+
+        [Fact]
+        public async Task WhenThePartitionStartsAfterDrops_LogsTheRemainingDroppedCount()
+        {
+            var logger = new RecordingLogger();
+            var rabbitMqPartitionedStreamConsumer = Build(logger: logger);
+            for (var offset = 0; offset < 4; offset++)
+            {
+                await rabbitMqPartitionedStreamConsumer.OnMessage("orders-2", offset, new Message([1]));
+            }
+
+            await rabbitMqPartitionedStreamConsumer.OnConsumerUpdate("orders-2", true);
+
+            Assert.Single(logger.Entries, entry => entry.Level == LogLevel.Information && entry.Message.Contains("3 further message(s)"));
+        }
+
+        [Fact]
+        public async Task WhenTheMessageComesFromAConsumerThatWasClosed_IgnoresItWithoutCountingADrop()
+        {
+            var factory = new FakeSuperStreamConsumerFactory();
+            var logger = new RecordingLogger();
+            var rabbitMqPartitionedStreamConsumer = Build(factory: factory, logger: logger);
+            await rabbitMqPartitionedStreamConsumer.StartProcessingMessages();
+            var closedIncarnation = factory.Incarnations[0];
+            await rabbitMqPartitionedStreamConsumer.StopProcessing(CancellationToken.None);
+
+            await closedIncarnation.Deliver("orders-2", 5);
+
+            Assert.DoesNotContain(logger.Entries, entry => entry.Level == LogLevel.Warning);
+        }
+    }
+
+    public class StartProcessingMessages
+    {
+        [Fact]
+        public async Task CreatesTheConsumerOnce()
+        {
+            var factory = new FakeSuperStreamConsumerFactory();
+            var rabbitMqPartitionedStreamConsumer = Build(factory: factory);
+
+            await rabbitMqPartitionedStreamConsumer.StartProcessingMessages();
+
+            Assert.Single(factory.Incarnations);
+        }
+
+        [Fact]
+        public async Task WhenAPartitionStaysUnresolved_RecreatesTheConsumerAfterTheBackoffAndRevokesTheLivePartitions()
+        {
+            var scenario = await WaitingPartitionScenario.Start();
+
+            scenario.Time.Advance(Timings.RecreationBackoffInitial);
+            await scenario.Factory.WhenCreated(2);
+
+            Assert.Equal(["created-1", "assigned-0", "revoked-0", "closed-1", "created-2"], scenario.Factory.Events);
+        }
+
+        [Fact]
+        public async Task WhenAPartitionStaysUnresolved_DoesNotRecreateTheConsumerBeforeTheBackoffHasPassed()
+        {
+            var scenario = await WaitingPartitionScenario.Start();
+
+            scenario.Time.Advance(Timings.RecreationBackoffInitial - TimeSpan.FromMilliseconds(1));
+
+            Assert.Single(scenario.Factory.Incarnations);
+        }
+
+        [Fact]
+        public async Task WhenTheConsumerIsRecreated_ResolvesTheStartPositionOfTheHealthyPartitionsAgain()
+        {
+            var scenario = await WaitingPartitionScenario.Start();
+            scenario.Time.Advance(Timings.RecreationBackoffInitial);
+            await scenario.Factory.WhenCreated(2);
+
+            var offset = await scenario.Factory.Incarnations[1].Update("orders-0", true);
+
+            Assert.Equal(2, scenario.ResolveCount(0));
+            Assert.Equal(102UL, WrittenOffsetValue(offset));
+        }
+
+        [Fact]
+        public async Task WhenThePartitionResolvesAfterARecreation_AssignsItAndStopsRecreating()
+        {
+            var scenario = await WaitingPartitionScenario.Start();
+            scenario.Time.Advance(Timings.RecreationBackoffInitial);
+            await scenario.Factory.WhenCreated(2);
+            scenario.StoreDown = false;
+
+            await scenario.Factory.Incarnations[1].Update("orders-0", true);
+            await scenario.Factory.Incarnations[1].Update("orders-1", true);
+            await scenario.Time.WhenTimerArmed(Timings.RecreationSettleDelay);
+            scenario.Time.Advance(Timings.RecreationSettleDelay);
+            await scenario.Consumer.RecoveryCompletion;
+
+            Assert.Single(scenario.Factory.Events, entry => entry == "assigned-1");
+            Assert.Equal(2, scenario.Factory.Incarnations.Count);
+            Assert.Equal(0, scenario.Time.ActiveTimers);
+        }
+
+        [Fact]
+        public async Task WhenThePartitionStillFailsAfterARecreation_RecreatesAgainAfterADoubledBackoff()
+        {
+            var scenario = await WaitingPartitionScenario.Start();
+            scenario.Time.Advance(Timings.RecreationBackoffInitial);
+            await scenario.Factory.WhenCreated(2);
+            var failing = scenario.Factory.Incarnations[1].Update("orders-1", true);
+            await scenario.Time.WhenTimerArmed(Timings.ResolveBackoffInitial);
+            scenario.Time.Advance(Timings.ResolveWindow);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => failing);
+
+            await scenario.Time.WhenTimerArmed(Timings.RecreationBackoffInitial * 2);
+            scenario.Time.Advance(Timings.RecreationBackoffInitial * 2);
+            await scenario.Factory.WhenCreated(3);
+
+            Assert.Equal(3, scenario.Factory.Incarnations.Count);
+        }
+
+        [Fact]
+        public async Task WhenAWaitingPartitionDoesNotComeBackBecauseItMovedToAnotherInstance_RevokesItAndStopsRecreating()
+        {
+            var scenario = await WaitingPartitionScenario.Start();
+            scenario.Time.Advance(Timings.RecreationBackoffInitial);
+            await scenario.Factory.WhenCreated(2);
+
+            await scenario.Factory.Incarnations[1].Update("orders-0", true);
+            await scenario.Time.WhenTimerArmed(Timings.RecreationSettleDelay);
+            scenario.Time.Advance(Timings.RecreationSettleDelay);
+            await scenario.Consumer.RecoveryCompletion;
+
+            Assert.Contains("revoked-1", scenario.Factory.Events);
+            Assert.Equal(2, scenario.Factory.Incarnations.Count);
+        }
+
+        [Fact]
+        public async Task WhenAWaitingPartitionIsRevokedByTheBroker_StopsRecreating()
+        {
+            var scenario = await WaitingPartitionScenario.Start();
+
+            await scenario.Factory.Incarnations[0].Update("orders-1", false);
+            scenario.Time.Advance(Timings.RecreationBackoffInitial);
+            await scenario.Consumer.RecoveryCompletion;
+
+            Assert.Single(scenario.Factory.Incarnations);
+        }
+
+        [Fact]
+        public async Task WhenTheConsumerIsStoppedWhileAPartitionIsWaiting_DoesNotRecreateIt()
+        {
+            var scenario = await WaitingPartitionScenario.Start();
+
+            await scenario.Consumer.StopProcessing(CancellationToken.None);
+            scenario.Time.Advance(Timings.RecreationBackoffMax);
+
+            Assert.Single(scenario.Factory.Incarnations);
+            Assert.True(scenario.Factory.Incarnations[0].Closed);
+        }
+
+        [Fact]
+        public async Task WhenAHaltedPartitionHoldsItsDelivery_RecreationStopsTheLoopsBeforeClosingSoTheHeldDeliveryIsReleased()
+        {
+            var scenario = await WaitingPartitionScenario.Start();
+            var held = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            scenario.Consumer.PartitionAssigned += (_, processor) =>
+            {
+                processor.ProcessMessage += (_, _) => held.Task;
+                return Task.CompletedTask;
+            };
+            scenario.Consumer.PartitionRevoked += _ =>
+            {
+                held.TrySetResult();
+                return Task.CompletedTask;
+            };
+            var incarnation = scenario.Factory.Incarnations[0];
+            await incarnation.Update("orders-2", true);
+            var delivery = incarnation.Deliver("orders-2", 1);
+            incarnation.BeforeClose = () => delivery;
+
+            scenario.Time.Advance(Timings.RecreationBackoffInitial);
+            await scenario.Factory.WhenCreated(2).WaitAsync(TimeSpan.FromSeconds(10));
+
+            Assert.True(delivery.IsCompleted);
+            Assert.True(incarnation.Closed);
+        }
+
+        [Fact]
+        public async Task WhenCreatingTheConsumerFailsDuringARecreation_TriesAgainAfterADoubledBackoff()
+        {
+            var scenario = await WaitingPartitionScenario.Start();
+            var failures = 1;
+            scenario.Factory.FailCreate = _ => failures-- > 0 ? new InvalidOperationException("broker unavailable") : null;
+
+            scenario.Time.Advance(Timings.RecreationBackoffInitial);
+            await scenario.Time.WhenTimerArmed(Timings.RecreationBackoffInitial * 2);
+            scenario.Time.Advance(Timings.RecreationBackoffInitial * 2);
+            await scenario.Factory.WhenCreated(2);
+
+            Assert.Equal(2, scenario.Factory.Incarnations.Count);
+        }
+
+        [Fact]
+        public async Task WhenAFailingPartitionIsReportedWhileTheConsumerWasNeverStarted_DoesNotRecreate()
+        {
+            var time = new ManualTimeProvider();
+            var factory = new FakeSuperStreamConsumerFactory();
+            var rabbitMqPartitionedStreamConsumer = Build((_, _) => throw new InvalidOperationException("checkpoint store unavailable"), time, factory);
+            var update = rabbitMqPartitionedStreamConsumer.OnConsumerUpdate("orders-1", true);
+            await ExpireWindow(time);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => update);
+
+            await rabbitMqPartitionedStreamConsumer.RecoveryCompletion;
+
+            Assert.Empty(factory.Incarnations);
+        }
+    }
+
+    public class StopProcessing
+    {
+        [Fact]
+        public async Task ClosesTheConsumerOnce()
+        {
+            var factory = new FakeSuperStreamConsumerFactory();
+            var rabbitMqPartitionedStreamConsumer = Build(factory: factory);
+            await rabbitMqPartitionedStreamConsumer.StartProcessingMessages();
+
+            await rabbitMqPartitionedStreamConsumer.StopProcessing(CancellationToken.None);
+            await rabbitMqPartitionedStreamConsumer.DisposeAsync();
+
+            Assert.Equal(["created-1", "closed-1"], factory.Events);
+        }
+    }
+
+    private sealed class WaitingPartitionScenario
+    {
+        private readonly Dictionary<int, int> _resolveCounts = new();
+        private readonly Lock _lock = new();
+
+        private WaitingPartitionScenario()
+        {
+            Factory = new FakeSuperStreamConsumerFactory();
+            Time = new ManualTimeProvider();
+            Consumer = Build(Resolve, Time, Factory);
+            Consumer.PartitionAssigned += (partition, _) =>
+            {
+                Factory.Events.Enqueue($"assigned-{partition}");
+                return Task.CompletedTask;
+            };
+            Consumer.PartitionRevoked += partition =>
+            {
+                Factory.Events.Enqueue($"revoked-{partition}");
+                return Task.CompletedTask;
+            };
+        }
+
+        public FakeSuperStreamConsumerFactory Factory { get; }
+        public ManualTimeProvider Time { get; }
+        public RabbitMqPartitionedStreamConsumer<OrderMessage> Consumer { get; }
+        public bool StoreDown { get; set; } = true;
+
+        public int ResolveCount(int partition)
+        {
+            lock (_lock)
+            {
+                return _resolveCounts.GetValueOrDefault(partition);
+            }
+        }
+
+        public static async Task<WaitingPartitionScenario> Start()
+        {
+            var scenario = new WaitingPartitionScenario();
+            await scenario.Consumer.StartProcessingMessages();
+            await scenario.Factory.Incarnations[0].Update("orders-0", true);
+            var failing = scenario.Factory.Incarnations[0].Update("orders-1", true);
+            await ExpireWindow(scenario.Time);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => failing);
+            await scenario.Time.WhenTimerArmed(Timings.RecreationBackoffInitial);
+
+            return scenario;
+        }
+
+        private Task<StartPosition> Resolve(int partition, CancellationToken cancellationToken)
+        {
+            int count;
+            lock (_lock)
+            {
+                count = _resolveCounts[partition] = _resolveCounts.GetValueOrDefault(partition) + 1;
+            }
+
+            return partition == 1 && StoreDown
+                ? throw new InvalidOperationException("checkpoint store unavailable")
+                : Task.FromResult(StartPosition.Offset(100 + count));
+        }
+    }
+
+    private static readonly RabbitMqPartitionedStreamTimings Timings = RabbitMqPartitionedStreamTimings.Default;
+
+    private static async Task ExpireWindow(ManualTimeProvider time)
+    {
+        await time.WhenTimerArmed(Timings.ResolveBackoffInitial);
+        time.Advance(Timings.ResolveWindow);
+    }
+
+    private static RabbitMqPartitionedStreamConsumer<OrderMessage> Build(
+        Func<int, CancellationToken, Task<StartPosition>>? resolveStartPosition = null,
+        ManualTimeProvider? time = null,
+        FakeSuperStreamConsumerFactory? factory = null,
+        ILogger? logger = null)
+        => new(
+            factory ?? new FakeSuperStreamConsumerFactory(),
+            "orders",
+            "orders-reader",
+            resolveStartPosition ?? ((_, _) => Task.FromResult(StartPosition.First())),
+            logger ?? NullLogger.Instance,
+            time ?? new ManualTimeProvider());
 
     public class PartitionProcessorDispatch
     {
@@ -419,9 +934,6 @@ public class RabbitMqPartitionedStreamConsumerTests
         private static Task Dispatch(IMessageBusProcessor<OrderMessage> processor, string json)
             => (Task)processor.GetType().GetMethod("Dispatch")!.Invoke(processor, [new Message(System.Text.Encoding.UTF8.GetBytes(json)), 0L])!;
     }
-
-    private static RabbitMqPartitionedStreamConsumer<OrderMessage> Build(Func<int, CancellationToken, Task<StartPosition>>? resolveStartPosition = null)
-        => new(null!, "orders", resolveStartPosition ?? ((_, _) => Task.FromResult(StartPosition.First())), NullLogger.Instance);
 
     private static ulong WrittenOffsetValue(IOffsetType offsetType)
     {

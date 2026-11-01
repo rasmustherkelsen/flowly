@@ -27,9 +27,10 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
             IStreamStartOffsetResolver? startOffsetResolver = null,
             string? consumerName = null,
             StreamPartitionStateRegistry? stateRegistry = null,
+            bool retryingConsumer = false,
             StreamPartitionResumeRegistry? resumeRegistry = null)
     {
-        var consumer = new FakePartitionedStreamConsumer();
+        var consumer = retryingConsumer ? new RetryingFakePartitionedStreamConsumer() : new FakePartitionedStreamConsumer();
         ITransportClient client = clientFactory?.Invoke(consumer)
             ?? (startOffsetResolver is null ? new FakePartitionedStreamClient(consumer) : new ResolverCapablePartitionedStreamClient(consumer, startOffsetResolver));
         var registry = new MessageBusClientRegistry();
@@ -724,6 +725,102 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
         }
 
         [Fact]
+        public async Task WhenTheConsumerRetriesStartPositionsItself_ADeclinedAttemptDoesNotRecordWaiting()
+        {
+            var registry = new StreamPartitionStateRegistry(TimeProvider.System);
+            var checkpoint = new FakeCheckpoint { StoredPosition = 9, OnInitialize = _ => throw new TimeoutException("store down") };
+            var (backgroundService, consumer, _, instrumentation, _) = CreateService(
+                maxMessages: 1, maxRetries: 0, checkpoint: checkpoint, stateRegistry: registry, retryingConsumer: true);
+            await backgroundService.StartAsync(CancellationToken.None);
+            await consumer.Started.Task.WaitAsync(TestTimeout);
+
+            await Assert.ThrowsAsync<TimeoutException>(() => consumer.Client!.ReceivedResolveStartPosition!(2, CancellationToken.None));
+
+            Assert.Null(registry.Get(Key(2)));
+            Assert.Empty(instrumentation.Transitions);
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task WhenTheConsumerRetriesStartPositionsItselfAndALaterAttemptSucceeds_GoesStraightToRunning()
+        {
+            var registry = new StreamPartitionStateRegistry(TimeProvider.System);
+            var attempts = 0;
+            var checkpoint = new FakeCheckpoint
+            {
+                StoredPosition = 9,
+                OnInitialize = _ => ++attempts == 1 ? throw new TimeoutException("store down") : Task.CompletedTask
+            };
+            var (backgroundService, consumer, _, instrumentation, _) = CreateService(
+                maxMessages: 1, maxRetries: 0, checkpoint: checkpoint, stateRegistry: registry, retryingConsumer: true);
+            await backgroundService.StartAsync(CancellationToken.None);
+            await consumer.Started.Task.WaitAsync(TestTimeout);
+            await Assert.ThrowsAsync<TimeoutException>(() => consumer.Client!.ReceivedResolveStartPosition!(2, CancellationToken.None));
+
+            await consumer.Client!.ReceivedResolveStartPosition!(2, CancellationToken.None);
+            await consumer.AssignPartition(2);
+
+            Assert.Equal(StreamPartitionState.Running, registry.Get(Key(2))!.State);
+            Assert.Null(registry.Get(Key(2))!.LastError);
+            Assert.Equal([(2, StreamPartitionState.Running)], instrumentation.Transitions);
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task WhenTheConsumerRetriesStartPositionsItself_RecordsWaitingWhenItReportsTheRetryWindowEnded()
+        {
+            var registry = new StreamPartitionStateRegistry(TimeProvider.System);
+            var (backgroundService, consumer, _, instrumentation, _) = CreateService(maxMessages: 1, maxRetries: 0, stateRegistry: registry, retryingConsumer: true);
+            await backgroundService.StartAsync(CancellationToken.None);
+            await consumer.Started.Task.WaitAsync(TestTimeout);
+
+            ((RetryingFakePartitionedStreamConsumer)consumer).RaiseExhausted(2, new TimeoutException("store down"));
+
+            var waiting = registry.Get(Key(2))!;
+            Assert.Equal(StreamPartitionState.Waiting, waiting.State);
+            Assert.Equal("store down", waiting.LastError!.Message);
+            Assert.Equal([(2, StreamPartitionState.Waiting)], instrumentation.Transitions);
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task WhenTheConsumerRetriesStartPositionsItselfAndTheRetryWindowEndsAgain_KeepsWaitingAndCountsOneTransition()
+        {
+            var registry = new StreamPartitionStateRegistry(TimeProvider.System);
+            var (backgroundService, consumer, _, instrumentation, _) = CreateService(maxMessages: 1, maxRetries: 0, stateRegistry: registry, retryingConsumer: true);
+            await backgroundService.StartAsync(CancellationToken.None);
+            await consumer.Started.Task.WaitAsync(TestTimeout);
+            var retryingConsumer = (RetryingFakePartitionedStreamConsumer)consumer;
+
+            retryingConsumer.RaiseExhausted(2, new TimeoutException("first"));
+            retryingConsumer.RaiseExhausted(2, new TimeoutException("second"));
+
+            Assert.Equal("second", registry.Get(Key(2))!.LastError!.Message);
+            Assert.Single(instrumentation.Transitions);
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task WhenTheConsumerRetriesStartPositionsItselfAndTheRetryWindowEndsForARunningPartition_DoesNotRecordWaiting()
+        {
+            var registry = new StreamPartitionStateRegistry(TimeProvider.System);
+            var (backgroundService, consumer, _, _, _) = CreateService(maxMessages: 1, maxRetries: 0, stateRegistry: registry, retryingConsumer: true);
+            await backgroundService.StartAsync(CancellationToken.None);
+            await consumer.Started.Task.WaitAsync(TestTimeout);
+            await consumer.AssignPartition(2);
+
+            ((RetryingFakePartitionedStreamConsumer)consumer).RaiseExhausted(2, new TimeoutException("store down"));
+
+            Assert.Equal(StreamPartitionState.Running, registry.Get(Key(2))!.State);
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
         public async Task WhenAWaitingPartitionIsRevoked_RemovesItsEntry()
         {
             var registry = new StreamPartitionStateRegistry(TimeProvider.System);
@@ -916,6 +1013,43 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
             Assert.Equal(StreamPartitionResumeResult.NotOwned, resumeRegistry.Resume(Key(0)));
             Assert.Null(registry.Get(Key(0)));
             Assert.Equal(1, processor.DisposeAsyncCallCount);
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task WhenAHeldPartitionIsRevokedAndAssignedAgainAsInAConsumerRecreation_ReplaysTheBatchAndHaltsAgain()
+        {
+            var resumeRegistry = new StreamPartitionResumeRegistry();
+            var registry = new StreamPartitionStateRegistry(TimeProvider.System);
+            var (backgroundService, consumer, handler, instrumentation, _) = CreateService(
+                maxMessages: 1,
+                maxRetries: 0,
+                onHandle: context => context.Messages.Any(message => message.Payload == "poison") ? throw new InvalidOperationException("permanent failure") : Task.CompletedTask,
+                stateRegistry: registry,
+                resumeRegistry: resumeRegistry);
+            await backgroundService.StartAsync(CancellationToken.None);
+            await consumer.Started.Task.WaitAsync(TestTimeout);
+            var firstProcessor = await consumer.AssignPartition(0);
+            await firstProcessor.Deliver(new FakeReceivedMessage(new TestMessage("poison")));
+            await instrumentation.NextHalt();
+
+            await consumer.RevokePartition(0);
+
+            Assert.Null(registry.Get(Key(0)));
+            Assert.Equal(StreamPartitionResumeResult.NotOwned, resumeRegistry.Resume(Key(0)));
+
+            var secondProcessor = await consumer.AssignPartition(0);
+
+            Assert.Equal(StreamPartitionState.Running, registry.Get(Key(0))!.State);
+
+            await secondProcessor.Deliver(new FakeReceivedMessage(new TestMessage("poison")));
+            await instrumentation.NextHalt();
+
+            Assert.Equal(StreamPartitionState.Halted, registry.Get(Key(0))!.State);
+            Assert.Equal(2, handler.Invocations.Count);
+            Assert.Equal(1, firstProcessor.DisposeAsyncCallCount);
+            Assert.Equal(StreamPartitionResumeResult.Resumed, resumeRegistry.Resume(Key(0)));
 
             await backgroundService.StopAsync(CancellationToken.None);
         }
@@ -1116,7 +1250,14 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
         public Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default) => throw new NotImplementedException();
     }
 
-    private sealed class FakePartitionedStreamConsumer : IPartitionedStreamConsumer<TestMessage>
+    private sealed class RetryingFakePartitionedStreamConsumer : FakePartitionedStreamConsumer, IStartPositionRetryingConsumer
+    {
+        public event Action<int, Exception>? StartPositionResolutionExhausted;
+
+        public void RaiseExhausted(int partition, Exception exception) => StartPositionResolutionExhausted?.Invoke(partition, exception);
+    }
+
+    private class FakePartitionedStreamConsumer : IPartitionedStreamConsumer<TestMessage>
     {
         public FakePartitionedStreamClient? Client { get; set; }
         public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);

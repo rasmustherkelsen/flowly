@@ -139,7 +139,12 @@ internal class RabbitMqMessageBusClient(IRabbitMqConnectionPool connectionPool, 
         ILogger logger)
     {
         var streamSystem = await connectionPool.GetStreamSystem();
-        return new RabbitMqPartitionedStreamConsumer<TMessage>(streamSystem, queueName, resolveStartPosition, logger);
+        return new RabbitMqPartitionedStreamConsumer<TMessage>(
+            new RabbitMqSuperStreamConsumerFactory(streamSystem, queueName),
+            queueName,
+            options.ConsumerName ?? queueName,
+            resolveStartPosition,
+            logger);
     }
 
     public Task<long?> ResolveStartOffset(string queueName, int? partition, StartPosition startPosition, CancellationToken cancellationToken)

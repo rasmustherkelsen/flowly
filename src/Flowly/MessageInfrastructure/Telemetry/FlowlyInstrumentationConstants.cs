@@ -55,6 +55,14 @@ public static class FlowlyInstrumentationConstants
     /// <summary>Counter: number of times a stream partition entered a state, tagged <c>state=running|waiting|halted</c>.</summary>
     public const string StreamPartitionTransitions = "flowly.message.stream.partition.transitions";
 
+    /// <summary>
+    ///     Counter: number of stream messages a transport dropped because this process had no processing loop for the partition they
+    ///     arrived on (a partition waiting for an unresolved start position, or a handover in progress), tagged with the queue
+    ///     (<c>messaging.destination.name</c>), the <c>consumer</c> and the <c>partition</c>. Nothing is lost: a dropped message is replayed
+    ///     from the stored position when the partition is processed again.
+    /// </summary>
+    public const string StreamPartitionDropped = "flowly.message.stream.partition.dropped";
+
     /// <summary>Histogram: message processing duration in milliseconds for handlers.</summary>
     public const string HandlerProcessingDuration = "flowly.message.handler.duration";
 

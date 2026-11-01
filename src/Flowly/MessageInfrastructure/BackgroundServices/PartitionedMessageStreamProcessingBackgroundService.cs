@@ -66,6 +66,9 @@ internal sealed class PartitionedMessageStreamProcessingBackgroundService<TMessa
 
         _consumer.PartitionRevoked += StopPartitionLoop;
 
+        if (_consumer is IStartPositionRetryingConsumer retryingConsumer)
+            retryingConsumer.StartPositionResolutionExhausted += RecordWaiting;
+
         await _consumer.StartProcessingMessages(stoppingToken);
         logger.LogInformation("{HandlerName} waiting for partitioned stream messages on queue '{QueueName}' ({PartitionCount} partitions)",
             handlerSettings.HandlerName, handlerSettings.QueueName, handlerSettings.PartitionCount);
@@ -91,11 +94,17 @@ internal sealed class PartitionedMessageStreamProcessingBackgroundService<TMessa
         }
         catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
-            if (!HasActiveRunner(partition))
-                _stateReporter.Waiting(partition, exception);
+            if (_consumer is not IStartPositionRetryingConsumer)
+                RecordWaiting(partition, exception);
 
             throw;
         }
+    }
+
+    private void RecordWaiting(int partition, Exception exception)
+    {
+        if (!HasActiveRunner(partition))
+            _stateReporter.Waiting(partition, exception);
     }
 
     private bool HasActiveRunner(int partition)

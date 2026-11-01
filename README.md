@@ -527,7 +527,7 @@ Every stream partition this process owns (a non-partitioned stream counts as one
 | State | Meaning |
 |---|---|
 | `Running` | A processing loop exists for the partition and is consuming. |
-| `Waiting` | The partition's start position could not be resolved (for example the checkpoint store is unavailable), so no processing loop exists for it yet. Messages the transport still delivers for it are dropped until it is assigned again; with a checkpoint they are redelivered from the stored position. Only partitioned streams report this state. |
+| `Waiting` | The partition's start position could not be resolved (for example the checkpoint store is unavailable), so no processing loop exists for it yet. Messages the transport still delivers for it are dropped and counted, and are redelivered from the stored position once the partition starts. On RabbitMQ the partition is retried without a restart, see [Recovery of a waiting partition on RabbitMQ](#recovery-of-a-waiting-partition-on-rabbitmq). Only partitioned streams report this state. |
 | `Halted` | The partition exhausted its in-process retries and stopped consuming; the stream offset does not advance past the failed batch. |
 
 For each partition Flowly also keeps the last error (message and exception type) and when it happened, and when the partition entered its current state. A revoked partition is no longer reported. A halted partition is `Halted` for as long as it holds its batch and is `Running` again once the held batch is run again. Two metrics report them (see [OpenTelemetry](#metrics)): `flowly.message.stream.partition.state`, a gauge with the current state of each owned partition (`0` running, `1` waiting, `2` halted), and `flowly.message.stream.partition.transitions`, a counter of state changes tagged `state=running|waiting|halted`.
@@ -539,6 +539,18 @@ builder.AddMessageStreamHealthCheck();
 ```
 
 It is unhealthy while any owned partition is `Halted` or `Waiting` and healthy otherwise, including while the process owns no partition. The result lists each failing partition by queue, consumer and partition with its state, since when, and last error. A halted partition means consumption of it has stopped and needs operator action, so the default is `Unhealthy`; pass `failureStatus: HealthStatus.Degraded` to keep the instance in rotation. The check is registered under the name `flowly-message-streams` with the tag `message-streams` (both overridable) and works for every stream transport.
+
+### Recovery of a waiting partition on RabbitMQ
+
+When the start position of a partition of a partitioned RabbitMQ stream cannot be resolved (for example the checkpoint store is down while the partition is assigned), Flowly recovers the partition without a process restart:
+
+1. **The partition waits inside a bounded window.** The resolution is retried with a growing delay (0.5 s doubling up to 5 s) for up to 40 seconds, the time the broker allows a stream connection's start position callback before it closes the connection. Nothing is delivered for that partition while it retries, so an outage shorter than the window drops nothing, the partition is not reported as `Waiting` (and the health check stays healthy), and the other partitions keep consuming.
+2. **If the window ends without a start position**, the partition is reported as `Waiting` from that moment and the broker's client attaches it at the end of the stream. Flowly has no processing loop for it, so what arrives for it is dropped, counted and never checkpointed; because nothing is checkpointed, the dropped messages are delivered again from the stored position once the partition starts. Nothing is skipped.
+3. **The consumer is recreated automatically** while a partition is waiting: Flowly stops the partitions' processing loops, closes the Stream consumer and creates it again, so the broker offers every partition to this process once more and the start positions are resolved anew. The delay before a recreation starts at 5 seconds and doubles up to 2 minutes; only one recreation runs at a time, and the recovery ends when every partition has started or the host stops.
+
+The recreation re-initializes the healthy partitions too: each resumes from its checkpoint, and the batch it was processing when the consumer was closed was not checkpointed yet, so at most that batch is delivered again (handlers must be idempotent, as for every restart or rebalance). With other instances in the same consumer group the broker may hand partitions over between the instances during a recreation. The instance that owns the waiting partition retries it itself; Flowly never hands a failing partition to another instance on purpose.
+
+While messages are dropped for a partition without a processing loop, Flowly logs one summary per partition at most every 30 seconds (number of dropped messages, last start position error) instead of one warning per message, and counts every drop in the `flowly.message.stream.partition.dropped` metric (tagged with the queue, `consumer` and `partition`, see [OpenTelemetry](#metrics)).
 
 ### Position persistence
 
@@ -1681,6 +1693,7 @@ All metrics use the meter name `"Flowly"` and follow the `messaging.*` semantic 
 | `flowly.message.handler.halted` | Counter | Stream handlers that halted after exhausting their in-process retries |
 | `flowly.message.stream.partition.state` | Gauge | Current state of each stream partition owned by this process: `0` running, `1` waiting for an unresolved start position, `2` halted. Tagged `handler`, `messaging.destination.name`, `consumer` and `partition` (omitted for a non-partitioned stream); a revoked partition is no longer reported |
 | `flowly.message.stream.partition.transitions` | Counter | Stream partition state changes, tagged `handler`, `messaging.destination.name`, `consumer`, `partition` (omitted for a non-partitioned stream) and `state=running\|waiting\|halted` (the state entered) |
+| `flowly.message.stream.partition.dropped` | Counter | RabbitMQ partitioned streams: messages dropped because this process had no processing loop for their partition (a waiting partition, or a handover in progress). Tagged `messaging.destination.name`, `consumer` and `partition`. Nothing is lost; a dropped message is delivered again from the stored position |
 | `flowly.message.checkpoint.saved` | Counter | Message stream checkpoint positions successfully saved (built-in or hand-rolled) |
 | `flowly.message.checkpoint.save.duration` | Histogram (ms) | Checkpoint save duration |
 | `flowly.message.checkpoint.save.failed` | Counter | Checkpoint save failures |
