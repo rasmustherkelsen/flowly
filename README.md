@@ -19,7 +19,7 @@ There is no fixed default port. When embedded in an existing app, the dashboard 
 
 ## Management API
 
-For operators who don't want to install the Dashboard just to reset a stuck message stream, `Flowly.ManagementApi` is a separate, opt-in, machine-oriented HTTP surface — no UI, independent of `Flowly.Dashboard`. Message stream checkpoint list/reset is its first capability, exposed via a standard OpenAPI-documented endpoint and a companion `Flowly` PowerShell module:
+For operators who don't want to install the Dashboard just to reset a stuck message stream, `Flowly.ManagementApi` is a separate, opt-in, machine-oriented HTTP surface — no UI, independent of `Flowly.Dashboard`. Message stream checkpoint list/reset and message stream partition list/resume (see [Operating halted partitions](#operating-halted-partitions-management-api-and-powershell)) are its capabilities, exposed via a standard OpenAPI-documented endpoint and a companion `Flowly.PowerShell` module:
 
 ```csharp
 builder.Services.AddFlowlyManagementApi(options => options.RequireApiKey(apiKey)); // or UseOAuth2(...) for Entra ID
@@ -28,7 +28,7 @@ builder.Services.AddFlowlyManagementApi(options => options.RequireApiKey(apiKey)
 app.UseFlowlyManagementApi();
 ```
 
-See [`src/Flowly.ManagementApi/README.md`](src/Flowly.ManagementApi/README.md) for authorization modes (API key, OAuth2/Entra ID client-credentials, or existing host policies) and the `IFlowlyManagementAction` extensibility point future features plug into, and [`src/Flowly.PowerShell/README.md`](src/Flowly.PowerShell/README.md) for the `Connect-Flowly`/`Get-FlowlyMessageStreamCheckpoint`/`Reset-FlowlyMessageStreamCheckpoint` cmdlets.
+See [`src/Flowly.ManagementApi/README.md`](src/Flowly.ManagementApi/README.md) for authorization modes (API key, OAuth2/Entra ID client-credentials, or existing host policies) and the `IFlowlyManagementAction` extensibility point future features plug into, and [`src/Flowly.PowerShell/README.md`](src/Flowly.PowerShell/README.md) for the `Connect-Flowly`/`Get-FlowlyMessageStreamCheckpoint`/`Reset-FlowlyMessageStreamCheckpoint`/`Get-FlowlyMessageStreamPartition`/`Resume-FlowlyMessageStreamPartition` cmdlets.
 
 ---
 
@@ -109,8 +109,8 @@ All packages are published to [NuGet.org](https://www.nuget.org/packages?q=Flowl
 | `Flowly.MessageStreams.SQLite` | SQLite backend for message stream checkpoint persistence |
 | `Flowly.OpenTelemetry` | OpenTelemetry metrics and traces for handlers and submitters |
 | `Flowly.Dashboard` | Embedded web dashboard middleware — submit messages, browse jobs, inspect dead letters, and trigger recurring jobs at `/flowly`; opt-in OAuth2/OIDC authentication with role and policy authorization |
-| `Flowly.ManagementApi` | Opt-in, machine-oriented HTTP surface for operational actions (message stream checkpoint list/reset is its first capability) — independent of `Flowly.Dashboard` |
-| `Flowly.PowerShell` | C# PowerShell module client for the Management API (`Connect-Flowly`, `Get-FlowlyMessageStreamCheckpoint`, `Reset-FlowlyMessageStreamCheckpoint`) |
+| `Flowly.ManagementApi` | Opt-in, machine-oriented HTTP surface for operational actions (message stream checkpoint list/reset and stream partition list/resume) — independent of `Flowly.Dashboard` |
+| `Flowly.PowerShell` | C# PowerShell module client for the Management API (`Connect-Flowly`, `Get-FlowlyMessageStreamCheckpoint`, `Reset-FlowlyMessageStreamCheckpoint`, `Get-FlowlyMessageStreamPartition`, `Resume-FlowlyMessageStreamPartition`) |
 | `Flowly.Tool` | `flowly` CLI for queue discovery, code generation, and message stream checkpoint operations |
 | `Flowly.Templates` | `dotnet new flowlyapp` / `dotnet new flowlyaspireapp` / `dotnet new flowly` project templates |
 
@@ -520,7 +520,7 @@ Omitting both parameters means the stream retains every message forever — a br
 
 `[RetryPolicy(maxRetries, delaySeconds)]` on the handler class enables retry, but the mechanism is different from every other handler type: retries run **in-process**, re-invoking the handler on the same in-memory batch — messages are never re-published to the stream, which would permanently write retry noise into an immutable, replayable log.
 
-When retries are exhausted, the handler **halts consumption of that queue (or partition)** rather than skipping the failed batch: the stream offset never advances past it, a critical log entry and a `flowly.message.handler.halted` metric are emitted, and no further messages are processed. Flowly keeps the failed batch and applies backpressure instead of dropping anything: the transport stops receiving, the broker keeps the rest of the stream, and memory stays bounded (the held batch plus one further batch of buffered messages). The partition stays halted until it is revoked, which moves it to another instance that replays the failed batch from the stored position, or the process stops and the next start replays it; a halted batch can also be run again in place, which is an operator action and is never done automatically (a batch that fails again halts again). The partition is reported as `Halted` with its last error by the [partition state](#partition-state-and-health) metrics and health check. Dead letter tracking is not supported for stream handlers.
+When retries are exhausted, the handler **halts consumption of that queue (or partition)** rather than skipping the failed batch: the stream offset never advances past it, a critical log entry and a `flowly.message.handler.halted` metric are emitted, and no further messages are processed. Flowly keeps the failed batch and applies backpressure instead of dropping anything: the transport stops receiving, the broker keeps the rest of the stream, and memory stays bounded (the held batch plus one further batch of buffered messages). The partition stays halted until it is revoked, which moves it to another instance that replays the failed batch from the stored position, or the process stops and the next start replays it; a halted batch can also be run again in place, which is an operator action and is never done automatically (a batch that fails again halts again), see [Operating halted partitions](#operating-halted-partitions-management-api-and-powershell). The partition is reported as `Halted` with its last error by the [partition state](#partition-state-and-health) metrics and health check. Dead letter tracking is not supported for stream handlers.
 
 `MessageStreamHandlerOptions` does not inherit the queue options used by other handlers — `LockDuration`, `DeadLetterOnMessageExpiration`, and `Configure`-based retry settings don't apply to streams (there's no per-message peek-lock, and retention replaces TTL).
 
@@ -543,6 +543,23 @@ builder.AddMessageStreamHealthCheck();
 ```
 
 It is unhealthy while any owned partition is `Halted` or `Waiting` and healthy otherwise, including while the process owns no partition. The result lists each failing partition by queue, consumer and partition with its state, since when, and last error. A halted partition means consumption of it has stopped and needs operator action, so the default is `Unhealthy`; pass `failureStatus: HealthStatus.Degraded` to keep the instance in rotation. The check is registered under the name `flowly-message-streams` with the tag `message-streams` (both overridable) and works for every stream transport.
+
+### Operating halted partitions: Management API and PowerShell
+
+`Flowly.ManagementApi` lists the state of the stream partitions and resumes a halted one. The actions work on the live consumers of the instance that answers: each instance lists and resumes only the partitions it owns, there is no signalling between instances, and a partition is never handed to another instance on purpose. With several instances, call the one that owns the partition (a partition that moved to another instance is `404` here and `Halted` or `Running` there). They appear whenever Flowly is registered with `AddFlowly` (an instance without stream handlers lists nothing), under the same Read and Write authorization as the other actions.
+
+| Action | Route | Authorization | Cmdlet |
+|---|---|---|---|
+| List the partitions of this instance | `GET {BasePath}/message-streams/partitions?queue=&consumer=&partition=&state=` | Read | `Get-FlowlyMessageStreamPartition [-QueueName] [-ConsumerName] [-Partition] [-State Running\|Waiting\|Halted]` |
+| Resume a halted partition | `POST {BasePath}/message-streams/partitions/resume` with `{ "queueName", "consumerName", "partition" }` (`partition` is `null` for a non-partitioned stream) | Write | `Resume-FlowlyMessageStreamPartition -QueueName -ConsumerName [-Partition]` (supports `-WhatIf` and `-Confirm`, high impact) |
+
+The list returns, per partition, the handler name, queue, consumer name, partition, state, when the state was entered and the last error (message, exception type, time). A resume re-runs the batch the partition is holding with a fresh set of in-process retries and lets the partition continue from it; it answers `204`. Nothing is skipped: when the batch fails again the partition halts again (and can be resumed again). It answers `404` when the instance does not own the partition and `409` when the partition is not `Halted` (a `Waiting` partition has no processing loop yet and is retried automatically, see [Recovery of a waiting partition on RabbitMQ](#recovery-of-a-waiting-partition-on-rabbitmq); there is no action that retries it sooner). Fix the cause first (the handler, a downstream dependency), then resume:
+
+```powershell
+Connect-Flowly -BaseUri https://myapp.example.com/flowly/management -ApiKey $env:FLOWLY_API_KEY
+Get-FlowlyMessageStreamPartition -State Halted
+Get-FlowlyMessageStreamPartition -State Halted | Resume-FlowlyMessageStreamPartition
+```
 
 ### Recovery of a waiting partition on RabbitMQ
 

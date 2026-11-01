@@ -13,7 +13,9 @@
         'Connect-Flowly',
         'Disconnect-Flowly',
         'Get-FlowlyMessageStreamCheckpoint',
-        'Reset-FlowlyMessageStreamCheckpoint'
+        'Reset-FlowlyMessageStreamCheckpoint',
+        'Get-FlowlyMessageStreamPartition',
+        'Resume-FlowlyMessageStreamPartition'
     )
     VariablesToExport    = @()
     AliasesToExport      = @()

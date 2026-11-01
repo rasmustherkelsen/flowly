@@ -3,7 +3,7 @@
     <PropertyGroup>
         <TargetFramework>net10.0</TargetFramework>
         <PackageId>Flowly.ManagementApi</PackageId>
-        <Description>Opt-in operational HTTP surface for Flowly — a minimal, machine-oriented management API (no UI), independent of Flowly.Dashboard. Ships message stream checkpoint list/reset as its first capability; new features register additional IFlowlyManagementAction implementations.</Description>
+        <Description>Opt-in operational HTTP surface for Flowly — a minimal, machine-oriented management API (no UI), independent of Flowly.Dashboard. Ships message stream checkpoint list/reset and message stream partition list/resume (halted partitions); new features register additional IFlowlyManagementAction implementations.</Description>
         <PackageReadmeFile>README.md</PackageReadmeFile>
     </PropertyGroup>
 

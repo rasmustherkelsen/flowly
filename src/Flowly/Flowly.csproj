@@ -25,6 +25,7 @@
         <InternalsVisibleTo Include="Flowly.AzureEventHubs" />
         <InternalsVisibleTo Include="Flowly.AzureEventHubs.Tests" />
         <InternalsVisibleTo Include="Flowly.ManagementApi" />
+        <InternalsVisibleTo Include="Flowly.ManagementApi.Tests" />
     </ItemGroup>
 
     <ItemGroup>

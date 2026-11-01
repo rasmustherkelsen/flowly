@@ -28,9 +28,16 @@ Get-FlowlyMessageStreamCheckpoint -QueueName my-queue -ConsumerName MyHandler
 
 Reset-FlowlyMessageStreamCheckpoint -QueueName my-queue -ConsumerName MyHandler -Offset 42
 
+Get-FlowlyMessageStreamPartition
+Get-FlowlyMessageStreamPartition -State Halted
+Resume-FlowlyMessageStreamPartition -QueueName my-queue -ConsumerName MyHandler -Partition 1
+Get-FlowlyMessageStreamPartition -State Halted | Resume-FlowlyMessageStreamPartition
+
 Disconnect-Flowly
 ```
 
 `Reset-FlowlyMessageStreamCheckpoint` supports `-WhatIf`/`-Confirm` (PowerShell's standard confirmation gate for destructive actions) since resetting a position causes reprocessing of any messages after the new offset once the handler restarts.
+
+`Get-FlowlyMessageStreamPartition` lists the state (`Running`, `Waiting`, `Halted`), the last error and the time of the last state change of the stream partitions owned by the instance the connection points at; `Resume-FlowlyMessageStreamPartition` re-runs the batch a `Halted` partition is holding (nothing is skipped; a batch that fails again halts the partition again) and supports `-WhatIf`/`-Confirm` with high impact. Both talk to one instance: with several instances, connect to the one that owns the partition. Resuming a partition that is not halted, or that the instance does not own, is an error carrying the API's explanation.
 
 One cmdlet mirrors one Flowly Management API action — as the API grows, this module gains one cmdlet per new action, per `.claude/rules/management-api-conventions.md`.

@@ -1,5 +1,6 @@
-using Flowly.MessageStreams;
 using Flowly.ManagementApi.MessageStreams;
+using Flowly.MessageInfrastructure.StreamPartitions;
+using Flowly.MessageStreams;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -15,7 +16,8 @@ public static class ManagementApiEndpointRouteBuilderExtensions
     /// <summary>
     ///     Maps the Flowly Management API: the built-in message stream checkpoint actions (only when a checkpoint
     ///     persistence store is registered — feature-detected the same way the Dashboard detects Jobs/DeadLetters),
-    ///     any externally-registered <see cref="IFlowlyManagementAction" />, and the OpenAPI discovery document.
+    ///     the built-in message stream partition actions (list and resume, only when the host registered Flowly's stream partition state
+    ///     services, which <c>AddFlowly</c> does), any externally-registered <see cref="IFlowlyManagementAction" />, and the OpenAPI discovery document.
     ///     Call this after <c>AddFlowlyManagementApi()</c> and after every <c>Add&lt;Provider&gt;MessageStreamPersistence</c>
     ///     call, since feature detection reads the built service provider.
     /// </summary>
@@ -34,6 +36,7 @@ public static class ManagementApiEndpointRouteBuilderExtensions
         var (readPolicyName, writePolicyName) = ResolvePolicyNames(options);
 
         MapBuiltInMessageStreamActions(endpoints, options.BasePath, readPolicyName, writePolicyName);
+        MapBuiltInStreamPartitionActions(endpoints, options.BasePath, readPolicyName, writePolicyName);
 
         foreach (var action in endpoints.ServiceProvider.GetServices<IFlowlyManagementAction>())
         {
@@ -71,6 +74,17 @@ public static class ManagementApiEndpointRouteBuilderExtensions
 
         new ListCheckpointsManagementAction(registry).MapRoute(endpoints, basePath, readPolicyName);
         new ResetCheckpointManagementAction(registry).MapRoute(endpoints, basePath, writePolicyName);
+    }
+
+    private static void MapBuiltInStreamPartitionActions(IEndpointRouteBuilder endpoints, string basePath, string readPolicyName, string writePolicyName)
+    {
+        var stateReader = endpoints.ServiceProvider.GetService<IStreamPartitionStateReader>();
+        var resumer = endpoints.ServiceProvider.GetService<IStreamPartitionResumer>();
+        if (stateReader is null || resumer is null)
+            return;
+
+        new ListStreamPartitionsManagementAction(stateReader).MapRoute(endpoints, basePath, readPolicyName);
+        new ResumeStreamPartitionManagementAction(stateReader, resumer).MapRoute(endpoints, basePath, writePolicyName);
     }
 
     private static void MapDocsUi(IEndpointRouteBuilder endpoints, ManagementApiOptions options, string readPolicyName)

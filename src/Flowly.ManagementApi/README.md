@@ -1,6 +1,6 @@
 # Flowly.ManagementApi
 
-An opt-in, machine-oriented HTTP surface for operational actions against a running [Flowly](https://rasmustherkelsen.github.io/flowly/) host — no UI, independent of `Flowly.Dashboard`. This is the start of a general Flowly management surface: message stream checkpoint list/reset is its first capability, and future features register additional `IFlowlyManagementAction` implementations into the same API.
+An opt-in, machine-oriented HTTP surface for operational actions against a running [Flowly](https://rasmustherkelsen.github.io/flowly/) host — no UI, independent of `Flowly.Dashboard`. This is the start of a general Flowly management surface: message stream checkpoint list/reset and message stream partition list/resume are its capabilities, and future features register additional `IFlowlyManagementAction` implementations into the same API.
 
 ## Quick start
 
@@ -15,7 +15,24 @@ builder.Services.AddFlowlyManagementApi(options =>
 app.UseFlowlyManagementApi();
 ```
 
-Call `UseFlowlyManagementApi()` after every `Add<Provider>MessageStreamPersistence()` call — it feature-detects registered checkpoint persistence stores at that point and only maps the message stream actions when one exists.
+Call `UseFlowlyManagementApi()` after every `Add<Provider>MessageStreamPersistence()` call — it feature-detects registered checkpoint persistence stores at that point and only maps the message stream checkpoint actions when one exists. The stream partition actions are mapped when the host registered Flowly's stream partition state and resume services, which `AddFlowly` does (an instance without stream handlers simply lists nothing).
+
+## Message stream actions
+
+| Action | Route | Authorization | PowerShell cmdlet |
+|---|---|---|---|
+| List checkpoint positions | `GET {BasePath}/message-streams/checkpoints?queue=&consumer=&store=` | Read | `Get-FlowlyMessageStreamCheckpoint` |
+| Reset a checkpoint position | `POST {BasePath}/message-streams/checkpoints/reset` | Write | `Reset-FlowlyMessageStreamCheckpoint` |
+| List the stream partitions of this instance | `GET {BasePath}/message-streams/partitions?queue=&consumer=&partition=&state=` | Read | `Get-FlowlyMessageStreamPartition` |
+| Resume a halted stream partition | `POST {BasePath}/message-streams/partitions/resume` | Write | `Resume-FlowlyMessageStreamPartition` |
+
+### Stream partitions
+
+The partition actions are runtime controls on the live consumers of the instance that answers, not checkpoint store actions: each instance lists and resumes only the partitions it owns, nothing is signalled between instances, and a partition is never handed to another instance on purpose. With several instances, address the one that owns the partition.
+
+`GET .../partitions` returns an array of `{ handlerName, queueName, consumerName, partition, state, stateChangedAtUtc, lastError }`, where `state` is `Running`, `Waiting` (start position unresolved, no processing loop yet) or `Halted` (in-process retries exhausted), `partition` is `null` for a non-partitioned stream and `lastError` is `{ message, type, occurredAtUtc }` or `null`. The optional filters `queue`, `consumer`, `partition` and `state` (case-insensitive; `400` for an unknown value) narrow it down.
+
+`POST .../partitions/resume` takes `{ "queueName": "...", "consumerName": "...", "partition": 0 }` (omit `partition` or send `null` for a non-partitioned stream). It re-runs the batch the halted partition is holding with a fresh set of in-process retries and lets the partition continue from it. Nothing is skipped: when the batch fails again the partition halts again and can be resumed again. Responses, with problem details bodies for the errors: `204` resumed, `400` blank queue or consumer, `404` this instance does not own the partition, `409` the partition is not `Halted` (a `Waiting` partition is retried automatically, there is nothing to resume).
 
 ## Authorization
 

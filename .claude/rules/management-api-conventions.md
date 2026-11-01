@@ -25,6 +25,8 @@ One `IFlowlyManagementAction` maps to exactly one cmdlet:
 | Matching cmdlet | `src/Flowly.PowerShell/Cmdlets/*.cs`, plus the `CmdletsToExport` list in `src/Flowly.PowerShell/Flowly.PowerShell.psd1` |
 | Usage docs | `src/Flowly.ManagementApi/README.md`, `src/Flowly.PowerShell/README.md`, `README.md` (root), `docs/ai/CONTEXT.md` |
 
+The stream partition list/resume actions live in `src/Flowly.ManagementApi/MessageStreams/` next to the checkpoint actions, but read and resume through the internal `IStreamPartitionStateReader` and `IStreamPartitionResumer` of core `Flowly` (`InternalsVisibleTo`); changing the partition state model or the resumer contract means updating those actions and their cmdlets too.
+
 This table itself must be extended whenever a new feature package starts contributing actions (e.g. Jobs or DeadLetters actions land here later) — the same self-maintaining instruction `template-otel-versions.md` carries for its own file list.
 
 ## Version alignment

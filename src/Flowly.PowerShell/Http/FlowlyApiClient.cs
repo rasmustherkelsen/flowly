@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Flowly.PowerShell.Session;
 
 namespace Flowly.PowerShell.Http;
@@ -38,6 +39,65 @@ internal static class FlowlyApiClient
             cancellationToken);
 
         response.EnsureSuccessStatusCode();
+    }
+
+    public static async Task<IReadOnlyList<StreamPartitionDto>> ListStreamPartitions(
+        FlowlyConnection connection, string? queue, string? consumer, int? partition, string? state, CancellationToken cancellationToken)
+    {
+        await EnsureAuthorized(connection, cancellationToken);
+
+        var query = string.Join("&", new[]
+            {
+                queue is not null ? $"queue={Uri.EscapeDataString(queue)}" : null,
+                consumer is not null ? $"consumer={Uri.EscapeDataString(consumer)}" : null,
+                partition is not null ? $"partition={partition}" : null,
+                state is not null ? $"state={Uri.EscapeDataString(state)}" : null,
+            }
+            .Where(x => x is not null));
+
+        var path = "message-streams/partitions" + (query.Length > 0 ? $"?{query}" : "");
+        var response = await connection.HttpClient.GetAsync(path, cancellationToken);
+        await EnsureSuccess(response, cancellationToken);
+
+        return await response.Content.ReadFromJsonAsync<IReadOnlyList<StreamPartitionDto>>(cancellationToken) ?? [];
+    }
+
+    public static async Task ResumeStreamPartition(FlowlyConnection connection, string queueName, string consumerName, int? partition, CancellationToken cancellationToken)
+    {
+        await EnsureAuthorized(connection, cancellationToken);
+
+        var response = await connection.HttpClient.PostAsJsonAsync(
+            "message-streams/partitions/resume",
+            new { QueueName = queueName, ConsumerName = consumerName, Partition = partition },
+            cancellationToken);
+
+        await EnsureSuccess(response, cancellationToken);
+    }
+
+    private static async Task EnsureSuccess(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        if (response.IsSuccessStatusCode)
+            return;
+
+        var detail = await ReadProblemDetail(response, cancellationToken);
+        throw new HttpRequestException(
+            detail is null ? $"The Flowly Management API answered {(int)response.StatusCode} ({response.ReasonPhrase})." : $"The Flowly Management API answered {(int)response.StatusCode}: {detail}",
+            null,
+            response.StatusCode);
+    }
+
+    private static async Task<string?> ReadProblemDetail(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var problem = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
+
+            return problem.RootElement.TryGetProperty("detail", out var detail) ? detail.GetString() : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     private static async Task EnsureAuthorized(FlowlyConnection connection, CancellationToken cancellationToken)
