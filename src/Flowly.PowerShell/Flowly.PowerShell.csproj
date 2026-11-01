@@ -8,6 +8,10 @@
         <Description>A thin C# (binary) PowerShell module client for the Flowly Management API — Connect-Flowly, Get-FlowlyMessageStreamCheckpoint, Reset-FlowlyMessageStreamCheckpoint, Disconnect-Flowly. Requires PowerShell 7.4+.</Description>
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <GenerateDependencyFile>false</GenerateDependencyFile>
+        <!-- PSResourceGet extracts the package as is and RootModule in the module manifest is relative to the manifest, so the DLL must sit next to it at the package root, not under lib/. -->
+        <IncludeBuildOutput>false</IncludeBuildOutput>
+        <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+        <NoWarn>$(NoWarn);NU5100</NoWarn>
     </PropertyGroup>
 
     <ItemGroup>
@@ -17,8 +21,15 @@
     </ItemGroup>
 
     <ItemGroup>
-        <None Include="Flowly.psd1" CopyToOutputDirectory="PreserveNewest" Pack="true" PackagePath="\" />
+        <None Include="Flowly.PowerShell.psd1" CopyToOutputDirectory="PreserveNewest" Pack="true" PackagePath="\" />
     </ItemGroup>
+
+    <Target Name="PackModuleAssembly" BeforeTargets="_GetPackageFiles">
+        <ItemGroup>
+            <None Include="@(IntermediateAssembly->'%(FullPath)')" Pack="true" PackagePath="\" />
+            <None Include="@(DocFileItem->'%(FullPath)')" Pack="true" PackagePath="\" />
+        </ItemGroup>
+    </Target>
 
     <ItemGroup>
         <InternalsVisibleTo Include="Flowly.PowerShell.Tests" />

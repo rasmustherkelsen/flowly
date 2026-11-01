@@ -28,7 +28,7 @@ jobs:
 
       - name: Set PowerShell module version from the tag
         run: |
-          MANIFEST=src/Flowly.PowerShell/Flowly.psd1
+          MANIFEST=src/Flowly.PowerShell/Flowly.PowerShell.psd1
           NUMERIC="${VERSION%%[-+]*}"
           SUFFIX="${VERSION#"$NUMERIC"}"
           PRERELEASE=$(printf '%s' "${SUFFIX%%+*}" | tr -cd '0-9A-Za-z')

@@ -159,11 +159,15 @@ dotnet add package Flowly.ManagementApi
 dotnet add package Flowly.OpenTelemetry
 ```
 
-Install the `Flowly` PowerShell module (a thin client for the Management API) from the PowerShell Gallery:
+Install the `Flowly.PowerShell` module (a thin client for the Management API) from nuget.org with PSResourceGet, which ships with PowerShell 7.4 and later. Register nuget.org as a repository once, then install and import:
 
 ```powershell
-Install-Module Flowly
+Register-PSResourceRepository -Name NuGetGallery -Uri https://api.nuget.org/v3/index.json
+Install-PSResource Flowly.PowerShell -Repository NuGetGallery -TrustRepository
+Import-Module Flowly.PowerShell
 ```
+
+Add `-Prerelease` to `Install-PSResource` for a prerelease version. The module version equals the Flowly release version. See [`src/Flowly.PowerShell/README.md`](src/Flowly.PowerShell/README.md) for details.
 
 Install the `flowly` CLI tool globally for local development and code generation:
 
