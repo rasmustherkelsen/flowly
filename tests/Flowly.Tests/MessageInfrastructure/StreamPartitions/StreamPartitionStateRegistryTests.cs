@@ -181,6 +181,41 @@ public class StreamPartitionStateRegistryTests
 
             Assert.Empty(streamPartitionStateRegistry.GetAll());
         }
+
+        [Fact]
+        public void WithTheCurrentVersion_RemovesTheEntry()
+        {
+            var streamPartitionStateRegistry = new StreamPartitionStateRegistry(new ManualTimeProvider(Start));
+            var update = streamPartitionStateRegistry.Set("OrderHandler", PartitionTwo, StreamPartitionState.Waiting, new TimeoutException("store down"));
+
+            streamPartitionStateRegistry.Remove(PartitionTwo, update.Version);
+
+            Assert.Null(streamPartitionStateRegistry.Get(PartitionTwo));
+        }
+
+        [Fact]
+        public void WithAnOlderVersion_KeepsTheNewerEntry()
+        {
+            var streamPartitionStateRegistry = new StreamPartitionStateRegistry(new ManualTimeProvider(Start));
+            var waiting = streamPartitionStateRegistry.Set("OrderHandler", PartitionTwo, StreamPartitionState.Waiting, new TimeoutException("store down"));
+            streamPartitionStateRegistry.Set("OrderHandler", PartitionTwo, StreamPartitionState.Running, null);
+
+            streamPartitionStateRegistry.Remove(PartitionTwo, waiting.Version);
+
+            Assert.Equal(StreamPartitionState.Running, streamPartitionStateRegistry.Get(PartitionTwo)!.State);
+        }
+
+        [Fact]
+        public void WithAVersionAndNoEntry_DoesNothing()
+        {
+            var streamPartitionStateRegistry = new StreamPartitionStateRegistry(new ManualTimeProvider(Start));
+            streamPartitionStateRegistry.Set("OrderHandler", NonPartitioned, StreamPartitionState.Running, null);
+
+            streamPartitionStateRegistry.Remove(PartitionTwo, 1);
+
+            Assert.NotNull(streamPartitionStateRegistry.Get(NonPartitioned));
+            Assert.Null(streamPartitionStateRegistry.Get(PartitionTwo));
+        }
     }
 
     public class RemoveAll

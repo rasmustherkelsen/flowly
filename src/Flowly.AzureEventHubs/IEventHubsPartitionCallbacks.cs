@@ -15,4 +15,6 @@ internal interface IEventHubsPartitionCallbacks
     Task ProcessEvents(string partitionId, IReadOnlyList<EventData> events, CancellationToken cancellationToken);
 
     Task HandleError(Exception exception, string? partitionId, string operation, CancellationToken cancellationToken);
+
+    Task PartitionOwnedByAnotherInstance(string partitionId, CancellationToken cancellationToken) => Task.CompletedTask;
 }

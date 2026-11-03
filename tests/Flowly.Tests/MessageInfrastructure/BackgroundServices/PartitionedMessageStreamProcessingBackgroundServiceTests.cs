@@ -838,6 +838,64 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
         }
 
         [Fact]
+        public async Task WhenAWaitingPartitionWithoutALoopIsRevokedAfterANewerEntryWasWritten_KeepsTheNewerEntry()
+        {
+            var registry = new StreamPartitionStateRegistry(TimeProvider.System);
+            var checkpoint = new FakeCheckpoint { StoredPosition = 9, OnInitialize = _ => throw new TimeoutException("store down") };
+            var (backgroundService, consumer, _, _, _) = CreateService(maxMessages: 1, maxRetries: 0, checkpoint: checkpoint, stateRegistry: registry);
+            await backgroundService.StartAsync(CancellationToken.None);
+            await consumer.Started.Task.WaitAsync(TestTimeout);
+            await Assert.ThrowsAsync<TimeoutException>(() => consumer.Client!.ReceivedResolveStartPosition!(2, CancellationToken.None));
+            registry.Set(nameof(SpyStreamHandler), Key(2), StreamPartitionState.Running, null);
+
+            await consumer.RevokePartition(2);
+
+            Assert.Equal(StreamPartitionState.Running, registry.Get(Key(2))!.State);
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task WhenAWaitingPartitionFailsAgainBeforeItIsRevoked_RemovesTheLatestWaitingEntry()
+        {
+            var registry = new StreamPartitionStateRegistry(TimeProvider.System);
+            var checkpoint = new FakeCheckpoint { StoredPosition = 9, OnInitialize = _ => throw new TimeoutException("store down") };
+            var (backgroundService, consumer, _, _, _) = CreateService(maxMessages: 1, maxRetries: 0, checkpoint: checkpoint, stateRegistry: registry);
+            await backgroundService.StartAsync(CancellationToken.None);
+            await consumer.Started.Task.WaitAsync(TestTimeout);
+            await Assert.ThrowsAsync<TimeoutException>(() => consumer.Client!.ReceivedResolveStartPosition!(2, CancellationToken.None));
+            await Assert.ThrowsAsync<TimeoutException>(() => consumer.Client!.ReceivedResolveStartPosition!(2, CancellationToken.None));
+
+            await consumer.RevokePartition(2);
+
+            Assert.Null(registry.Get(Key(2)));
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task WhenAWaitingPartitionIsRevokedAndFailsAgainLater_RecordsAndRemovesWaitingAgain()
+        {
+            var registry = new StreamPartitionStateRegistry(TimeProvider.System);
+            var checkpoint = new FakeCheckpoint { StoredPosition = 9, OnInitialize = _ => throw new TimeoutException("store down") };
+            var (backgroundService, consumer, _, _, _) = CreateService(maxMessages: 1, maxRetries: 0, checkpoint: checkpoint, stateRegistry: registry);
+            await backgroundService.StartAsync(CancellationToken.None);
+            await consumer.Started.Task.WaitAsync(TestTimeout);
+            await Assert.ThrowsAsync<TimeoutException>(() => consumer.Client!.ReceivedResolveStartPosition!(2, CancellationToken.None));
+            await consumer.RevokePartition(2);
+
+            await Assert.ThrowsAsync<TimeoutException>(() => consumer.Client!.ReceivedResolveStartPosition!(2, CancellationToken.None));
+
+            Assert.Equal(StreamPartitionState.Waiting, registry.Get(Key(2))!.State);
+
+            await consumer.RevokePartition(2);
+
+            Assert.Null(registry.Get(Key(2)));
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
         public async Task WhenStartPositionResolutionFailsWhileTheLoopStillRuns_StaysRunning()
         {
             var registry = new StreamPartitionStateRegistry(TimeProvider.System);

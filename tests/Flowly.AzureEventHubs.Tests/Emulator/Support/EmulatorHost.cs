@@ -31,6 +31,8 @@ internal sealed class EmulatorHost<TMessage> : IAsyncDisposable where TMessage :
 
     public RecordingLoggerProvider Logs { get; }
 
+    public IServiceProvider Services => _host.Services;
+
     public static EmulatorHost<TMessage> Build<THandler>(EmulatorHostOptions options) where THandler : RecordingHandler<TMessage>
     {
         var behavior = new HandlerBehavior<TMessage>();

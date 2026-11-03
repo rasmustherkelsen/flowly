@@ -61,10 +61,13 @@ internal sealed class StreamPartitionStateRegistry(TimeProvider timeProvider) : 
         }
     }
 
-    public void Remove(StreamPartitionKey key)
+    public void Remove(StreamPartitionKey key, long? expectedVersion = null)
     {
         lock (_lock)
         {
+            if (expectedVersion is { } expected && (!_entries.TryGetValue(key, out var existing) || existing.Version != expected))
+                return;
+
             _entries.Remove(key);
         }
     }

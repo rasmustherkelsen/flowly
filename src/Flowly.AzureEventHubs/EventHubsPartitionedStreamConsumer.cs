@@ -16,6 +16,12 @@ namespace Flowly.AzureEventHubs;
 ///         the SDK, so no processing loop is started for a partition whose position is unknown.
 ///     </para>
 ///     <para>
+///         A partition whose start position could not be resolved is never initialized, so the SDK never reports it lost. The consumer remembers such a partition and, when the
+///         ownership store reports it owned by another instance (<see cref="PartitionOwnedByAnotherInstance" />, only with a shared ownership container), raises
+///         <see cref="PartitionRevoked" /> for it once, so the waiting state recorded for it ends. A per-partition gate orders that revoke against a new assignment of the same
+///         partition: a revoke is skipped while an assignment is in progress and never follows an assignment that cleared the remembered failure.
+///     </para>
+///     <para>
 ///         A halted partition (its retries are exhausted) keeps the batch callback of that partition blocked, because the partition's processing loop holds the failed batch and
 ///         stops taking events, so the awaited <see cref="IMessageBusProcessor{TMessage}.ProcessMessage" /> delegate does not complete. The callback stays blocked until the
 ///         partition is resumed, lost or the host stops, and the SDK keeps the ownership renewed, so the partition is not given away because its ownership expired.
@@ -34,6 +40,8 @@ internal sealed class EventHubsPartitionedStreamConsumer<TMessage>(
 {
     private readonly Dictionary<int, EventHubsPartitionProcessor<TMessage>> _processors = new();
     private readonly Dictionary<int, PendingStartPosition> _pendingStartPositions = new();
+    private readonly HashSet<int> _failedResolutions = [];
+    private readonly SemaphoreSlim[] _partitionGates = [.. Enumerable.Range(0, partitionCount).Select(_ => new SemaphoreSlim(1, 1))];
     private readonly Lock _lock = new();
     private readonly EventHubsErrorThrottle _errorThrottle = new(timeProvider, EventHubsErrorThrottle.DefaultInterval);
     private IEventHubsProcessor? _eventHubsProcessor;
@@ -66,16 +74,62 @@ internal sealed class EventHubsPartitionedStreamConsumer<TMessage>(
         var partition = ToPartition(partitionId);
 
         await ResolveStartPositionOncePerAssignment(partition, AssignmentCall.Initialize, cancellationToken);
-        await RevokeProcessorBeingReplaced(partition);
 
-        var processor = new EventHubsPartitionProcessor<TMessage>(eventHubName);
-        lock (_lock)
+        await _partitionGates[partition].WaitAsync(cancellationToken);
+
+        try
         {
-            _processors[partition] = processor;
-        }
+            lock (_lock)
+            {
+                _failedResolutions.Remove(partition);
+            }
 
-        if (PartitionAssigned is { } partitionAssigned)
-            await partitionAssigned(partition, processor);
+            await RevokeProcessorBeingReplaced(partition);
+
+            var processor = new EventHubsPartitionProcessor<TMessage>(eventHubName);
+            lock (_lock)
+            {
+                _processors[partition] = processor;
+            }
+
+            if (PartitionAssigned is { } partitionAssigned)
+                await partitionAssigned(partition, processor);
+        }
+        finally
+        {
+            _partitionGates[partition].Release();
+        }
+    }
+
+    public async Task PartitionOwnedByAnotherInstance(string partitionId, CancellationToken cancellationToken)
+    {
+        if (EventHubsPartitionIds.ToPartition(partitionId) is not { } partition || partition >= partitionCount || !HasFailedResolution(partition))
+            return;
+
+        if (!await _partitionGates[partition].WaitAsync(0, cancellationToken))
+            return;
+
+        try
+        {
+            lock (_lock)
+            {
+                if (!_failedResolutions.Remove(partition) || _processors.ContainsKey(partition))
+                    return;
+            }
+
+            logger.LogInformation(
+                "Partition {Partition} of event hub '{EventHubName}' is now owned by another instance of consumer group '{ConsumerGroup}', which this instance never started because its start position could not be resolved. " +
+                "The partition is no longer reported as waiting here.",
+                partition,
+                eventHubName,
+                consumerGroup);
+
+            await RaiseRevoked(partition);
+        }
+        finally
+        {
+            _partitionGates[partition].Release();
+        }
     }
 
     public async Task StopPartition(string partitionId, ProcessingStoppedReason reason, CancellationToken cancellationToken)
@@ -194,7 +248,26 @@ internal sealed class EventHubsPartitionedStreamConsumer<TMessage>(
                 partition,
                 eventHubName);
 
+            RememberFailedResolution(partition);
+
             throw;
+        }
+    }
+
+    private void RememberFailedResolution(int partition)
+    {
+        lock (_lock)
+        {
+            if (!_processors.ContainsKey(partition))
+                _failedResolutions.Add(partition);
+        }
+    }
+
+    private bool HasFailedResolution(int partition)
+    {
+        lock (_lock)
+        {
+            return _failedResolutions.Contains(partition);
         }
     }
 
@@ -222,16 +295,24 @@ internal sealed class EventHubsPartitionedStreamConsumer<TMessage>(
     {
         try
         {
+            await RaiseRevoked(partition);
+        }
+        finally
+        {
+            processor.Release();
+        }
+    }
+
+    private async Task RaiseRevoked(int partition)
+    {
+        try
+        {
             if (PartitionRevoked is { } partitionRevoked)
                 await partitionRevoked(partition);
         }
         catch (Exception exception)
         {
             logger.LogError(exception, "Error while revoking partition {Partition} of event hub '{EventHubName}'", partition, eventHubName);
-        }
-        finally
-        {
-            processor.Release();
         }
     }
 

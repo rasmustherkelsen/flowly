@@ -22,9 +22,9 @@ internal sealed class StreamPartitionStateReporter(
         return new StreamPartitionStateSession(this, partition, update.Version);
     }
 
-    public void Waiting(int? partition, Exception error) => Set(partition, StreamPartitionState.Waiting, error, null);
+    public StreamPartitionUpdate Waiting(int? partition, Exception error) => Set(partition, StreamPartitionState.Waiting, error, null);
 
-    public void Revoked(int? partition) => registry.Remove(new StreamPartitionKey(queueName, consumerName, partition));
+    public void Revoked(int? partition, long? expectedVersion = null) => registry.Remove(new StreamPartitionKey(queueName, consumerName, partition), expectedVersion);
 
     public void Stopped() => registry.RemoveAll(queueName, consumerName);
 

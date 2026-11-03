@@ -25,7 +25,11 @@ internal interface IStreamPartitionStateRegistry : IStreamPartitionStateReader
     ///     Removes the entry of a partition this process no longer owns.
     /// </summary>
     /// <param name="key">The queue, consumer and partition.</param>
-    void Remove(StreamPartitionKey key);
+    /// <param name="expectedVersion">
+    ///     When set, the entry is removed only if it still has this version, so a late revoke cannot delete the entry a newer
+    ///     assignment of the partition has written.
+    /// </param>
+    void Remove(StreamPartitionKey key, long? expectedVersion = null);
 
     /// <summary>
     ///     Removes the entries of every partition of one consumer of one stream queue, used when its service stops.

@@ -413,6 +413,215 @@ public class EventHubsPartitionedStreamConsumerTests
         }
     }
 
+    public class PartitionOwnedByAnotherInstance
+    {
+        private sealed class FailingPartitionOne
+        {
+            public bool Failing { get; set; } = true;
+
+            public Task<StartPosition> Resolve(int partition, CancellationToken cancellationToken)
+                => Failing && partition == 1 ? Task.FromException<StartPosition>(new InvalidOperationException("store down")) : Task.FromResult(StartPosition.First());
+        }
+
+        private static async Task<Fixture> StartWithPartitionOneFailed(FailingPartitionOne failingPartitionOne)
+        {
+            var fixture = await Start(failingPartitionOne.Resolve);
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.ProcessorFactory.Processor.Assign("1"));
+
+            return fixture;
+        }
+
+        [Fact]
+        public async Task AfterAFailedResolution_RaisesPartitionRevokedOnceHoweverOftenItIsReported()
+        {
+            var fixture = await StartWithPartitionOneFailed(new FailingPartitionOne());
+
+            await fixture.Consumer.PartitionOwnedByAnotherInstance("1", CancellationToken.None);
+            await fixture.Consumer.PartitionOwnedByAnotherInstance("1", CancellationToken.None);
+            await fixture.Consumer.PartitionOwnedByAnotherInstance("1", CancellationToken.None);
+
+            Assert.Equal([1], fixture.Revoked);
+            Assert.Empty(fixture.Assigned);
+        }
+
+        [Fact]
+        public async Task AfterAFailedResolution_LogsThatThePartitionIsNoLongerWaiting()
+        {
+            var fixture = await StartWithPartitionOneFailed(new FailingPartitionOne());
+
+            await fixture.Consumer.PartitionOwnedByAnotherInstance("1", CancellationToken.None);
+
+            Assert.Contains(fixture.Logger.Entries, entry => entry.Level == LogLevel.Information && entry.Message.Contains("Partition 1") && entry.Message.Contains("another instance"));
+        }
+
+        [Fact]
+        public async Task WithoutAFailedResolution_RaisesNothing()
+        {
+            var fixture = await Start();
+
+            await fixture.Consumer.PartitionOwnedByAnotherInstance("1", CancellationToken.None);
+
+            Assert.Empty(fixture.Revoked);
+        }
+
+        [Fact]
+        public async Task ForAPartitionThatDidNotFail_RaisesNothing()
+        {
+            var fixture = await StartWithPartitionOneFailed(new FailingPartitionOne());
+
+            await fixture.Consumer.PartitionOwnedByAnotherInstance("2", CancellationToken.None);
+
+            Assert.Empty(fixture.Revoked);
+        }
+
+        [Fact]
+        public async Task ForAPartitionThatWasAssignedAfterTheFailure_RaisesNothing()
+        {
+            var failingPartitionOne = new FailingPartitionOne();
+            var fixture = await StartWithPartitionOneFailed(failingPartitionOne);
+            failingPartitionOne.Failing = false;
+            await fixture.ProcessorFactory.Processor.Assign("1");
+
+            await fixture.Consumer.PartitionOwnedByAnotherInstance("1", CancellationToken.None);
+
+            Assert.Empty(fixture.Revoked);
+            Assert.Equal([1], fixture.Assigned);
+        }
+
+        [Fact]
+        public async Task ForARunningPartition_RaisesNothing()
+        {
+            var fixture = await Start();
+            await fixture.ProcessorFactory.Processor.Assign("1");
+
+            await fixture.Consumer.PartitionOwnedByAnotherInstance("1", CancellationToken.None);
+
+            Assert.Empty(fixture.Revoked);
+        }
+
+        [Fact]
+        public async Task AfterTheRevoke_AllowsTheSdkToAssignThePartitionNormally()
+        {
+            var failingPartitionOne = new FailingPartitionOne();
+            var fixture = await StartWithPartitionOneFailed(failingPartitionOne);
+            await fixture.Consumer.PartitionOwnedByAnotherInstance("1", CancellationToken.None);
+            failingPartitionOne.Failing = false;
+
+            await fixture.ProcessorFactory.Processor.Assign("1");
+            await fixture.Consumer.PartitionOwnedByAnotherInstance("1", CancellationToken.None);
+
+            Assert.Equal([1], fixture.Revoked);
+            Assert.Equal([1], fixture.Assigned);
+            Assert.True(fixture.Processors.ContainsKey(1));
+        }
+
+        [Fact]
+        public async Task WhenTheResolutionFailsAgainAfterTheRevoke_RaisesPartitionRevokedForTheNextLoss()
+        {
+            var fixture = await StartWithPartitionOneFailed(new FailingPartitionOne());
+            await fixture.Consumer.PartitionOwnedByAnotherInstance("1", CancellationToken.None);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.ProcessorFactory.Processor.Assign("1"));
+
+            await fixture.Consumer.PartitionOwnedByAnotherInstance("1", CancellationToken.None);
+
+            Assert.Equal([1, 1], fixture.Revoked);
+        }
+
+        [Fact]
+        public async Task WhenThePartitionIsLostAfterTheRevokeAndAssignment_RaisesPartitionRevokedFromTheSdkLoss()
+        {
+            var failingPartitionOne = new FailingPartitionOne();
+            var fixture = await StartWithPartitionOneFailed(failingPartitionOne);
+            await fixture.Consumer.PartitionOwnedByAnotherInstance("1", CancellationToken.None);
+            failingPartitionOne.Failing = false;
+            await fixture.ProcessorFactory.Processor.Assign("1");
+
+            await fixture.ProcessorFactory.Processor.Lose("1");
+
+            Assert.Equal([1, 1], fixture.Revoked);
+        }
+
+        [Theory]
+        [InlineData("-1")]
+        [InlineData("4")]
+        [InlineData("9")]
+        [InlineData("one")]
+        [InlineData("")]
+        public async Task ForAPartitionIdThatIsNotOneOfTheDeclaredPartitions_RaisesNothingAndDoesNotThrow(string partitionId)
+        {
+            var fixture = await StartWithPartitionOneFailed(new FailingPartitionOne());
+
+            await fixture.Consumer.PartitionOwnedByAnotherInstance(partitionId, CancellationToken.None);
+
+            Assert.Empty(fixture.Revoked);
+        }
+
+        [Fact]
+        public async Task WhenARevokedSubscriberThrows_LogsAndDoesNotThrow()
+        {
+            var fixture = await StartWithPartitionOneFailed(new FailingPartitionOne());
+            fixture.Consumer.PartitionRevoked += _ => throw new InvalidOperationException("revoke failed");
+
+            await fixture.Consumer.PartitionOwnedByAnotherInstance("1", CancellationToken.None);
+
+            Assert.Contains(fixture.Logger.Entries, entry => entry.Level == LogLevel.Error && entry.Message.Contains("revoking partition 1"));
+        }
+
+        [Fact]
+        public async Task WhileTheRevokeIsBeingHandled_DelaysANewAssignmentUntilItCompleted()
+        {
+            var failingPartitionOne = new FailingPartitionOne();
+            var fixture = await StartWithPartitionOneFailed(failingPartitionOne);
+            var revokeHandled = new TaskCompletionSource();
+            fixture.Consumer.PartitionRevoked += _ => revokeHandled.Task;
+            var owned = fixture.Consumer.PartitionOwnedByAnotherInstance("1", CancellationToken.None);
+            failingPartitionOne.Failing = false;
+
+            var assignment = fixture.ProcessorFactory.Processor.Assign("1");
+
+            Assert.False(assignment.IsCompleted);
+            Assert.Empty(fixture.Assigned);
+
+            revokeHandled.SetResult();
+            await owned.WaitAsync(TestTimeout);
+            await assignment.WaitAsync(TestTimeout);
+
+            Assert.Equal([1], fixture.Revoked);
+            Assert.Equal([1], fixture.Assigned);
+        }
+
+        [Fact]
+        public async Task WhileTheRevokeIsBeingHandled_DoesNotRaiseASecondRevokeForTheSameLoss()
+        {
+            var fixture = await StartWithPartitionOneFailed(new FailingPartitionOne());
+            var revokeHandled = new TaskCompletionSource();
+            fixture.Consumer.PartitionRevoked += _ => revokeHandled.Task;
+            var firstReport = fixture.Consumer.PartitionOwnedByAnotherInstance("1", CancellationToken.None);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.ProcessorFactory.Processor.Assign("1"));
+
+            await fixture.Consumer.PartitionOwnedByAnotherInstance("1", CancellationToken.None);
+
+            Assert.Equal([1], fixture.Revoked);
+
+            revokeHandled.SetResult();
+            await firstReport.WaitAsync(TestTimeout);
+            await fixture.Consumer.PartitionOwnedByAnotherInstance("1", CancellationToken.None);
+
+            Assert.Equal([1, 1], fixture.Revoked);
+        }
+
+        [Fact]
+        public async Task WhenCancelled_Throws()
+        {
+            var fixture = await StartWithPartitionOneFailed(new FailingPartitionOne());
+            using var cancellation = new CancellationTokenSource();
+            await cancellation.CancelAsync();
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => fixture.Consumer.PartitionOwnedByAnotherInstance("1", cancellation.Token));
+        }
+    }
+
     public class ProcessEvents
     {
         [Fact]

@@ -51,7 +51,7 @@ public class EventHubsProcessorFactoryTests
         }
 
         [Fact]
-        public void WithContainer_UsesTheStockBlobCheckpointStore()
+        public void WithContainer_ObservesTheStockBlobCheckpointStore()
         {
             EventHubsProcessorRequest? request = null;
             var eventHubsProcessorFactory = new EventHubsProcessorFactory(
@@ -65,7 +65,65 @@ public class EventHubsProcessorFactoryTests
 
             eventHubsProcessorFactory.Create("readings", "group", new FakeCallbacks());
 
-            Assert.IsType<BlobCheckpointStore>(request!.Store);
+            var store = Assert.IsType<OwnershipObservingCheckpointStore>(request!.Store);
+            Assert.IsType<BlobCheckpointStore>(store.Inner);
+        }
+
+        [Fact]
+        public void WithContainer_GivesTheProcessorAndTheObservingStoreTheSameIdentifier()
+        {
+            EventHubsProcessorRequest? request = null;
+            var eventHubsProcessorFactory = new EventHubsProcessorFactory(
+                createdRequest =>
+                {
+                    request = createdRequest;
+
+                    return new FakeEventHubsProcessor("readings", "group", createdRequest.Callbacks);
+                },
+                EventHubsOwnershipOptions.Create(UnconnectedBlobContainerClient.Create(), null, null));
+
+            eventHubsProcessorFactory.Create("readings", "group", new FakeCallbacks());
+
+            var store = Assert.IsType<OwnershipObservingCheckpointStore>(request!.Store);
+            Assert.False(string.IsNullOrEmpty(request.Options.Identifier));
+            Assert.Equal(request.Options.Identifier, store.OwnerIdentifier);
+        }
+
+        [Fact]
+        public void WithContainer_GivesEveryProcessorItsOwnIdentifier()
+        {
+            var identifiers = new List<string?>();
+            var eventHubsProcessorFactory = new EventHubsProcessorFactory(
+                createdRequest =>
+                {
+                    identifiers.Add(createdRequest.Options.Identifier);
+
+                    return new FakeEventHubsProcessor("readings", "group", createdRequest.Callbacks);
+                },
+                EventHubsOwnershipOptions.Create(UnconnectedBlobContainerClient.Create(), null, null));
+
+            eventHubsProcessorFactory.Create("readings", "group-a", new FakeCallbacks());
+            eventHubsProcessorFactory.Create("readings", "group-b", new FakeCallbacks());
+
+            Assert.NotEqual(identifiers[0], identifiers[1]);
+        }
+
+        [Fact]
+        public void WithoutContainer_DoesNotObserveOwnership()
+        {
+            EventHubsProcessorRequest? request = null;
+            var eventHubsProcessorFactory = new EventHubsProcessorFactory(
+                createdRequest =>
+                {
+                    request = createdRequest;
+
+                    return new FakeEventHubsProcessor("readings", "group", createdRequest.Callbacks);
+                },
+                EventHubsOwnershipOptions.Create(null, null, null));
+
+            eventHubsProcessorFactory.Create("readings", "group", new FakeCallbacks());
+
+            Assert.IsNotType<OwnershipObservingCheckpointStore>(request!.Store);
         }
 
         [Fact]

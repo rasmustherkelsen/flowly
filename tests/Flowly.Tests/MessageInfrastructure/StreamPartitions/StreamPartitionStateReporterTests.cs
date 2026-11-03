@@ -134,6 +134,29 @@ public class StreamPartitionStateReporterTests
             Assert.Null(registry.Get(Key(3)));
             Assert.Single(instrumentation.Transitions);
         }
+
+        [Fact]
+        public void WithTheVersionOfTheWaitingUpdate_RemovesTheWaitingEntry()
+        {
+            var (streamPartitionStateReporter, registry, _) = Create();
+            var update = streamPartitionStateReporter.Waiting(3, new TimeoutException("store down"));
+
+            streamPartitionStateReporter.Revoked(3, update.Version);
+
+            Assert.Null(registry.Get(Key(3)));
+        }
+
+        [Fact]
+        public void WithTheVersionOfAnOlderWaitingUpdate_KeepsTheEntryOfTheNewerRunningLoop()
+        {
+            var (streamPartitionStateReporter, registry, _) = Create();
+            var update = streamPartitionStateReporter.Waiting(3, new TimeoutException("store down"));
+            streamPartitionStateReporter.Running(3);
+
+            streamPartitionStateReporter.Revoked(3, update.Version);
+
+            Assert.Equal(StreamPartitionState.Running, registry.Get(Key(3))!.State);
+        }
     }
 
     public class Stopped

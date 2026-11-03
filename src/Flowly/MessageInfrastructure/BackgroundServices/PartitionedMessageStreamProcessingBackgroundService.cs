@@ -16,7 +16,8 @@ namespace Flowly.MessageInfrastructure.BackgroundServices;
 ///     partitions are independent logs. A runner is always cancelled before its processor is stopped, so a runner held by
 ///     backpressure cannot keep the transport from stopping. Records the state of every partition this process
 ///     owns (running, waiting for an unresolved start position, halted) into the <see cref="IStreamPartitionStateRegistry" />;
-///     the transport only reports assignment and revocation.
+///     the transport only reports assignment and revocation. A revocation of a partition without a loop (it never became assigned) removes only the waiting entry this service
+///     recorded for it, so a late revoke cannot delete the entry of a newer assignment.
 /// </summary>
 internal sealed class PartitionedMessageStreamProcessingBackgroundService<TMessage, THandler>(
     IMessageBusClientRegistry clientRegistry,
@@ -33,6 +34,7 @@ internal sealed class PartitionedMessageStreamProcessingBackgroundService<TMessa
         stateRegistry, handlerInstrumentation, handlerSettings.HandlerName, handlerSettings.QueueName, handlerSettings.ConsumerName);
 
     private readonly Dictionary<int, ActiveRunner> _activeRunners = new();
+    private readonly Dictionary<int, long> _waitingVersions = new();
     private readonly HashSet<int> _initializedPartitions = new();
     private readonly Lock _lock = new();
     private IPartitionedStreamConsumer<TMessage>? _consumer;
@@ -103,15 +105,12 @@ internal sealed class PartitionedMessageStreamProcessingBackgroundService<TMessa
 
     private void RecordWaiting(int partition, Exception exception)
     {
-        if (!HasActiveRunner(partition))
-            _stateReporter.Waiting(partition, exception);
-    }
-
-    private bool HasActiveRunner(int partition)
-    {
         lock (_lock)
         {
-            return _activeRunners.ContainsKey(partition);
+            if (_activeRunners.ContainsKey(partition))
+                return;
+
+            _waitingVersions[partition] = _stateReporter.Waiting(partition, exception).Version;
         }
     }
 
@@ -157,6 +156,7 @@ internal sealed class PartitionedMessageStreamProcessingBackgroundService<TMessa
         lock (_lock)
         {
             _activeRunners[partition] = activeRunner;
+            _waitingVersions.Remove(partition);
         }
 
         _ = runTask.ContinueWith(_ =>
@@ -182,12 +182,16 @@ internal sealed class PartitionedMessageStreamProcessingBackgroundService<TMessa
     private async Task StopPartitionLoop(int partition)
     {
         ActiveRunner? entry;
+        long? waitingVersion = null;
         lock (_lock)
         {
             _activeRunners.Remove(partition, out entry);
+
+            if (_waitingVersions.Remove(partition, out var recordedVersion))
+                waitingVersion = recordedVersion;
         }
 
-        _stateReporter.Revoked(partition);
+        _stateReporter.Revoked(partition, entry is null ? waitingVersion : null);
 
         if (entry is null) return;
 
