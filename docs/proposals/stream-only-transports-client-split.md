@@ -11,7 +11,7 @@ The stream abstractions (`MessageStreamHandler<T>`, `IMessageRecorder`, `[Stream
 
 The recommendation is to introduce a small root interface, make `IMessageBusClient` (queues, plus events through `IEventCapableMessageBusClient`) and `IStreamCapableMessageBusClient` (streams) siblings beneath it, and move capability checking into one typed registry accessor. The split lands as its own refactor PR before any Event Hubs code, with no behaviour change for ASB, RabbitMQ or InMemory.
 
-The change is deliberately shaped to be **source-compatible** so it can ship as a minor release: existing public members keep their signatures, and every new member on an existing public interface is either a default interface method or an extension method. No source break is expected, and no break at the API level is known; the one residual risk is binary-level, for precompiled out-of-repo transports, which are out of scope and were not verified (see [Compatibility](#7-compatibility)).
+The change is deliberately shaped to be **source-compatible** wherever it can be, and it ships as a minor release: existing public members keep their signatures, and every new member on an existing public interface is either a default interface method or an extension method. Two breaks are accepted and called out in the release notes: a source break for a hand-written implementer of `IMessagingTopologyCreatorRegistry` ([§5](#5-topology)), and a startup behaviour change for RabbitMQ partitioned streams whose broker holds more partitions than the contract declares ([§7](#7-compatibility)). Beyond them the one residual risk is binary-level, for precompiled out-of-repo transports, which are out of scope and were not verified (see [Compatibility](#7-compatibility)).
 
 ## 1. How Event Hubs maps onto the stream abstractions
 
@@ -217,7 +217,7 @@ The split is a standalone refactor: no new package, and the existing suites stay
 
 ## 7. Compatibility
 
-Target: minor release (1.5.0). The registry interface change in the last row is a deliberate source break accepted for the reasons given in section 5; every other row is compatible.
+Target: minor release (1.5.0), with two accepted breaks called out in the release notes rather than a major release: the library has few external consumers, so the cost of a major version outweighs the cost of the two breaks. The registry interface change in the last row is a deliberate source break accepted for the reasons given in section 5; the second is the RabbitMQ behaviour change described below. Every other row is compatible.
 
 | Public surface | Treatment | Break? |
 |---|---|---|
@@ -231,6 +231,8 @@ Target: minor release (1.5.0). The registry interface change in the last row is 
 
 **Verification.** Both claims were checked rather than assumed. A minimal class that implements `string IMessageBusClient.MessagingSystem` explicitly compiles against the new interfaces and returns the value through both `IMessageBusClient` and `ITransportClient`; it did not compile before `MessagingSystem` was redeclared. A `Flowly.RabbitMQ` assembly built from `development` (compiled against the old interfaces) was loaded against the new `Flowly.dll`: every interface method maps, including the new `ITransportClient` and `CreateStreamSender` members through their default implementations, and both views of `MessagingSystem` work. That covers upgrading core `Flowly` alone while a satellite package stays on 1.4.x.
 
+**Behaviour change for RabbitMQ partitioned streams.** A host with `createTopology: true` now compares the declared partition count with the broker after the additive declaration, so a broker that holds more partition streams than `[StreamPartitions(n)]` declares fails host startup. Before, such a host started, publishes whose partition index had no binding were dropped without a broker error and the extra broker partitions stayed unconsumed. A broker holding fewer partitions than declared is topped up as before, and a matching count is unaffected. Worth a line in the release notes, with the remedy: align the declared count with the broker, or use `createTopology: false` for a Super Stream created outside Flowly.
+
 **Residual risk.** The `IMessagingTopologyCreatorRegistry` break above is the only known API-level incompatibility. Third-party transports are out of scope: package download volume is too low to justify designing around them, so compatibility was verified only against the in-repository transports and the minimal cases above.
 
 **Behaviour change for test doubles.** Registering a message, batch, job, call, recurring or event handler or submitter, or a dead letter source, now asks the registry for the resolved provider's `IMessageBusClient` at registration time. A hand-written `IMessageBusClientRegistry` test double whose `GetClient` throws (four in this repository's tests did: the three Jobs backend ones and the dead letter source one; the event registration tests used queue-only stubs and now use an event-capable fake) now fails at registration instead; returning a stub client fixes it. Worth a line in the release notes. Routing without `[ProviderAffinity]` additionally reads `GetAll()` and `GetTransportClient(name)`, so a hand-written registry double must report its transports through `GetAll()` as well.
@@ -243,7 +245,7 @@ Per the "Ask, don't assume" rule for the streaming area:
 
 **Decided**
 
-- Take the source-compatible variant and ship as a minor release.
+- Take the source-compatible variant and ship as a minor release, with the two accepted breaks (the registry interface and the RabbitMQ partition count check under `createTopology: true`) called out in the release notes instead of a major release.
 - `CreateStreamSender` lives on `IStreamCapableMessageBusClient` (as a default interface method), not in a separate producer interface.
 - `IStreamCapableMessageBusClient` keeps its name.
 - The root interface is named `ITransportClient` (in `Flowly.Transport`). No existing type uses the name.
