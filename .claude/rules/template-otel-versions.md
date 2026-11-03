@@ -14,7 +14,7 @@ Canonical versions live in `Flowly.OpenTelemetry.csproj`; when they change, upda
 
 | Package | Template files (under `src/Flowly.Templates/content/`) |
 |---|---|
-| `OpenTelemetry.Extensions.Hosting`, `OpenTelemetry.Exporter.OpenTelemetryProtocol` | `flowly-project/FlowlyApp.csproj`, `flowly-app/Receiver/Receiver.csproj`, `flowly-app/Sender/Sender.csproj`, `flowly-app/App/App.csproj`, `flowly-app/DeadLetterTracker/DeadletterTracker.csproj`, `flowly-app/Dashboard/Dashboard.csproj`, `flowly-aspire-app/MyAspireApp.ServiceDefaults/MyAspireApp.ServiceDefaults.csproj` |
+| `OpenTelemetry.Extensions.Hosting`, `OpenTelemetry.Exporter.OpenTelemetryProtocol` | `flowly-project/FlowlyApp.csproj`, `flowly-app/Receiver/Receiver.csproj`, `flowly-app/Sender/Sender.csproj`, `flowly-app/App/App.csproj`, `flowly-app/DeadLetterTracker/DeadLetterTracker.csproj`, `flowly-app/Dashboard/Dashboard.csproj`, `flowly-aspire-app/MyAspireApp.ServiceDefaults/MyAspireApp.ServiceDefaults.csproj` |
 | `OpenTelemetry.Exporter.Zipkin` | the same files except the Aspire `ServiceDefaults` (which uses OTLP unconditionally) |
 
 This list is authoritative and has drifted before: when adding a template file that references any of these packages, add it here in the same change.

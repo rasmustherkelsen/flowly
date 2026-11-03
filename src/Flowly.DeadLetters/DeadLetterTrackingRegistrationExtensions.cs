@@ -137,7 +137,7 @@ public static class DeadLetterTrackingRegistrationExtensions
 
     /// <summary>
     ///     Registers dead letter ingestion for the queue derived from <typeparamref name="TMessage"/> without registering
-    ///     a consumer on the main queue. Use this in a standalone <c>DeadletterTracker</c> project that is responsible
+    ///     a consumer on the main queue. Use this in a standalone <c>DeadLetterTracker</c> project that is responsible
     ///     solely for reading dead-lettered messages from the broker and persisting them to the tracking store, while the
     ///     Receiver continues to process the main queue independently.
     ///     Requires <c>AddSqlServerDeadLetterTracking</c> or <c>AddPostgresDeadLetterTracking</c> to have been called first.

@@ -48,6 +48,10 @@ Optional feature flags: `--jobtracking`/`--jobs`, `--deadlettertracking`/`--dead
 
 Both scaffold a dedicated `JobTracker` project (job state persistence) and a dedicated `DeadLetterTracker` project (monitors dead-letter sub-queues, persists failed messages) for `--jobs` / `--deadletter`; the Receiver is a pure message-processing worker. InMemory is the exception: everything is embedded in a single `App/` project in both. **When changing either template's architecture for these features, apply the equivalent change to the other.**
 
+## File names are case-sensitive
+
+Template content is scaffolded on Linux too, where `DeadLetterTracker.csproj` and `DeadletterTracker.csproj` are different files. Spell every project file and directory exactly as the solution files (`.slnx`) and `ProjectReference` items name them; macOS and Windows hide a mismatch. The CI step "Check template project paths" fails on any `.slnx` project path or `ProjectReference` in template content that does not resolve to an existing file.
+
 ## Adding or removing a template parameter
 
 When a parameter in `content/flowly-project/.template.config/template.json` is added, removed or renamed: update `src/Flowly.Templates/README.md` first (source of truth), then `README.md`, `docs/ai/CONTEXT.md` and `.claude/CLAUDE.md`, then any skills in `.claude/skills/` that reference template usage.
