@@ -239,6 +239,54 @@ public class InMemoryStreamProcessorTests
         }
     }
 
+    public class StopProcessing
+    {
+        [Fact]
+        public async Task AfterDisposeAsync_DoesNotThrow()
+        {
+            var log = new InMemoryStreamLog(default, referencePassingEnabled: false);
+            var processor = CreateProcessor(log, startOffset: 0);
+            await processor.StartProcessingMessages();
+            await processor.DisposeAsync();
+
+            await processor.StopProcessing(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task CalledTwice_DoesNotThrow()
+        {
+            var log = new InMemoryStreamLog(default, referencePassingEnabled: false);
+            var processor = CreateProcessor(log, startOffset: 0);
+            await processor.StartProcessingMessages();
+
+            await processor.StopProcessing(CancellationToken.None);
+            await processor.StopProcessing(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task BeforeStartProcessingMessages_DoesNotThrow()
+        {
+            var log = new InMemoryStreamLog(default, referencePassingEnabled: false);
+            var processor = CreateProcessor(log, startOffset: 0);
+
+            await processor.StopProcessing(CancellationToken.None);
+        }
+    }
+
+    public class DisposeAsync
+    {
+        [Fact]
+        public async Task CalledTwice_DoesNotThrow()
+        {
+            var log = new InMemoryStreamLog(default, referencePassingEnabled: false);
+            var processor = CreateProcessor(log, startOffset: 0);
+            await processor.StartProcessingMessages();
+
+            await processor.DisposeAsync();
+            await processor.DisposeAsync();
+        }
+    }
+
     public class DeadLetter
     {
         [Fact]

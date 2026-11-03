@@ -13,6 +13,7 @@ internal class InMemoryStreamProcessor<TMessage>(
     private readonly Lock _processMessageLock = new();
     private CancellationTokenSource? _cts;
     private Task? _processingTask;
+    private int _disposed;
 
     public event Func<IReceivedMessage<TMessage>, CancellationToken, Task>? ProcessMessage
     {
@@ -71,6 +72,9 @@ internal class InMemoryStreamProcessor<TMessage>(
 
     public async Task StopProcessing(CancellationToken cancellationToken)
     {
+        if (Volatile.Read(ref _disposed) == 1)
+            return;
+
         if (_cts is not null)
             await _cts.CancelAsync();
 
@@ -89,6 +93,9 @@ internal class InMemoryStreamProcessor<TMessage>(
 
     public ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) == 1)
+            return ValueTask.CompletedTask;
+
         _cts?.Cancel();
         _cts?.Dispose();
         return ValueTask.CompletedTask;

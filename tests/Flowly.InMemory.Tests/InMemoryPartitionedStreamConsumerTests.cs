@@ -154,6 +154,33 @@ public class InMemoryPartitionedStreamConsumerTests
         }
     }
 
+    public class StopProcessing
+    {
+        [Fact]
+        public async Task AfterPartitionProcessorsWereDisposed_DoesNotThrow()
+        {
+            var (broker, manifest) = CreateBrokerWithStreamManifest();
+            manifest.MarkAsStream("orders", null, null, partitionCount: 3);
+            var assigned = new List<IMessageBusProcessor<TestMessage>>();
+            var consumer = new InMemoryPartitionedStreamConsumer<TestMessage>(broker, "orders", 3, (_, _) => Task.FromResult(StartPosition.First()));
+            consumer.PartitionAssigned += async (_, processor) =>
+            {
+                assigned.Add(processor);
+                await processor.StartProcessingMessages();
+            };
+            await consumer.StartProcessingMessages();
+
+            foreach (var processor in assigned)
+            {
+                await processor.StopProcessing(CancellationToken.None);
+                await processor.DisposeAsync();
+            }
+
+            await consumer.StopProcessing(CancellationToken.None);
+            await consumer.DisposeAsync();
+        }
+    }
+
     private static async Task WaitUntil(Func<bool> condition, int timeoutMs = 5000)
     {
         var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
