@@ -5,7 +5,7 @@
         <AssemblyName>Flowly.PowerShell</AssemblyName>
         <RootNamespace>Flowly.PowerShell</RootNamespace>
         <PackageId>Flowly.PowerShell</PackageId>
-        <Description>A thin C# (binary) PowerShell module client for the Flowly Management API — Connect-Flowly, Get-FlowlyMessageStreamCheckpoint, Reset-FlowlyMessageStreamCheckpoint, Get-FlowlyMessageStreamPartition, Resume-FlowlyMessageStreamPartition, Disconnect-Flowly. Requires PowerShell 7.4+.</Description>
+        <Description>A thin C# (binary) PowerShell module client for the Flowly Management API — Connect-Flowly, Get-FlowlyMessageStreamCheckpoint, Reset-FlowlyMessageStreamCheckpoint, Get-FlowlyMessageStreamPartition, Resume-FlowlyMessageStreamPartition, Get-FlowlyDeadLetter, Submit-FlowlyDeadLetter (requeue), Remove-FlowlyDeadLetter (discard), Disconnect-Flowly. Requires PowerShell 7.4+.</Description>
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <GenerateDependencyFile>false</GenerateDependencyFile>
         <!-- PSResourceGet extracts the package as is and RootModule in the module manifest is relative to the manifest, so the DLL must sit next to it at the package root, not under lib/. -->

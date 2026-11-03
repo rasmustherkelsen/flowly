@@ -17,6 +17,9 @@ internal sealed class CmdletHost : IDisposable
         var initialSessionState = InitialSessionState.CreateDefault2();
         initialSessionState.Commands.Add(new SessionStateCmdletEntry("Get-FlowlyMessageStreamPartition", typeof(GetFlowlyMessageStreamPartitionCommand), null));
         initialSessionState.Commands.Add(new SessionStateCmdletEntry("Resume-FlowlyMessageStreamPartition", typeof(ResumeFlowlyMessageStreamPartitionCommand), null));
+        initialSessionState.Commands.Add(new SessionStateCmdletEntry("Get-FlowlyDeadLetter", typeof(GetFlowlyDeadLetterCommand), null));
+        initialSessionState.Commands.Add(new SessionStateCmdletEntry("Submit-FlowlyDeadLetter", typeof(SubmitFlowlyDeadLetterCommand), null));
+        initialSessionState.Commands.Add(new SessionStateCmdletEntry("Remove-FlowlyDeadLetter", typeof(RemoveFlowlyDeadLetterCommand), null));
 
         _powerShell = System.Management.Automation.PowerShell.Create(initialSessionState);
     }

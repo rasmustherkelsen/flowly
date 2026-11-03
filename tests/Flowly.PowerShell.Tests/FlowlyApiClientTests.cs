@@ -240,4 +240,171 @@ public class FlowlyApiClientTests
             Assert.Equal(HttpStatusCode.Forbidden, exception.StatusCode);
         }
     }
+
+    public class ListDeadLetters
+    {
+        private static readonly DateTimeOffset DeadLetteredAt = new(2026, 11, 1, 10, 30, 0, TimeSpan.Zero);
+
+        [Fact]
+        public async Task WithNoFilters_RequestsUnfilteredPath()
+        {
+            var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(Array.Empty<DeadLetterDto>()) });
+            var connection = ApiKeyConnection.Create(handler);
+
+            await FlowlyApiClient.ListDeadLetters(connection, null, null, null, null, null, null, CancellationToken.None);
+
+            Assert.Equal(HttpMethod.Get, handler.LastRequest!.Method);
+            Assert.Equal("/flowly/management/dead-letters", handler.LastRequest.RequestUri!.AbsolutePath);
+            Assert.Equal(string.Empty, handler.LastRequest.RequestUri.Query);
+        }
+
+        [Fact]
+        public async Task WithFilters_IncludesThemEscapedInTheQueryString()
+        {
+            var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(Array.Empty<DeadLetterDto>()) });
+            var connection = ApiKeyConnection.Create(handler);
+
+            await FlowlyApiClient.ListDeadLetters(connection, "my-queue", "billing", "Pending", "id/with space", 20, 10, CancellationToken.None);
+
+            var query = handler.LastRequest!.RequestUri!.Query;
+            Assert.Contains("queue=my-queue", query);
+            Assert.Contains("subscription=billing", query);
+            Assert.Contains("status=Pending", query);
+            Assert.Contains("messageId=id%2Fwith%20space", query);
+            Assert.Contains("skip=20", query);
+            Assert.Contains("take=10", query);
+        }
+
+        [Fact]
+        public async Task DeserializesResponseBody()
+        {
+            var expected = new[] { new DeadLetterDto("m1", "q", null, "{}", "{}", DeadLetteredAt, "reason", null, "Pending", null, null) };
+            var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(expected) });
+            var connection = ApiKeyConnection.Create(handler);
+
+            var result = await FlowlyApiClient.ListDeadLetters(connection, null, null, null, null, null, null, CancellationToken.None);
+
+            Assert.Equal(expected[0], Assert.Single(result));
+        }
+
+        [Fact]
+        public async Task IncludesApiKeyHeader()
+        {
+            var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(Array.Empty<DeadLetterDto>()) });
+            var connection = ApiKeyConnection.Create(handler);
+
+            await FlowlyApiClient.ListDeadLetters(connection, null, null, null, null, null, null, CancellationToken.None);
+
+            Assert.Equal("the-api-key", handler.LastRequest!.Headers.GetValues("X-Flowly-Api-Key").Single());
+        }
+
+        [Fact]
+        public async Task OnProblemResponse_ThrowsWithTheProblemDetailAndStatusCode()
+        {
+            var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.BadRequest)
+            {
+                Content = new StringContent("{\"detail\":\"'x' is not a dead letter status.\"}", System.Text.Encoding.UTF8, "application/problem+json")
+            });
+            var connection = ApiKeyConnection.Create(handler);
+
+            var exception = await Assert.ThrowsAsync<HttpRequestException>(() =>
+                FlowlyApiClient.ListDeadLetters(connection, null, null, "x", null, null, null, CancellationToken.None));
+
+            Assert.Equal(HttpStatusCode.BadRequest, exception.StatusCode);
+            Assert.Contains("is not a dead letter status", exception.Message);
+        }
+    }
+
+    public class RequeueDeadLetter
+    {
+        [Fact]
+        public async Task PostsToRequeuePathWithJsonBody()
+        {
+            var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.NoContent));
+            var connection = ApiKeyConnection.Create(handler);
+
+            await FlowlyApiClient.RequeueDeadLetter(connection, "m1", "ops", CancellationToken.None);
+
+            Assert.Equal(HttpMethod.Post, handler.LastRequest!.Method);
+            Assert.Equal("/flowly/management/dead-letters/requeue", handler.LastRequest.RequestUri!.AbsolutePath);
+
+            var body = await JsonDocument.ParseAsync(await handler.LastRequestContent!.ReadAsStreamAsync());
+            Assert.Equal("m1", body.RootElement.GetProperty("messageId").GetString());
+            Assert.Equal("ops", body.RootElement.GetProperty("requeuedBy").GetString());
+        }
+
+        [Fact]
+        public async Task WithoutARequester_SendsANullRequeuedBy()
+        {
+            var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.NoContent));
+            var connection = ApiKeyConnection.Create(handler);
+
+            await FlowlyApiClient.RequeueDeadLetter(connection, "m1", null, CancellationToken.None);
+
+            var body = await JsonDocument.ParseAsync(await handler.LastRequestContent!.ReadAsStreamAsync());
+            Assert.Equal(JsonValueKind.Null, body.RootElement.GetProperty("requeuedBy").ValueKind);
+        }
+
+        [Fact]
+        public async Task OnProblemResponse_ThrowsWithTheProblemDetailAndStatusCode()
+        {
+            var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.Conflict)
+            {
+                Content = new StringContent("{\"detail\":\"Dead letter 'm1' has status 'Requeued' and cannot be requeued.\"}", System.Text.Encoding.UTF8, "application/problem+json")
+            });
+            var connection = ApiKeyConnection.Create(handler);
+
+            var exception = await Assert.ThrowsAsync<HttpRequestException>(() =>
+                FlowlyApiClient.RequeueDeadLetter(connection, "m1", null, CancellationToken.None));
+
+            Assert.Equal(HttpStatusCode.Conflict, exception.StatusCode);
+            Assert.Contains("cannot be requeued", exception.Message);
+        }
+
+        [Fact]
+        public async Task OnErrorWithoutBody_ThrowsWithTheStatusCode()
+        {
+            var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.Forbidden));
+            var connection = ApiKeyConnection.Create(handler);
+
+            var exception = await Assert.ThrowsAsync<HttpRequestException>(() =>
+                FlowlyApiClient.RequeueDeadLetter(connection, "m1", null, CancellationToken.None));
+
+            Assert.Equal(HttpStatusCode.Forbidden, exception.StatusCode);
+        }
+    }
+
+    public class DiscardDeadLetter
+    {
+        [Fact]
+        public async Task PostsToDiscardPathWithJsonBody()
+        {
+            var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.NoContent));
+            var connection = ApiKeyConnection.Create(handler);
+
+            await FlowlyApiClient.DiscardDeadLetter(connection, "m1", CancellationToken.None);
+
+            Assert.Equal(HttpMethod.Post, handler.LastRequest!.Method);
+            Assert.Equal("/flowly/management/dead-letters/discard", handler.LastRequest.RequestUri!.AbsolutePath);
+
+            var body = await JsonDocument.ParseAsync(await handler.LastRequestContent!.ReadAsStreamAsync());
+            Assert.Equal("m1", body.RootElement.GetProperty("messageId").GetString());
+        }
+
+        [Fact]
+        public async Task OnProblemResponse_ThrowsWithTheProblemDetailAndStatusCode()
+        {
+            var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound)
+            {
+                Content = new StringContent("{\"detail\":\"Dead letter with ID 'm1' was not found.\"}", System.Text.Encoding.UTF8, "application/problem+json")
+            });
+            var connection = ApiKeyConnection.Create(handler);
+
+            var exception = await Assert.ThrowsAsync<HttpRequestException>(() =>
+                FlowlyApiClient.DiscardDeadLetter(connection, "m1", CancellationToken.None));
+
+            Assert.Equal(HttpStatusCode.NotFound, exception.StatusCode);
+            Assert.Contains("was not found", exception.Message);
+        }
+    }
 }

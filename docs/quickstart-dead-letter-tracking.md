@@ -625,5 +625,6 @@ The single process sends messages, handles them, retries failures, and writes de
 
 - [Add retry policy](../README.md#retry-policy) — fine-tune `maxRetries` and `delaySeconds` per handler
 - [Query dead letters](../README.md#dead-letter-tracking) — use `IDeadLetterService` to build a management UI or automate requeuing
+- [Operate dead letters over HTTP or PowerShell](../README.md#operating-dead-letters-management-api-and-powershell) — list, requeue and discard with the Management API and `Get-`/`Submit-`/`Remove-FlowlyDeadLetter`
 - [Track job state](quickstart-job-tracking.md) — add job state persistence alongside dead letter tracking
 - [Full user guide](../README.md)

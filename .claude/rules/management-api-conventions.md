@@ -35,7 +35,9 @@ One `IFlowlyManagementAction` maps to exactly one cmdlet:
 
 The stream partition list/resume actions live in `src/Flowly.ManagementApi/MessageStreams/` next to the checkpoint actions, but read and resume through the internal `IStreamPartitionStateReader` and `IStreamPartitionResumer` of core `Flowly` (`InternalsVisibleTo`); changing the partition state model or the resumer contract means updating those actions and their cmdlets too.
 
-This table itself must be extended whenever a new feature package starts contributing actions (e.g. Jobs or DeadLetters actions land here later) — the same self-maintaining instruction `template-otel-versions.md` carries for its own file list.
+The dead letter list/requeue/discard actions live in `src/Flowly.ManagementApi/DeadLetters/` and call the public `IDeadLetterService` of `Flowly.DeadLetters` (resolved per request, the service is scoped; the actions are mapped when `IServiceProviderIsService` reports it registered). They carry no dead letter logic of their own, so changing requeue or discard behaviour happens in `IDeadLetterService`, and changing its contract means updating these actions and their cmdlets (`Get-`/`Submit-`/`Remove-FlowlyDeadLetter`) too.
+
+This table itself must be extended whenever a new feature package starts contributing actions (e.g. Jobs actions) — the same self-maintaining instruction `template-otel-versions.md` carries for its own file list.
 
 ## Version alignment
 

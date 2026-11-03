@@ -74,6 +74,53 @@ internal static class FlowlyApiClient
         await EnsureSuccess(response, cancellationToken);
     }
 
+    public static async Task<IReadOnlyList<DeadLetterDto>> ListDeadLetters(
+        FlowlyConnection connection, string? queue, string? subscription, string? status, string? messageId, int? skip, int? take, CancellationToken cancellationToken)
+    {
+        await EnsureAuthorized(connection, cancellationToken);
+
+        var query = string.Join("&", new[]
+            {
+                queue is not null ? $"queue={Uri.EscapeDataString(queue)}" : null,
+                subscription is not null ? $"subscription={Uri.EscapeDataString(subscription)}" : null,
+                status is not null ? $"status={Uri.EscapeDataString(status)}" : null,
+                messageId is not null ? $"messageId={Uri.EscapeDataString(messageId)}" : null,
+                skip is not null ? $"skip={skip}" : null,
+                take is not null ? $"take={take}" : null,
+            }
+            .Where(x => x is not null));
+
+        var path = "dead-letters" + (query.Length > 0 ? $"?{query}" : "");
+        var response = await connection.HttpClient.GetAsync(path, cancellationToken);
+        await EnsureSuccess(response, cancellationToken);
+
+        return await response.Content.ReadFromJsonAsync<IReadOnlyList<DeadLetterDto>>(cancellationToken) ?? [];
+    }
+
+    public static async Task RequeueDeadLetter(FlowlyConnection connection, string messageId, string? requeuedBy, CancellationToken cancellationToken)
+    {
+        await EnsureAuthorized(connection, cancellationToken);
+
+        var response = await connection.HttpClient.PostAsJsonAsync(
+            "dead-letters/requeue",
+            new { MessageId = messageId, RequeuedBy = requeuedBy },
+            cancellationToken);
+
+        await EnsureSuccess(response, cancellationToken);
+    }
+
+    public static async Task DiscardDeadLetter(FlowlyConnection connection, string messageId, CancellationToken cancellationToken)
+    {
+        await EnsureAuthorized(connection, cancellationToken);
+
+        var response = await connection.HttpClient.PostAsJsonAsync(
+            "dead-letters/discard",
+            new { MessageId = messageId },
+            cancellationToken);
+
+        await EnsureSuccess(response, cancellationToken);
+    }
+
     private static async Task EnsureSuccess(HttpResponseMessage response, CancellationToken cancellationToken)
     {
         if (response.IsSuccessStatusCode)

@@ -33,11 +33,17 @@ Get-FlowlyMessageStreamPartition -State Halted
 Resume-FlowlyMessageStreamPartition -QueueName my-queue -ConsumerName MyHandler -Partition 1
 Get-FlowlyMessageStreamPartition -State Halted | Resume-FlowlyMessageStreamPartition
 
+Get-FlowlyDeadLetter -Status Pending -QueueName my-queue
+Get-FlowlyDeadLetter -MessageId $id | Submit-FlowlyDeadLetter -RequeuedBy "ops@example.com"
+Get-FlowlyDeadLetter -Status Pending -First 20 | Remove-FlowlyDeadLetter
+
 Disconnect-Flowly
 ```
 
 `Reset-FlowlyMessageStreamCheckpoint` supports `-WhatIf`/`-Confirm` (PowerShell's standard confirmation gate for destructive actions) since resetting a position causes reprocessing of any messages after the new offset once the handler restarts.
 
 `Get-FlowlyMessageStreamPartition` lists the state (`Running`, `Waiting`, `Halted`), the last error and the time of the last state change of the stream partitions owned by the instance the connection points at; `Resume-FlowlyMessageStreamPartition` re-runs the batch a `Halted` partition is holding (nothing is skipped; a batch that fails again halts the partition again) and supports `-WhatIf`/`-Confirm` with high impact. Both talk to one instance: with several instances, connect to the one that owns the partition. Resuming a partition that is not halted, or that the instance does not own, is an error carrying the API's explanation.
+
+`Get-FlowlyDeadLetter` lists the dead letters of a host that registered dead letter tracking, newest first, with the filters `-QueueName` (the topic name for an event subscription dead letter), `-SubscriptionName`, `-Status` (`Pending` or `Requeued`) and `-MessageId`, and `-Skip`/`-First` (1 to 1000) for paging. `Submit-FlowlyDeadLetter` requeues a `Pending` dead letter to its original queue with a fresh set of retries (`-RequeuedBy` stores who asked) and `Remove-FlowlyDeadLetter` permanently discards one; both take `-MessageId` by property name, so they accept the output of `Get-FlowlyDeadLetter`, and both support `-WhatIf`/`-Confirm` with high impact. Requeuing or discarding a dead letter that is already requeued, or that does not exist, is an error carrying the API's explanation.
 
 One cmdlet mirrors one Flowly Management API action — as the API grows, this module gains one cmdlet per new action, per `.claude/rules/management-api-conventions.md`.

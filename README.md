@@ -19,7 +19,7 @@ There is no fixed default port. When embedded in an existing app, the dashboard 
 
 ## Management API
 
-For operators who don't want to install the Dashboard just to reset a stuck message stream, `Flowly.ManagementApi` is a separate, opt-in, machine-oriented HTTP surface — no UI, independent of `Flowly.Dashboard`. Message stream checkpoint list/reset and message stream partition list/resume (see [Operating halted partitions](#operating-halted-partitions-management-api-and-powershell)) are its capabilities, exposed via a standard OpenAPI-documented endpoint and a companion `Flowly.PowerShell` module:
+For operators who don't want to install the Dashboard just to reset a stuck message stream, `Flowly.ManagementApi` is a separate, opt-in, machine-oriented HTTP surface — no UI, independent of `Flowly.Dashboard`. Message stream checkpoint list/reset, message stream partition list/resume (see [Operating halted partitions](#operating-halted-partitions-management-api-and-powershell)) and dead letter list/requeue/discard (see [Operating dead letters](#operating-dead-letters-management-api-and-powershell)) are its capabilities, exposed via a standard OpenAPI-documented endpoint and a companion `Flowly.PowerShell` module:
 
 ```csharp
 builder.Services.AddFlowlyManagementApi(options => options.RequireApiKey(apiKey)); // or UseOAuth2(...) for Entra ID
@@ -28,7 +28,7 @@ builder.Services.AddFlowlyManagementApi(options => options.RequireApiKey(apiKey)
 app.UseFlowlyManagementApi();
 ```
 
-See [`src/Flowly.ManagementApi/README.md`](src/Flowly.ManagementApi/README.md) for authorization modes (API key, OAuth2/Entra ID client-credentials, or existing host policies) and the `IFlowlyManagementAction` extensibility point future features plug into, and [`src/Flowly.PowerShell/README.md`](src/Flowly.PowerShell/README.md) for the `Connect-Flowly`/`Get-FlowlyMessageStreamCheckpoint`/`Reset-FlowlyMessageStreamCheckpoint`/`Get-FlowlyMessageStreamPartition`/`Resume-FlowlyMessageStreamPartition` cmdlets.
+See [`src/Flowly.ManagementApi/README.md`](src/Flowly.ManagementApi/README.md) for authorization modes (API key, OAuth2/Entra ID client-credentials, or existing host policies) and the `IFlowlyManagementAction` extensibility point future features plug into, and [`src/Flowly.PowerShell/README.md`](src/Flowly.PowerShell/README.md) for the `Connect-Flowly`/`Get-FlowlyMessageStreamCheckpoint`/`Reset-FlowlyMessageStreamCheckpoint`/`Get-FlowlyMessageStreamPartition`/`Resume-FlowlyMessageStreamPartition`/`Get-FlowlyDeadLetter`/`Submit-FlowlyDeadLetter`/`Remove-FlowlyDeadLetter` cmdlets.
 
 ---
 
@@ -109,8 +109,8 @@ All packages are published to [NuGet.org](https://www.nuget.org/packages?q=Flowl
 | `Flowly.MessageStreams.SQLite` | SQLite backend for message stream checkpoint persistence |
 | `Flowly.OpenTelemetry` | OpenTelemetry metrics and traces for handlers and submitters |
 | `Flowly.Dashboard` | Embedded web dashboard middleware — submit messages, browse jobs, inspect dead letters, and trigger recurring jobs at `/flowly`; opt-in OAuth2/OIDC authentication with role and policy authorization |
-| `Flowly.ManagementApi` | Opt-in, machine-oriented HTTP surface for operational actions (message stream checkpoint list/reset and stream partition list/resume) — independent of `Flowly.Dashboard` |
-| `Flowly.PowerShell` | C# PowerShell module client for the Management API (`Connect-Flowly`, `Get-FlowlyMessageStreamCheckpoint`, `Reset-FlowlyMessageStreamCheckpoint`, `Get-FlowlyMessageStreamPartition`, `Resume-FlowlyMessageStreamPartition`) |
+| `Flowly.ManagementApi` | Opt-in, machine-oriented HTTP surface for operational actions (message stream checkpoint list/reset, stream partition list/resume and dead letter list/requeue/discard) — independent of `Flowly.Dashboard` |
+| `Flowly.PowerShell` | C# PowerShell module client for the Management API (`Connect-Flowly`, `Get-FlowlyMessageStreamCheckpoint`, `Reset-FlowlyMessageStreamCheckpoint`, `Get-FlowlyMessageStreamPartition`, `Resume-FlowlyMessageStreamPartition`, `Get-FlowlyDeadLetter`, `Submit-FlowlyDeadLetter`, `Remove-FlowlyDeadLetter`) |
 | `Flowly.Tool` | `flowly` CLI for queue discovery, code generation, and message stream checkpoint operations |
 | `Flowly.Templates` | `dotnet new flowlyapp` / `dotnet new flowlyaspireapp` / `dotnet new flowly` project templates |
 
@@ -966,6 +966,24 @@ The raw body is stored without deserialization — this ensures malformed messag
 Dead letter tracking is supported on `MessageHandler<T>` and `EventHandlerBase<TEvent>` handlers. Job handlers use the job database as the failure record. Recurring jobs re-trigger via the CRON scheduler.
 
 For event handlers, the `SubscriptionName` field in the `DeadLetters` table identifies which subscriber dead-lettered the event. Requeuing re-publishes to the topic with a `flowly-target-subscription` header so only the originating subscriber receives the requeued event.
+
+### Operating dead letters: Management API and PowerShell
+
+`Flowly.ManagementApi` lists, requeues and discards the dead letters of a host that registered dead letter tracking (`Add<Provider>DeadLetterTracking` or `Add<Provider>DeadLetterTrackingClient`), through the same `IDeadLetterService` the Dashboard uses. The actions are mapped only when that service is registered, so a host without dead letter tracking has no such routes. Dead letters live in the shared tracking database, so any instance that has the service can answer.
+
+| Action | Route | Authorization | PowerShell cmdlet |
+|---|---|---|---|
+| List dead letters | `GET {BasePath}/dead-letters?queue=&subscription=&status=&messageId=&skip=&take=` | Read | `Get-FlowlyDeadLetter` |
+| Requeue a dead letter | `POST {BasePath}/dead-letters/requeue` with `{ "messageId", "requeuedBy" }` | Write | `Submit-FlowlyDeadLetter` |
+| Discard a dead letter | `POST {BasePath}/dead-letters/discard` with `{ "messageId" }` | Write | `Remove-FlowlyDeadLetter` |
+
+```powershell
+Get-FlowlyDeadLetter -Status Pending -QueueName my-queue
+Get-FlowlyDeadLetter -MessageId $id | Submit-FlowlyDeadLetter -RequeuedBy "ops@example.com"
+Get-FlowlyDeadLetter -Status Pending -First 20 | Remove-FlowlyDeadLetter
+```
+
+The list is newest first and filtered by `queue` (the topic name for an event subscription dead letter), `subscription`, `status` (`Pending` or `Requeued`) and `messageId`; `skip` and `take` (1 to 1000) page through it, and without `take` everything after `skip` is returned. Requeue and discard answer `204`, `404` for an unknown message id, `409` when the dead letter is not `Pending` (a requeued dead letter can be neither requeued nor discarded again), and `400` for a blank message id. Discarding permanently deletes the record. The Write cmdlets ask for confirmation (`-WhatIf` and `-Confirm` are supported). See [`src/Flowly.ManagementApi/README.md`](src/Flowly.ManagementApi/README.md) for the full contract.
 
 ---
 

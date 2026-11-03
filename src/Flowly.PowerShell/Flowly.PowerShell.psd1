@@ -15,7 +15,10 @@
         'Get-FlowlyMessageStreamCheckpoint',
         'Reset-FlowlyMessageStreamCheckpoint',
         'Get-FlowlyMessageStreamPartition',
-        'Resume-FlowlyMessageStreamPartition'
+        'Resume-FlowlyMessageStreamPartition',
+        'Get-FlowlyDeadLetter',
+        'Submit-FlowlyDeadLetter',
+        'Remove-FlowlyDeadLetter'
     )
     VariablesToExport    = @()
     AliasesToExport      = @()

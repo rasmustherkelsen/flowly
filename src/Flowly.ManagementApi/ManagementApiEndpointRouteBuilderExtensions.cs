@@ -1,3 +1,5 @@
+using Flowly.DeadLetters;
+using Flowly.ManagementApi.DeadLetters;
 using Flowly.ManagementApi.MessageStreams;
 using Flowly.MessageInfrastructure.StreamPartitions;
 using Flowly.MessageStreams;
@@ -17,9 +19,10 @@ public static class ManagementApiEndpointRouteBuilderExtensions
     ///     Maps the Flowly Management API: the built-in message stream checkpoint actions (only when a checkpoint
     ///     persistence store is registered — feature-detected the same way the Dashboard detects Jobs/DeadLetters),
     ///     the built-in message stream partition actions (list and resume, only when the host registered Flowly's stream partition state
-    ///     services, which <c>AddFlowly</c> does), any externally-registered <see cref="IFlowlyManagementAction" />, and the OpenAPI discovery document.
+    ///     services, which <c>AddFlowly</c> does), the built-in dead letter actions (list, requeue and discard, only when <see cref="IDeadLetterService" /> is registered,
+    ///     which <c>Add&lt;Provider&gt;DeadLetterTracking</c> and <c>Add&lt;Provider&gt;DeadLetterTrackingClient</c> do), any externally-registered <see cref="IFlowlyManagementAction" />, and the OpenAPI discovery document.
     ///     Call this after <c>AddFlowlyManagementApi()</c> and after every <c>Add&lt;Provider&gt;MessageStreamPersistence</c>
-    ///     call, since feature detection reads the built service provider.
+    ///     and <c>Add&lt;Provider&gt;DeadLetterTracking</c> call, since feature detection reads the built service provider.
     /// </summary>
     /// <param name="endpoints">The endpoint route builder to map against (typically a <c>WebApplication</c>).</param>
     /// <returns>The same <paramref name="endpoints" /> instance, for chaining.</returns>
@@ -37,6 +40,7 @@ public static class ManagementApiEndpointRouteBuilderExtensions
 
         MapBuiltInMessageStreamActions(endpoints, options.BasePath, readPolicyName, writePolicyName);
         MapBuiltInStreamPartitionActions(endpoints, options.BasePath, readPolicyName, writePolicyName);
+        MapBuiltInDeadLetterActions(endpoints, options.BasePath, readPolicyName, writePolicyName);
 
         foreach (var action in endpoints.ServiceProvider.GetServices<IFlowlyManagementAction>())
         {
@@ -85,6 +89,16 @@ public static class ManagementApiEndpointRouteBuilderExtensions
 
         new ListStreamPartitionsManagementAction(stateReader).MapRoute(endpoints, basePath, readPolicyName);
         new ResumeStreamPartitionManagementAction(stateReader, resumer).MapRoute(endpoints, basePath, writePolicyName);
+    }
+
+    private static void MapBuiltInDeadLetterActions(IEndpointRouteBuilder endpoints, string basePath, string readPolicyName, string writePolicyName)
+    {
+        if (endpoints.ServiceProvider.GetService<IServiceProviderIsService>()?.IsService(typeof(IDeadLetterService)) != true)
+            return;
+
+        new ListDeadLettersManagementAction().MapRoute(endpoints, basePath, readPolicyName);
+        new RequeueDeadLetterManagementAction().MapRoute(endpoints, basePath, writePolicyName);
+        new DiscardDeadLetterManagementAction().MapRoute(endpoints, basePath, writePolicyName);
     }
 
     private static void MapDocsUi(IEndpointRouteBuilder endpoints, ManagementApiOptions options, string readPolicyName)

@@ -31,6 +31,16 @@ public class FlowlyModuleManifestTests
             Assert.Contains("Resume-FlowlyMessageStreamPartition", exported);
         }
 
+        [Fact]
+        public void ExportsTheDeadLetterCmdlets()
+        {
+            var exported = ReadExportedCmdlets();
+
+            Assert.Contains("Get-FlowlyDeadLetter", exported);
+            Assert.Contains("Submit-FlowlyDeadLetter", exported);
+            Assert.Contains("Remove-FlowlyDeadLetter", exported);
+        }
+
         private static string[] ReadExportedCmdlets()
         {
             var manifest = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Flowly.PowerShell.psd1"));
