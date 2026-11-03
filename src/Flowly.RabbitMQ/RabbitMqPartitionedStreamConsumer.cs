@@ -56,7 +56,9 @@ namespace Flowly.RabbitMQ;
 ///         releases the delivery a halted partition holds back), the consumer is closed and the consumer is created again, so the broker offers every partition to this process once more and the listener
 ///         resolves them anew, the healthy ones from their checkpoints (the in-flight batch of each is redelivered, and a halted partition replays its held batch and halts again). The delay
 ///         between two recreations grows up to a ceiling, only one recreation runs at a time, and the recovery ends when every
-///         partition resolved or the consumer is stopped. Each consumer incarnation is a generation; once a generation is
+///         partition resolved or the consumer is stopped. After several consecutive recreations that still leave a partition waiting, the
+///         consumer stays closed for a cool-down (which grows up to a ceiling and only delays: it is always followed by a recreation), so the broker can hand
+///         the partitions to another instance that may be able to resolve them. Each consumer incarnation is a generation; once a generation is
 ///         replaced or closed its listener and message callbacks do nothing, so a late callback of the previous incarnation can
 ///         neither register a processing loop nor count as a drop.
 ///     </para>
@@ -113,8 +115,7 @@ internal sealed class RabbitMqPartitionedStreamConsumer<TMessage> : IPartitioned
         _timeProvider = timeProvider ?? TimeProvider.System;
         _timings = timings ?? RabbitMqPartitionedStreamTimings.Default;
         _dropSummary = new RabbitMqStreamPartitionDropSummary(logger, _timeProvider, _timings.DropSummaryInterval, queueName, consumerName);
-        _recovery = new RabbitMqWaitingPartitionRecovery(
-            _timeProvider, logger, queueName, _timings.RecreationBackoffInitial, _timings.RecreationBackoffMax, NeedsRecreation, Recreate);
+        _recovery = new RabbitMqWaitingPartitionRecovery(_timeProvider, logger, queueName, consumerName, _timings, NeedsRecreation, Recreate, CloseForStandDown);
     }
 
     public event Func<int, IMessageBusProcessor<TMessage>, Task>? PartitionAssigned;
@@ -248,35 +249,19 @@ internal sealed class RabbitMqPartitionedStreamConsumer<TMessage> : IPartitioned
     }
 
     // Stops the processing loops, closes the consumer and creates the consumer again, so the broker offers every
-    // partition to this process once more and the listener resolves their start positions anew. The partitions that were
-    // waiting are remembered so a partition that no longer comes back (it moved to another instance) can be released
-    // afterwards. The generation is cancelled first, so the callbacks of the old consumer ignore what it still delivers while the loops are stopped, and
-    // the loops are stopped before the consumer is closed: a halted partition holds its delivery back (backpressure), and stopping its held runner is
-    // what releases that delivery, so closing the consumer first could wait for a delivery that only the stopped loop can release.
-    private async Task Recreate(CancellationToken cancellationToken)
+    // partition to this process once more and the listener resolves their start positions anew. Returns whether the consumer was
+    // created: a closed consumer or a failing Consumer.Create does not count as a recreation.
+    private async Task<bool> Recreate(CancellationToken cancellationToken)
     {
         await _lifecycle.WaitAsync(cancellationToken);
 
         try
         {
-            if (_closed) return;
+            if (_closed) return false;
 
-            var previous = _generation;
-            var previousHandle = Interlocked.Exchange(ref _handle, null);
-
-            lock (_lock)
-            {
-                _carriedWaitingPartitions.UnionWith(previous.FailedPartitions());
-            }
-
-            previous.Cancel();
             _logger.LogInformation("Recreating the partitioned consumer of stream queue '{QueueName}': stopping the processing loops and closing it.", _queueName);
 
-            await previous.WhenIdle();
-            await RevokeAllLiveProcessors();
-
-            if (previousHandle != null)
-                await previousHandle.DisposeAsync();
+            await CloseIncarnation();
 
             try
             {
@@ -284,17 +269,64 @@ internal sealed class RabbitMqPartitionedStreamConsumer<TMessage> : IPartitioned
                 _createFailed = false;
                 _settlePending = true;
                 _logger.LogInformation("The partitioned consumer of stream queue '{QueueName}' was recreated.", _queueName);
+
+                return true;
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
                 _createFailed = true;
                 _logger.LogError(exception, "Creating the partitioned consumer of stream queue '{QueueName}' failed; it is tried again.", _queueName);
+
+                return false;
             }
         }
         finally
         {
             _lifecycle.Release();
         }
+    }
+
+    // Closes the consumer the same way a recreation does and leaves it closed, so every partition of this instance is revoked and the
+    // broker hands them to another instance for the length of the cool-down. The recreation that follows the cool-down finds nothing
+    // left to close and creates the consumer.
+    private async Task CloseForStandDown(CancellationToken cancellationToken)
+    {
+        await _lifecycle.WaitAsync(cancellationToken);
+
+        try
+        {
+            if (_closed) return;
+
+            await CloseIncarnation();
+        }
+        finally
+        {
+            _lifecycle.Release();
+        }
+    }
+
+    // The partitions that were waiting are remembered so a partition that no longer comes back (it moved to another instance) can be
+    // released afterwards. The generation is cancelled first, so the callbacks of the old consumer ignore what it still delivers while the
+    // loops are stopped, and the loops are stopped before the consumer is closed: a halted partition holds its delivery back
+    // (backpressure), and stopping its held runner is what releases that delivery, so closing the consumer first could wait for a
+    // delivery that only the stopped loop can release.
+    private async Task CloseIncarnation()
+    {
+        var previous = _generation;
+        var previousHandle = Interlocked.Exchange(ref _handle, null);
+
+        lock (_lock)
+        {
+            _carriedWaitingPartitions.UnionWith(previous.FailedPartitions());
+        }
+
+        previous.Cancel();
+
+        await previous.WhenIdle();
+        await RevokeAllLiveProcessors();
+
+        if (previousHandle != null)
+            await previousHandle.DisposeAsync();
     }
 
     // Whether another recreation is needed. After a recreation the broker is given a moment to report the partitions again

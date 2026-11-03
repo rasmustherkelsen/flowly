@@ -63,6 +63,14 @@ public static class FlowlyInstrumentationConstants
     /// </summary>
     public const string StreamPartitionDropped = "flowly.message.stream.partition.dropped";
 
+    /// <summary>
+    ///     Counter: number of times a RabbitMQ partitioned stream consumer stood down, that is kept its consumer closed for a cool-down after
+    ///     several consecutive automatic recreations that still left a partition waiting for an unresolved start position, so the broker can
+    ///     hand the partitions to another instance. Tagged with the queue (<c>messaging.destination.name</c>) and the <c>consumer</c>.
+    ///     Nothing is lost: the partitions are replayed from the stored position when they are processed again.
+    /// </summary>
+    public const string StreamPartitionStandDowns = "flowly.message.stream.partition.stand_downs";
+
     /// <summary>Histogram: message processing duration in milliseconds for handlers.</summary>
     public const string HandlerProcessingDuration = "flowly.message.handler.duration";
 

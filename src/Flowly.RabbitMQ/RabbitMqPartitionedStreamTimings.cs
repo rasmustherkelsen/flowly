@@ -17,6 +17,12 @@ namespace Flowly.RabbitMQ;
 ///     How long after a recreation the consumer lets the broker report the partitions again before it judges whether another recreation
 ///     is needed.
 /// </param>
+/// <param name="StandDownAfterFailedRecreations">
+///     How many consecutive recreations after which a partition is still waiting make this instance keep its consumer closed for a cool-down, so
+///     the broker can hand the partitions to another instance.
+/// </param>
+/// <param name="StandDownInitial">The length of the first cool-down; it doubles with each following cool-down while a partition keeps waiting.</param>
+/// <param name="StandDownMax">The ceiling of the cool-down, which keeps a lone instance recovering: the cool-down delays the next recreation, it never prevents it.</param>
 /// <param name="DropSummaryInterval">The minimum time between two log summaries of the messages dropped for one partition.</param>
 internal sealed record RabbitMqPartitionedStreamTimings(
     TimeSpan ResolveWindow,
@@ -25,6 +31,9 @@ internal sealed record RabbitMqPartitionedStreamTimings(
     TimeSpan RecreationBackoffInitial,
     TimeSpan RecreationBackoffMax,
     TimeSpan RecreationSettleDelay,
+    int StandDownAfterFailedRecreations,
+    TimeSpan StandDownInitial,
+    TimeSpan StandDownMax,
     TimeSpan DropSummaryInterval)
 {
     public static RabbitMqPartitionedStreamTimings Default { get; } = new(
@@ -34,5 +43,8 @@ internal sealed record RabbitMqPartitionedStreamTimings(
         TimeSpan.FromSeconds(5),
         TimeSpan.FromMinutes(2),
         TimeSpan.FromSeconds(2),
+        3,
+        TimeSpan.FromMinutes(1),
+        TimeSpan.FromMinutes(5),
         TimeSpan.FromSeconds(30));
 }

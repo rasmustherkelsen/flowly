@@ -769,6 +769,97 @@ public class RabbitMqPartitionedStreamConsumerTests
         }
 
         [Fact]
+        public async Task WhenThreeConsecutiveRecreationsLeaveAPartitionWaiting_KeepsTheConsumerClosedForTheCoolDownThenCreatesItAgain()
+        {
+            var scenario = await WaitingPartitionScenario.Start();
+            await scenario.FailThreeRecreations();
+
+            await scenario.Time.WhenTimerArmed(Timings.StandDownInitial);
+            scenario.Time.Advance(Timings.StandDownInitial - TimeSpan.FromMilliseconds(1));
+
+            Assert.Equal(4, scenario.Factory.Incarnations.Count);
+            Assert.True(scenario.Factory.Incarnations[3].Closed);
+
+            scenario.Time.Advance(TimeSpan.FromMilliseconds(1));
+            await scenario.Factory.WhenCreated(5).WaitAsync(TimeSpan.FromSeconds(10));
+
+            Assert.Equal(5, scenario.Factory.Incarnations.Count);
+        }
+
+        [Fact]
+        public async Task WhenStandingDown_RevokesTheLivePartitionsBeforeTheConsumerIsClosed()
+        {
+            var scenario = await WaitingPartitionScenario.Start();
+            await scenario.FailThreeRecreations(incarnation => incarnation.Update("orders-0", true));
+
+            await scenario.Time.WhenTimerArmed(Timings.StandDownInitial);
+
+            Assert.Equal(["created-4", "assigned-0", "revoked-0", "closed-4"], scenario.Factory.Events.SkipWhile(entry => entry != "created-4"));
+        }
+
+        [Fact]
+        public async Task WhenAHaltedPartitionHoldsItsDelivery_StandingDownReleasesTheHeldDeliveryAndKeepsTheConsumerClosed()
+        {
+            var scenario = await WaitingPartitionScenario.Start();
+            var held = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            scenario.Consumer.PartitionAssigned += (_, processor) =>
+            {
+                processor.ProcessMessage += (_, _) => held.Task;
+                return Task.CompletedTask;
+            };
+            scenario.Consumer.PartitionRevoked += _ =>
+            {
+                held.TrySetResult();
+                return Task.CompletedTask;
+            };
+
+            await scenario.FailThreeRecreations(async incarnation =>
+            {
+                await incarnation.Update("orders-2", true);
+                incarnation.BeforeClose = () => incarnation.Deliver("orders-2", 1);
+            });
+            await scenario.Time.WhenTimerArmed(Timings.StandDownInitial);
+
+            Assert.True(held.Task.IsCompleted);
+            Assert.True(scenario.Factory.Incarnations[3].Closed);
+            Assert.Equal(4, scenario.Factory.Incarnations.Count);
+        }
+
+        [Fact]
+        public async Task WhenTheConsumerIsStoppedDuringTheCoolDown_DoesNotCreateItAgain()
+        {
+            var scenario = await WaitingPartitionScenario.Start();
+            await scenario.FailThreeRecreations();
+            await scenario.Time.WhenTimerArmed(Timings.StandDownInitial);
+
+            await scenario.Consumer.StopProcessing(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
+            scenario.Time.Advance(Timings.StandDownMax);
+
+            Assert.Equal(4, scenario.Factory.Incarnations.Count);
+            Assert.Equal(0, scenario.Time.ActiveTimers);
+        }
+
+        [Fact]
+        public async Task WhenALoneInstanceResolvesThePartitionAfterTheCoolDown_AssignsItAndStopsRecovering()
+        {
+            var scenario = await WaitingPartitionScenario.Start();
+            await scenario.FailThreeRecreations();
+            await scenario.Time.WhenTimerArmed(Timings.StandDownInitial);
+            scenario.StoreDown = false;
+
+            scenario.Time.Advance(Timings.StandDownInitial);
+            await scenario.Factory.WhenCreated(5).WaitAsync(TimeSpan.FromSeconds(10));
+            await scenario.Factory.Incarnations[4].Update("orders-1", true);
+            await scenario.Time.WhenTimerArmed(Timings.RecreationSettleDelay);
+            scenario.Time.Advance(Timings.RecreationSettleDelay);
+            await scenario.Consumer.RecoveryCompletion;
+
+            Assert.Contains("assigned-1", scenario.Factory.Events);
+            Assert.Equal(5, scenario.Factory.Incarnations.Count);
+            Assert.Equal(0, scenario.Time.ActiveTimers);
+        }
+
+        [Fact]
         public async Task WhenAFailingPartitionIsReportedWhileTheConsumerWasNeverStarted_DoesNotRecreate()
         {
             var time = new ManualTimeProvider();
@@ -832,6 +923,23 @@ public class RabbitMqPartitionedStreamConsumerTests
             lock (_lock)
             {
                 return _resolveCounts.GetValueOrDefault(partition);
+            }
+        }
+
+        public async Task FailThreeRecreations(Func<FakeSuperStreamConsumerFactory.Incarnation, Task>? beforeLastFailure = null)
+        {
+            for (var number = 2; number <= 4; number++)
+            {
+                await Time.WhenTimerArmed(Timings.RecreationBackoffInitial * Math.Pow(2, number - 2));
+                Time.Advance(Timings.RecreationBackoffInitial * Math.Pow(2, number - 2));
+                await Factory.WhenCreated(number);
+
+                if (number == 4 && beforeLastFailure is not null)
+                    await beforeLastFailure(Factory.Incarnations[3]);
+
+                var failing = Factory.Incarnations[number - 1].Update("orders-1", true);
+                await ExpireWindow(Time);
+                await Assert.ThrowsAsync<InvalidOperationException>(() => failing);
             }
         }
 
