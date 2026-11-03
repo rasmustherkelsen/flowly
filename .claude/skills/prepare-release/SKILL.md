@@ -218,8 +218,14 @@ Create a temporary test root, then for each variant in the table below:
 find . -name "*.csproj" | xargs sed -i '' 's/\(Include="Flowly[^"]*"\) Version="[^"]*"/\1 Version="10.0.0.0"/g'
 ```
 
-5. Run `dotnet restore && dotnet build`
-6. Record **PASS** or **FAIL** (with error summary on failure)
+5. Run restore and build, keeping the output, then check it for vulnerability warnings:
+
+```bash
+dotnet restore 2>&1 | tee restore.log && dotnet build --no-restore 2>&1 | tee build.log
+grep -hE "NU190[123]" restore.log build.log | sort -u
+```
+
+6. Record **PASS** or **FAIL** (with error summary on failure). Any `NU1901`/`NU1902`/`NU1903` line is a **FAIL** for that variant even when the build succeeds: a scaffolded project must restore without known-vulnerable packages. The usual fix is a direct `PackageReference` override of the flagged transitive package in the template `.csproj` (like the `MessagePack` and `System.Security.Cryptography.Pkcs` overrides in the Aspire AppHost template), at the lowest stable version that is not flagged.
 
 | Test name | Command |
 |---|---|
@@ -228,6 +234,7 @@ find . -name "*.csproj" | xargs sed -i '' 's/\(Include="Flowly[^"]*"\) Version="
 | TestInMemory | `dotnet new flowlyapp --transport inmemory -n TestInMemory` |
 | TestAspireRabbitMq | `dotnet new flowlyaspireapp --transport rabbitmq -n TestAspireRabbitMq` |
 | TestAspireAsb | `dotnet new flowlyaspireapp --transport azureservicebus -n TestAspireAsb` |
+| TestAspireSqlServer | `dotnet new flowlyaspireapp --transport rabbitmq --jobs --db sqlserver -n TestAspireSqlServer` |
 | TestStream | `dotnet new flowlyapp --transport rabbitmq --stream -n TestStream` |
 | TestStreamPartitioned | `dotnet new flowlyapp --transport inmemory --stream --partitions 4 -n TestStreamPartitioned` |
 | TestJobs | `dotnet new flowlyapp --transport rabbitmq --jobs --db sqlite -n TestJobs` |
@@ -280,6 +287,6 @@ Report the status of every item:
 - [ ] Aspire is on the latest stable release everywhere (`Aspire.AppHost.Sdk` and all `Aspire.*` packages on one version in the template AppHost and every sample), ServiceDefaults boilerplate is re-synced, and docs state the right version
 - [ ] Template-only third-party packages (Aspire.Hosting.*, Microsoft.Extensions.Http.Resilience/ServiceDiscovery, OpenTelemetry.*) are current
 - [ ] Template OpenTelemetry package versions match `Flowly.OpenTelemetry.csproj` per `.claude/rules/template-otel-versions.md`
-- [ ] All 17 template variants scaffold and build successfully, and the Azure Event Hubs rejection cases fail at scaffold time
+- [ ] All 18 template variants scaffold and build successfully with no `NU1901`/`NU1902`/`NU1903` in their restore or build output, and the Azure Event Hubs rejection cases fail at scaffold time
 - [ ] `dotnet build Flowly.sln` passes
 - [ ] `dotnet test Flowly.sln` passes
