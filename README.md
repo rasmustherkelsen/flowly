@@ -580,7 +580,7 @@ Register a `MessageStreamCheckpoint<TMessage>` to restore restart-survival — a
 **Built-in (SQL Server, PostgreSQL, or SQLite)** — install `Flowly.MessageStreams.SqlServer`, `.Postgres`, or `.SQLite`, no hand-written storage code:
 
 ```csharp
-builder.UseRabbitMq(connection: "RabbitMQ");
+builder.UseRabbitMq("RabbitMQ");
 builder.AddSqlServerMessageStreamPersistence("MsgStreamDb");
 
 builder.AddMessageStreamHandler<TelemetryReading, TelemetryReadingHandler>();
@@ -1577,16 +1577,16 @@ builder.UseAzureServiceBus("sb-myapp.servicebus.windows.net", new DefaultAzureCr
 ### Registration
 
 ```csharp
-builder.UseRabbitMq(connection: "RabbitMQ")   // connection string name in appsettings
+builder.UseRabbitMq("RabbitMQ")   // connection string name in appsettings
     .AddMessageHandler<OrderCreated, OrderCreatedHandler>();
 ```
 
-The default connection string is `amqp://guest:guest@localhost:5672/`. Pass a configuration key or a literal AMQP URI.
+The default connection string is `amqp://guest:guest@localhost:5672/`. Pass a configuration key or a literal AMQP URI. A single positional string is always the connection, as for the other transports; the provider name is only set with `name:`, for example `UseRabbitMq("RabbitMQ", name: "Rabbit")`.
 
 Pass `enableHealthCheck: true` to register a health check under the tag `"rabbitmq"`:
 
 ```csharp
-builder.UseRabbitMq(connection: "RabbitMQ", enableHealthCheck: true);
+builder.UseRabbitMq("RabbitMQ", enableHealthCheck: true);
 ```
 
 ### Retry topology and `createTopology`

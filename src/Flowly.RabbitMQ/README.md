@@ -7,7 +7,7 @@ RabbitMQ transport for [Flowly](https://rasmustherkelsen.github.io/flowly/). Swa
 ```csharp
 // Program.cs — connection string key from appsettings.json
 builder.AddFlowly(configure => configure
-    .UseRabbitMq(connection: "RabbitMQ")
+    .UseRabbitMq("RabbitMQ")
     .AddMessageHandler<OrderCreated, OrderCreatedHandler>()
     .AddMessageSubmitter<OrderCreated>());
 ```
@@ -27,7 +27,7 @@ The default connection string (`amqp://guest:guest@localhost:5672/`) is used whe
 
 ```csharp
 builder.AddFlowly(configure => configure
-    .UseRabbitMq(connection: "RabbitMQ", enableHealthCheck: true));
+    .UseRabbitMq("RabbitMQ", enableHealthCheck: true));
 ```
 
 Registers a health check under the tag `"rabbitmq"`.

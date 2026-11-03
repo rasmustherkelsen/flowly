@@ -76,7 +76,7 @@ internal class FlowlyConfiguration : Configuration
 {
     public override void Configure(IFlowlyBuilder builder)
     {
-        builder.UseRabbitMq(connection: "RabbitMQ")
+        builder.UseRabbitMq("RabbitMQ")
                .AddMessageSubmitter<MyMessage>();
     }
 }
@@ -150,7 +150,7 @@ internal class FlowlyConfiguration : Configuration
 {
     public override void Configure(IFlowlyBuilder builder)
     {
-        builder.UseRabbitMq(connection: "RabbitMQ")
+        builder.UseRabbitMq("RabbitMQ")
                .AddMessageHandler<MyMessage, MyMessageHandler>();
     }
 }

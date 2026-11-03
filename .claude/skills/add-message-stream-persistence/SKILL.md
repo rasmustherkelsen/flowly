@@ -80,7 +80,7 @@ internal class FlowlyConfiguration : Configuration
 {
     public override void Configure(IFlowlyBuilder builder)
     {
-        builder.UseRabbitMq(connection: "RabbitMQ");
+        builder.UseRabbitMq("RabbitMQ");
 
         builder.AddSqlServerMessageStreamPersistence("MsgStreamDb");
         builder.AddMessageStreamHandler<$0, $0Handler>();

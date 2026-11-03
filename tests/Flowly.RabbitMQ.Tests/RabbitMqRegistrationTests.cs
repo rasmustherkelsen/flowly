@@ -1,8 +1,9 @@
-using Flowly.MessageInfrastructure;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.RabbitMQ.Tests.Fakes;
 using Flowly.Transport;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace Flowly.RabbitMQ.Tests;
 
@@ -19,7 +20,11 @@ public class RabbitMqRegistrationTests
         services.AddSingleton<IMessagingTopologyCreatorRegistry>(topologyRegistry);
         services.AddSingleton<IEventTopologyCreatorRegistry>(eventTopologyRegistry);
 
-        var builder = new FakeFlowlyBuilder(services, new ConfigurationBuilder().Build());
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:RabbitMQ"] = "amqp://configured-host:5672/" })
+            .Build();
+
+        var builder = new FakeFlowlyBuilder(services, configuration);
 
         return (builder, registry);
     }
@@ -122,68 +127,194 @@ public class RabbitMqRegistrationTests
         }
     }
 
-    private sealed class FakeFlowlyBuilder(IServiceCollection services, IConfiguration configuration) : IFlowlyBuilder
+    public class UseRabbitMqWithSinglePositionalString
     {
-        public IServiceCollection Services => services;
-        public IConfiguration Configuration => configuration;
-        public ITopologyNameResolver TopologyNameResolver => new KebabCaseTopologyNameResolver();
+        [Fact]
+        public void BindsTheStringToTheConnection()
+        {
+            var (builder, registry) = CreateBuilder();
+
+            builder.UseRabbitMq("RabbitMQ");
+
+            Assert.Equal("configured-host", RegisteredHost(builder));
+            Assert.Equal("rabbitmq", Assert.Single(registry.GetAll()).Name);
+        }
+
+        [Fact]
+        public void WithEnableHealthCheck_BindsTheStringToTheConnectionAndRegistersTheHealthCheck()
+        {
+            var (builder, registry) = CreateBuilder();
+
+            builder.UseRabbitMq("RabbitMQ", enableHealthCheck: true);
+
+            Assert.Equal("configured-host", RegisteredHost(builder));
+            Assert.Equal("rabbitmq", Assert.Single(registry.GetAll()).Name);
+            Assert.Contains(builder.Services, service => service.ServiceType == typeof(HealthCheckService));
+        }
+
+        [Fact]
+        public void WithCreateTopology_BindsTheStringToTheConnectionAndForwardsCreateTopology()
+        {
+            var (builder, registry) = CreateBuilder();
+
+            builder.UseRabbitMq("RabbitMQ", createTopology: true);
+
+            Assert.Equal("configured-host", RegisteredHost(builder));
+            Assert.True(Assert.Single(registry.GetAll()).CreateTopologyOverride);
+        }
+
+        [Fact]
+        public void WithStreamPort_BindsTheStringToTheConnectionAndForwardsTheStreamPort()
+        {
+            var (builder, _) = CreateBuilder();
+
+            builder.UseRabbitMq("RabbitMQ", streamPort: 15552);
+
+            Assert.Equal("configured-host", RegisteredHost(builder));
+            Assert.Equal(15552, RegisteredStreamPort(builder));
+        }
+
+        [Fact]
+        public void WithoutMatchingConnectionString_UsesTheStringAsTheConnectionUri()
+        {
+            var (builder, registry) = CreateBuilder();
+
+            builder.UseRabbitMq("amqp://literal-host:5672/");
+
+            Assert.Equal("literal-host", RegisteredHost(builder));
+            Assert.Equal("rabbitmq", Assert.Single(registry.GetAll()).Name);
+        }
+
+        [Fact]
+        public void WithNameArgument_BindsTheStringToTheConnectionAndTheNameToTheProvider()
+        {
+            var (builder, registry) = CreateBuilder();
+
+            builder.UseRabbitMq("RabbitMQ", name: "secondary");
+
+            Assert.Equal("configured-host", RegisteredHost(builder));
+            Assert.Equal("secondary", Assert.Single(registry.GetAll()).Name);
+        }
+
+        [Fact]
+        public void WithConnectionNamedArgument_BindsTheStringToTheConnection()
+        {
+            var (builder, registry) = CreateBuilder();
+
+            builder.UseRabbitMq(connection: "RabbitMQ");
+
+            Assert.Equal("configured-host", RegisteredHost(builder));
+            Assert.Equal("rabbitmq", Assert.Single(registry.GetAll()).Name);
+        }
+
+        [Fact]
+        public void WithSecondProvider_RegistersBothProviders()
+        {
+            var (builder, registry) = CreateBuilder();
+
+            builder.UseRabbitMq("RabbitMQ");
+            builder.UseRabbitMq("amqp://literal-host:5672/", name: "secondary");
+
+            Assert.Equal(["rabbitmq", "secondary"], registry.GetAll().Select(transport => transport.Name));
+        }
     }
 
-    private sealed class FakeMessageBusClientRegistry : IMessageBusClientRegistry
+    public class UseRabbitMqWithPositionalNameAndOptions
     {
-        private readonly List<RegisteredTransport> _transports = [];
-
-        public List<IMessageBusClient> Clients { get; } = [];
-
-        public string PrimaryProviderName => _transports.First(t => t.IsPrimary).Name;
-
-        public void Register(string providerName, IMessageBusClient client, bool? createTopologyOverride)
+        [Fact]
+        public void StringAndBool_BindsTheStringToTheNameAndTheBoolToCreateTopology()
         {
-            var isPrimary = _transports.Count == 0;
-            _transports.Add(new RegisteredTransport(providerName, isPrimary, createTopologyOverride));
-            Clients.Add(client);
+            var (builder, registry) = CreateBuilder();
+
+            builder.UseRabbitMq("secondary", true);
+
+            var transport = Assert.Single(registry.GetAll());
+            Assert.Equal("secondary", transport.Name);
+            Assert.True(transport.CreateTopologyOverride);
+            Assert.Equal("localhost", RegisteredHost(builder));
         }
 
-        public IMessageBusClient GetClient(string providerName)
+        [Fact]
+        public void StringAndTwoBools_BindsTheBoolsToCreateTopologyAndEnableHealthCheck()
         {
-            throw new NotImplementedException();
+            var (builder, registry) = CreateBuilder();
+
+            builder.UseRabbitMq("secondary", false, true);
+
+            var transport = Assert.Single(registry.GetAll());
+            Assert.Equal("secondary", transport.Name);
+            Assert.False(transport.CreateTopologyOverride);
+            Assert.Equal("localhost", RegisteredHost(builder));
+            Assert.Contains(builder.Services, service => service.ServiceType == typeof(HealthCheckService));
         }
 
-        public bool IsRegistered(string providerName)
+        [Fact]
+        public void StringBoolAndNamedEnableHealthCheck_BindsTheStringToTheName()
         {
-            return _transports.Any(t => string.Equals(t.Name, providerName, StringComparison.OrdinalIgnoreCase));
+            var (builder, registry) = CreateBuilder();
+
+            builder.UseRabbitMq("secondary", true, enableHealthCheck: true);
+
+            var transport = Assert.Single(registry.GetAll());
+            Assert.Equal("secondary", transport.Name);
+            Assert.True(transport.CreateTopologyOverride);
+            Assert.Equal("localhost", RegisteredHost(builder));
         }
 
-        public IReadOnlyList<RegisteredTransport> GetAll()
+        [Fact]
+        public void NameNamedArgumentOnly_BindsToTheDefaultConnection()
         {
-            return _transports;
+            var (builder, registry) = CreateBuilder();
+
+            builder.UseRabbitMq(name: "secondary");
+
+            Assert.Equal("secondary", Assert.Single(registry.GetAll()).Name);
+            Assert.Equal("localhost", RegisteredHost(builder));
         }
     }
 
-    private sealed class FakeMessagingTopologyCreatorRegistry : IMessagingTopologyCreatorRegistry
+    public class UseRabbitMqWithConnectionAndName
     {
-        public Dictionary<string, IMessagingTopologyCreator> Creators { get; } = [];
-
-        public void Register(string providerName, IMessagingTopologyCreator creator)
+        [Fact]
+        public void TwoPositionalStrings_BindsTheFirstToTheConnectionAndTheSecondToTheName()
         {
-            Creators[providerName] = creator;
+            var (builder, registry) = CreateBuilder();
+
+            builder.UseRabbitMq("RabbitMQ", "secondary");
+
+            Assert.Equal("configured-host", RegisteredHost(builder));
+            Assert.Equal("secondary", Assert.Single(registry.GetAll()).Name);
         }
 
-        public IMessagingTopologyCreator? TryGetCreator(string providerName)
+        [Fact]
+        public void TwoPositionalStringsAndCreateTopology_ForwardsCreateTopology()
         {
-            return Creators.GetValueOrDefault(providerName);
+            var (builder, registry) = CreateBuilder();
+
+            builder.UseRabbitMq("RabbitMQ", "secondary", true);
+
+            Assert.Equal("configured-host", RegisteredHost(builder));
+            Assert.True(Assert.Single(registry.GetAll()).CreateTopologyOverride);
+        }
+
+        [Fact]
+        public void NamedArgumentsInReverseOrder_BindsEachToItsParameter()
+        {
+            var (builder, registry) = CreateBuilder();
+
+            builder.UseRabbitMq(name: "secondary", connection: "RabbitMQ");
+
+            Assert.Equal("configured-host", RegisteredHost(builder));
+            Assert.Equal("secondary", Assert.Single(registry.GetAll()).Name);
         }
     }
 
-    private sealed class FakeEventTopologyCreatorRegistry : IEventTopologyCreatorRegistry
-    {
-        public void Register(string providerName, IEventTopologyCreator creator)
-        {
-        }
+    private static string RegisteredHost(IFlowlyBuilder builder)
+        => RegisteredConnectionPool(builder).ResolveStreamEndpoint().Host;
 
-        public IEventTopologyCreator? TryGetCreator(string providerName)
-        {
-            return null;
-        }
-    }
+    private static int RegisteredStreamPort(IFlowlyBuilder builder)
+        => RegisteredConnectionPool(builder).ResolveStreamEndpoint().Port;
+
+    private static RabbitMqConnectionPool RegisteredConnectionPool(IFlowlyBuilder builder)
+        => builder.Services.Select(service => service.ImplementationInstance).OfType<RabbitMqConnectionLifetime>().Single().ConnectionPool;
 }

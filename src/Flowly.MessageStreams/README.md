@@ -7,7 +7,7 @@ Also install a database backend: `Flowly.MessageStreams.SqlServer`, `Flowly.Mess
 ## Quick start
 
 ```csharp
-builder.UseRabbitMq(connection: "RabbitMQ");
+builder.UseRabbitMq("RabbitMQ");
 builder.AddSqlServerMessageStreamPersistence("MsgStreamDb");
 
 builder.AddMessageStreamHandler<MyMessage, MyMessageHandler>();

@@ -6,7 +6,7 @@ PostgreSQL backend for [Flowly](https://rasmustherkelsen.github.io/flowly/) dead
 
 ```csharp
 builder.AddFlowly(configure => configure
-    .UseRabbitMq(connection: "RabbitMQ")
+    .UseRabbitMq("RabbitMQ")
     .AddPostgresDeadLetterTracking("DeadLetters")
     .AddMessageHandler<OrderCreated, OrderCreatedHandler>()
     .WithDeadLetterTracking());

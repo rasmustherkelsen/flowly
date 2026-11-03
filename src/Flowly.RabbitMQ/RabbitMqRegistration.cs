@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.Transport;
 using Microsoft.Extensions.Configuration;
@@ -17,12 +18,18 @@ public static class RabbitMqRegistration
 
     /// <summary>
     ///     Registers a RabbitMQ message bus client with the default connection string (amqp://guest:guest@localhost:5672/).
+    ///     A call that passes a single positional string, such as <c>UseRabbitMq("RabbitMQ")</c>, binds to the overload
+    ///     that takes a connection, not to this one; to name the provider without choosing a connection, pass
+    ///     <c>name:</c> explicitly.
     /// </summary>
-    /// <param name="flowlyBuilder"></param>
-    /// <param name="name"></param>
-    /// <param name="createTopology"></param>
-    /// <param name="enableHealthCheck"></param>
-    /// <param name="maxMessageSizeBytes"></param>
+    /// <param name="flowlyBuilder">A valid <see cref="IFlowlyBuilder" /> instance to register RabbitMQ with.</param>
+    /// <param name="name">
+    ///     Optional name for the RabbitMQ provider. Defaults to <c>rabbitmq</c> for the first provider; every further
+    ///     provider needs an explicit name.
+    /// </param>
+    /// <param name="createTopology">Optional flag to indicate whether to create topology automatically. Defaults to null.</param>
+    /// <param name="enableHealthCheck">Optional flag to enable health checks. Defaults to false.</param>
+    /// <param name="maxMessageSizeBytes">Optional maximum message size in bytes. Defaults to null.</param>
     /// <param name="streamPort">
     ///     The RabbitMQ Stream protocol port, used only for partitioned-stream consumption (broker-coordinated
     ///     Single Active Consumer rebalancing). Defaults to <c>5552</c>, the broker's documented default. The
@@ -30,7 +37,7 @@ public static class RabbitMqRegistration
     ///     loopback, the broker's <c>stream.advertised_host</c> and <c>stream.advertised_port</c> must be addresses
     ///     this client can reach, because the consuming connection goes to the address the broker advertises.
     /// </param>
-    /// <returns></returns>
+    /// <returns>The modified <see cref="IFlowlyBuilder" /> instance for further configuration.</returns>
     public static IFlowlyBuilder UseRabbitMq(
         this IFlowlyBuilder flowlyBuilder,
         string? name = null,
@@ -44,14 +51,23 @@ public static class RabbitMqRegistration
 
     /// <summary>
     ///     Registers a RabbitMQ message bus client with the specified connection string. The connection string can be provided
-    ///     directly or via configuration (e.g. appsettings.json or environment variables).
+    ///     directly or via configuration (e.g. appsettings.json or environment variables). A call that passes a single
+    ///     positional string, such as <c>UseRabbitMq("RabbitMQ")</c> or <c>UseRabbitMq("RabbitMQ", enableHealthCheck: true)</c>,
+    ///     binds to this overload and the string is the connection, never the provider name; the provider name is only set
+    ///     through <paramref name="name" />.
     /// </summary>
-    /// <param name="flowlyBuilder"></param>
-    /// <param name="connection">The actual connection string or connection string name</param>
-    /// <param name="name"></param>
-    /// <param name="createTopology"></param>
-    /// <param name="enableHealthCheck"></param>
-    /// <param name="maxMessageSizeBytes"></param>
+    /// <param name="flowlyBuilder">A valid <see cref="IFlowlyBuilder" /> instance to register RabbitMQ with.</param>
+    /// <param name="connection">
+    ///     The actual connection string (an AMQP URI) or the name of a connection string in the
+    ///     <c>ConnectionStrings</c> configuration section; a configured value takes precedence.
+    /// </param>
+    /// <param name="name">
+    ///     Optional name for the RabbitMQ provider. Defaults to <c>rabbitmq</c> for the first provider; every further
+    ///     provider needs an explicit name.
+    /// </param>
+    /// <param name="createTopology">Optional flag to indicate whether to create topology automatically. Defaults to null.</param>
+    /// <param name="enableHealthCheck">Optional flag to enable health checks. Defaults to false.</param>
+    /// <param name="maxMessageSizeBytes">Optional maximum message size in bytes. Defaults to null.</param>
     /// <param name="streamPort">
     ///     The RabbitMQ Stream protocol port, used only for partitioned-stream consumption (broker-coordinated
     ///     Single Active Consumer rebalancing). Defaults to <c>5552</c>, the broker's documented default. The
@@ -59,7 +75,8 @@ public static class RabbitMqRegistration
     ///     loopback, the broker's <c>stream.advertised_host</c> and <c>stream.advertised_port</c> must be addresses
     ///     this client can reach, because the consuming connection goes to the address the broker advertises.
     /// </param>
-    /// <returns></returns>
+    /// <returns>The modified <see cref="IFlowlyBuilder" /> instance for further configuration.</returns>
+    [OverloadResolutionPriority(1)]
     public static IFlowlyBuilder UseRabbitMq(
         this IFlowlyBuilder flowlyBuilder,
         string connection,

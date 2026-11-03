@@ -3,7 +3,7 @@
 SQLite backend for [Flowly.MessageStreams](https://rasmustherkelsen.github.io/flowly/) message stream checkpoint persistence.
 
 ```csharp
-builder.UseRabbitMq(connection: "RabbitMQ");
+builder.UseRabbitMq("RabbitMQ");
 builder.AddSQLiteMessageStreamPersistence("Data Source=flowly-message-streams.db");
 
 builder.AddMessageStreamHandler<MyMessage, MyMessageHandler>();

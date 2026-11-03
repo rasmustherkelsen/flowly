@@ -76,7 +76,7 @@ internal class FlowlyConfiguration : Configuration
 {
     public override void Configure(IFlowlyBuilder builder)
     {
-        builder.UseRabbitMq(connection: "RabbitMQ")
+        builder.UseRabbitMq("RabbitMQ")
                .AddSqlServerDeadLetterTracking("DeadLettersDb")
                .AddMessageHandler<MyMessage, MyMessageHandler>()
                .WithDeadLetterTracking();
@@ -148,7 +148,7 @@ internal class FlowlyConfiguration : Configuration
 {
     public override void Configure(IFlowlyBuilder builder)
     {
-        builder.UseRabbitMq(connection: "RabbitMQ")
+        builder.UseRabbitMq("RabbitMQ")
                .AddPostgresDeadLetterTracking("DeadLettersDb")
                .AddMessageHandler<MyMessage, MyMessageHandler>()
                .WithDeadLetterTracking();
@@ -222,7 +222,7 @@ internal class FlowlyConfiguration : Configuration
 {
     public override void Configure(IFlowlyBuilder builder)
     {
-        builder.UseRabbitMq(connection: "RabbitMQ")
+        builder.UseRabbitMq("RabbitMQ")
                .AddSQLiteDeadLetterTracking("DeadLettersDb")
                .AddMessageHandler<MyMessage, MyMessageHandler>()
                .WithDeadLetterTracking();
