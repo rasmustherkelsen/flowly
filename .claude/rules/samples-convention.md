@@ -1,3 +1,9 @@
+---
+paths:
+  - "Samples/**"
+  - "samples/**"
+---
+
 # Sample Documentation Convention
 
 Every sample under `Samples/` must have a `README.md` at its root. The `Samples/README.md` acts as an index and must be updated whenever a sample is added or removed.

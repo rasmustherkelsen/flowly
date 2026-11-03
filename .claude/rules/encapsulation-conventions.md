@@ -1,3 +1,8 @@
+---
+paths:
+  - "src/**/*.cs"
+---
+
 # Encapsulation Conventions
 
 - Keep types internal unless they are to be used by the consumer.

@@ -1,3 +1,8 @@
+---
+paths:
+  - "tests/**"
+---
+
 # Unit Test Conventions
 
 - Tests should be structured so there is a test library per project that needs tests.

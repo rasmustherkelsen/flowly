@@ -1,3 +1,11 @@
+---
+paths:
+  - "src/Flowly.ManagementApi/**"
+  - "src/Flowly.PowerShell/**"
+  - "tests/Flowly.ManagementApi.Tests/**"
+  - "tests/Flowly.PowerShell.Tests/**"
+---
+
 # Management API Conventions
 
 `Flowly.ManagementApi` is a general, growing operational HTTP surface for Flowly — not a one-off endpoint. `Flowly.PowerShell` is its thin client. Every other cross-cutting area in this repo that requires several files to move together in lockstep has its own dedicated rules file (`templates-conventions.md`, `template-otel-versions.md`, `nuget-package-descriptions.md`); this is that file for the Management API + PowerShell client.

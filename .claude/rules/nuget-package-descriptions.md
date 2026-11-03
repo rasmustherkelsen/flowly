@@ -1,3 +1,8 @@
+---
+paths:
+  - "src/**/*.csproj"
+---
+
 # NuGet Package Description Conventions
 
 ## Keeping descriptions current
