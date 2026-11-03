@@ -71,6 +71,12 @@ public static class AzureEventHubsRegistration
     ///     leaves the limit to Azure Event Hubs (256 KB on Basic, 1 MB on Standard and Premium, 20 MB on Dedicated). A larger
     ///     message throws <see cref="MessageTooLargeException" />.
     /// </param>
+    /// <param name="enableHealthCheck">
+    ///     Whether to register a health check named <c>azure-event-hubs</c> (<c>azure-event-hubs-{name}</c> for a provider with another name), tagged <c>azure-event-hubs</c>, that reports whether Azure Event Hubs is reachable with the configured
+    ///     connection or credential. It reads the properties of every event hub registered on the provider, so it needs the permission to read event hub properties, which the startup validation needs as well.
+    ///     A failing probe, a missing event hub or a probe that takes longer than 5 seconds makes it <c>Unhealthy</c>; the result is not cached. It is independent of <c>AddMessageStreamHealthCheck</c>, which reports halted and waiting partitions.
+    ///     Defaults to false.
+    /// </param>
     /// <returns>The modified <see cref="IFlowlyBuilder" /> instance for further configuration.</returns>
     public static IFlowlyBuilder UseAzureEventHubs(
         this IFlowlyBuilder flowlyBuilder,
@@ -79,7 +85,8 @@ public static class AzureEventHubsRegistration
         BlobContainerClient? partitionOwnershipContainer = null,
         TimeSpan? loadBalancingInterval = null,
         TimeSpan? partitionOwnershipExpiration = null,
-        long? maxMessageSizeBytes = null)
+        long? maxMessageSizeBytes = null,
+        bool enableHealthCheck = false)
     {
         var connectionString = flowlyBuilder.Configuration.GetConnectionString(connection) ?? connection;
         var ownershipOptions = EventHubsOwnershipOptions.Create(partitionOwnershipContainer, loadBalancingInterval, partitionOwnershipExpiration);
@@ -89,7 +96,8 @@ public static class AzureEventHubsRegistration
             EventHubsProcessorFactory.ForConnectionString(connectionString, ownershipOptions),
             name,
             ownershipOptions,
-            maxMessageSizeBytes);
+            maxMessageSizeBytes,
+            enableHealthCheck);
     }
 
     /// <summary>
@@ -125,6 +133,12 @@ public static class AzureEventHubsRegistration
     ///     Optional maximum message body size in bytes that <see cref="IMessageRecorder" /> accepts. Defaults to null, which
     ///     leaves the limit to Azure Event Hubs. A larger message throws <see cref="MessageTooLargeException" />.
     /// </param>
+    /// <param name="enableHealthCheck">
+    ///     Whether to register a health check named <c>azure-event-hubs</c> (<c>azure-event-hubs-{name}</c> for a provider with another name), tagged <c>azure-event-hubs</c>, that reports whether Azure Event Hubs is reachable with the configured
+    ///     connection or credential. It reads the properties of every event hub registered on the provider, so it needs the permission to read event hub properties, which the startup validation needs as well.
+    ///     A failing probe, a missing event hub or a probe that takes longer than 5 seconds makes it <c>Unhealthy</c>; the result is not cached. It is independent of <c>AddMessageStreamHealthCheck</c>, which reports halted and waiting partitions.
+    ///     Defaults to false.
+    /// </param>
     /// <returns>The modified <see cref="IFlowlyBuilder" /> instance for further configuration.</returns>
     public static IFlowlyBuilder UseAzureEventHubs(
         this IFlowlyBuilder flowlyBuilder,
@@ -134,7 +148,8 @@ public static class AzureEventHubsRegistration
         BlobContainerClient? partitionOwnershipContainer = null,
         TimeSpan? loadBalancingInterval = null,
         TimeSpan? partitionOwnershipExpiration = null,
-        long? maxMessageSizeBytes = null)
+        long? maxMessageSizeBytes = null,
+        bool enableHealthCheck = false)
     {
         var fullyQualifiedNamespace = flowlyBuilder.Configuration[fullyQualifiedNamespaceOrConfigKey] ?? fullyQualifiedNamespaceOrConfigKey;
         var ownershipOptions = EventHubsOwnershipOptions.Create(partitionOwnershipContainer, loadBalancingInterval, partitionOwnershipExpiration);
@@ -144,7 +159,8 @@ public static class AzureEventHubsRegistration
             EventHubsProcessorFactory.ForCredential(fullyQualifiedNamespace, credential, ownershipOptions),
             name,
             ownershipOptions,
-            maxMessageSizeBytes);
+            maxMessageSizeBytes,
+            enableHealthCheck);
     }
 
     internal static IFlowlyBuilder RegisterAzureEventHubs(
@@ -153,7 +169,8 @@ public static class AzureEventHubsRegistration
         IEventHubsProcessorFactory processorFactory,
         string? name,
         EventHubsOwnershipOptions ownershipOptions,
-        long? maxMessageSizeBytes)
+        long? maxMessageSizeBytes,
+        bool enableHealthCheck = false)
     {
         var services = flowlyBuilder.Services;
         var clientRegistry = ProviderNameResolver.GetRegistry(services);
@@ -181,8 +198,33 @@ public static class AzureEventHubsRegistration
 
         TransportRegistrationHelper.RegisterProviderManifest(services, clientRegistry, effectiveName, TransportType);
 
+        if (enableHealthCheck)
+        {
+            var providerManifest = services
+                .Select(service => service.ImplementationInstance)
+                .OfType<ProviderQueueManifest>()
+                .Single(manifest => manifest.ProviderName == effectiveName);
+
+            services
+                .AddHealthChecks()
+                .AddCheck(
+                    TransportRegistrationHelper.BuildHealthCheckName(DefaultProviderName, effectiveName),
+                    new AzureEventHubsHealthCheck(
+                        clientFactory,
+                        () => RegisteredEventHubNames(providerManifest, streamQueueManifest),
+                        AzureEventHubsHealthCheck.DefaultTimeout,
+                        TimeProvider.System),
+                    tags: ["azure-event-hubs"]);
+        }
+
         return flowlyBuilder;
     }
+
+    private static IReadOnlyCollection<string> RegisteredEventHubNames(ProviderQueueManifest providerManifest, StreamQueueManifest streamQueueManifest)
+        => providerManifest.Queues
+            .Select(queue => queue.QueueName)
+            .Where(streamQueueManifest.IsStreamQueue)
+            .ToList();
 
     private static bool IsCheckpointStoreRegistered(IServiceCollection services)
         => services.Any(descriptor => descriptor.ServiceType.IsGenericType && descriptor.ServiceType.GetGenericTypeDefinition() == typeof(MessageStreamCheckpoint<>));

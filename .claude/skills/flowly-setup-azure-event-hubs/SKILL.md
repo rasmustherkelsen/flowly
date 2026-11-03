@@ -203,6 +203,7 @@ Rules:
 await new BlobContainerClient(builder.Configuration.GetConnectionString("PartitionOwnership"), "my-partition-ownership").CreateIfNotExistsAsync();
 ```
 
+- Optional: pass `enableHealthCheck: true` to `UseAzureEventHubs(...)` to register a health check (named `azure-event-hubs`, tag `azure-event-hubs`) that reads the properties of every event hub registered on the provider and is `Unhealthy` when one fails or a probe takes longer than 5 seconds. It needs `AddHealthChecks()` mapped to an endpoint by the host, and is independent of `AddMessageStreamHealthCheck()` (halted and waiting partitions).
 - Record with `IMessageRecorder.Record(message, cancellationToken, partitionKey)`; the same key always lands in the same partition.
 - For restart-survival invoke `/add-message-stream-persistence` (built-in SQL Server, PostgreSQL or SQLite) or `/add-message-stream-checkpoint` (custom storage). Register a checkpoint whenever several Receiver instances run.
 

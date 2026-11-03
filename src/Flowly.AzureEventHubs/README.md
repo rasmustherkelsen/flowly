@@ -58,7 +58,7 @@ builder.UseAzureEventHubs("my-namespace.servicebus.windows.net", new DefaultAzur
 
 ### Registration parameters
 
-`UseAzureEventHubs(connection, name?, partitionOwnershipContainer?, loadBalancingInterval?, partitionOwnershipExpiration?, maxMessageSizeBytes?)` and `UseAzureEventHubs(fullyQualifiedNamespace, credential, name?, partitionOwnershipContainer?, loadBalancingInterval?, partitionOwnershipExpiration?, maxMessageSizeBytes?)`:
+`UseAzureEventHubs(connection, name?, partitionOwnershipContainer?, loadBalancingInterval?, partitionOwnershipExpiration?, maxMessageSizeBytes?, enableHealthCheck?)` and `UseAzureEventHubs(fullyQualifiedNamespace, credential, name?, partitionOwnershipContainer?, loadBalancingInterval?, partitionOwnershipExpiration?, maxMessageSizeBytes?, enableHealthCheck?)`:
 
 | Parameter | Meaning |
 |---|---|
@@ -67,8 +67,21 @@ builder.UseAzureEventHubs("my-namespace.servicebus.windows.net", new DefaultAzur
 | `loadBalancingInterval` | Optional interval at which the instances sharing a consumer group check and renew the partitions they own and claim partitions that are not owned. Defaults to the SDK default (30 seconds). Must be greater than zero. |
 | `partitionOwnershipExpiration` | Optional time after which a partition whose owner has not renewed it is considered abandoned and can be claimed by another instance, which is how a crashed instance is replaced. Defaults to the SDK default (2 minutes). Must be greater than zero and greater than the effective `loadBalancingInterval`, so set both when moving one past the other's default. |
 | `maxMessageSizeBytes` | Optional limit on the serialized message body. A larger message throws `MessageTooLargeException` before anything is sent. Without it the limit is the one of the Event Hubs tier (256 KB on Basic, 1 MB on Standard and Premium, 20 MB on Dedicated). |
+| `enableHealthCheck` | Registers a health check that reports whether Azure Event Hubs is reachable with the configured credentials, see "Health check". Defaults to `false`. |
 
-There is no `createTopology` and no health check parameter. Topology creation is always off for this provider, see below.
+There is no `createTopology` parameter. Topology creation is always off for this provider, see below.
+
+## Health check
+
+`enableHealthCheck: true` registers a health check named `azure-event-hubs` (`azure-event-hubs-<name>` for a provider with another name), tagged `azure-event-hubs`, through `AddHealthChecks()`:
+
+```csharp
+builder.UseAzureEventHubs("EventHubs", enableHealthCheck: true);
+```
+
+On every run it reads the properties of every event hub registered on the provider, the same call the startup validation makes, so a healthy result shows that the connection, the credential and the permission to read event hub properties work for consuming and producing hosts alike. The probes run concurrently. A probe that fails (unreachable namespace, rejected credential, missing event hub, missing permission) or that takes longer than 5 seconds makes the result `Unhealthy` and the description names the event hubs that failed; there is no `Degraded` result for a slow answer and the result is not cached. A provider with no registered event hub has nothing to probe and reports `Healthy`.
+
+The check is independent of `AddMessageStreamHealthCheck()`, which reports halted and waiting partitions of any stream transport and does not notice that Event Hubs is unreachable.
 
 ## Event hubs and topology
 
@@ -138,9 +151,9 @@ Events are buffered per partition without a bound until the handler loop takes t
 
 ## Verification
 
-The unit tests in this repository run against fakes of the SDK and stay offline. The consuming and producing behaviour described above was additionally run against Microsoft's Event Hubs emulator (with Azurite for the blob ownership container) and the SDK `Azure.Messaging.EventHubs` 5.12.2: keyed and keyless recording, every start position with and without a checkpoint, restart and first-run seeding including empty and fully caught-up partitions, in-process retry and halting, two instances splitting partitions through a blob container, a clean stop and a `kill -9` handoff, and the startup failures (missing event hub, consumer group or container, wrong partition count). The details, with the versions used, are in the Event Hubs section of `.claude/rules/message-streaming-conventions.md`, and the runnable parts are the opt-in tests in `tests/Flowly.AzureEventHubs.Tests/Emulator` (skipped unless `FLOWLY_EVENTHUBS_EMULATOR_CONNECTION` is set; `docker-compose.yaml` and `Config.json` next to them start the emulator) and the `MessageStreamWithCheckpoint` sample.
+The unit tests in this repository run against fakes of the SDK and stay offline. The consuming and producing behaviour described above was additionally run against Microsoft's Event Hubs emulator (with Azurite for the blob ownership container) and the SDK `Azure.Messaging.EventHubs` 5.12.2: keyed and keyless recording, every start position with and without a checkpoint, restart and first-run seeding including empty and fully caught-up partitions, in-process retry and halting, two instances splitting partitions through a blob container, a clean stop and a `kill -9` handoff, and the startup failures (missing event hub, consumer group or container, wrong partition count). The health check was run against a host while the emulator container was stopped and started again: it reported `Unhealthy` 5.0 s after the stop (the probe timeout, the SDK does not fail fast) and `Healthy` again 1.7 to 1.9 s after the start, without restarting the host, in every one of fourteen cycles. The details, with the versions used, are in the Event Hubs section of `.claude/rules/message-streaming-conventions.md`, and the runnable parts are the opt-in tests in `tests/Flowly.AzureEventHubs.Tests/Emulator` (skipped unless `FLOWLY_EVENTHUBS_EMULATOR_CONNECTION` is set; `docker-compose.yaml` and `Config.json` next to them start the emulator) and the `MessageStreamWithCheckpoint` sample.
 
-The emulator is a test double: it has no management plane, a minimum retention of one hour and its own quotas. Not verified against a real namespace: retention floors and what a sequence number below the retention floor does, service limits and tier behaviour, ARM and RBAC and Microsoft Entra authentication, geo-replication, real latencies and throttling, the `Balanced` load balancing strategy, and whether the service always returns numeric partition ids. Those rest on the Azure documentation and the SDK API only.
+The emulator is a test double: it has no management plane, a minimum retention of one hour and its own quotas. Not verified against a real namespace: retention floors and what a sequence number below the retention floor does, service limits and tier behaviour, ARM and RBAC and Microsoft Entra authentication, geo-replication, real latencies and throttling, the `Balanced` load balancing strategy, the health check with a rejected credential, a missing permission to read event hub properties or throttling (the emulator accepts every credential), and whether the service always returns numeric partition ids. Those rest on the Azure documentation and the SDK API only.
 
 ## Retention
 

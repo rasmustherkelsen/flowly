@@ -4,9 +4,11 @@ using Flowly.MessageInfrastructure.Registration;
 using Flowly.Transport;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 namespace Flowly.AzureEventHubs.Tests;
 
@@ -241,6 +243,139 @@ public class AzureEventHubsRegistrationTests
 
             Assert.Throws<ArgumentException>(
                 () => builder.UseAzureEventHubs("example.servicebus.windows.net", new FakeTokenCredential(), loadBalancingInterval: TimeSpan.FromMinutes(5)));
+        }
+    }
+
+    public class HealthCheck
+    {
+        [Fact]
+        public void WithoutEnableHealthCheck_RegistersNoHealthCheck()
+        {
+            var builder = TestFlowlyBuilder.Create();
+
+            builder.UseAzureEventHubs(ConnectionString);
+
+            Assert.DoesNotContain(builder.Services, service => service.ServiceType == typeof(HealthCheckService));
+        }
+
+        [Fact]
+        public void WithConnectionStringAndEnableHealthCheck_RegistersTheCheckNamedAfterTheDefaultProvider()
+        {
+            var builder = TestFlowlyBuilder.Create();
+
+            builder.UseAzureEventHubs(ConnectionString, enableHealthCheck: true);
+
+            var registration = Assert.Single(Registrations(builder));
+            Assert.Equal("azure-event-hubs", registration.Name);
+            Assert.Equal(["azure-event-hubs"], registration.Tags);
+        }
+
+        [Fact]
+        public void WithCredentialAndEnableHealthCheck_RegistersTheCheckNamedAfterTheDefaultProvider()
+        {
+            var builder = TestFlowlyBuilder.Create();
+
+            builder.UseAzureEventHubs("example.servicebus.windows.net", new FakeTokenCredential(), enableHealthCheck: true);
+
+            Assert.Equal("azure-event-hubs", Assert.Single(Registrations(builder)).Name);
+        }
+
+        [Fact]
+        public void WithExplicitProviderName_SuffixesTheCheckNameWithTheProviderName()
+        {
+            var builder = TestFlowlyBuilder.Create();
+
+            builder.UseAzureEventHubs(ConnectionString, "telemetry", enableHealthCheck: true);
+
+            Assert.Equal("azure-event-hubs-telemetry", Assert.Single(Registrations(builder)).Name);
+        }
+
+        [Fact]
+        public void WithTheDefaultProviderNameGivenExplicitly_NamesTheCheckLikeTheDefault()
+        {
+            var builder = TestFlowlyBuilder.Create();
+
+            builder.UseAzureEventHubs(ConnectionString, "azure-event-hubs", enableHealthCheck: true);
+
+            Assert.Equal("azure-event-hubs", Assert.Single(Registrations(builder)).Name);
+        }
+
+        [Fact]
+        public async Task ProbesTheEventHubsRegisteredOnTheProviderEvenWhenRegisteredAfterIt()
+        {
+            var clientFactory = new FakeEventHubsClientFactory();
+            var inspector = new FakeEventHubsInspector(["0"]);
+            clientFactory.Inspectors["telemetry-reading"] = inspector;
+            var builder = TestFlowlyBuilder.Create().WithEventHubs(clientFactory, enableHealthCheck: true);
+            builder.AddMessageRecorder<TelemetryReading>();
+
+            var report = await CheckHealth(builder);
+
+            Assert.Equal(HealthStatus.Healthy, report.Status);
+            Assert.Equal(1, inspector.Calls);
+        }
+
+        [Fact]
+        public async Task WhenARegisteredEventHubFails_ReportsUnhealthy()
+        {
+            var clientFactory = new FakeEventHubsClientFactory();
+            clientFactory.Inspectors["telemetry-reading"] = new FakeEventHubsInspector(failure: new InvalidOperationException("denied"));
+            var builder = TestFlowlyBuilder.Create().WithEventHubs(clientFactory, enableHealthCheck: true);
+            builder.AddMessageRecorder<TelemetryReading>();
+
+            var report = await CheckHealth(builder);
+
+            Assert.Equal(HealthStatus.Unhealthy, report.Status);
+            Assert.Contains("'telemetry-reading'", Assert.Single(report.Entries).Value.Description);
+        }
+
+        [Fact]
+        public async Task WithNoEventHubRegistered_ReportsHealthy()
+        {
+            var builder = TestFlowlyBuilder.Create().WithEventHubs(enableHealthCheck: true);
+
+            var report = await CheckHealth(builder);
+
+            Assert.Equal(HealthStatus.Healthy, report.Status);
+        }
+
+        [Fact]
+        public async Task WithTwoProviders_EachCheckProbesOnlyItsOwnEventHubs()
+        {
+            var firstFactory = new FakeEventHubsClientFactory();
+            var firstInspector = new FakeEventHubsInspector(["0"]);
+            firstFactory.Inspectors["telemetry-reading"] = firstInspector;
+            var secondFactory = new FakeEventHubsClientFactory();
+            var secondInspector = new FakeEventHubsInspector(["0"]);
+            secondFactory.Inspectors["other-provider-reading"] = secondInspector;
+            var builder = TestFlowlyBuilder.Create()
+                .WithEventHubs(firstFactory, enableHealthCheck: true)
+                .WithEventHubs(secondFactory, "other", enableHealthCheck: true);
+            builder.AddMessageRecorder<TelemetryReading>();
+            builder.AddMessageRecorder<OtherProviderReading>();
+
+            var report = await CheckHealth(builder);
+
+            Assert.Equal(HealthStatus.Healthy, report.Status);
+            Assert.Equal(["azure-event-hubs", "azure-event-hubs-other"], report.Entries.Keys.Order());
+            Assert.Equal(1, firstInspector.Calls);
+            Assert.Equal(1, secondInspector.Calls);
+        }
+
+        private static IReadOnlyList<HealthCheckRegistration> Registrations(IFlowlyBuilder builder)
+        {
+            builder.Services.AddLogging();
+            using var serviceProvider = builder.Services.BuildServiceProvider();
+
+            return [.. serviceProvider.GetRequiredService<IOptions<HealthCheckServiceOptions>>().Value.Registrations];
+        }
+
+        private static async Task<HealthReport> CheckHealth(IFlowlyBuilder builder)
+        {
+            builder.Services.AddLogging();
+            await using var serviceProvider = builder.Services.BuildServiceProvider();
+
+            return await serviceProvider.GetRequiredService<HealthCheckService>().CheckHealthAsync();
         }
     }
 
@@ -485,4 +620,7 @@ public class AzureEventHubsRegistrationTests
 
     [ProviderAffinity("azure-event-hubs")]
     private record AffineTelemetryReading;
+
+    [ProviderAffinity("other")]
+    private record OtherProviderReading;
 }
