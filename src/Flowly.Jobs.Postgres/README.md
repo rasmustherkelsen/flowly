@@ -6,7 +6,7 @@ PostgreSQL backend for [Flowly](https://rasmustherkelsen.github.io/flowly/) job 
 
 ```csharp
 builder.AddFlowly(configure => configure
-    .UseRabbitMq("RabbitMQ")
+    .UseRabbitMq(connection: "RabbitMQ")
     .AddPostgresJobStateTracking("Jobs")
     .AddJobHandler<ProcessReportJob, ProcessReportJobHandler>());
 ```

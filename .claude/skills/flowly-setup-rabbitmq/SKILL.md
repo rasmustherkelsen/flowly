@@ -128,7 +128,7 @@ internal class FlowlyConfiguration : Configuration
     public override void Configure(IFlowlyBuilder builder)
     {
         builder
-            .UseRabbitMq("<ConnectionName>")
+            .UseRabbitMq(connection: "<ConnectionName>")
             // Add handlers and submitters here — see /create-message-handler
             ;
     }
@@ -149,13 +149,13 @@ builder.UseRabbitMq(); // connects to amqp://guest:guest@localhost:5672/
 
 **Connection string from configuration (most common):**
 ```csharp
-builder.UseRabbitMq("RabbitMQ"); // reads ConnectionStrings:RabbitMQ
+builder.UseRabbitMq(connection: "RabbitMQ"); // reads ConnectionStrings:RabbitMQ
 ```
 
 **With optional settings:**
 ```csharp
 builder.UseRabbitMq(
-    "RabbitMQ",
+    connection: "RabbitMQ",
     enableHealthCheck: true,
     maxMessageSizeBytes: 1_048_576);
 ```
@@ -274,7 +274,7 @@ builder.AddFlowly<FlowlyConfiguration>(options => options.CreateTopology = true)
 
 Each service project must also call `builder.AddServiceDefaults()` and `app.MapDefaultEndpoints()` so the Aspire dashboard can collect health status and telemetry.
 
-Aspire injects the RabbitMQ connection string automatically via the resource name `"RabbitMQ"`, which matches `UseRabbitMq("RabbitMQ")` in `FlowlyConfiguration`.
+Aspire injects the RabbitMQ connection string automatically via the resource name `"RabbitMQ"`, which matches `UseRabbitMq(connection: "RabbitMQ")` in `FlowlyConfiguration`.
 
 ### Local development with Docker Compose
 

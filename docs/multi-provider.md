@@ -60,7 +60,9 @@ Because routing is per capability, the order of the `Use*` calls does not matter
 
 ## Registering multiple providers
 
-The first provider registered gets its default name. Every later provider, of any transport, must be given an explicit `name`, otherwise registration throws. The name is also what `[ProviderAffinity]` refers to.
+The first provider registered may be left unnamed: it gets its transport's default name (`azure-service-bus`, `rabbitmq`, `in-memory` or `azure-event-hubs`). **Every later provider, of any transport, needs an explicit `name`**. Flowly counts the providers already registered regardless of transport, so a second provider without a name throws `InvalidOperationException` (for example "Secondary RabbitMQ providers must have an explicit name. Pass name: \"...\" to UseRabbitMq().") even when its transport differs from the first. The name is also what `[ProviderAffinity]` refers to.
+
+`name` is a separate argument from the connection. In `UseAzureServiceBus`, `UseRabbitMq` and `UseAzureEventHubs` the first positional argument is the connection (a connection string or the name of a connection string in configuration), so `UseAzureServiceBus("Rabbit")` sets the connection and leaves the provider unnamed. Always pass the name as `name:`. `UseInMemory(name)` is the exception: it has no connection, so the name is its first argument. Write a RabbitMQ registration that only sets the connection as `UseRabbitMq(connection: "RabbitMQ")`, because a lone positional string matches two overloads and does not compile.
 
 ```csharp
 public class MyServiceConfiguration : Configuration
@@ -74,7 +76,7 @@ public class MyServiceConfiguration : Configuration
             .AddMessageSubmitter<OrderCreated>()
 
             // Secondary provider — only receives messages tagged with [ProviderAffinity("Rabbit")]
-            .UseRabbitMq("Rabbit")
+            .UseRabbitMq("RabbitMQ", name: "Rabbit")
             .AddMessageHandler<AnalyticsEvent, AnalyticsEventHandler>()
             .AddMessageSubmitter<AnalyticsEvent>();
     }
@@ -88,7 +90,7 @@ public class MyServiceConfiguration : Configuration
 public record AnalyticsEvent(Guid UserId, string EventName);
 ```
 
-The `"Rabbit"` string in the attribute must exactly match the name passed to `UseRabbitMq`.
+The `"Rabbit"` string in the attribute must exactly match the `name` passed to `UseRabbitMq`; the connection argument (`"RabbitMQ"`) plays no part in routing.
 
 ---
 
@@ -172,7 +174,7 @@ builder
     .UseAzureServiceBus("AzureServiceBus")
     .AddMessageHandler<OrderCreated, OrderCreatedHandler>()
 
-    .UseRabbitMq("Rabbit")
+    .UseRabbitMq("RabbitMQ", name: "Rabbit")
     .AddMessageHandler<PageViewed, PageViewedHandler>();
 ```
 
@@ -182,10 +184,10 @@ During a migration from RabbitMQ to Azure Service Bus, both providers consume fr
 
 ```csharp
 builder
-    .UseAzureServiceBus("ASB")
+    .UseAzureServiceBus("AzureServiceBus")
     .AddMessageHandler<OrderCreated, OrderCreatedHandler>()  // will consume from "order-created"
 
-    .UseRabbitMq("OldBroker")
+    .UseRabbitMq("RabbitMQ", name: "OldBroker")
     .AddMessageHandler<OrderCreated, OldOrderCreatedHandler>(); // same queue name, different transport
 ```
 
@@ -198,10 +200,10 @@ Use distinct queue names, or ensure topology settings are identical across both:
 ```csharp
 // Fine — same settings, same transport type, same queue name (e.g., mirrored regions)
 builder
-    .UseAzureServiceBus("ASB-EastUS")
+    .UseAzureServiceBus("ServiceBusEastUS", name: "ASB-EastUS")
     .AddMessageHandler<OrderCreated, OrderCreatedHandler>()
 
-    .UseAzureServiceBus("ASB-WestUS")
+    .UseAzureServiceBus("ServiceBusWestUS", name: "ASB-WestUS")
     .AddMessageHandler<OrderCreated, OrderCreatedHandler>();  // identical settings: no conflict
 ```
 
@@ -226,19 +228,19 @@ This is intentional: the name is a logical identity. What broker backs it is a d
 
 ## appsettings.json connection string keys
 
-Each `Use*` call takes a connection string name, not the raw connection string itself:
+The first positional argument of `UseAzureServiceBus`, `UseRabbitMq` and `UseAzureEventHubs` is the connection: either the connection string itself or the name of an entry under `ConnectionStrings` (a name that is not found in configuration is used as the connection string). It is independent of the provider `name`, which every provider after the first must set:
 
 ```csharp
 builder
-    .UseAzureServiceBus("AzureServiceBus")   // reads ConnectionStrings:AzureServiceBus
-    .UseRabbitMq("Rabbit")                   // reads ConnectionStrings:Rabbit
+    .UseAzureServiceBus("AzureServiceBus")            // reads ConnectionStrings:AzureServiceBus; provider name "azure-service-bus"
+    .UseRabbitMq("RabbitMQ", name: "Rabbit")          // reads ConnectionStrings:RabbitMQ; provider name "Rabbit"
 ```
 
 ```json
 {
   "ConnectionStrings": {
     "AzureServiceBus": "Endpoint=sb://...",
-    "Rabbit": "amqp://guest:guest@localhost:5672"
+    "RabbitMQ": "amqp://guest:guest@localhost:5672"
   }
 }
 ```

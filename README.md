@@ -1506,14 +1506,14 @@ public class OrderCreatedHandler : MessageHandler<OrderCreated>
 
 ## Multi-Provider
 
-Flowly supports running multiple message brokers in the same service. A second provider is registered by calling `UseAzureServiceBus` or `UseRabbitMq` a second time with a distinct name:
+Flowly supports running multiple message brokers in the same service. The first registered provider may be left unnamed and gets its transport's default name; every later provider, of any transport, needs an explicit `name`, otherwise registration throws. The first positional argument of `UseAzureServiceBus`, `UseRabbitMq` and `UseAzureEventHubs` is the connection (a connection string or a connection string name), not the provider name, so pass the name as `name:`:
 
 ```csharp
 builder
     .UseAzureServiceBus("AzureServiceBus")   // first registered — receives messages and events with no explicit affinity
     .AddMessageHandler<OrderCreated, OrderCreatedHandler>()
 
-    .UseRabbitMq("Rabbit")                   // second — also receives stream contracts with no explicit affinity
+    .UseRabbitMq("RabbitMQ", name: "Rabbit")  // second — needs a name; also receives stream contracts with no explicit affinity
     .AddMessageHandler<AnalyticsEvent, AnalyticsEventHandler>();
 ```
 
@@ -1523,6 +1523,8 @@ A message type without an attribute is routed per capability (queue message, eve
 [ProviderAffinity("Rabbit")]
 public record AnalyticsEvent(Guid UserId, string EventName);
 ```
+
+The string in `[ProviderAffinity]` must match the `name` given at registration (`"Rabbit"` above).
 
 At startup, Flowly validates cross-provider topology consistency:
 
@@ -1557,7 +1559,7 @@ builder.UseAzureServiceBus("sb-myapp.servicebus.windows.net", new DefaultAzureCr
 ### Registration
 
 ```csharp
-builder.UseRabbitMq("RabbitMQ")   // connection string name in appsettings
+builder.UseRabbitMq(connection: "RabbitMQ")   // connection string name in appsettings
     .AddMessageHandler<OrderCreated, OrderCreatedHandler>();
 ```
 
@@ -1566,7 +1568,7 @@ The default connection string is `amqp://guest:guest@localhost:5672/`. Pass a co
 Pass `enableHealthCheck: true` to register a health check under the tag `"rabbitmq"`:
 
 ```csharp
-builder.UseRabbitMq("RabbitMQ", enableHealthCheck: true);
+builder.UseRabbitMq(connection: "RabbitMQ", enableHealthCheck: true);
 ```
 
 ### Retry topology and `createTopology`
