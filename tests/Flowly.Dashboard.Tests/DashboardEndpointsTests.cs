@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 using System.Text.Json;
 using Flowly.Dashboard.Tests.Fakes;
 using Flowly.DeadLetters;
@@ -122,6 +123,134 @@ public class DashboardEndpointsTests
 
             Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
             Assert.Empty(deadLetterService.Queries);
+        }
+    }
+
+    public class RequeueDeadLetter
+    {
+        [Fact]
+        public async Task WithoutDeadLetterTracking_Returns404()
+        {
+            using var client = CreateClient(null);
+
+            var response = await client.PostAsync("/flowly/api/dead-letters/m1/requeue", null);
+
+            Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        }
+
+        [Fact]
+        public async Task WithoutARequestBody_RequeuesTheStoredBody()
+        {
+            var deadLetterService = new RecordingDeadLetterService();
+            using var client = CreateClient(deadLetterService);
+
+            var response = await client.PostAsync("/flowly/api/dead-letters/m1/requeue", null);
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Equal(("m1", null, null), Assert.Single(deadLetterService.RequeueCalls));
+        }
+
+        [Fact]
+        public async Task WithAnEmptyJsonObject_RequeuesTheStoredBody()
+        {
+            var deadLetterService = new RecordingDeadLetterService();
+            using var client = CreateClient(deadLetterService);
+
+            var response = await client.PostAsJsonAsync("/flowly/api/dead-letters/m1/requeue", new { });
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Equal(("m1", null, null), Assert.Single(deadLetterService.RequeueCalls));
+        }
+
+        [Fact]
+        public async Task WithAMessageBody_PassesItToTheService()
+        {
+            var deadLetterService = new RecordingDeadLetterService();
+            using var client = CreateClient(deadLetterService);
+
+            var response = await client.PostAsJsonAsync("/flowly/api/dead-letters/m1/requeue", new { messageBody = """{"amount":12}""" });
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Equal(("m1", null, """{"amount":12}"""), Assert.Single(deadLetterService.RequeueCalls));
+        }
+
+        [Fact]
+        public async Task WithAMalformedJsonBody_Returns400WithoutRequeuing()
+        {
+            var deadLetterService = new RecordingDeadLetterService();
+            using var client = CreateClient(deadLetterService);
+
+            var response = await client.PostAsync("/flowly/api/dead-letters/m1/requeue", new StringContent("{not json", System.Text.Encoding.UTF8, "application/json"));
+
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            Assert.Empty(deadLetterService.RequeueCalls);
+        }
+
+        [Fact]
+        public async Task WhenTheReplacementIsRejected_Returns400WithTheReason()
+        {
+            var deadLetterService = new RecordingDeadLetterService { RequeueFailure = new InvalidReplacementMessageBodyException("The replacement message body must not be empty.") };
+            using var client = CreateClient(deadLetterService);
+
+            var response = await client.PostAsJsonAsync("/flowly/api/dead-letters/m1/requeue", new { messageBody = "" });
+
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            Assert.Contains("must not be empty", await response.Content.ReadAsStringAsync());
+        }
+
+        [Fact]
+        public async Task ForAnUnknownMessageId_Returns404()
+        {
+            var deadLetterService = new RecordingDeadLetterService { RequeueFailure = new KeyNotFoundException() };
+            using var client = CreateClient(deadLetterService);
+
+            var response = await client.PostAsJsonAsync("/flowly/api/dead-letters/m1/requeue", new { messageBody = "{}" });
+
+            Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        }
+
+        [Fact]
+        public async Task ForAMessageThatIsNotPending_Returns400()
+        {
+            var deadLetterService = new RecordingDeadLetterService { RequeueFailure = new InvalidOperationException("cannot be requeued") };
+            using var client = CreateClient(deadLetterService);
+
+            var response = await client.PostAsJsonAsync("/flowly/api/dead-letters/m1/requeue", new { messageBody = "{}" });
+
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            Assert.Contains("cannot be requeued", await response.Content.ReadAsStringAsync());
+        }
+    }
+
+    public class GetDeadLettersReplacementBody
+    {
+        [Fact]
+        public async Task ReturnsTheReplacementMessageBodyNextToTheOriginal()
+        {
+            var deadLetterService = new RecordingDeadLetterService
+            {
+                PageToReturn = new DeadLetterPage([new FakeDeadLetter { MessageId = "m1", MessageBody = "original", Status = DeadLetterStatus.Requeued, ReplacementMessageBody = "corrected" }], null)
+            };
+            using var client = CreateClient(deadLetterService);
+
+            var response = await client.GetAsync("/flowly/api/dead-letters");
+
+            using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            var deadLetter = Assert.Single(json.RootElement.EnumerateArray());
+            Assert.Equal("original", deadLetter.GetProperty("messageBody").GetString());
+            Assert.Equal("corrected", deadLetter.GetProperty("replacementMessageBody").GetString());
+        }
+
+        [Fact]
+        public async Task ReturnsANullReplacementMessageBodyWhenTheBodyWasNotReplaced()
+        {
+            var deadLetterService = new RecordingDeadLetterService { PageToReturn = new DeadLetterPage([new FakeDeadLetter { MessageId = "m1" }], null) };
+            using var client = CreateClient(deadLetterService);
+
+            var response = await client.GetAsync("/flowly/api/dead-letters");
+
+            using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            Assert.Equal(JsonValueKind.Null, Assert.Single(json.RootElement.EnumerateArray()).GetProperty("replacementMessageBody").ValueKind);
         }
     }
 

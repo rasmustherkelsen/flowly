@@ -1,16 +1,19 @@
 using Flowly.DeadLetters.BackgroundServices;
 using Flowly.DeadLetters.DatabaseModel;
+using Flowly.DeadLetters.Repositories;
 using Flowly.DeadLetters.Services;
 using Flowly.DeadLetters.Telemetry;
 using Flowly.DeadLetters.Tests.Fakes;
+using Flowly.DeadLetters.Tests.Helpers;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.Transport;
+using Microsoft.EntityFrameworkCore;
 
 namespace Flowly.DeadLetters.Tests.Services;
 
 public class DeadLetterServiceTests
 {
-    private static DeadLetterService BuildService(FakeDeadLetterRepository repository, FakeMessageBusClient client)
+    private static DeadLetterService BuildService(IDeadLetterRepository repository, FakeMessageBusClient client)
         => new(
             repository,
             new FakeMessageBusClientRegistry(client),
@@ -19,7 +22,7 @@ public class DeadLetterServiceTests
             new NullDeadLetterOperationInstrumentation());
 
     private static DeadLetterService BuildServiceWithEventSubscription(
-        FakeDeadLetterRepository repository,
+        IDeadLetterRepository repository,
         FakeMessageBusClient client,
         string topicName,
         string subscriptionName)
@@ -287,6 +290,183 @@ public class DeadLetterServiceTests
                 new NullDeadLetterOperationInstrumentation());
 
             await Assert.ThrowsAsync<InvalidOperationException>(() => deadLetterService.Requeue("msg-1"));
+        }
+    }
+
+    public class RequeueWithReplacementMessageBody
+    {
+        [Fact]
+        public async Task SendsTheReplacementInsteadOfTheStoredBody()
+        {
+            using var factory = new SqliteDbContextFactory();
+            await Seed(factory, BuildDeadLetter("msg-1", body: """{"amount":"abc"}"""));
+            var messageBusClient = new FakeMessageBusClient();
+            var deadLetterService = BuildService(new DeadLetterRepository(factory), messageBusClient);
+
+            await deadLetterService.Requeue("msg-1", "ops", """{"amount":12}""");
+
+            Assert.Equal("""{"amount":12}""", Assert.Single(messageBusClient.GetSender("test-queue").SentRawMessages).RawBody);
+        }
+
+        [Fact]
+        public async Task KeepsTheStoredBodyAndRecordsTheReplacementAfterThePublish()
+        {
+            using var factory = new SqliteDbContextFactory();
+            await Seed(factory, BuildDeadLetter("msg-1", body: """{"amount":"abc"}"""));
+            var deadLetterService = BuildService(new DeadLetterRepository(factory), new FakeMessageBusClient());
+
+            await deadLetterService.Requeue("msg-1", "ops", """{"amount":12}""");
+
+            await using var context = await factory.CreateDbContextAsync();
+            var deadLetter = await context.DeadLetters.SingleAsync();
+            Assert.Equal("""{"amount":"abc"}""", deadLetter.MessageBody);
+            Assert.Equal("""{"amount":12}""", deadLetter.ReplacementMessageBody);
+            Assert.Equal(DeadLetterStatus.Requeued, deadLetter.Status);
+            Assert.Equal("ops", deadLetter.RequeuedBy);
+            Assert.NotNull(deadLetter.RequeuedAt);
+        }
+
+        [Fact]
+        public async Task WithNullReplacement_SendsTheStoredBodyAndRecordsNoReplacement()
+        {
+            using var factory = new SqliteDbContextFactory();
+            await Seed(factory, BuildDeadLetter("msg-1", body: """{"amount":"abc"}"""));
+            var messageBusClient = new FakeMessageBusClient();
+            var deadLetterService = BuildService(new DeadLetterRepository(factory), messageBusClient);
+
+            await deadLetterService.Requeue("msg-1", "ops", null);
+
+            Assert.Equal("""{"amount":"abc"}""", Assert.Single(messageBusClient.GetSender("test-queue").SentRawMessages).RawBody);
+            await using var context = await factory.CreateDbContextAsync();
+            Assert.Null((await context.DeadLetters.SingleAsync()).ReplacementMessageBody);
+        }
+
+        [Fact]
+        public async Task RequeueWithoutReplacementOverload_RecordsNoReplacement()
+        {
+            using var factory = new SqliteDbContextFactory();
+            await Seed(factory, BuildDeadLetter("msg-1"));
+            var deadLetterService = BuildService(new DeadLetterRepository(factory), new FakeMessageBusClient());
+
+            await deadLetterService.Requeue("msg-1", "ops");
+
+            await using var context = await factory.CreateDbContextAsync();
+            var deadLetter = await context.DeadLetters.SingleAsync();
+            Assert.Equal(DeadLetterStatus.Requeued, deadLetter.Status);
+            Assert.Null(deadLetter.ReplacementMessageBody);
+        }
+
+        [Fact]
+        public async Task WhenThePublishFails_LeavesTheRecordPendingWithoutAReplacement()
+        {
+            using var factory = new SqliteDbContextFactory();
+            await Seed(factory, BuildDeadLetter("msg-1"));
+            var messageBusClient = new FakeMessageBusClient { FailureToThrowOnSendRawMessage = new InvalidOperationException("broker down") };
+            var deadLetterService = BuildService(new DeadLetterRepository(factory), messageBusClient);
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => deadLetterService.Requeue("msg-1", "ops", """{"amount":12}"""));
+
+            await using var context = await factory.CreateDbContextAsync();
+            var deadLetter = await context.DeadLetters.SingleAsync();
+            Assert.Equal(DeadLetterStatus.Pending, deadLetter.Status);
+            Assert.Null(deadLetter.ReplacementMessageBody);
+            Assert.Null(deadLetter.RequeuedAt);
+        }
+
+        [Fact]
+        public async Task KeepsThePropertiesOfTheStoredMessage()
+        {
+            using var factory = new SqliteDbContextFactory();
+            await Seed(factory, BuildDeadLetter("msg-1", properties: """{"flowly-retry-count":3,"source":"test"}"""));
+            var messageBusClient = new FakeMessageBusClient();
+            var deadLetterService = BuildService(new DeadLetterRepository(factory), messageBusClient);
+
+            await deadLetterService.Requeue("msg-1", null, """{"amount":12}""");
+
+            var sent = Assert.Single(messageBusClient.GetSender("test-queue").SentRawMessages);
+            Assert.Equal("test", sent.ApplicationProperties["source"]);
+            Assert.DoesNotContain(FlowlyMessageProperties.RetryCount, sent.ApplicationProperties.Keys);
+        }
+
+        [Fact]
+        public async Task WithAnEmptyReplacement_ThrowsAndPublishesNothing()
+        {
+            using var factory = new SqliteDbContextFactory();
+            await Seed(factory, BuildDeadLetter("msg-1"));
+            var messageBusClient = new FakeMessageBusClient();
+            var deadLetterService = BuildService(new DeadLetterRepository(factory), messageBusClient);
+
+            await Assert.ThrowsAsync<InvalidReplacementMessageBodyException>(() => deadLetterService.Requeue("msg-1", null, "  "));
+
+            Assert.Empty(messageBusClient.CreatedSenders);
+            await using var context = await factory.CreateDbContextAsync();
+            Assert.Equal(DeadLetterStatus.Pending, (await context.DeadLetters.SingleAsync()).Status);
+        }
+
+        [Fact]
+        public async Task WithNonJsonReplacementForAJsonBody_Throws()
+        {
+            using var factory = new SqliteDbContextFactory();
+            await Seed(factory, BuildDeadLetter("msg-1", body: """{"amount":"abc"}"""));
+            var deadLetterService = BuildService(new DeadLetterRepository(factory), new FakeMessageBusClient());
+
+            await Assert.ThrowsAsync<InvalidReplacementMessageBodyException>(() => deadLetterService.Requeue("msg-1", null, "{amount:"));
+        }
+
+        [Fact]
+        public async Task WithNonJsonReplacementForANonJsonBody_Succeeds()
+        {
+            using var factory = new SqliteDbContextFactory();
+            await Seed(factory, BuildDeadLetter("msg-1", body: "plain text"));
+            var messageBusClient = new FakeMessageBusClient();
+            var deadLetterService = BuildService(new DeadLetterRepository(factory), messageBusClient);
+
+            await deadLetterService.Requeue("msg-1", null, "corrected text");
+
+            Assert.Equal("corrected text", Assert.Single(messageBusClient.GetSender("test-queue").SentRawMessages).RawBody);
+        }
+
+        [Fact]
+        public async Task WithMissingMessage_ThrowsKeyNotFoundBeforeValidating()
+        {
+            using var factory = new SqliteDbContextFactory();
+            var deadLetterService = BuildService(new DeadLetterRepository(factory), new FakeMessageBusClient());
+
+            await Assert.ThrowsAsync<KeyNotFoundException>(() => deadLetterService.Requeue("missing", null, ""));
+        }
+
+        [Fact]
+        public async Task WithAlreadyRequeuedMessage_ThrowsInvalidOperationBeforeValidating()
+        {
+            using var factory = new SqliteDbContextFactory();
+            await Seed(factory, BuildDeadLetter("msg-1", DeadLetterStatus.Requeued));
+            var deadLetterService = BuildService(new DeadLetterRepository(factory), new FakeMessageBusClient());
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => deadLetterService.Requeue("msg-1", null, ""));
+        }
+
+        [Fact]
+        public async Task ForEventSubscriptionDeadLetter_SendsTheReplacementToTheSubscriberOnly()
+        {
+            using var factory = new SqliteDbContextFactory();
+            await Seed(factory, BuildDeadLetter("msg-1", queueName: "order-placed", subscriptionName: "notification-handler", body: """{"order":"abc"}"""));
+            var messageBusClient = new FakeMessageBusClient();
+            var deadLetterService = BuildServiceWithEventSubscription(new DeadLetterRepository(factory), messageBusClient, "order-placed", "notification-handler");
+
+            await deadLetterService.Requeue("msg-1", "ops", """{"order":"1"}""");
+
+            var sent = Assert.Single(messageBusClient.GetEventRetrySender("order-placed", "notification-handler").SentRawMessages);
+            Assert.Equal("""{"order":"1"}""", sent.RawBody);
+            Assert.Equal("notification-handler", sent.ApplicationProperties[FlowlyMessageProperties.TargetSubscription]);
+            await using var context = await factory.CreateDbContextAsync();
+            Assert.Equal("""{"order":"1"}""", (await context.DeadLetters.SingleAsync()).ReplacementMessageBody);
+        }
+
+        private static async Task Seed(SqliteDbContextFactory factory, DeadLetter deadLetter)
+        {
+            await using var context = await factory.CreateDbContextAsync();
+            context.DeadLetters.Add(deadLetter);
+            await context.SaveChangesAsync();
         }
     }
 

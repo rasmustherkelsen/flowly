@@ -28,6 +28,11 @@ builder.AddFlowly(configure => configure
 | `DeadLetteredAt` | When the message was dead-lettered |
 | `DeadLetterReason` | Broker-provided reason |
 | `Status` | `Pending`, `Requeued`, or `Discarded` |
+| `ReplacementMessageBody` | The corrected body a message was requeued with, or `null` when the stored body was requeued as it was |
+
+## Fix and requeue
+
+`IDeadLetterService.Requeue(messageId, requeuedBy, replacementMessageBody)` republishes a corrected body instead of the stored one, with the stored properties. The stored `MessageBody` is never changed; the replacement is recorded in `ReplacementMessageBody` after the publish succeeded. A replacement must not be empty, must not exceed 256 KiB as UTF-8 and must be valid JSON when the stored body is JSON (`InvalidReplacementMessageBodyException` otherwise). The Dashboard requeue dialog, the Management API (`messageBody`) and `Submit-FlowlyDeadLetter -MessageBody` expose the same option.
 
 ## Event Handlers
 

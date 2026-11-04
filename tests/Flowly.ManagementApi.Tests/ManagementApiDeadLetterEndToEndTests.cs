@@ -195,6 +195,93 @@ public class ManagementApiDeadLetterEndToEndTests
         }
     }
 
+    public class RequeueDeadLetterWithAMessageBody
+    {
+        [Fact]
+        public async Task ThenListShowsBodyReplacedTheReplacementAndTheOriginalBody()
+        {
+            using var hostFixture = new HostFixture();
+            hostFixture.DeadLetters.Add("m1");
+            hostFixture.UseKey(HostFixture.WriteKey);
+
+            var requeued = await hostFixture.Client.PostAsJsonAsync(RequeuePath, new { MessageId = "m1", MessageBody = """{"amount":12}""" });
+            var response = await hostFixture.Client.GetAsync(ListPath);
+
+            Assert.Equal(HttpStatusCode.NoContent, requeued.StatusCode);
+            using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            var deadLetter = Assert.Single(body.RootElement.EnumerateArray());
+            Assert.True(deadLetter.GetProperty("bodyReplaced").GetBoolean());
+            Assert.Equal("""{"amount":12}""", deadLetter.GetProperty("replacementMessageBody").GetString());
+            Assert.Equal("{}", deadLetter.GetProperty("messageBody").GetString());
+        }
+
+        [Fact]
+        public async Task WithoutAMessageBody_ListShowsBodyNotReplaced()
+        {
+            using var hostFixture = new HostFixture();
+            hostFixture.DeadLetters.Add("m1");
+            hostFixture.UseKey(HostFixture.WriteKey);
+
+            await hostFixture.Client.PostAsJsonAsync(RequeuePath, new { MessageId = "m1" });
+            var response = await hostFixture.Client.GetAsync(ListPath);
+
+            using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            var deadLetter = Assert.Single(body.RootElement.EnumerateArray());
+            Assert.False(deadLetter.GetProperty("bodyReplaced").GetBoolean());
+            Assert.Equal(JsonValueKind.Null, deadLetter.GetProperty("replacementMessageBody").ValueKind);
+        }
+
+        [Fact]
+        public async Task WithABlankMessageBody_Returns400AndLeavesTheDeadLetterPending()
+        {
+            using var hostFixture = new HostFixture();
+            var deadLetter = hostFixture.DeadLetters.Add("m1");
+            hostFixture.UseKey(HostFixture.WriteKey);
+
+            var response = await hostFixture.Client.PostAsJsonAsync(RequeuePath, new { MessageId = "m1", MessageBody = "" });
+
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            Assert.Contains("must not be empty", await response.Content.ReadAsStringAsync());
+            Assert.Equal(DeadLetterStatus.Pending, deadLetter.Status);
+        }
+
+        [Fact]
+        public async Task ForAnUnknownMessageId_Returns404()
+        {
+            using var hostFixture = new HostFixture();
+            hostFixture.UseKey(HostFixture.WriteKey);
+
+            var response = await hostFixture.Client.PostAsJsonAsync(RequeuePath, new { MessageId = "missing", MessageBody = "{}" });
+
+            Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        }
+
+        [Fact]
+        public async Task ForAnAlreadyRequeuedDeadLetter_Returns409()
+        {
+            using var hostFixture = new HostFixture();
+            hostFixture.DeadLetters.Add("m1", status: DeadLetterStatus.Requeued);
+            hostFixture.UseKey(HostFixture.WriteKey);
+
+            var response = await hostFixture.Client.PostAsJsonAsync(RequeuePath, new { MessageId = "m1", MessageBody = "{}" });
+
+            Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        }
+
+        [Fact]
+        public async Task WithReadKey_IsForbidden()
+        {
+            using var hostFixture = new HostFixture();
+            var deadLetter = hostFixture.DeadLetters.Add("m1");
+            hostFixture.UseKey(HostFixture.ReadKey);
+
+            var response = await hostFixture.Client.PostAsJsonAsync(RequeuePath, new { MessageId = "m1", MessageBody = "{}" });
+
+            Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+            Assert.Equal(DeadLetterStatus.Pending, deadLetter.Status);
+        }
+    }
+
     public class DiscardDeadLetter
     {
         [Fact]

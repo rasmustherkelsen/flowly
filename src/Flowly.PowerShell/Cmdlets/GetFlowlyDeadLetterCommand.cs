@@ -6,7 +6,7 @@ namespace Flowly.PowerShell.Cmdlets;
 
 /// <summary>
 ///     Lists the dead letters tracked by the Flowly host the Management API answers from, newest first: message id, queue or topic,
-///     subscription, body, properties, the broker's reason, status and the requeue audit. Requires dead letter tracking in the host.
+///     subscription, body, properties, the broker's reason, status, the requeue audit, and for a message requeued with a corrected body <c>BodyReplaced</c> and the <c>ReplacementMessageBody</c> that was republished (the stored <c>MessageBody</c> stays unchanged). Requires dead letter tracking in the host.
 /// </summary>
 [Cmdlet(VerbsCommon.Get, "FlowlyDeadLetter")]
 [OutputType(typeof(DeadLetterDto))]

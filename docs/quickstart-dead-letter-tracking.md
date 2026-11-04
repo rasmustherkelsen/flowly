@@ -614,6 +614,7 @@ The single process sends messages, handles them, retries failures, and writes de
 - `GetDeadLetters()` — returns all records sorted newest first
 - `QueryDeadLetters(new DeadLetterQuery { QueueName = ..., Status = ..., Skip = 0, Take = 50, IncludeTotalCount = true })` — returns one page (`DeadLetterPage.Items`, newest first) of the records matching the optional filters `QueueName`, `SubscriptionName`, `Status` and `MessageId`; the database filters, orders and pages, so only the requested page is loaded, and `TotalCount` is only counted when `IncludeTotalCount` is set
 - `Requeue(messageId)` — re-publishes the message to the original queue with the retry count reset; status becomes `Requeued`
+- `Requeue(messageId, requeuedBy, replacementMessageBody)` — the same, but republishes a corrected body instead of the stored one. The stored body is kept and the replacement is recorded in `ReplacementMessageBody` once the publish succeeded. The replacement must not be empty, must not exceed 256 KiB as UTF-8 and must be valid JSON when the stored body is JSON (`InvalidReplacementMessageBodyException` otherwise). The Dashboard requeue dialog, the Management API (`messageBody`) and `Submit-FlowlyDeadLetter -MessageBody` expose the same option
 - `Discard(messageId)` — permanently deletes the record from the tracking store
 
 **Automatic migrations** — `enableMigrations: true` (the default) runs EF Core migrations on startup. No manual migration commands are needed in development.

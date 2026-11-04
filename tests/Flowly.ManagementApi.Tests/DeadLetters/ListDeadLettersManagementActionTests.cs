@@ -73,6 +73,36 @@ public class ListDeadLettersManagementActionTests
         }
 
         [Fact]
+        public async Task ForAMessageRequeuedWithAReplacementBody_ReportsBodyReplacedAndTheReplacement()
+        {
+            var deadLetterService = new FakeDeadLetterService();
+            var requeued = deadLetterService.Add("m1", status: DeadLetterStatus.Requeued);
+            requeued.ReplacementMessageBody = """{"amount":12}""";
+            var listDeadLettersManagementAction = new ListDeadLettersManagementAction();
+
+            var result = Assert.IsType<Ok<List<DeadLetterResponse>>>(await listDeadLettersManagementAction.List(deadLetterService, null, null, null, null, null, null, CancellationToken.None));
+
+            var deadLetter = Assert.Single(result.Value!);
+            Assert.True(deadLetter.BodyReplaced);
+            Assert.Equal("""{"amount":12}""", deadLetter.ReplacementMessageBody);
+            Assert.Equal("{}", deadLetter.MessageBody);
+        }
+
+        [Fact]
+        public async Task ForAMessageWithoutAReplacementBody_ReportsBodyNotReplaced()
+        {
+            var deadLetterService = new FakeDeadLetterService();
+            deadLetterService.Add("m1");
+            var listDeadLettersManagementAction = new ListDeadLettersManagementAction();
+
+            var result = Assert.IsType<Ok<List<DeadLetterResponse>>>(await listDeadLettersManagementAction.List(deadLetterService, null, null, null, null, null, null, CancellationToken.None));
+
+            var deadLetter = Assert.Single(result.Value!);
+            Assert.False(deadLetter.BodyReplaced);
+            Assert.Null(deadLetter.ReplacementMessageBody);
+        }
+
+        [Fact]
         public async Task FiltersByQueue()
         {
             var deadLetterService = new FakeDeadLetterService();

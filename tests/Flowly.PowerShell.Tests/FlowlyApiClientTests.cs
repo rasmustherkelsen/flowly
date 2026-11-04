@@ -288,6 +288,33 @@ public class FlowlyApiClientTests
         }
 
         [Fact]
+        public async Task DeserializesTheReplacedBody()
+        {
+            var json = "[{\"messageId\":\"m1\",\"queueName\":\"q\",\"messageBody\":\"{}\",\"messageProperties\":\"{}\",\"deadLetteredAtUtc\":\"2026-11-01T10:30:00+00:00\",\"status\":\"Requeued\",\"bodyReplaced\":true,\"replacementMessageBody\":\"{\\\"a\\\":1}\"}]";
+            var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json") });
+            var connection = ApiKeyConnection.Create(handler);
+
+            var deadLetter = Assert.Single(await FlowlyApiClient.ListDeadLetters(connection, null, null, null, null, null, null, CancellationToken.None));
+
+            Assert.True(deadLetter.BodyReplaced);
+            Assert.Equal("{\"a\":1}", deadLetter.ReplacementMessageBody);
+            Assert.Equal("{}", deadLetter.MessageBody);
+        }
+
+        [Fact]
+        public async Task DeserializesAResponseWithoutTheReplacementFieldsAsNotReplaced()
+        {
+            var json = "[{\"messageId\":\"m1\",\"queueName\":\"q\",\"messageBody\":\"{}\",\"messageProperties\":\"{}\",\"deadLetteredAtUtc\":\"2026-11-01T10:30:00+00:00\",\"status\":\"Pending\"}]";
+            var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json") });
+            var connection = ApiKeyConnection.Create(handler);
+
+            var deadLetter = Assert.Single(await FlowlyApiClient.ListDeadLetters(connection, null, null, null, null, null, null, CancellationToken.None));
+
+            Assert.False(deadLetter.BodyReplaced);
+            Assert.Null(deadLetter.ReplacementMessageBody);
+        }
+
+        [Fact]
         public async Task IncludesApiKeyHeader()
         {
             var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(Array.Empty<DeadLetterDto>()) });
@@ -343,6 +370,46 @@ public class FlowlyApiClientTests
 
             var body = await JsonDocument.ParseAsync(await handler.LastRequestContent!.ReadAsStreamAsync());
             Assert.Equal(JsonValueKind.Null, body.RootElement.GetProperty("requeuedBy").ValueKind);
+        }
+
+        [Fact]
+        public async Task WithAMessageBody_SendsItAsMessageBody()
+        {
+            var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.NoContent));
+            var connection = ApiKeyConnection.Create(handler);
+
+            await FlowlyApiClient.RequeueDeadLetter(connection, "m1", "ops", CancellationToken.None, "{\"amount\":12}");
+
+            var body = await JsonDocument.ParseAsync(await handler.LastRequestContent!.ReadAsStreamAsync());
+            Assert.Equal("{\"amount\":12}", body.RootElement.GetProperty("messageBody").GetString());
+        }
+
+        [Fact]
+        public async Task WithoutAMessageBody_SendsANullMessageBody()
+        {
+            var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.NoContent));
+            var connection = ApiKeyConnection.Create(handler);
+
+            await FlowlyApiClient.RequeueDeadLetter(connection, "m1", "ops", CancellationToken.None);
+
+            var body = await JsonDocument.ParseAsync(await handler.LastRequestContent!.ReadAsStreamAsync());
+            Assert.Equal(JsonValueKind.Null, body.RootElement.GetProperty("messageBody").ValueKind);
+        }
+
+        [Fact]
+        public async Task OnABadRequest_ThrowsWithTheValidationDetail()
+        {
+            var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.BadRequest)
+            {
+                Content = new StringContent("{\"detail\":\"The replacement message body must not be empty.\"}", System.Text.Encoding.UTF8, "application/problem+json")
+            });
+            var connection = ApiKeyConnection.Create(handler);
+
+            var exception = await Assert.ThrowsAsync<HttpRequestException>(() =>
+                FlowlyApiClient.RequeueDeadLetter(connection, "m1", null, CancellationToken.None, ""));
+
+            Assert.Equal(HttpStatusCode.BadRequest, exception.StatusCode);
+            Assert.Contains("must not be empty", exception.Message);
         }
 
         [Fact]

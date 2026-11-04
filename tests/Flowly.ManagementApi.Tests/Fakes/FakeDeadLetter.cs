@@ -25,4 +25,6 @@ internal sealed class FakeDeadLetter : IDeadLetter
     public DateTimeOffset? RequeuedAt { get; set; }
 
     public string? RequeuedBy { get; set; }
+
+    public string? ReplacementMessageBody { get; set; }
 }

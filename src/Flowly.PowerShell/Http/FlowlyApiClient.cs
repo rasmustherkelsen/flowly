@@ -97,13 +97,13 @@ internal static class FlowlyApiClient
         return await response.Content.ReadFromJsonAsync<IReadOnlyList<DeadLetterDto>>(cancellationToken) ?? [];
     }
 
-    public static async Task RequeueDeadLetter(FlowlyConnection connection, string messageId, string? requeuedBy, CancellationToken cancellationToken)
+    public static async Task RequeueDeadLetter(FlowlyConnection connection, string messageId, string? requeuedBy, CancellationToken cancellationToken, string? messageBody = null)
     {
         await EnsureAuthorized(connection, cancellationToken);
 
         var response = await connection.HttpClient.PostAsJsonAsync(
             "dead-letters/requeue",
-            new { MessageId = messageId, RequeuedBy = requeuedBy },
+            new { MessageId = messageId, RequeuedBy = requeuedBy, MessageBody = messageBody },
             cancellationToken);
 
         await EnsureSuccess(response, cancellationToken);

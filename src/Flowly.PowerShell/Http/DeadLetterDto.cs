@@ -12,6 +12,8 @@ namespace Flowly.PowerShell.Http;
 /// <param name="Status">The status: <c>Pending</c> or <c>Requeued</c>.</param>
 /// <param name="RequeuedAtUtc">When the message was requeued, or <see langword="null" /> when it has not been.</param>
 /// <param name="RequeuedBy">Who requeued the message, or <see langword="null" /> when it has not been requeued or no requester was supplied.</param>
+/// <param name="BodyReplaced"><see langword="true" /> when the message was requeued with a replacement body instead of the stored <paramref name="MessageBody" />, which is kept unchanged.</param>
+/// <param name="ReplacementMessageBody">The replacement body that was republished, or <see langword="null" /> when the message has not been requeued or was requeued with the stored body.</param>
 public sealed record DeadLetterDto(
     string MessageId,
     string QueueName,
@@ -23,4 +25,6 @@ public sealed record DeadLetterDto(
     string? DeadLetterErrorDescription,
     string Status,
     DateTimeOffset? RequeuedAtUtc,
-    string? RequeuedBy);
+    string? RequeuedBy,
+    bool BodyReplaced = false,
+    string? ReplacementMessageBody = null);

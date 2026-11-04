@@ -9,6 +9,8 @@ internal sealed class FakeDeadLetterService : IDeadLetterService
 
     public List<(string MessageId, string? RequeuedBy)> RequeueCalls { get; } = [];
 
+    public List<string?> ReplacementBodies { get; } = [];
+
     public List<string> DiscardCalls { get; } = [];
 
     public Exception? RequeueFailure { get; set; }
@@ -56,6 +58,18 @@ internal sealed class FakeDeadLetterService : IDeadLetterService
         deadLetter.RequeuedAt = DateTimeOffset.UtcNow;
 
         return Task.CompletedTask;
+    }
+
+    public async Task Requeue(string messageId, string? requeuedBy, string? replacementMessageBody, CancellationToken cancellationToken = default)
+    {
+        ReplacementBodies.Add(replacementMessageBody);
+
+        if (replacementMessageBody is not null && string.IsNullOrWhiteSpace(replacementMessageBody))
+            throw new InvalidReplacementMessageBodyException("The replacement message body must not be empty.");
+
+        await Requeue(messageId, requeuedBy, cancellationToken);
+
+        Find(messageId).ReplacementMessageBody = replacementMessageBody;
     }
 
     public Task Discard(string messageId, CancellationToken cancellationToken = default)

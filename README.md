@@ -10,6 +10,8 @@ Flowly is a queue-based messaging abstraction for .NET. It sits between your app
 
 Flowly ships an embedded management dashboard at `/flowly` — inspect job history, browse dead letters, trigger recurring jobs, and submit messages directly from the browser. OAuth2/OIDC authentication (Azure Entra ID, Google, or any OpenID Connect provider) is opt-in via `AddFlowlyDashboard(options => options.Authentication = new OAuthAuthenticationOptions(...))`, with optional role and policy restrictions to separate read-only viewers from users who can submit messages. See the [Dashboard Authentication guide](docs/dashboard-authentication.md) for step-by-step Azure Entra ID and Google setup.
 
+The dead letters page requeues or discards a message, and the requeue dialog shows the stored body in an editable text area: change it to republish a corrected body instead (it is sent only when changed, must be valid JSON when the stored body is JSON, and the original stays in the record), or leave it as it is to requeue the stored message. The detail view shows the replacement next to the original. Requeue and discard use the same role or policy as message submission. See [Fix and requeue a dead letter](#fix-and-requeue-a-dead-letter).
+
 There is no fixed default port. When embedded in an existing app, the dashboard runs on whatever port that app's Kestrel/`launchSettings.json` already uses. When scaffolded standalone via `--dashboard` (see [Project Templates](#project-templates)), each `dotnet new` invocation gets its own randomly assigned port — HTTP 5000–5300 / HTTPS 7000–7300 for `flowlyapp`, HTTP 5400–5499 / HTTPS 7400–7499 for `flowlyaspireapp` — recorded in that project's `Properties/launchSettings.json`.
 
 <img src="docs/assets/dashboard-screenshot-jobs.png" alt="Flowly Dashboard — Jobs" width="100%">
@@ -961,6 +963,7 @@ builder.AddDeadLetterTrackingClient("DeadLetters");     // or the Postgres / SQL
 | `DeadLetterErrorDescription` | Broker-provided error detail |
 | `Status` | `Pending`, `Requeued`, or `Discarded` |
 | `RequeuedAt` / `RequeuedBy` | Set when a message is requeued |
+| `ReplacementMessageBody` | The corrected body the message was requeued with; `null` when the stored body was requeued as it was (see [Fix and requeue](#fix-and-requeue-a-dead-letter)) |
 
 The raw body is stored without deserialization — this ensures malformed messages (which may be the reason for dead-lettering) are preserved exactly as received.
 
@@ -970,6 +973,16 @@ Dead letter tracking is supported on `MessageHandler<T>` and `EventHandlerBase<T
 
 For event handlers, the `SubscriptionName` field in the `DeadLetters` table identifies which subscriber dead-lettered the event. Requeuing re-publishes to the topic with a `flowly-target-subscription` header so only the originating subscriber receives the requeued event.
 
+### Fix and requeue a dead letter
+
+A message that was dead-lettered because of a faulty payload can be corrected before it is requeued. `IDeadLetterService.Requeue(messageId, requeuedBy, replacementMessageBody)` republishes `replacementMessageBody` instead of the stored body, with the stored content type and application properties (event subscription dead letters are still addressed to the originating subscriber only). The same optional replacement is available as `messageBody` on the Management API requeue action, as `-MessageBody` on `Submit-FlowlyDeadLetter` and in the Dashboard, whose requeue dialog shows the stored body in an editable text area and only sends it when it was changed.
+
+```csharp
+await deadLetterService.Requeue(messageId, requeuedBy: "ops@example.com", replacementMessageBody: """{"orderId":42,"amount":12.5}""");
+```
+
+The stored `MessageBody` is never changed. After the republish has succeeded, the replacement is recorded in the nullable `ReplacementMessageBody` column of the `DeadLetters` table (`null` means the stored body was sent as it was), together with the requeue status, so the original and the correction are both kept for audit and a failed publish leaves the record `Pending` with no replacement. The column is added by an EF Core migration of each backend package, applied automatically unless `enableMigrations` is `false`; with `enableMigrations: false`, apply the `AddReplacementMessageBody` migration (a nullable text column) before the new version runs. A replacement must not be empty or whitespace, must not exceed 256 KiB as UTF-8 (the smallest broker message limit, Azure Service Bus Standard) and, when the stored body is valid JSON, must be valid JSON too; otherwise `InvalidReplacementMessageBodyException` is thrown (an `ArgumentException`) and nothing is published. `IDeadLetter.ReplacementMessageBody` exposes the recorded replacement; custom `IDeadLetterService` implementations keep compiling, because the replacement overload is a default interface member that requeues as before without a replacement and throws `NotSupportedException` with one.
+
 ### Operating dead letters: Management API and PowerShell
 
 `Flowly.ManagementApi` lists, requeues and discards the dead letters of a host that registered dead letter tracking (`Add<Provider>DeadLetterTracking` or `Add<Provider>DeadLetterTrackingClient`), through the same `IDeadLetterService` the Dashboard uses. The actions are mapped only when that service is registered, so a host without dead letter tracking has no such routes. Dead letters live in the shared tracking database, so any instance that has the service can answer.
@@ -977,16 +990,17 @@ For event handlers, the `SubscriptionName` field in the `DeadLetters` table iden
 | Action | Route | Authorization | PowerShell cmdlet |
 |---|---|---|---|
 | List dead letters | `GET {BasePath}/dead-letters?queue=&subscription=&status=&messageId=&skip=&take=` | Read | `Get-FlowlyDeadLetter` |
-| Requeue a dead letter | `POST {BasePath}/dead-letters/requeue` with `{ "messageId", "requeuedBy" }` | Write | `Submit-FlowlyDeadLetter` |
+| Requeue a dead letter | `POST {BasePath}/dead-letters/requeue` with `{ "messageId", "requeuedBy", "messageBody" }` (`requeuedBy` and `messageBody` optional) | Write | `Submit-FlowlyDeadLetter` |
 | Discard a dead letter | `POST {BasePath}/dead-letters/discard` with `{ "messageId" }` | Write | `Remove-FlowlyDeadLetter` |
 
 ```powershell
 Get-FlowlyDeadLetter -Status Pending -QueueName my-queue
 Get-FlowlyDeadLetter -MessageId $id | Submit-FlowlyDeadLetter -RequeuedBy "ops@example.com"
+Submit-FlowlyDeadLetter -MessageId $id -MessageBody '{"orderId":42,"amount":12.5}'
 Get-FlowlyDeadLetter -Status Pending -First 20 | Remove-FlowlyDeadLetter
 ```
 
-The list is newest first and filtered by `queue` (the topic name for an event subscription dead letter), `subscription`, `status` (`Pending` or `Requeued`) and `messageId`; `skip` and `take` (1 to 1000) page through it, and without `take` everything after `skip` is returned. Requeue stores `requeuedBy` as the audit trail; when it is omitted or blank the API records the authenticated caller's identity instead, never a value taken from a request header: the principal's name for host authorization policies, the principal's name, then the `sub` or `azp` claim, for OAuth2 (an Entra client credentials token has no name, so its `sub` or `azp` is stored), and nothing for an API key, which carries no identity. An explicit `requeuedBy` overrides the default. Requeue and discard answer `204`, `404` for an unknown message id, `409` when the dead letter is not `Pending` (a requeued dead letter can be neither requeued nor discarded again), and `400` for a blank message id. Discarding permanently deletes the record. The Write cmdlets ask for confirmation (`-WhatIf` and `-Confirm` are supported). See [`src/Flowly.ManagementApi/README.md`](src/Flowly.ManagementApi/README.md) for the full contract.
+The list is newest first and filtered by `queue` (the topic name for an event subscription dead letter), `subscription`, `status` (`Pending` or `Requeued`) and `messageId`; `skip` and `take` (1 to 1000) page through it, and without `take` everything after `skip` is returned. Requeue stores `requeuedBy` as the audit trail; when it is omitted or blank the API records the authenticated caller's identity instead, never a value taken from a request header: the principal's name for host authorization policies, the principal's name, then the `sub` or `azp` claim, for OAuth2 (an Entra client credentials token has no name, so its `sub` or `azp` is stored), and nothing for an API key, which carries no identity. An explicit `requeuedBy` overrides the default. Requeue and discard answer `204`, `404` for an unknown message id, `409` when the dead letter is not `Pending` (a requeued dead letter can be neither requeued nor discarded again), `400` for a blank message id or a rejected `messageBody`. Discarding permanently deletes the record. The optional `messageBody` (`-MessageBody`) republishes a corrected body instead of the stored one; see [Fix and requeue](#fix-and-requeue-a-dead-letter). The Write cmdlets ask for confirmation (`-WhatIf` and `-Confirm` are supported). See [`src/Flowly.ManagementApi/README.md`](src/Flowly.ManagementApi/README.md) for the full contract.
 
 ---
 

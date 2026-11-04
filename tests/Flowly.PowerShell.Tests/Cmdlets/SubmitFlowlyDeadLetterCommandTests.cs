@@ -55,6 +55,88 @@ public class SubmitFlowlyDeadLetterCommandTests
         }
 
         [Fact]
+        public void WithAMessageBody_PostsItAsTheReplacement()
+        {
+            var requests = new List<JsonElement>();
+            var handler = new RecordingHandler(request => RecordBody(request, requests));
+            using var cmdletHost = new CmdletHost(handler);
+
+            cmdletHost.Invoke(
+                "Submit-FlowlyDeadLetter",
+                new Dictionary<string, object?> { ["MessageId"] = "m1", ["MessageBody"] = "{\"amount\":12}", ["Confirm"] = false });
+
+            Assert.Equal("{\"amount\":12}", Assert.Single(requests).GetProperty("messageBody").GetString());
+        }
+
+        [Fact]
+        public void WithoutAMessageBody_PostsANullReplacement()
+        {
+            var requests = new List<JsonElement>();
+            var handler = new RecordingHandler(request => RecordBody(request, requests));
+            using var cmdletHost = new CmdletHost(handler);
+
+            cmdletHost.Invoke("Submit-FlowlyDeadLetter", new Dictionary<string, object?> { ["MessageId"] = "m1", ["Confirm"] = false });
+
+            Assert.Equal(JsonValueKind.Null, Assert.Single(requests).GetProperty("messageBody").ValueKind);
+        }
+
+        [Fact]
+        public void WithAMessageBodyAndWhatIf_DoesNotCallTheApi()
+        {
+            var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.NoContent));
+            using var cmdletHost = new CmdletHost(handler);
+
+            cmdletHost.Invoke("Submit-FlowlyDeadLetter", new Dictionary<string, object?> { ["MessageId"] = "m1", ["MessageBody"] = "{}", ["WhatIf"] = true });
+
+            Assert.Equal(0, handler.RequestCount);
+        }
+
+        [Fact]
+        public void WhenTheReplacementIsRejected_FailsWithTheValidationDetail()
+        {
+            var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.BadRequest)
+            {
+                Content = new StringContent("{\"detail\":\"The replacement message body must not be empty.\"}", System.Text.Encoding.UTF8, "application/problem+json")
+            });
+            using var cmdletHost = new CmdletHost(handler);
+
+            var exception = Assert.Throws<CmdletInvocationException>(() => cmdletHost.Invoke(
+                "Submit-FlowlyDeadLetter",
+                new Dictionary<string, object?> { ["MessageId"] = "m1", ["MessageBody"] = "", ["Confirm"] = false }));
+
+            Assert.Contains("must not be empty", exception.InnerException!.Message);
+        }
+
+        [Fact]
+        public void MessageBodyIsNotBoundFromThePipeline()
+        {
+            var parameter = typeof(SubmitFlowlyDeadLetterCommand).GetProperty(nameof(SubmitFlowlyDeadLetterCommand.MessageBody))!.GetCustomAttribute<ParameterAttribute>()!;
+
+            Assert.False(parameter.ValueFromPipeline);
+            Assert.False(parameter.ValueFromPipelineByPropertyName);
+        }
+
+        [Fact]
+        public void WithAMessageBodyThroughThePipeline_DoesNotSendTheStoredBodyOfThePipedDeadLetter()
+        {
+            var requeued = new List<JsonElement>();
+            var handler = new RecordingHandler(request => request.Method == HttpMethod.Get
+                ? new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = JsonContent.Create(new[] { new DeadLetterDto("m1", "q", null, "{\"stored\":true}", "{}", DeadLetteredAt, null, null, "Pending", null, null) })
+                }
+                : RecordBody(request, requeued));
+            using var cmdletHost = new CmdletHost(handler);
+
+            cmdletHost.InvokePipeline(
+                "Get-FlowlyDeadLetter",
+                "Submit-FlowlyDeadLetter",
+                new Dictionary<string, object?> { ["Confirm"] = false });
+
+            Assert.Equal(JsonValueKind.Null, Assert.Single(requeued).GetProperty("messageBody").ValueKind);
+        }
+
+        [Fact]
         public void WithWhatIf_DoesNotCallTheApi()
         {
             var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.NoContent));

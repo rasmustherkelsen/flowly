@@ -18,7 +18,7 @@ internal interface IDeadLetterRepository
 
     Task<IDeadLetter?> Get(string messageId, CancellationToken cancellationToken = default);
 
-    Task MarkAsRequeued(string messageId, string? requeuedBy, CancellationToken cancellationToken = default);
+    Task MarkAsRequeued(string messageId, string? requeuedBy, string? replacementMessageBody = null, CancellationToken cancellationToken = default);
 
     Task Delete(string messageId, CancellationToken cancellationToken = default);
 

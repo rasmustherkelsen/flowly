@@ -33,6 +33,42 @@ public class IDeadLetterServiceTests
         }
     }
 
+    public class RequeueWithReplacementMessageBody
+    {
+        [Fact]
+        public async Task OnAnImplementationWithoutItsOwn_WithoutReplacement_DelegatesToTheExistingRequeue()
+        {
+            var legacyDeadLetterService = new LegacyDeadLetterService();
+            using var cancellationTokenSource = new CancellationTokenSource();
+
+            await ((IDeadLetterService)legacyDeadLetterService).Requeue("msg-1", "ops", null, cancellationTokenSource.Token);
+
+            Assert.Equal(("msg-1", "ops"), Assert.Single(legacyDeadLetterService.RequeueCalls));
+            Assert.Equal(cancellationTokenSource.Token, legacyDeadLetterService.ReceivedToken);
+        }
+
+        [Fact]
+        public async Task OnAnImplementationWithoutItsOwn_WithReplacement_ThrowsNotSupported()
+        {
+            var legacyDeadLetterService = new LegacyDeadLetterService();
+
+            await Assert.ThrowsAsync<NotSupportedException>(() => ((IDeadLetterService)legacyDeadLetterService).Requeue("msg-1", "ops", "{}"));
+
+            Assert.Empty(legacyDeadLetterService.RequeueCalls);
+        }
+    }
+
+    public class ReplacementMessageBody
+    {
+        [Fact]
+        public void OnAnImplementationWithoutItsOwn_IsNull()
+        {
+            IDeadLetter legacyDeadLetter = new LegacyDeadLetter();
+
+            Assert.Null(legacyDeadLetter.ReplacementMessageBody);
+        }
+    }
+
     private static DeadLetter Build(string messageId, int minutes, string queueName)
         => new()
         {
@@ -54,10 +90,42 @@ public class IDeadLetterServiceTests
             return Task.FromResult<IReadOnlyCollection<IDeadLetter>>(deadLetters);
         }
 
+        public List<(string MessageId, string? RequeuedBy)> RequeueCalls { get; } = [];
+
         public Task Requeue(string messageId, string? requeuedBy = null, CancellationToken cancellationToken = default)
-            => throw new NotSupportedException();
+        {
+            RequeueCalls.Add((messageId, requeuedBy));
+            ReceivedToken = cancellationToken;
+
+            return Task.CompletedTask;
+        }
 
         public Task Discard(string messageId, CancellationToken cancellationToken = default)
             => throw new NotSupportedException();
+    }
+
+    private sealed class LegacyDeadLetter : IDeadLetter
+    {
+        public string MessageId => "msg-1";
+
+        public string QueueName => "orders";
+
+        public string? SubscriptionName => null;
+
+        public string MessageBody => "{}";
+
+        public string MessageProperties => "{}";
+
+        public DateTimeOffset DeadLetteredAt => DateTimeOffset.UnixEpoch;
+
+        public string? DeadLetterReason => null;
+
+        public string? DeadLetterErrorDescription => null;
+
+        public DeadLetterStatus Status => DeadLetterStatus.Pending;
+
+        public DateTimeOffset? RequeuedAt => null;
+
+        public string? RequeuedBy => null;
     }
 }

@@ -614,6 +614,34 @@ public class DeadLetterRepositoryTests
             var deadLetter = await context.DeadLetters.SingleAsync(d => d.MessageId == "msg-1");
             Assert.Null(deadLetter.RequeuedBy);
         }
+
+        [Fact]
+        public async Task WithReplacementMessageBody_StoresItAndKeepsTheOriginalBody()
+        {
+            using var factory = new SqliteDbContextFactory();
+            var repository = new DeadLetterRepository(factory);
+            await repository.SaveBatch([new FakeDeadLetterMessage { MessageId = "msg-1", RawBody = "original" }], "orders");
+
+            await repository.MarkAsRequeued("msg-1", "admin", "corrected");
+
+            await using var context = await factory.CreateDbContextAsync();
+            var deadLetter = await context.DeadLetters.SingleAsync(d => d.MessageId == "msg-1");
+            Assert.Equal("original", deadLetter.MessageBody);
+            Assert.Equal("corrected", deadLetter.ReplacementMessageBody);
+        }
+
+        [Fact]
+        public async Task WithoutReplacementMessageBody_LeavesItNull()
+        {
+            using var factory = new SqliteDbContextFactory();
+            var repository = new DeadLetterRepository(factory);
+            await repository.SaveBatch([new FakeDeadLetterMessage { MessageId = "msg-1" }], "orders");
+
+            await repository.MarkAsRequeued("msg-1", "admin");
+
+            await using var context = await factory.CreateDbContextAsync();
+            Assert.Null((await context.DeadLetters.SingleAsync(d => d.MessageId == "msg-1")).ReplacementMessageBody);
+        }
     }
 
     public class Delete

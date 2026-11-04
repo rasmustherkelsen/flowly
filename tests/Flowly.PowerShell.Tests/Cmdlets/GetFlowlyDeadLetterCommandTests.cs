@@ -54,6 +54,22 @@ public class GetFlowlyDeadLetterCommandTests
         }
 
         [Fact]
+        public void OutputsTheReplacementBodyOfARequeuedDeadLetter()
+        {
+            var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(new[] { new DeadLetterDto("m1", "q", null, "{}", "{}", DeadLetteredAt, null, null, "Requeued", DeadLetteredAt, "ops", true, "{\"a\":1}") })
+            });
+            using var cmdletHost = new CmdletHost(handler);
+
+            var deadLetter = (DeadLetterDto)Assert.Single(cmdletHost.Invoke("Get-FlowlyDeadLetter")).BaseObject;
+
+            Assert.True(deadLetter.BodyReplaced);
+            Assert.Equal("{\"a\":1}", deadLetter.ReplacementMessageBody);
+            Assert.Equal("{}", deadLetter.MessageBody);
+        }
+
+        [Fact]
         public void PassesTheFiltersAndPagingToTheApi()
         {
             var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(Array.Empty<DeadLetterDto>()) });

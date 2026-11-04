@@ -133,7 +133,7 @@ SQL Server, PostgreSQL or SQLite via EF Core. Tables: `Job`, `JobAliveStatus`, `
 
 ### Dead Letter Tracking (`Flowly.DeadLetters/`)
 
-Opt-in per handler (`MessageHandler<T>` and `EventHandlerBase<TEvent>`). A background service per opted-in queue/subscription reads the broker's dead letter sub-queue and persists records to the `DeadLetters` table: raw body, raw application properties (JSON), broker reason and description, timestamps, status (`Pending / Requeued / Discarded`) and an optional `SubscriptionName`. Requires `.AddSqlServerDeadLetterTracking()`, `.AddPostgresDeadLetterTracking()` or the SQLite equivalent.
+Opt-in per handler (`MessageHandler<T>` and `EventHandlerBase<TEvent>`). A background service per opted-in queue/subscription reads the broker's dead letter sub-queue and persists records to the `DeadLetters` table: raw body, raw application properties (JSON), broker reason and description, timestamps, status (`Pending / Requeued / Discarded`) and an optional `SubscriptionName`. A requeue can carry an optional replacement body (`IDeadLetterService.Requeue(messageId, requeuedBy, replacementMessageBody)`, Management API `messageBody`, `Submit-FlowlyDeadLetter -MessageBody`, the Dashboard requeue dialog): the stored body is kept and the republished replacement is recorded in `ReplacementMessageBody` once the publish succeeded. Requires `.AddSqlServerDeadLetterTracking()`, `.AddPostgresDeadLetterTracking()` or the SQLite equivalent.
 
 For event subscribers `QueueName` holds the topic/exchange name and `SubscriptionName` identifies the subscriber that dead-lettered the event. Requeuing re-publishes with `flowly-target-subscription`, so only the originating subscriber receives it.
 

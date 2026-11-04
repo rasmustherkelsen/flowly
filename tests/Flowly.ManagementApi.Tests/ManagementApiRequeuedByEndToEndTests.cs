@@ -50,10 +50,34 @@ public class ManagementApiRequeuedByEndToEndTests
 
             Assert.Equal(("m1", "ops"), Assert.Single(hostFixture.DeadLetters.RequeueCalls));
         }
+
+        [Fact]
+        public async Task WithAMessageBody_PassesItToTheService()
+        {
+            using var hostFixture = new HostFixture(HostMode.ApiKey);
+            hostFixture.Client.DefaultRequestHeaders.Add("X-Flowly-Api-Key", HostFixture.ApiKey);
+
+            var response = await hostFixture.Client.PostAsJsonAsync(RequeuePath, new { MessageId = "m1", MessageBody = "corrected" });
+
+            Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+            Assert.Equal("corrected", Assert.Single(hostFixture.DeadLetters.ReplacementBodies));
+        }
     }
 
     public class OAuth2Authorization
     {
+        [Fact]
+        public async Task WithAMessageBody_PassesItToTheService()
+        {
+            using var hostFixture = new HostFixture(HostMode.OAuth2);
+            hostFixture.UseToken(new Claim("roles", "Flowly.Management.Write"), new Claim("sub", "service-principal-1"));
+
+            var response = await hostFixture.Client.PostAsJsonAsync(RequeuePath, new { MessageId = "m1", MessageBody = "corrected" });
+
+            Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+            Assert.Equal("corrected", Assert.Single(hostFixture.DeadLetters.ReplacementBodies));
+        }
+
         [Fact]
         public async Task WithoutARequesterAndAClientCredentialsToken_StoresTheSubject()
         {
@@ -125,6 +149,17 @@ public class ManagementApiRequeuedByEndToEndTests
 
     public class AuthorizationPolicies
     {
+        [Fact]
+        public async Task WithAMessageBody_PassesItToTheService()
+        {
+            using var hostFixture = new HostFixture(HostMode.ExistingPolicies);
+
+            var response = await hostFixture.Client.PostAsJsonAsync(RequeuePath, new { MessageId = "m1", MessageBody = "corrected" });
+
+            Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+            Assert.Equal("corrected", Assert.Single(hostFixture.DeadLetters.ReplacementBodies));
+        }
+
         [Fact]
         public async Task WithoutARequester_StoresThePrincipalName()
         {

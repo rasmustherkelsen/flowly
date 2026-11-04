@@ -24,6 +24,8 @@ internal sealed class RequeueDeadLetterManagementAction : IFlowlyManagementActio
             .WithDescription(
                 "Sends the dead letter back to its original queue (or, for an event subscription dead letter, to the topic addressed to the originating subscriber only) " +
                 "and marks it Requeued, with the requester stored as the audit trail: the request's optional requeuedBy, or when it is absent or blank the authenticated caller's identity. That identity is the principal's name for host authorization policies, the principal's name, then its sub or azp claim, for OAuth2, and nothing for an API key, which carries no identity, so the field stays empty. The Flowly retry count is cleared, so the message gets a fresh set of retries. " +
+                "The optional messageBody republishes a corrected body instead of the stored one: the stored body stays in the record, which then reports bodyReplaced and the replacement, and nothing is recorded when the publish fails. " +
+                "A replacement must not be empty or whitespace, must not exceed 256 KiB as UTF-8 and must be valid JSON when the stored body is JSON (400 otherwise). " +
                 "Only a Pending dead letter can be requeued (409 otherwise, 404 when no dead letter has the id).")
             .WithTags(FeatureArea)
             .WithName("RequeueDeadLetter")
@@ -49,13 +51,17 @@ internal sealed class RequeueDeadLetterManagementAction : IFlowlyManagementActio
 
         try
         {
-            await deadLetterService.Requeue(request.MessageId, requeuedBy, cancellationToken);
+            await deadLetterService.Requeue(request.MessageId, requeuedBy, request.MessageBody, cancellationToken);
 
             return Results.NoContent();
         }
         catch (KeyNotFoundException exception)
         {
             return Results.Problem(title: "Dead letter not found", detail: exception.Message, statusCode: StatusCodes.Status404NotFound);
+        }
+        catch (InvalidReplacementMessageBodyException exception)
+        {
+            return Results.Problem(title: "Invalid replacement message body", detail: exception.Message, statusCode: StatusCodes.Status400BadRequest);
         }
         catch (InvalidOperationException exception)
         {

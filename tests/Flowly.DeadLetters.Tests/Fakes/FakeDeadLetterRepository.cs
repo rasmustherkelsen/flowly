@@ -9,6 +9,7 @@ internal class FakeDeadLetterRepository : IDeadLetterRepository
 
     public string? RequeuedMessageId { get; private set; }
     public string? RequeuedBy { get; private set; }
+    public string? RequeuedReplacementMessageBody { get; private set; }
     public string? DeletedMessageId { get; private set; }
     public int RequeuedOlderThanCountToReturn { get; set; }
     public IReadOnlyCollection<PurgedDeadLetter> PendingOlderThanToReturn { get; set; } = [];
@@ -51,10 +52,11 @@ internal class FakeDeadLetterRepository : IDeadLetterRepository
     public Task<IDeadLetter?> Get(string messageId, CancellationToken cancellationToken = default)
         => Task.FromResult(_store.GetValueOrDefault(messageId));
 
-    public Task MarkAsRequeued(string messageId, string? requeuedBy, CancellationToken cancellationToken = default)
+    public Task MarkAsRequeued(string messageId, string? requeuedBy, string? replacementMessageBody = null, CancellationToken cancellationToken = default)
     {
         RequeuedMessageId = messageId;
         RequeuedBy = requeuedBy;
+        RequeuedReplacementMessageBody = replacementMessageBody;
         return Task.CompletedTask;
     }
 

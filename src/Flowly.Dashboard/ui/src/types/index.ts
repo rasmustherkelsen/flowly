@@ -32,6 +32,7 @@ export interface DeadLetter {
   status: 'Pending' | 'Requeued' | 'Discarded';
   requeuedAt: string | null;
   requeuedBy: string | null;
+  replacementMessageBody: string | null;
 }
 
 export interface SubmitterInfo {

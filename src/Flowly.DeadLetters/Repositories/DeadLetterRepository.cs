@@ -66,7 +66,7 @@ internal class DeadLetterRepository(IDbContextFactory<DeadLetterDataContext> con
             .FirstOrDefaultAsync(d => d.MessageId == messageId, cancellationToken);
     }
 
-    public async Task MarkAsRequeued(string messageId, string? requeuedBy, CancellationToken cancellationToken = default)
+    public async Task MarkAsRequeued(string messageId, string? requeuedBy, string? replacementMessageBody = null, CancellationToken cancellationToken = default)
     {
         await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
 
@@ -75,7 +75,8 @@ internal class DeadLetterRepository(IDbContextFactory<DeadLetterDataContext> con
             .ExecuteUpdateAsync(s => s
                     .SetProperty(d => d.Status, DeadLetterStatus.Requeued)
                     .SetProperty(d => d.RequeuedAt, DateTimeOffset.UtcNow)
-                    .SetProperty(d => d.RequeuedBy, requeuedBy),
+                    .SetProperty(d => d.RequeuedBy, requeuedBy)
+                    .SetProperty(d => d.ReplacementMessageBody, replacementMessageBody),
                 cancellationToken);
     }
 

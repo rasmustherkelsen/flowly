@@ -31,6 +31,9 @@
 
     <ItemGroup>
         <ProjectReference Include="..\..\src\Flowly.DeadLetters\Flowly.DeadLetters.csproj" />
+        <ProjectReference Include="..\..\src\Flowly.DeadLetters.SqlServer\Flowly.DeadLetters.SqlServer.csproj" />
+        <ProjectReference Include="..\..\src\Flowly.DeadLetters.Postgres\Flowly.DeadLetters.Postgres.csproj" />
+        <ProjectReference Include="..\..\src\Flowly.DeadLetters.SQLite\Flowly.DeadLetters.SQLite.csproj" />
     </ItemGroup>
 
 </Project>

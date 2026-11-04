@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Reflection;
+using System.Text.Json;
 using Flowly.Dashboard.Auth;
 using Flowly.DeadLetters;
 using Flowly.Jobs;
@@ -242,14 +243,29 @@ internal static class DashboardEndpoints
         if (service is null)
             return Results.NotFound("Dead letter tracking is not configured in this application.");
 
+        RequeueDeadLetterRequest? request;
+
         try
         {
-            await service.Requeue(messageId, cancellationToken: ct);
+            request = ctx.Request.HasJsonContentType() ? await ctx.Request.ReadFromJsonAsync<RequeueDeadLetterRequest>(ct) : null;
+        }
+        catch (JsonException)
+        {
+            return Results.BadRequest("The request body is not valid JSON.");
+        }
+
+        try
+        {
+            await service.Requeue(messageId, null, request?.MessageBody, ct);
             return Results.Ok();
         }
         catch (KeyNotFoundException)
         {
             return Results.NotFound($"Dead letter message '{messageId}' not found.");
+        }
+        catch (InvalidReplacementMessageBodyException ex)
+        {
+            return Results.BadRequest(ex.Message);
         }
         catch (InvalidOperationException ex)
         {

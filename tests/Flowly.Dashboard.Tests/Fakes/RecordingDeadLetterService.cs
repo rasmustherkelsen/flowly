@@ -24,8 +24,19 @@ internal sealed class RecordingDeadLetterService : IDeadLetterService
         return Task.FromResult(PageToReturn);
     }
 
+    public List<(string MessageId, string? RequeuedBy, string? ReplacementMessageBody)> RequeueCalls { get; } = [];
+
+    public Exception? RequeueFailure { get; set; }
+
     public Task Requeue(string messageId, string? requeuedBy = null, CancellationToken cancellationToken = default)
-        => throw new NotSupportedException();
+        => Requeue(messageId, requeuedBy, null, cancellationToken);
+
+    public Task Requeue(string messageId, string? requeuedBy, string? replacementMessageBody, CancellationToken cancellationToken = default)
+    {
+        RequeueCalls.Add((messageId, requeuedBy, replacementMessageBody));
+
+        return RequeueFailure is null ? Task.CompletedTask : Task.FromException(RequeueFailure);
+    }
 
     public Task Discard(string messageId, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();

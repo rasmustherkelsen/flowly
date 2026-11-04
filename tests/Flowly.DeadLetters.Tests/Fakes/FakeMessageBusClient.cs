@@ -7,11 +7,13 @@ internal class FakeMessageBusClient : IMessageBusClient, IEventCapableMessageBus
     private readonly Dictionary<string, FakeMessageBusSender> _eventRetrySenders = [];
     private readonly Dictionary<string, FakeMessageBusSender> _senders = [];
 
+    public Exception? FailureToThrowOnSendRawMessage { get; set; }
+
     public IReadOnlyCollection<string> CreatedSenders => _senders.Keys.ToList();
 
     public Task<IMessageBusSender> CreateEventRetrySender(string topicName, string subscriptionName)
     {
-        var sender = new FakeMessageBusSender();
+        var sender = new FakeMessageBusSender { FailureToThrowOnSendRawMessage = FailureToThrowOnSendRawMessage };
         _eventRetrySenders[$"{topicName}/{subscriptionName}"] = sender;
         return Task.FromResult<IMessageBusSender>(sender);
     }
@@ -33,7 +35,7 @@ internal class FakeMessageBusClient : IMessageBusClient, IEventCapableMessageBus
 
     public Task<IMessageBusSender> CreateMessageBusSender(string queueName)
     {
-        var sender = new FakeMessageBusSender();
+        var sender = new FakeMessageBusSender { FailureToThrowOnSendRawMessage = FailureToThrowOnSendRawMessage };
         _senders[queueName] = sender;
         return Task.FromResult<IMessageBusSender>(sender);
     }
