@@ -18,9 +18,11 @@ public sealed class ManagementApiOAuthOptions
     /// <summary>
     ///     The claim value required for <see cref="ManagementCapability.Read" /> actions. Checked against both the
     ///     <c>roles</c> claim (Entra App Roles — what a client-credentials, app-only token carries) and the <c>scp</c>
-    ///     claim (delegated OAuth scopes — what an interactive user sign-in token carries), so the same configuration
-    ///     value works for either flow without the caller needing to know which claim type their token uses. Defaults
-    ///     to <c>"Flowly.Management.Read"</c>.
+    ///     claim (delegated OAuth scopes, a space-separated list matched per scope — what an interactive user sign-in
+    ///     token carries), so the same configuration value works for either flow without the caller needing to know
+    ///     which claim type their token uses. The JWT bearer handler maps an incoming <c>scp</c> claim to the type
+    ///     <c>http://schemas.microsoft.com/identity/claims/scope</c> by default, and both claim types are matched.
+    ///     Values are compared case-sensitively. Defaults to <c>"Flowly.Management.Read"</c>.
     /// </summary>
     public string ReadRequirement { get; set; } = "Flowly.Management.Read";
 

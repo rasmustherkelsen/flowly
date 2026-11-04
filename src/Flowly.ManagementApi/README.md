@@ -53,7 +53,7 @@ The actions call the same `IDeadLetterService` the Dashboard uses, so they list,
 Exactly one authorization mode must be configured, or `UseFlowlyManagementApi()` throws at startup:
 
 - **API key** — `options.RequireApiKey(apiKey)` (single key, both read and write) or `options.RequireApiKey(readApiKey, writeApiKey)` (read/write split). Presented via the `X-Flowly-Api-Key` request header.
-- **OAuth2** — `options.UseOAuth2(oauth => { oauth.Authority = "..."; oauth.Audience = "..."; })`, for protecting the API with an Entra ID (or any OIDC) app registration, including the client-credentials flow. The `ReadRequirement`/`WriteRequirement` claim values are checked against both the `roles` claim (Entra App Roles — what an app-only, client-credentials token carries) and the `scp` claim (delegated OAuth scopes — what an interactive sign-in token carries).
+- **OAuth2** — `options.UseOAuth2(oauth => { oauth.Authority = "..."; oauth.Audience = "..."; })`, for protecting the API with an Entra ID (or any OIDC) app registration, including the client-credentials flow. The `ReadRequirement`/`WriteRequirement` claim values are checked against both the `roles` claim (Entra App Roles — what an app-only, client-credentials token carries) and the `scp` claim (delegated OAuth scopes — what an interactive sign-in token carries; a space-separated list, matched per scope). The JWT bearer handler maps an incoming `scp` claim to the type `http://schemas.microsoft.com/identity/claims/scope` by default, and both claim types are matched. Values are compared case-sensitively.
 - **Existing policies** — `options.RequireAuthorizationPolicies(readPolicyName, writePolicyName)` defers entirely to authorization policies the host already configured.
 
 ## Discovery

@@ -1,14 +1,19 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 
 namespace Flowly.ManagementApi.Authorization;
 
 internal sealed class RequirementClaimHandler : AuthorizationHandler<RequirementClaimRequirement>
 {
+    private const string RolesClaimType = "roles";
+    private const string ScopeClaimType = "scp";
+    private const string MappedScopeClaimType = "http://schemas.microsoft.com/identity/claims/scope";
+
     protected override Task HandleRequirementAsync(AuthorizationHandlerContext context, RequirementClaimRequirement requirement)
     {
-        var hasAppRole = context.User.Claims.Any(c => c.Type is "roles" or System.Security.Claims.ClaimTypes.Role && c.Value == requirement.Value);
+        var hasAppRole = context.User.Claims.Any(c => IsRoleClaim(c) && c.Value == requirement.Value);
         var hasDelegatedScope = context.User.Claims
-            .Where(c => c.Type == "scp")
+            .Where(IsScopeClaim)
             .SelectMany(c => c.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries))
             .Any(scope => scope == requirement.Value);
 
@@ -17,4 +22,8 @@ internal sealed class RequirementClaimHandler : AuthorizationHandler<Requirement
 
         return Task.CompletedTask;
     }
+
+    private static bool IsRoleClaim(Claim claim) => claim.Type is RolesClaimType or ClaimTypes.Role;
+
+    private static bool IsScopeClaim(Claim claim) => claim.Type is ScopeClaimType or MappedScopeClaimType;
 }
