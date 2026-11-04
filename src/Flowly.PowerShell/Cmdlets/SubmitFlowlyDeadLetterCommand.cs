@@ -16,7 +16,10 @@ public sealed class SubmitFlowlyDeadLetterCommand : PSCmdlet
     [Parameter(Mandatory = true, ValueFromPipelineByPropertyName = true)]
     public string MessageId { get; set; } = null!;
 
-    /// <summary>An optional identifier of the person or process requesting the requeue, stored as the audit trail of the dead letter.</summary>
+    /// <summary>
+    ///     An optional identifier of the person or process requesting the requeue, stored as the audit trail of the dead letter. When omitted the API stores the authenticated
+    ///     caller's identity instead: the principal's name for host authorization policies, the name, <c>sub</c> or <c>azp</c> claim for OAuth2, and nothing for an API key.
+    /// </summary>
     [Parameter]
     public string? RequeuedBy { get; set; }
 

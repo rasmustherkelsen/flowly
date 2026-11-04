@@ -1,4 +1,6 @@
+using System.Security.Claims;
 using Flowly.DeadLetters;
+using Flowly.ManagementApi.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -15,13 +17,13 @@ internal sealed class RequeueDeadLetterManagementAction : IFlowlyManagementActio
     {
         endpoints.MapPost(
                 $"{basePath}/{FeatureArea}/requeue",
-                (IDeadLetterService deadLetterService, RequeueDeadLetterRequest request, CancellationToken cancellationToken)
-                    => Requeue(deadLetterService, request, cancellationToken))
+                (IDeadLetterService deadLetterService, RequeueDeadLetterRequest request, ClaimsPrincipal user, ManagementApiOptions options, CancellationToken cancellationToken)
+                    => Requeue(deadLetterService, request, user, options.AuthMode, cancellationToken))
             .RequireAuthorization(authorizationPolicyName)
             .WithSummary("Requeue a dead letter")
             .WithDescription(
                 "Sends the dead letter back to its original queue (or, for an event subscription dead letter, to the topic addressed to the originating subscriber only) " +
-                "and marks it Requeued, with the optional requester stored as the audit trail. The Flowly retry count is cleared, so the message gets a fresh set of retries. " +
+                "and marks it Requeued, with the requester stored as the audit trail: the request's optional requeuedBy, or when it is absent or blank the authenticated caller's identity. That identity is the principal's name for host authorization policies, the principal's name, then its sub or azp claim, for OAuth2, and nothing for an API key, which carries no identity, so the field stays empty. The Flowly retry count is cleared, so the message gets a fresh set of retries. " +
                 "Only a Pending dead letter can be requeued (409 otherwise, 404 when no dead letter has the id).")
             .WithTags(FeatureArea)
             .WithName("RequeueDeadLetter")
@@ -31,16 +33,23 @@ internal sealed class RequeueDeadLetterManagementAction : IFlowlyManagementActio
             .ProducesProblem(StatusCodes.Status409Conflict);
     }
 
-    internal async Task<IResult> Requeue(IDeadLetterService deadLetterService, RequeueDeadLetterRequest request, CancellationToken cancellationToken)
+    internal async Task<IResult> Requeue(
+        IDeadLetterService deadLetterService,
+        RequeueDeadLetterRequest request,
+        ClaimsPrincipal user,
+        ManagementApiAuthMode authMode,
+        CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.MessageId))
         {
             return Results.Problem(title: "Missing message id", detail: "MessageId is required.", statusCode: StatusCodes.Status400BadRequest);
         }
 
+        var requeuedBy = string.IsNullOrWhiteSpace(request.RequeuedBy) ? CallerIdentityResolver.Resolve(user, authMode) : request.RequeuedBy;
+
         try
         {
-            await deadLetterService.Requeue(request.MessageId, request.RequeuedBy, cancellationToken);
+            await deadLetterService.Requeue(request.MessageId, requeuedBy, cancellationToken);
 
             return Results.NoContent();
         }
