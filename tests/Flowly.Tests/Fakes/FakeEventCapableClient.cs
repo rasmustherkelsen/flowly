@@ -2,10 +2,16 @@ using Flowly.Transport;
 
 namespace Flowly.Tests.Fakes;
 
-internal sealed class FakeEventCapableClient : FakeMessageBusClient, IEventCapableMessageBusClient
+internal sealed class FakeEventCapableClient(IMessageBusSender? publisher = null) : FakeMessageBusClient, IEventCapableMessageBusClient
 {
+    public string? CreatedEventPublisherForTopic { get; private set; }
+
     public Task<IMessageBusSender> CreateEventPublisher(string topicName)
-        => throw new NotSupportedException();
+    {
+        CreatedEventPublisherForTopic = topicName;
+
+        return Task.FromResult(publisher ?? throw new NotSupportedException());
+    }
 
     public Task<IMessageBusProcessor<TEvent>> CreateEventProcessor<TEvent>(string topicName, string subscriptionName, MessageBusProcessorOptions options)
         => throw new NotSupportedException();

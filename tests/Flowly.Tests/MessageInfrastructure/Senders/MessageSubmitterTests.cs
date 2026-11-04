@@ -18,8 +18,7 @@ public class MessageSubmitterTests
             var client = new FakeMessageBusClient(capturingSender);
             var registry = new SingleClientRegistry(client, "primary");
             var instrumentation = new StubSubmitterInstrumentation();
-            var queueSettings = new MessageSubmitter<OrderPlaced>.QueueSettings("order-placed", "primary");
-            var messageSubmitter = new MessageSubmitter<OrderPlaced>(registry, queueSettings, instrumentation);
+            var messageSubmitter = new MessageSubmitter<OrderPlaced>(registry, "order-placed", "primary", instrumentation);
 
             await messageSubmitter.Submit(new OrderPlaced("x"), CancellationToken.None);
 
@@ -33,8 +32,7 @@ public class MessageSubmitterTests
             var client = new FakeMessageBusClient(capturingSender);
             var registry = new SingleClientRegistry(client, "primary");
             var instrumentation = new StubSubmitterInstrumentation();
-            var queueSettings = new MessageSubmitter<OrderPlaced>.QueueSettings("order-placed", "primary");
-            var messageSubmitter = new MessageSubmitter<OrderPlaced>(registry, queueSettings, instrumentation);
+            var messageSubmitter = new MessageSubmitter<OrderPlaced>(registry, "order-placed", "primary", instrumentation);
 
             await messageSubmitter.Submit(new OrderPlaced("x"), CancellationToken.None);
 
@@ -49,8 +47,7 @@ public class MessageSubmitterTests
             var client = new FakeMessageBusClient(new CapturingSender());
             var registry = new SingleClientRegistry(client, "primary");
             var instrumentation = new StubSubmitterInstrumentation();
-            var queueSettings = new MessageSubmitter<OrderPlaced>.QueueSettings("order-placed", "primary");
-            var messageSubmitter = new MessageSubmitter<OrderPlaced>(registry, queueSettings, instrumentation);
+            var messageSubmitter = new MessageSubmitter<OrderPlaced>(registry, "order-placed", "primary", instrumentation);
 
             await messageSubmitter.Submit(new OrderPlaced("x"), CancellationToken.None);
 
@@ -65,8 +62,7 @@ public class MessageSubmitterTests
             var client = new FakeMessageBusClient(new ThrowingSender(new InvalidOperationException("boom")));
             var registry = new SingleClientRegistry(client, "primary");
             var instrumentation = new StubSubmitterInstrumentation();
-            var queueSettings = new MessageSubmitter<OrderPlaced>.QueueSettings("order-placed", "primary");
-            var messageSubmitter = new MessageSubmitter<OrderPlaced>(registry, queueSettings, instrumentation);
+            var messageSubmitter = new MessageSubmitter<OrderPlaced>(registry, "order-placed", "primary", instrumentation);
 
             var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => messageSubmitter.Submit(new OrderPlaced("x"), CancellationToken.None));
 
@@ -83,8 +79,7 @@ public class MessageSubmitterTests
             var client = new FakeMessageBusClient(capturingSender) { MessagingSystem = "fake-bus" };
             var registry = new SingleClientRegistry(client, "primary");
             var instrumentation = new StubSubmitterInstrumentation();
-            var queueSettings = new MessageSubmitter<OrderPlaced>.QueueSettings("order-placed", "primary");
-            var messageSubmitter = new MessageSubmitter<OrderPlaced>(registry, queueSettings, instrumentation);
+            var messageSubmitter = new MessageSubmitter<OrderPlaced>(registry, "order-placed", "primary", instrumentation);
 
             await messageSubmitter.Submit(new OrderPlaced("x"), CancellationToken.None);
 
@@ -102,8 +97,7 @@ public class MessageSubmitterTests
             var client = new FakeMessageBusClient(capturingSender);
             var registry = new SingleClientRegistry(client, "primary");
             var instrumentation = new StubSubmitterInstrumentation();
-            var queueSettings = new MessageSubmitter<OrderPlaced>.QueueSettings("order-placed", "primary");
-            var messageSubmitter = new MessageSubmitter<OrderPlaced>(registry, queueSettings, instrumentation);
+            var messageSubmitter = new MessageSubmitter<OrderPlaced>(registry, "order-placed", "primary", instrumentation);
             using var cancellationTokenSource = new CancellationTokenSource();
 
             await messageSubmitter.Submit(new OrderPlaced("x"), cancellationTokenSource.Token);
@@ -118,8 +112,7 @@ public class MessageSubmitterTests
             var client = new FakeMessageBusClient(capturingSender);
             var registry = new SingleClientRegistry(client, "primary");
             var instrumentation = new StubSubmitterInstrumentation();
-            var queueSettings = new MessageSubmitter<OrderPlaced>.QueueSettings("order-placed", "primary");
-            var messageSubmitter = new MessageSubmitter<OrderPlaced>(registry, queueSettings, instrumentation);
+            var messageSubmitter = new MessageSubmitter<OrderPlaced>(registry, "order-placed", "primary", instrumentation);
 
             await messageSubmitter.Submit(new OrderPlaced("x"), CancellationToken.None, partitionKey: "customer-7");
 
@@ -196,8 +189,10 @@ public class MessageSubmitterTests
 
             return new MessageSubmitter<OrderPlaced>(
                 registry,
-                new MessageSubmitter<OrderPlaced>.QueueSettings("order-placed", "primary", isStream),
-                instrumentation ?? new StubSubmitterInstrumentation());
+                "order-placed",
+                "primary",
+                instrumentation ?? new StubSubmitterInstrumentation(),
+                isStream);
         }
     }
 
@@ -209,8 +204,7 @@ public class MessageSubmitterTests
             var instrumentation = new ActivityReturningStubInstrumentation();
             var client = new FakeMessageBusClient(new CapturingSender());
             var registry = new SingleClientRegistry(client, "primary");
-            var queueSettings = new MessageSubmitter<TaggedOrder>.QueueSettings("orders", "primary");
-            var messageSubmitter = new MessageSubmitter<TaggedOrder>(registry, queueSettings, instrumentation);
+            var messageSubmitter = new MessageSubmitter<TaggedOrder>(registry, "orders", "primary", instrumentation);
 
             await messageSubmitter.Submit(new TaggedOrder("order-123"), CancellationToken.None);
 
@@ -223,8 +217,7 @@ public class MessageSubmitterTests
             var instrumentation = new ActivityReturningStubInstrumentation();
             var client = new FakeMessageBusClient(new CapturingSender());
             var registry = new SingleClientRegistry(client, "primary");
-            var queueSettings = new MessageSubmitter<OrderPlaced>.QueueSettings("order-placed", "primary");
-            var messageSubmitter = new MessageSubmitter<OrderPlaced>(registry, queueSettings, instrumentation);
+            var messageSubmitter = new MessageSubmitter<OrderPlaced>(registry, "order-placed", "primary", instrumentation);
 
             await messageSubmitter.Submit(new OrderPlaced("x"), CancellationToken.None);
 

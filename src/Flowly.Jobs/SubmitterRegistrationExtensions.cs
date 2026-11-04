@@ -39,15 +39,18 @@ public static class SubmitterRegistrationExtensions
         /// <returns>The same <see cref="IFlowlyBuilder" /> instance for further configuration.</returns>
         public IFlowlyBuilder AddJobSubmitter<TMessage>() where TMessage : class, IJobMessage
         {
-            if (flowlyBuilder.Services.Any(s => s.ImplementationType == typeof(JobSubmitter<TMessage>)))
+            if (flowlyBuilder.Services.Any(s => s.ServiceType == typeof(IJobSubmitter<TMessage>)))
                 return flowlyBuilder;
 
             var queueName = flowlyBuilder.TopologyNameResolver.ResolveQueueName<TMessage>();
             var providerName = ProviderNameResolver.Resolve<IMessageBusClient>(flowlyBuilder.Services, typeof(TMessage));
 
             flowlyBuilder.Services
-                .AddSingleton(new JobSubmitter<TMessage>.QueueSettings(queueName, providerName))
-                .AddSingleton<IJobSubmitter<TMessage>, JobSubmitter<TMessage>>()
+                .AddSingleton<IJobSubmitter<TMessage>>(serviceProvider => new JobSubmitter<TMessage>(
+                    serviceProvider.GetRequiredService<IMessageBusClientRegistry>(),
+                    queueName,
+                    providerName,
+                    serviceProvider.GetRequiredService<IMessageSender>()))
                 .AddSingleton<IJobMessageSender, JobMessageSender>();
 
             FlowlySubmitterManifest.GetOrCreate(flowlyBuilder.Services)

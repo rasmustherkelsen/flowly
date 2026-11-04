@@ -3,6 +3,7 @@ using Flowly.MessageInfrastructure.Callers;
 using Flowly.MessageInfrastructure.BackgroundServices;
 using Flowly.MessageInfrastructure.Model;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.Registration;
 using Flowly.Tests.Fakes;
 using Flowly.Transport;
@@ -81,34 +82,49 @@ public class CallHandlerRegistrationExtensionsTests
         }
 
         [Fact]
-        public void CustomTimeout_IsAppliedToCallSubmitterSettings()
+        public async Task CustomTimeout_IsAppliedToCallSubmitter()
         {
-            var (flowlyBuilder, _) = CreateBuilder("primary", instanceName: "sender");
+            var (flowlyBuilder, _) = CreateBuilder("primary", instanceName: "sender", globalTimeout: TimeSpan.FromMinutes(5), client: new FakeMessageBusClient(new FakeMessageBusSender()));
 
-            flowlyBuilder.AddCallSubmitter<PingMessage>(opts => opts.Timeout = TimeSpan.FromSeconds(30));
+            flowlyBuilder.AddCallSubmitter<PingMessage>(opts => opts.Timeout = TimeSpan.FromMilliseconds(50));
 
-            var settings = flowlyBuilder.Services
-                .Where(s => s.ServiceType == typeof(CallSubmitter<PingMessage, PongMessage>.Settings))
-                .Select(s => (CallSubmitter<PingMessage, PongMessage>.Settings)s.ImplementationInstance!)
-                .Single();
-
-            Assert.Equal(TimeSpan.FromSeconds(30), settings.Timeout);
+            await AssertCallTimesOutBeforeGuard(flowlyBuilder);
         }
 
         [Fact]
-        public void WithoutCustomTimeout_FallsBackToGlobalDefault()
+        public async Task WithoutCustomTimeout_FallsBackToGlobalDefault()
         {
-            var globalTimeout = TimeSpan.FromMinutes(5);
-            var (flowlyBuilder, _) = CreateBuilder("primary", instanceName: "sender", globalTimeout: globalTimeout);
+            var (flowlyBuilder, _) = CreateBuilder("primary", instanceName: "sender", globalTimeout: TimeSpan.FromMilliseconds(50), client: new FakeMessageBusClient(new FakeMessageBusSender()));
 
             flowlyBuilder.AddCallSubmitter<PingMessage>();
 
-            var settings = flowlyBuilder.Services
-                .Where(s => s.ServiceType == typeof(CallSubmitter<PingMessage, PongMessage>.Settings))
-                .Select(s => (CallSubmitter<PingMessage, PongMessage>.Settings)s.ImplementationInstance!)
-                .Single();
+            await AssertCallTimesOutBeforeGuard(flowlyBuilder);
+        }
 
-            Assert.Equal(globalTimeout, settings.Timeout);
+        [Fact]
+        public async Task RegisteredSubmitterSendsToCallQueueWithReplyToQueue()
+        {
+            var sender = new FakeMessageBusSender();
+            var client = new FakeMessageBusClient(sender);
+            var (flowlyBuilder, _) = CreateBuilder("primary", instanceName: "sender", globalTimeout: TimeSpan.FromMilliseconds(50), client: client);
+
+            flowlyBuilder.AddCallSubmitter<PingMessage>();
+
+            await AssertCallTimesOutBeforeGuard(flowlyBuilder);
+            Assert.Equal("ping", client.CreatedSenderForQueue);
+            Assert.Equal("ping-reply-sender", Assert.Single(sender.SentMessages).Properties.ReplyTo);
+        }
+
+        private static async Task AssertCallTimesOutBeforeGuard(IFlowlyBuilder flowlyBuilder)
+        {
+            flowlyBuilder.Services.AddSingleton<ICallerInstrumentation, NullCallerInstrumentation>();
+            using var serviceProvider = flowlyBuilder.Services.BuildServiceProvider();
+            using var guard = new CancellationTokenSource(TimeSpan.FromMinutes(1));
+            var callSubmitter = serviceProvider.GetRequiredService<ICallSubmitter<PingMessage, PongMessage>>();
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => callSubmitter.Submit(new PingMessage("hi"), guard.Token));
+
+            Assert.False(guard.IsCancellationRequested);
         }
     }
 

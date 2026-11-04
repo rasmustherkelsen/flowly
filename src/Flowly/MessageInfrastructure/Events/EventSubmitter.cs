@@ -8,35 +8,30 @@ namespace Flowly.MessageInfrastructure.Events;
 
 internal class EventSubmitter<TEvent>(
     IMessageBusClientRegistry clientRegistry,
-    EventSubmitter<TEvent>.TopicSettings topicSettings,
+    string topicName,
+    string providerName,
     IEventPublisherInstrumentation publisherInstrumentation) : IEventSubmitter<TEvent>
 {
     public async Task Raise(TEvent @event, CancellationToken cancellationToken = default)
     {
         var sw = Stopwatch.StartNew();
-        var client = clientRegistry.GetTransportClient(topicSettings.ProviderName);
-        var eventCapableClient = client.Require<IEventCapableMessageBusClient>(topicSettings.ProviderName);
+        var client = clientRegistry.GetTransportClient(providerName);
+        var eventCapableClient = client.Require<IEventCapableMessageBusClient>(providerName);
 
         var messageId = Guid.NewGuid().ToString();
-        using var activity = publisherInstrumentation.StartRaising(topicSettings.TopicName, client.MessagingSystem, messageId);
+        using var activity = publisherInstrumentation.StartRaising(topicName, client.MessagingSystem, messageId);
         activity.ApplyTagsFrom(@event);
 
         try
         {
-            var publisher = await eventCapableClient.CreateEventPublisher(topicSettings.TopicName);
+            var publisher = await eventCapableClient.CreateEventPublisher(topicName);
             await publisher.SendMessage(@event, new MessageProperties(messageId, string.Empty), cancellationToken);
-            publisherInstrumentation.RecordRaised(topicSettings.TopicName, sw.Elapsed.TotalMilliseconds);
+            publisherInstrumentation.RecordRaised(topicName, sw.Elapsed.TotalMilliseconds);
         }
         catch
         {
-            publisherInstrumentation.RecordFailed(topicSettings.TopicName);
+            publisherInstrumentation.RecordFailed(topicName);
             throw;
         }
-    }
-
-    internal class TopicSettings(string topicName, string providerName)
-    {
-        public string TopicName { get; } = topicName;
-        public string ProviderName { get; } = providerName;
     }
 }

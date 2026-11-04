@@ -65,8 +65,7 @@ public class CallSubmitterTests
 
             var pendingCallRegistry = new PendingCallRegistry<PongMessage>();
             var clientRegistry = new FakeClientRegistry(new FakeMessageBusClient(new CapturingSender()));
-            var settings = new CallSubmitter<PingMessage, PongMessage>.Settings("ping", "ping-reply-sender", "stub", TimeSpan.FromSeconds(5));
-            var callSubmitter = new CallSubmitter<PingMessage, PongMessage>(clientRegistry, settings, pendingCallRegistry, instrumentation);
+            var callSubmitter = new CallSubmitter<PingMessage, PongMessage>(clientRegistry, "ping", "ping-reply-sender", "stub", TimeSpan.FromSeconds(5), pendingCallRegistry, instrumentation);
 
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => callSubmitter.Submit(new PingMessage("hi"), cts.Token));
 
@@ -78,9 +77,8 @@ public class CallSubmitterTests
         {
             var instrumentation = new ActivityCapturingCallerInstrumentation();
             var registry = new ImmediateResolvingTaggedRegistry();
-            var settings = new CallSubmitter<TaggedPingMessage, PongMessage>.Settings("ping", "ping-reply-sender", "stub", TimeSpan.FromSeconds(5));
             var clientRegistry = new FakeClientRegistry(new FakeMessageBusClient(new CapturingSender()));
-            var callSubmitter = new CallSubmitter<TaggedPingMessage, PongMessage>(clientRegistry, settings, registry, instrumentation);
+            var callSubmitter = new CallSubmitter<TaggedPingMessage, PongMessage>(clientRegistry, "ping", "ping-reply-sender", "stub", TimeSpan.FromSeconds(5), registry, instrumentation);
 
             await callSubmitter.Submit(new TaggedPingMessage("order-42"), CancellationToken.None);
 
@@ -132,9 +130,7 @@ public class CallSubmitterTests
         var actualSender = sender ?? new CapturingSender();
         var actualRegistry = registry ?? new ImmediateResolvingRegistry();
         var clientRegistry = new FakeClientRegistry(new FakeMessageBusClient(actualSender));
-        var settings = new CallSubmitter<PingMessage, PongMessage>.Settings("ping", "ping-reply-sender", "stub", TimeSpan.FromSeconds(5));
-
-        return new CallSubmitter<PingMessage, PongMessage>(clientRegistry, settings, actualRegistry, instrumentation);
+        return new CallSubmitter<PingMessage, PongMessage>(clientRegistry, "ping", "ping-reply-sender", "stub", TimeSpan.FromSeconds(5), actualRegistry, instrumentation);
     }
 
     private record PingMessage(string Payload) : IReturns<PongMessage>;

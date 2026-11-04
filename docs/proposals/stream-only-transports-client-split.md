@@ -185,7 +185,7 @@ public interface IStreamCapableMessageBusClient : ITransportClient
 - `IStreamCapableMessageBusClient` keeps its name (decided): renaming would be churn and would itself be a break.
 - `IPartitionedStreamCapableMessageBusClient` is **not** changed to extend `IStreamCapableMessageBusClient` in this PR. Doing so would make a class implementing the partitioned interface without the plain stream interface stop compiling, which contradicts the source-compatible goal. Registration already checks stream capability before partitioned capability, so the invariant holds in practice. It can be revisited at the next major version.
 - Because of the default implementation, RabbitMQ and InMemory need no change to keep working: queue-and-stream clients get the delegating behaviour for free, and `RabbitMqMessageBusSender` already performs partition routing. They may still override it explicitly for clarity. A stream-only transport such as Event Hubs must override it.
-- `MessageSubmitter<TMessage>.QueueSettings` gained an optional `isStream` flag. `AddMessageRecorder` sets it, and the submitter then creates its sender through `CreateStreamSender` instead of `CreateMessageBusSender`. A queue message on a stream-only provider fails with the registry's capability error and is recorded as a failed send.
+- `MessageSubmitter<TMessage>` takes an optional `isStream` constructor argument. `AddMessageRecorder` sets it, and the submitter then creates its sender through `CreateStreamSender` instead of `CreateMessageBusSender`. A queue message on a stream-only provider fails with the registry's capability error and is recorded as a failed send.
 
 ## 4. Registry and registration guards
 

@@ -19,8 +19,7 @@ public class EventSubmitterTests
             var client = new FakeEventCapableClient(publisher);
             var registry = new SingleClientRegistry(client, "primary");
             var instrumentation = new StubPublisherInstrumentation();
-            var topicSettings = new EventSubmitter<OrderPlaced>.TopicSettings("order-placed", "primary");
-            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, topicSettings, instrumentation);
+            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, "order-placed", "primary", instrumentation);
 
             await eventSubmitter.Raise(new OrderPlaced("order-1"));
 
@@ -35,8 +34,7 @@ public class EventSubmitterTests
             var publisher = new CapturingEventPublisher();
             var registry = new SingleClientRegistry(new FakeEventCapableClient(publisher), "primary");
             var instrumentation = new StubPublisherInstrumentation();
-            var topicSettings = new EventSubmitter<OrderPlaced>.TopicSettings("order-placed", "primary");
-            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, topicSettings, instrumentation);
+            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, "order-placed", "primary", instrumentation);
 
             await eventSubmitter.Raise(new OrderPlaced("x"));
 
@@ -50,8 +48,7 @@ public class EventSubmitterTests
         {
             var registry = new MessageBusClientRegistry();
             registry.Register("primary", new FakeStreamOnlyClient(), null);
-            var topicSettings = new EventSubmitter<OrderPlaced>.TopicSettings("order-placed", "primary");
-            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, topicSettings, new StubPublisherInstrumentation());
+            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, "order-placed", "primary", new StubPublisherInstrumentation());
 
             var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => eventSubmitter.Raise(new OrderPlaced("x")));
 
@@ -63,8 +60,7 @@ public class EventSubmitterTests
         {
             var registry = new SingleClientRegistry(new NonEventCapableClient(), "primary");
             var instrumentation = new StubPublisherInstrumentation();
-            var topicSettings = new EventSubmitter<OrderPlaced>.TopicSettings("order-placed", "primary");
-            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, topicSettings, instrumentation);
+            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, "order-placed", "primary", instrumentation);
 
             var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => eventSubmitter.Raise(new OrderPlaced("x")));
 
@@ -78,8 +74,7 @@ public class EventSubmitterTests
             var publisher = new CapturingEventPublisher();
             var registry = new SingleClientRegistry(new FakeEventCapableClient(publisher), "primary");
             var instrumentation = new StubPublisherInstrumentation();
-            var topicSettings = new EventSubmitter<OrderPlaced>.TopicSettings("order-placed", "primary");
-            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, topicSettings, instrumentation);
+            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, "order-placed", "primary", instrumentation);
 
             await eventSubmitter.Raise(new OrderPlaced("x"));
 
@@ -94,8 +89,7 @@ public class EventSubmitterTests
             var publisher = new ThrowingEventPublisher(new InvalidOperationException("boom"));
             var registry = new SingleClientRegistry(new FakeEventCapableClient(publisher), "primary");
             var instrumentation = new StubPublisherInstrumentation();
-            var topicSettings = new EventSubmitter<OrderPlaced>.TopicSettings("order-placed", "primary");
-            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, topicSettings, instrumentation);
+            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, "order-placed", "primary", instrumentation);
 
             var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => eventSubmitter.Raise(new OrderPlaced("x")));
 
@@ -112,8 +106,7 @@ public class EventSubmitterTests
             var client = new FakeEventCapableClient(publisher) { MessagingSystem = "fake-bus" };
             var registry = new SingleClientRegistry(client, "primary");
             var instrumentation = new StubPublisherInstrumentation();
-            var topicSettings = new EventSubmitter<OrderPlaced>.TopicSettings("order-placed", "primary");
-            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, topicSettings, instrumentation);
+            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, "order-placed", "primary", instrumentation);
 
             await eventSubmitter.Raise(new OrderPlaced("x"));
 
@@ -130,8 +123,7 @@ public class EventSubmitterTests
             var publisher = new CapturingEventPublisher();
             var registry = new SingleClientRegistry(new FakeEventCapableClient(publisher), "primary");
             var instrumentation = new StubPublisherInstrumentation();
-            var topicSettings = new EventSubmitter<OrderPlaced>.TopicSettings("order-placed", "primary");
-            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, topicSettings, instrumentation);
+            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, "order-placed", "primary", instrumentation);
             using var cancellationTokenSource = new CancellationTokenSource();
 
             await eventSubmitter.Raise(new OrderPlaced("x"), cancellationTokenSource.Token);
@@ -140,7 +132,7 @@ public class EventSubmitterTests
         }
 
         [Fact]
-        public async Task UsesProviderNameFromTopicSettingsToResolveClient()
+        public async Task UsesConfiguredProviderNameToResolveClient()
         {
             var secondaryPublisher = new CapturingEventPublisher();
             var secondaryClient = new FakeEventCapableClient(secondaryPublisher);
@@ -150,8 +142,7 @@ public class EventSubmitterTests
                 "secondary",
                 secondaryClient);
             var instrumentation = new StubPublisherInstrumentation();
-            var topicSettings = new EventSubmitter<OrderPlaced>.TopicSettings("order-placed", "secondary");
-            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, topicSettings, instrumentation);
+            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, "order-placed", "secondary", instrumentation);
 
             await eventSubmitter.Raise(new OrderPlaced("x"));
 
@@ -167,8 +158,7 @@ public class EventSubmitterTests
             var publisher = new CapturingEventPublisher();
             var instrumentation = new ActivityReturningStubInstrumentation();
             var registry = new SingleClientRegistry(new FakeEventCapableClient(publisher), "primary");
-            var topicSettings = new EventSubmitter<TaggedOrderPlaced>.TopicSettings("order-placed", "primary");
-            var eventSubmitter = new EventSubmitter<TaggedOrderPlaced>(registry, topicSettings, instrumentation);
+            var eventSubmitter = new EventSubmitter<TaggedOrderPlaced>(registry, "order-placed", "primary", instrumentation);
 
             await eventSubmitter.Raise(new TaggedOrderPlaced("order-123"));
 
@@ -181,8 +171,7 @@ public class EventSubmitterTests
             var publisher = new CapturingEventPublisher();
             var instrumentation = new ActivityReturningStubInstrumentation();
             var registry = new SingleClientRegistry(new FakeEventCapableClient(publisher), "primary");
-            var topicSettings = new EventSubmitter<OrderPlaced>.TopicSettings("order-placed", "primary");
-            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, topicSettings, instrumentation);
+            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, "order-placed", "primary", instrumentation);
 
             await eventSubmitter.Raise(new OrderPlaced("x"));
 

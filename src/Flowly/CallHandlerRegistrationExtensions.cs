@@ -4,6 +4,7 @@ using Flowly.MessageInfrastructure.BackgroundServices;
 using Flowly.MessageInfrastructure.Callers;
 using Flowly.MessageInfrastructure.MessageHandlingStrategies;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.Registration;
 using Flowly.Transport;
 using Microsoft.Extensions.DependencyInjection;
@@ -148,8 +149,14 @@ public static class CallHandlerRegistrationExtensions
         where TMessage : class, IReturns<TReturn>
         where TReturn : class
     {
-        services.AddSingleton(new CallSubmitter<TMessage, TReturn>.Settings(callQueueName, returnQueueName, providerName, timeout));
-        services.AddSingleton<ICallSubmitter<TMessage, TReturn>, CallSubmitter<TMessage, TReturn>>();
+        services.AddSingleton<ICallSubmitter<TMessage, TReturn>>(serviceProvider => new CallSubmitter<TMessage, TReturn>(
+            serviceProvider.GetRequiredService<IMessageBusClientRegistry>(),
+            callQueueName,
+            returnQueueName,
+            providerName,
+            timeout,
+            serviceProvider.GetRequiredService<IPendingCallRegistry<TReturn>>(),
+            serviceProvider.GetRequiredService<ICallerInstrumentation>()));
     }
 
     private static Type GetReturnType(Type messageType)

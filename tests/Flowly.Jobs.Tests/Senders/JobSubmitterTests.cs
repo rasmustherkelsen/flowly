@@ -15,8 +15,7 @@ public class JobSubmitterTests
             var fakeMessageSender = new FakeMessageSender();
             var fakeMessageBusClient = new FakeMessageBusClient();
             var fakeMessageBusClientRegistry = new FakeMessageBusClientRegistry(fakeMessageBusClient);
-            var queueSettings = new JobSubmitter<SomeJobMessage>.QueueSettings("some-job-queue", "primary");
-            var jobSubmitter = new JobSubmitter<SomeJobMessage>(fakeMessageBusClientRegistry, queueSettings, fakeMessageSender);
+            var jobSubmitter = new JobSubmitter<SomeJobMessage>(fakeMessageBusClientRegistry, "some-job-queue", "primary", fakeMessageSender);
 
             var jobId = await jobSubmitter.SubmitJob(new SomeJobMessage());
 
@@ -29,8 +28,7 @@ public class JobSubmitterTests
             var fakeMessageSender = new FakeMessageSender();
             var fakeMessageBusClient = new FakeMessageBusClient();
             var fakeMessageBusClientRegistry = new FakeMessageBusClientRegistry(fakeMessageBusClient);
-            var queueSettings = new JobSubmitter<SomeJobMessage>.QueueSettings("some-job-queue", "primary");
-            var jobSubmitter = new JobSubmitter<SomeJobMessage>(fakeMessageBusClientRegistry, queueSettings, fakeMessageSender);
+            var jobSubmitter = new JobSubmitter<SomeJobMessage>(fakeMessageBusClientRegistry, "some-job-queue", "primary", fakeMessageSender);
 
             await jobSubmitter.SubmitJob(new SomeJobMessage());
 
@@ -45,8 +43,7 @@ public class JobSubmitterTests
             var fakeMessageSender = new FakeMessageSender();
             var fakeMessageBusClient = new FakeMessageBusClient();
             var fakeMessageBusClientRegistry = new FakeMessageBusClientRegistry(fakeMessageBusClient);
-            var queueSettings = new JobSubmitter<SomeJobMessage>.QueueSettings("some-job-queue", "primary");
-            var jobSubmitter = new JobSubmitter<SomeJobMessage>(fakeMessageBusClientRegistry, queueSettings, fakeMessageSender);
+            var jobSubmitter = new JobSubmitter<SomeJobMessage>(fakeMessageBusClientRegistry, "some-job-queue", "primary", fakeMessageSender);
             var message = new SomeJobMessage();
 
             await jobSubmitter.SubmitJob(message);
@@ -62,8 +59,7 @@ public class JobSubmitterTests
             var fakeMessageSender = new FakeMessageSender();
             var fakeMessageBusClient = new FakeMessageBusClient();
             var fakeMessageBusClientRegistry = new FakeMessageBusClientRegistry(fakeMessageBusClient);
-            var queueSettings = new JobSubmitter<SomeJobMessage>.QueueSettings("some-job-queue", "primary");
-            var jobSubmitter = new JobSubmitter<SomeJobMessage>(fakeMessageBusClientRegistry, queueSettings, fakeMessageSender);
+            var jobSubmitter = new JobSubmitter<SomeJobMessage>(fakeMessageBusClientRegistry, "some-job-queue", "primary", fakeMessageSender);
 
             var jobId = await jobSubmitter.SubmitJob(new SomeJobMessage());
 
@@ -78,8 +74,7 @@ public class JobSubmitterTests
             var fakeMessageSender = new FakeMessageSender();
             var fakeMessageBusClient = new FakeMessageBusClient();
             var fakeMessageBusClientRegistry = new FakeMessageBusClientRegistry(fakeMessageBusClient);
-            var queueSettings = new JobSubmitter<SomeJobMessage>.QueueSettings("some-job-queue", "primary");
-            var jobSubmitter = new JobSubmitter<SomeJobMessage>(fakeMessageBusClientRegistry, queueSettings, fakeMessageSender);
+            var jobSubmitter = new JobSubmitter<SomeJobMessage>(fakeMessageBusClientRegistry, "some-job-queue", "primary", fakeMessageSender);
 
             var jobId = await jobSubmitter.SubmitJob(new SomeJobMessage());
 

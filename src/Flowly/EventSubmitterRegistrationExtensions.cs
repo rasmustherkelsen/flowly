@@ -1,5 +1,6 @@
 using Flowly.MessageInfrastructure.Events;
 using Flowly.MessageInfrastructure.Events.Registration;
+using Flowly.MessageInfrastructure.Events.Telemetry;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.Registration;
 using Flowly.Transport;
@@ -25,7 +26,7 @@ public static class EventSubmitterRegistrationExtensions
     /// <returns>The modified Flowly builder instance.</returns>
     public static IFlowlyBuilder AddEventSubmitter<TEvent>(this IFlowlyBuilder flowlyBuilder)
     {
-        if (flowlyBuilder.Services.Any(s => s.ImplementationType == typeof(EventSubmitter<TEvent>)))
+        if (flowlyBuilder.Services.Any(s => s.ServiceType == typeof(IEventSubmitter<TEvent>)))
             return flowlyBuilder;
 
         var topicName = flowlyBuilder.TopologyNameResolver.ResolveEventName<TEvent>();
@@ -34,8 +35,11 @@ public static class EventSubmitterRegistrationExtensions
         flowlyBuilder.AddEventRegistration(new DeferredEventRegistration(topicName, null), providerName);
 
         flowlyBuilder.Services
-            .AddSingleton(new EventSubmitter<TEvent>.TopicSettings(topicName, providerName))
-            .AddSingleton<IEventSubmitter<TEvent>, EventSubmitter<TEvent>>();
+            .AddSingleton<IEventSubmitter<TEvent>>(serviceProvider => new EventSubmitter<TEvent>(
+                serviceProvider.GetRequiredService<IMessageBusClientRegistry>(),
+                topicName,
+                providerName,
+                serviceProvider.GetRequiredService<IEventPublisherInstrumentation>()));
 
         flowlyBuilder.Services.TryAddSingleton<IEventSender, EventSender>();
 

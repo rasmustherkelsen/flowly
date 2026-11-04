@@ -2,6 +2,7 @@ using Flowly.Jobs.Senders;
 using Flowly.Jobs.Tests.Fakes;
 using Flowly.MessageInfrastructure;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessageInfrastructure.Senders;
 using Flowly.Transport;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -20,6 +21,20 @@ public class SubmitterRegistrationExtensionsTests
             builder.AddJobSubmitter<SomeJobMessage>();
 
             Assert.Contains(builder.Services, s => s.ServiceType == typeof(IJobSubmitter<SomeJobMessage>));
+        }
+
+        [Fact]
+        public async Task RegisteredJobSubmitterSendsToResolvedQueueNameOnResolvedProvider()
+        {
+            var client = new FakeMessageBusClient();
+            var builder = CreateBuilder(client);
+            builder.Services.AddSingleton<IMessageSender>(new FakeMessageSender());
+
+            builder.AddJobSubmitter<SomeJobMessage>();
+
+            using var serviceProvider = builder.Services.BuildServiceProvider();
+            await serviceProvider.GetRequiredService<IJobSubmitter<SomeJobMessage>>().SubmitJob(new SomeJobMessage());
+            Assert.Equal(["some-job"], client.CreatedSenders);
         }
 
         [Fact]

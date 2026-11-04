@@ -1,6 +1,7 @@
 using System.Reflection;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.MessageInfrastructure.Senders;
+using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.Registration;
 using Flowly.Transport;
 using Microsoft.Extensions.DependencyInjection;
@@ -32,7 +33,7 @@ public static class MessageRecorderRegistrationExtensions
     /// </exception>
     public static IFlowlyBuilder AddMessageRecorder<TMessage>(this IFlowlyBuilder flowlyBuilder)
     {
-        if (flowlyBuilder.Services.Any(s => s.ImplementationType == typeof(MessageSubmitter<TMessage>)))
+        if (flowlyBuilder.Services.Any(s => s.ServiceType == typeof(IMessageSubmitter<TMessage>)))
             return flowlyBuilder;
 
         var queueName = flowlyBuilder.TopologyNameResolver.ResolveQueueName<TMessage>();
@@ -43,8 +44,12 @@ public static class MessageRecorderRegistrationExtensions
             ThrowIfNotPartitionedStreamCapable(flowlyBuilder.Services, providerName, typeof(TMessage));
 
         flowlyBuilder.Services
-            .AddSingleton(new MessageSubmitter<TMessage>.QueueSettings(queueName, providerName, isStream: true))
-            .AddSingleton<IMessageSubmitter<TMessage>, MessageSubmitter<TMessage>>();
+            .AddSingleton<IMessageSubmitter<TMessage>>(serviceProvider => new MessageSubmitter<TMessage>(
+                serviceProvider.GetRequiredService<IMessageBusClientRegistry>(),
+                queueName,
+                providerName,
+                serviceProvider.GetRequiredService<ISubmitterInstrumentation>(),
+                isStream: true));
 
         flowlyBuilder.Services.TryAddSingleton<IMessageRecorder, MessageRecorder>();
 

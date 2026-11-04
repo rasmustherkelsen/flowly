@@ -1,6 +1,7 @@
 using Flowly.MessageInfrastructure;
 using Flowly.MessageInfrastructure.Events;
 using Flowly.MessageInfrastructure.Events.Registration;
+using Flowly.MessageInfrastructure.Events.Telemetry;
 using Flowly.MessageInfrastructure.Receivers;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.Tests.Fakes;
@@ -23,16 +24,27 @@ public class EventSubmitterRegistrationExtensionsTests
         return new StubFlowlyBuilder(services);
     }
 
-    private static IFlowlyBuilder CreateBuilder(string primary, string? secondary = null)
+    private static IEventSubmitter<TEvent> ResolveSubmitter<TEvent>(IFlowlyBuilder flowlyBuilder)
+    {
+        flowlyBuilder.Services.AddSingleton<IEventPublisherInstrumentation, NullEventPublisherInstrumentation>();
+
+        return flowlyBuilder.Services.BuildServiceProvider().GetRequiredService<IEventSubmitter<TEvent>>();
+    }
+
+    private static IFlowlyBuilder CreateBuilder(
+        string primary,
+        string? secondary = null,
+        FakeEventCapableClient? primaryClient = null,
+        FakeEventCapableClient? secondaryClient = null)
     {
         var services = new ServiceCollection();
         var registry = new MessageBusClientRegistry();
-        registry.Register(primary, new FakeEventCapableClient(), null);
+        registry.Register(primary, primaryClient ?? new FakeEventCapableClient(new FakeMessageBusSender()), null);
         services.AddSingleton(new ProviderQueueManifest(primary, true, "Stub"));
 
         if (secondary is not null)
         {
-            registry.Register(secondary, new FakeEventCapableClient(), null);
+            registry.Register(secondary, secondaryClient ?? new FakeEventCapableClient(new FakeMessageBusSender()), null);
             services.AddSingleton(new ProviderQueueManifest(secondary, false, "Stub"));
         }
 
@@ -76,23 +88,20 @@ public class EventSubmitterRegistrationExtensionsTests
                 .FirstOrDefault(s => s.ServiceType == typeof(IEventSubmitter<OrderPlaced>));
 
             Assert.NotNull(descriptor);
-            Assert.Equal(typeof(EventSubmitter<OrderPlaced>), descriptor.ImplementationType);
+            Assert.Equal(ServiceLifetime.Singleton, descriptor.Lifetime);
+            Assert.IsType<EventSubmitter<OrderPlaced>>(ResolveSubmitter<OrderPlaced>(flowlyBuilder));
         }
 
         [Fact]
-        public void RegistersTopicSettingsWithResolvedTopicName()
+        public async Task RegisteredSubmitterRaisesToResolvedTopicNameOnResolvedProvider()
         {
-            var flowlyBuilder = CreateBuilder("primary");
+            var primaryClient = new FakeEventCapableClient(new FakeMessageBusSender());
+            var flowlyBuilder = CreateBuilder("primary", primaryClient: primaryClient);
 
             flowlyBuilder.AddEventSubmitter<OrderPlaced>();
 
-            var topicSettings = flowlyBuilder.Services
-                .Where(s => s.ServiceType == typeof(EventSubmitter<OrderPlaced>.TopicSettings))
-                .Select(s => (EventSubmitter<OrderPlaced>.TopicSettings)s.ImplementationInstance!)
-                .Single();
-
-            Assert.Equal("order-placed", topicSettings.TopicName);
-            Assert.Equal("primary", topicSettings.ProviderName);
+            await ResolveSubmitter<OrderPlaced>(flowlyBuilder).Raise(new OrderPlaced());
+            Assert.Equal("order-placed", primaryClient.CreatedEventPublisherForTopic);
         }
 
         [Fact]
@@ -121,18 +130,17 @@ public class EventSubmitterRegistrationExtensionsTests
         }
 
         [Fact]
-        public void WithProviderAffinity_UsesAttributeProvider()
+        public async Task WithProviderAffinity_UsesAttributeProvider()
         {
-            var flowlyBuilder = CreateBuilder("primary", "secondary");
+            var primaryClient = new FakeEventCapableClient(new FakeMessageBusSender());
+            var secondaryClient = new FakeEventCapableClient(new FakeMessageBusSender());
+            var flowlyBuilder = CreateBuilder("primary", "secondary", primaryClient, secondaryClient);
 
             flowlyBuilder.AddEventSubmitter<AffinityEvent>();
 
-            var topicSettings = flowlyBuilder.Services
-                .Where(s => s.ServiceType == typeof(EventSubmitter<AffinityEvent>.TopicSettings))
-                .Select(s => (EventSubmitter<AffinityEvent>.TopicSettings)s.ImplementationInstance!)
-                .Single();
-
-            Assert.Equal("secondary", topicSettings.ProviderName);
+            await ResolveSubmitter<AffinityEvent>(flowlyBuilder).Raise(new AffinityEvent());
+            Assert.Equal("affinity", secondaryClient.CreatedEventPublisherForTopic);
+            Assert.Null(primaryClient.CreatedEventPublisherForTopic);
         }
 
         [Fact]
