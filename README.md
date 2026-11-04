@@ -946,6 +946,8 @@ builder.AddDeadLetterTrackingClient("DeadLetters");     // or the Postgres / SQL
 
 `AddDeadLetterTrackingClient` registers only the data context, repository and `IDeadLetterService` — no ingestion, cleanup or metrics background services and no migrations — so it never participates in ingesting dead letters. It is provided by each backend package (`Flowly.DeadLetters.SqlServer`, `.Postgres`, `.SQLite`).
 
+**Querying:** `IDeadLetterService.QueryDeadLetters(new DeadLetterQuery { QueueName = "orders", Status = DeadLetterStatus.Pending, Skip = 0, Take = 50, IncludeTotalCount = true })` returns a `DeadLetterPage` (`Items`, newest first, and `TotalCount` when requested). The database filters (`QueueName`, `SubscriptionName`, `Status`, `MessageId`), orders and pages, so only the requested page is loaded; `GetDeadLetters()` loads every tracked record.
+
 ### What gets stored
 
 | Field | Description |

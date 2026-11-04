@@ -1,6 +1,7 @@
 using Flowly.DeadLetters.DatabaseModel;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 
 namespace Flowly.DeadLetters.Tests.Helpers;
 
@@ -9,13 +10,14 @@ internal sealed class SqliteDbContextFactory : IDbContextFactory<DeadLetterDataC
     private readonly SqliteConnection _connection;
     private readonly DbContextOptions<DeadLetterDataContext> _options;
 
-    public SqliteDbContextFactory()
+    public SqliteDbContextFactory(params IInterceptor[] interceptors)
     {
         _connection = new SqliteConnection("Data Source=:memory:");
         _connection.Open();
 
         _options = new DbContextOptionsBuilder<DeadLetterDataContext>()
             .UseSqlite(_connection)
+            .AddInterceptors(interceptors)
             .Options;
 
         using var context = new DeadLetterDataContext(_options);

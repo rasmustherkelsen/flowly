@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Alert, Box, Button, Card, CircularProgress, Dialog, DialogActions, DialogContent,
   DialogContentText, DialogTitle, IconButton, Pagination, Snackbar, Table, TableBody,
@@ -15,7 +15,9 @@ import { formatDate, tryPrettyPrint } from '../lib/formatters';
 import type { DeadLetter } from '../types';
 
 const PAGE_SIZE = 20;
-const STATUSES = ['', 'Pending', 'Requeued', 'Discarded'];
+const STATUSES = ['', 'Pending', 'Requeued'];
+
+interface DeadLetterPage { items: DeadLetter[]; total: number; }
 
 interface Confirm { action: 'requeue' | 'discard'; messageId: string; queueName: string; }
 
@@ -28,20 +30,28 @@ export default function DeadLettersPage() {
   const [toast, setToast] = useState<{ message: string; severity: 'success' | 'error' } | null>(null);
   const [inspecting, setInspecting] = useState<DeadLetter | null>(null);
 
-  const fetchFn = useCallback(async () => {
-    const res = await fetch('api/dead-letters');
+  const fetchFn = useCallback(async (): Promise<DeadLetterPage | null> => {
+    const params = new URLSearchParams({ skip: String((page - 1) * PAGE_SIZE), take: String(PAGE_SIZE) });
+    if (filter) params.set('status', filter);
+    const res = await fetch(`api/dead-letters?${params}`);
     if (!res.ok) {
-      if (res.status === 404) return [] as DeadLetter[];
+      if (res.status === 404) return null;
       throw new Error(`HTTP ${res.status}`);
     }
-    return res.json() as Promise<DeadLetter[]>;
-  }, []);
+    const items = await res.json() as DeadLetter[];
+    const total = Number(res.headers.get('X-Total-Count') ?? items.length);
+    return { items, total };
+  }, [filter, page]);
 
   const { data, loading, error, refresh } = useAutoRefresh(fetchFn, 10000);
 
-  const filtered = (data ?? []).filter((dl) => !filter || dl.status === filter);
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
-  const items = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const items = data?.items ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+
+  useEffect(() => {
+    if (data && totalPages > 0 && page > totalPages) setPage(totalPages);
+  }, [data, totalPages, page]);
 
   const handleConfirm = async () => {
     if (!confirm) return;
@@ -69,7 +79,7 @@ export default function DeadLettersPage() {
         onFilterChange={(f) => { setFilter(f); setPage(1); }}
         loading={loading}
         onRefresh={refresh}
-        totalCount={filtered.length}
+        totalCount={total}
       />
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}

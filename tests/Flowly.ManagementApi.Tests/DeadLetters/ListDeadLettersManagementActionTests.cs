@@ -169,6 +169,58 @@ public class ListDeadLettersManagementActionTests
         }
 
         [Fact]
+        public async Task PassesTheFiltersAndPageToTheServiceQuery()
+        {
+            var deadLetterService = new RecordingDeadLetterService();
+            var listDeadLettersManagementAction = new ListDeadLettersManagementAction();
+
+            await listDeadLettersManagementAction.List(deadLetterService, "orders", "billing", "requeued", "m1", 5, 10, CancellationToken.None);
+
+            var deadLetterQuery = Assert.Single(deadLetterService.Queries);
+            Assert.Equal("orders", deadLetterQuery.QueueName);
+            Assert.Equal("billing", deadLetterQuery.SubscriptionName);
+            Assert.Equal(DeadLetterStatus.Requeued, deadLetterQuery.Status);
+            Assert.Equal("m1", deadLetterQuery.MessageId);
+            Assert.Equal(5, deadLetterQuery.Skip);
+            Assert.Equal(10, deadLetterQuery.Take);
+            Assert.False(deadLetterQuery.IncludeTotalCount);
+        }
+
+        [Fact]
+        public async Task WithoutParameters_QueriesWithoutFiltersAndPaging()
+        {
+            var deadLetterService = new RecordingDeadLetterService();
+            var listDeadLettersManagementAction = new ListDeadLettersManagementAction();
+
+            await listDeadLettersManagementAction.List(deadLetterService, null, null, null, null, null, null, CancellationToken.None);
+
+            var deadLetterQuery = Assert.Single(deadLetterService.Queries);
+            Assert.Equal(new DeadLetterQuery(), deadLetterQuery);
+        }
+
+        [Fact]
+        public async Task DoesNotLoadEveryDeadLetter()
+        {
+            var deadLetterService = new RecordingDeadLetterService();
+            var listDeadLettersManagementAction = new ListDeadLettersManagementAction();
+
+            await listDeadLettersManagementAction.List(deadLetterService, null, null, null, null, null, 5, CancellationToken.None);
+
+            Assert.Equal(0, deadLetterService.GetDeadLettersCalls);
+        }
+
+        [Fact]
+        public async Task WithAnInvalidRequest_DoesNotQueryTheService()
+        {
+            var deadLetterService = new RecordingDeadLetterService();
+            var listDeadLettersManagementAction = new ListDeadLettersManagementAction();
+
+            await listDeadLettersManagementAction.List(deadLetterService, null, null, "Discarded", null, null, null, CancellationToken.None);
+
+            Assert.Empty(deadLetterService.Queries);
+        }
+
+        [Fact]
         public async Task WithAnUnknownStatus_Returns400()
         {
             var listDeadLettersManagementAction = new ListDeadLettersManagementAction();

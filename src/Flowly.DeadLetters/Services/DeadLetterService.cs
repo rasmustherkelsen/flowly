@@ -20,6 +20,9 @@ internal class DeadLetterService(
         return await repository.GetAll(cancellationToken);
     }
 
+    public Task<DeadLetterPage> QueryDeadLetters(DeadLetterQuery deadLetterQuery, CancellationToken cancellationToken = default)
+        => repository.Query(deadLetterQuery, cancellationToken);
+
     public async Task Requeue(string messageId, string? requeuedBy = null, CancellationToken cancellationToken = default)
     {
         var deadLetter = await repository.Get(messageId, cancellationToken)

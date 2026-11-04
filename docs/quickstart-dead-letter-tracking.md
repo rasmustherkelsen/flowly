@@ -612,6 +612,7 @@ The single process sends messages, handles them, retries failures, and writes de
 
 **`IDeadLetterService`** — inject this service to query, requeue, or discard records:
 - `GetDeadLetters()` — returns all records sorted newest first
+- `QueryDeadLetters(new DeadLetterQuery { QueueName = ..., Status = ..., Skip = 0, Take = 50, IncludeTotalCount = true })` — returns one page (`DeadLetterPage.Items`, newest first) of the records matching the optional filters `QueueName`, `SubscriptionName`, `Status` and `MessageId`; the database filters, orders and pages, so only the requested page is loaded, and `TotalCount` is only counted when `IncludeTotalCount` is set
 - `Requeue(messageId)` — re-publishes the message to the original queue with the retry count reset; status becomes `Requeued`
 - `Discard(messageId)` — permanently deletes the record from the tracking store
 

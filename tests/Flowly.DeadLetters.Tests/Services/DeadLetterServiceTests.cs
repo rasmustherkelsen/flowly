@@ -331,6 +331,24 @@ public class DeadLetterServiceTests
         }
     }
 
+    public class QueryDeadLetters
+    {
+        [Fact]
+        public async Task DelegatesTheQueryToTheRepositoryAndReturnsItsPage()
+        {
+            var repository = new FakeDeadLetterRepository();
+            var expectedPage = new DeadLetterPage([BuildDeadLetter("msg-1")], 7);
+            repository.PageToReturn = expectedPage;
+            var deadLetterService = BuildService(repository, new FakeMessageBusClient());
+            var deadLetterQuery = new DeadLetterQuery { QueueName = "test-queue", Skip = 2, Take = 3, IncludeTotalCount = true };
+
+            var result = await deadLetterService.QueryDeadLetters(deadLetterQuery);
+
+            Assert.Same(expectedPage, result);
+            Assert.Same(deadLetterQuery, repository.QueriedWith);
+        }
+    }
+
     public class RequeueJsonPropertyHandling
     {
         [Fact]

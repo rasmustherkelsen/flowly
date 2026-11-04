@@ -66,20 +66,18 @@ internal sealed class ListDeadLettersManagementAction : IFlowlyManagementAction
             return Results.Problem(title: "Invalid take", detail: $"take must be between 1 and {MaxPageSize}.", statusCode: StatusCodes.Status400BadRequest);
         }
 
-        var deadLetters = await deadLetterService.GetDeadLetters(cancellationToken);
+        var page = await deadLetterService.QueryDeadLetters(
+            new DeadLetterQuery
+            {
+                QueueName = queue,
+                SubscriptionName = subscription,
+                Status = statusFilter,
+                MessageId = messageId,
+                Skip = skip ?? 0,
+                Take = take
+            },
+            cancellationToken);
 
-        var page = deadLetters
-            .Where(deadLetter => queue is null || deadLetter.QueueName == queue)
-            .Where(deadLetter => subscription is null || deadLetter.SubscriptionName == subscription)
-            .Where(deadLetter => statusFilter is null || deadLetter.Status == statusFilter)
-            .Where(deadLetter => messageId is null || deadLetter.MessageId == messageId)
-            .OrderByDescending(deadLetter => deadLetter.DeadLetteredAt)
-            .ThenBy(deadLetter => deadLetter.MessageId, StringComparer.Ordinal)
-            .Skip(skip ?? 0)
-            .Take(take ?? int.MaxValue)
-            .Select(DeadLetterResponse.From)
-            .ToList();
-
-        return Results.Ok(page);
+        return Results.Ok(page.Items.Select(DeadLetterResponse.From).ToList());
     }
 }

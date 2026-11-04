@@ -76,5 +76,14 @@ internal class FakeDeadLetterRepository : IDeadLetterRepository
     public Task<IReadOnlyCollection<IDeadLetter>> GetAll(CancellationToken cancellationToken = default)
         => Task.FromResult<IReadOnlyCollection<IDeadLetter>>(_store.Values.ToList());
 
+    public DeadLetterQuery? QueriedWith { get; private set; }
+    public DeadLetterPage PageToReturn { get; set; } = new([], null);
+
+    public Task<DeadLetterPage> Query(DeadLetterQuery deadLetterQuery, CancellationToken cancellationToken = default)
+    {
+        QueriedWith = deadLetterQuery;
+        return Task.FromResult(PageToReturn);
+    }
+
     public void Add(IDeadLetter deadLetter) => _store[deadLetter.MessageId] = deadLetter;
 }
