@@ -19,7 +19,10 @@ internal class MessageBusSender(ServiceBusSender serviceBusSender, long? maxMess
 
     public async Task SendRawMessage(string rawBody, IReadOnlyDictionary<string, object> applicationProperties, CancellationToken cancellationToken = default)
     {
-        var message = new ServiceBusMessage(BinaryData.FromString(rawBody));
+        var message = new ServiceBusMessage(BinaryData.FromString(rawBody))
+        {
+            MessageId = Guid.NewGuid().ToString()
+        };
 
         foreach (var (key, value) in applicationProperties) message.ApplicationProperties[key] = value;
 

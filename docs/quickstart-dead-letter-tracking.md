@@ -613,7 +613,7 @@ The single process sends messages, handles them, retries failures, and writes de
 **`IDeadLetterService`** — inject this service to query, requeue, or discard records:
 - `GetDeadLetters()` — returns all records sorted newest first
 - `QueryDeadLetters(new DeadLetterQuery { QueueName = ..., Status = ..., Skip = 0, Take = 50, IncludeTotalCount = true })` — returns one page (`DeadLetterPage.Items`, newest first) of the records matching the optional filters `QueueName`, `SubscriptionName`, `Status` and `MessageId`; the database filters, orders and pages, so only the requested page is loaded, and `TotalCount` is only counted when `IncludeTotalCount` is set
-- `Requeue(messageId)` — re-publishes the message to the original queue with the retry count reset; status becomes `Requeued`
+- `Requeue(messageId)` — re-publishes the message to the original queue with the retry count reset and a new message id; status becomes `Requeued`. The original record keeps its id, so a requeued message that is dead-lettered again is tracked as a separate record under its new id
 - `Requeue(messageId, requeuedBy, replacementMessageBody)` — the same, but republishes a corrected body instead of the stored one. The stored body is kept and the replacement is recorded in `ReplacementMessageBody` once the publish succeeded. The replacement must not be empty, must not exceed 256 KiB as UTF-8 and must be valid JSON when the stored body is JSON (`InvalidReplacementMessageBodyException` otherwise). The Dashboard requeue dialog, the Management API (`messageBody`) and `Submit-FlowlyDeadLetter -MessageBody` expose the same option
 - `Discard(messageId)` — permanently deletes the record from the tracking store
 

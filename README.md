@@ -975,7 +975,7 @@ For event handlers, the `SubscriptionName` field in the `DeadLetters` table iden
 
 ### Fix and requeue a dead letter
 
-A message that was dead-lettered because of a faulty payload can be corrected before it is requeued. `IDeadLetterService.Requeue(messageId, requeuedBy, replacementMessageBody)` republishes `replacementMessageBody` instead of the stored body, with the stored content type and application properties (event subscription dead letters are still addressed to the originating subscriber only). The same optional replacement is available as `messageBody` on the Management API requeue action, as `-MessageBody` on `Submit-FlowlyDeadLetter` and in the Dashboard, whose requeue dialog shows the stored body in an editable text area and only sends it when it was changed.
+A message that was dead-lettered because of a faulty payload can be corrected before it is requeued. `IDeadLetterService.Requeue(messageId, requeuedBy, replacementMessageBody)` republishes `replacementMessageBody` instead of the stored body, with the stored content type and application properties (event subscription dead letters are still addressed to the originating subscriber only). The republished message gets a new message id, so if it is dead-lettered again it is tracked as a separate record while the original keeps its id and its `Requeued` status. The same optional replacement is available as `messageBody` on the Management API requeue action, as `-MessageBody` on `Submit-FlowlyDeadLetter` and in the Dashboard, whose requeue dialog shows the stored body in an editable text area and only sends it when it was changed.
 
 ```csharp
 await deadLetterService.Requeue(messageId, requeuedBy: "ops@example.com", replacementMessageBody: """{"orderId":42,"amount":12.5}""");

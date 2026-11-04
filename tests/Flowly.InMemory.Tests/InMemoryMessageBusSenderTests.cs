@@ -196,6 +196,30 @@ public class InMemoryMessageBusSenderTests
         }
 
         [Fact]
+        public async Task SetsNonEmptyMessageId()
+        {
+            var (broker, sender) = CreateQueueSender();
+
+            await sender.SendRawMessage("{}", new Dictionary<string, object>());
+
+            broker.GetQueue("test-queue").Reader.TryRead(out var envelope);
+            Assert.True(Guid.TryParse(envelope!.MessageId, out _));
+        }
+
+        [Fact]
+        public async Task SendingTheSameMessageTwice_UsesDifferentMessageIds()
+        {
+            var (broker, sender) = CreateQueueSender();
+
+            await sender.SendRawMessage("{}", new Dictionary<string, object>());
+            await sender.SendRawMessage("{}", new Dictionary<string, object>());
+
+            broker.GetQueue("test-queue").Reader.TryRead(out var firstEnvelope);
+            broker.GetQueue("test-queue").Reader.TryRead(out var secondEnvelope);
+            Assert.NotEqual(firstEnvelope!.MessageId, secondEnvelope!.MessageId);
+        }
+
+        [Fact]
         public async Task WhenMessageExceedsLimit_ThrowsMessageTooLargeException()
         {
             var (_, sender) = CreateQueueSender(maxMessageSizeBytes: 1);

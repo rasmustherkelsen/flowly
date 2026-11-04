@@ -32,6 +32,7 @@ internal class RabbitMqMessageBusSender(string queueName, IChannel channel, long
         var props = new BasicProperties
         {
             DeliveryMode = DeliveryModes.Persistent,
+            MessageId = Guid.NewGuid().ToString(),
             Headers = applicationProperties.ToDictionary(k => k.Key, v => (object?)v.Value)
         };
 
