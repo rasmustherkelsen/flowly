@@ -1,3 +1,4 @@
+using Flowly.MessageInfrastructure.HandlerSteps;
 using Flowly.MessageInfrastructure.Model;
 using Flowly.Transport;
 using Microsoft.Extensions.DependencyInjection;
@@ -5,14 +6,20 @@ using Microsoft.Extensions.Logging;
 
 namespace Flowly.MessageInfrastructure.MessageHandlingStrategies;
 
-internal class StandardMessageHandlingStrategy<TMessage> : IMessageHandlingStrategy<TMessage> where TMessage : class
+internal class StandardMessageHandlingStrategy<TMessage>(IHandlerStepRunner handlerStepRunner) : IMessageHandlingStrategy<TMessage> where TMessage : class
 {
     public async Task HandleMessage(IReceivedMessage<TMessage> receivedMessage, IServiceProvider serviceProvider, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
         var handler = serviceProvider.GetRequiredService<MessageHandler<TMessage>>();
-        await handler.Handle(new MessageContext<TMessage>(receivedMessage.Body, cancellationToken));
+        await handlerStepRunner.Run(
+            receivedMessage.Body,
+            receivedMessage.Properties,
+            handler.GetType(),
+            serviceProvider,
+            cancellationToken,
+            () => handler.Handle(new MessageContext<TMessage>(receivedMessage.Body, cancellationToken)));
     }
 
     public async Task OnRetriesExhausted(IReceivedMessage<TMessage> receivedMessage, Exception exception, IServiceProvider serviceProvider, CancellationToken cancellationToken)

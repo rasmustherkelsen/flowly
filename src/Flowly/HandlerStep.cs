@@ -18,6 +18,9 @@ namespace Flowly;
 ///         the handler share scoped services such as one <c>DbContext</c>. The first registered step is the outermost.
 ///     </para>
 ///     <para>
+///         Steps run around <see cref="MessageHandler{TMessage}" />.<c>Handle</c>.
+///     </para>
+///     <para>
 ///         Steps wrap only the user's <c>Handle</c> call. Dead lettering of a corrupt body, retry republishing, completion, dead
 ///         lettering, job state messages and call replies stay outside the steps. An exception thrown by a step or the handler takes
 ///         Flowly's existing retry and dead letter path unchanged.
