@@ -1,5 +1,6 @@
 using System.Reflection;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessageInfrastructure.SendSteps;
 using Flowly.MessageInfrastructure.Senders;
 using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.Registration;
@@ -49,6 +50,7 @@ public static class MessageRecorderRegistrationExtensions
                 queueName,
                 providerName,
                 serviceProvider.GetRequiredService<ISubmitterInstrumentation>(),
+                serviceProvider.GetRequiredService<ISendStepRunner>(),
                 isStream: true));
 
         flowlyBuilder.Services.TryAddSingleton<IMessageRecorder, MessageRecorder>();

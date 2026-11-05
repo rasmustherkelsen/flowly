@@ -1,11 +1,13 @@
 using Flowly.MessageInfrastructure;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessageInfrastructure.SendSteps;
 using Flowly.MessageInfrastructure.Senders;
 using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.Tests.Fakes;
 using Flowly.Transport;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 
 namespace Flowly.Tests;
@@ -26,6 +28,7 @@ public class MessageRecorderRegistrationExtensionsTests
     private static IMessageSubmitter<TMessage> ResolveSubmitter<TMessage>(IFlowlyBuilder flowlyBuilder)
     {
         flowlyBuilder.Services.AddSingleton<ISubmitterInstrumentation, NullSubmitterInstrumentation>();
+        flowlyBuilder.Services.TryAddSingleton<ISendStepRunner>(SendStepRunner.None);
 
         return flowlyBuilder.Services.BuildServiceProvider().GetRequiredService<IMessageSubmitter<TMessage>>();
     }
@@ -93,6 +96,19 @@ public class MessageRecorderRegistrationExtensionsTests
 
             await ResolveSubmitter<TelemetryReading>(flowlyBuilder).Submit(new TelemetryReading());
             Assert.Equal("telemetry-reading", streamClient.CreatedStreamSenderForQueue);
+        }
+
+        [Fact]
+        public async Task RegisteredSubmitterRunsSendStepsFromTheContainer()
+        {
+            var flowlyBuilder = CreateBuilder("primary");
+            var sendStepRunner = new CountingSendStepRunner();
+            flowlyBuilder.Services.AddSingleton<ISendStepRunner>(sendStepRunner);
+            flowlyBuilder.AddMessageRecorder<TelemetryReading>();
+
+            await ResolveSubmitter<TelemetryReading>(flowlyBuilder).Submit(new TelemetryReading());
+
+            Assert.Equal(1, sendStepRunner.Runs);
         }
 
         [Fact]
@@ -231,6 +247,18 @@ public class MessageRecorderRegistrationExtensionsTests
         services.AddSingleton(new ProviderQueueManifest(providerName, true, "Stub"));
 
         return new StubFlowlyBuilder(services);
+    }
+
+    private sealed class CountingSendStepRunner : ISendStepRunner
+    {
+        public int Runs { get; private set; }
+
+        public Task Run(object message, CancellationToken cancellationToken, SendStepDelegate send)
+        {
+            Runs++;
+
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class StubFlowlyBuilder(IServiceCollection services) : IFlowlyBuilder

@@ -1,4 +1,5 @@
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessageInfrastructure.SendSteps;
 using Flowly.MessageInfrastructure.Senders;
 using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.Transport;
@@ -37,7 +38,8 @@ public static class MessageSubmitterRegistrationExtensions
                 serviceProvider.GetRequiredService<IMessageBusClientRegistry>(),
                 queueName,
                 providerName,
-                serviceProvider.GetRequiredService<ISubmitterInstrumentation>()));
+                serviceProvider.GetRequiredService<ISubmitterInstrumentation>(),
+                serviceProvider.GetRequiredService<ISendStepRunner>()));
 
         flowlyBuilder.Services.TryAddSingleton<IMessageSender, MessageSender>();
 

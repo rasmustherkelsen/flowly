@@ -1,4 +1,10 @@
+using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessageInfrastructure.SendSteps;
 using Flowly.MessageInfrastructure.Senders;
+using Flowly.MessageInfrastructure.Telemetry;
+using Flowly.Tests.Fakes;
+using Flowly.Transport;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Flowly.Tests.MessageInfrastructure.Senders;
 
@@ -71,6 +77,83 @@ public class MessageSenderTests
             Assert.Equal("boom", exception.Message);
         }
     }
+
+    public class WithSendSteps
+    {
+        [Fact]
+        public async Task StepThatThrows_SendsNothingAndExceptionReachesCaller()
+        {
+            var sender = new FakeMessageBusSender();
+            var messageSender = CreateMessageSender(sender, typeof(RejectingStep));
+
+            var exception = await Assert.ThrowsAsync<UnauthorizedAccessException>(() => messageSender.Send(new SomeMessage("x")));
+
+            Assert.Equal("rejected", exception.Message);
+            Assert.Empty(sender.SentMessages);
+        }
+
+        [Fact]
+        public async Task StepThatSkipsNext_SendsNothingAndDoesNotThrow()
+        {
+            var sender = new FakeMessageBusSender();
+            var messageSender = CreateMessageSender(sender, typeof(SkippingStep));
+
+            await messageSender.Send(new SomeMessage("x"));
+
+            Assert.Empty(sender.SentMessages);
+        }
+
+        [Fact]
+        public async Task StepPassingThrough_SendsMessage()
+        {
+            var sender = new FakeMessageBusSender();
+            var messageSender = CreateMessageSender(sender, typeof(PassThroughStep));
+            var message = new SomeMessage("x");
+
+            await messageSender.Send(message);
+
+            Assert.Same(message, sender.SentMessages.Single().Message);
+        }
+
+        private static MessageSender CreateMessageSender(FakeMessageBusSender sender, params Type[] stepTypes)
+        {
+            var services = new ServiceCollection();
+
+            foreach (var stepType in stepTypes)
+            {
+                services.AddScoped(stepType);
+            }
+
+            var serviceProvider = services.BuildServiceProvider();
+            var registry = new MessageBusClientRegistry();
+            registry.Register("primary", new FakeQueueAndStreamClient(sender), null);
+            var sendStepRunner = new SendStepRunner(
+                stepTypes.Select(stepType => new SendStepRegistration(stepType, SendStepRegistration.ResolveFilterType(stepType))),
+                serviceProvider.GetRequiredService<IServiceScopeFactory>());
+            var fakeServiceProvider = new FakeServiceProvider();
+            fakeServiceProvider.Register<IMessageSubmitter<SomeMessage>>(new MessageSubmitter<SomeMessage>(
+                registry,
+                "some-message",
+                "primary",
+                new NullSubmitterInstrumentation(),
+                sendStepRunner));
+
+            return new MessageSender(fakeServiceProvider);
+        }
+    }
+
+    private sealed class RejectingStep : SendStep
+    {
+        public override Task Handle(SendStepContext<object> context, SendStepDelegate next)
+            => throw new UnauthorizedAccessException("rejected");
+    }
+
+    private sealed class SkippingStep : SendStep
+    {
+        public override Task Handle(SendStepContext<object> context, SendStepDelegate next) => Task.CompletedTask;
+    }
+
+    private sealed class PassThroughStep : SendStep;
 
     private class FakeServiceProvider : IServiceProvider
     {

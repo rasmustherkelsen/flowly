@@ -1,11 +1,13 @@
 using Flowly.MessageInfrastructure;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessageInfrastructure.SendSteps;
 using Flowly.MessageInfrastructure.Senders;
 using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.Tests.Fakes;
 using Flowly.Transport;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Flowly.Tests;
 
@@ -32,6 +34,7 @@ public class MessageSubmitterRegistrationExtensionsTests
     private static IMessageSubmitter<TMessage> ResolveSubmitter<TMessage>(IFlowlyBuilder flowlyBuilder)
     {
         flowlyBuilder.Services.AddSingleton<ISubmitterInstrumentation, NullSubmitterInstrumentation>();
+        flowlyBuilder.Services.TryAddSingleton<ISendStepRunner>(SendStepRunner.None);
 
         return flowlyBuilder.Services.BuildServiceProvider().GetRequiredService<IMessageSubmitter<TMessage>>();
     }
@@ -51,6 +54,19 @@ public class MessageSubmitterRegistrationExtensionsTests
 
             Assert.Contains("requires a provider that supports queue-based messaging", exception.Message);
             Assert.Contains("streams (message streaming)", exception.Message);
+        }
+
+        [Fact]
+        public async Task RegisteredSubmitterRunsSendStepsFromTheContainer()
+        {
+            var flowlyBuilder = CreateBuilder("primary");
+            var sendStepRunner = new CountingSendStepRunner();
+            flowlyBuilder.Services.AddSingleton<ISendStepRunner>(sendStepRunner);
+            flowlyBuilder.AddMessageSubmitter<OrderPlaced>();
+
+            await ResolveSubmitter<OrderPlaced>(flowlyBuilder).Submit(new OrderPlaced());
+
+            Assert.Equal(1, sendStepRunner.Runs);
         }
 
         [Fact]
@@ -127,6 +143,18 @@ public class MessageSubmitterRegistrationExtensionsTests
             var returned = flowlyBuilder.AddMessageSubmitter<OrderPlaced>();
 
             Assert.Same(flowlyBuilder, returned);
+        }
+    }
+
+    private sealed class CountingSendStepRunner : ISendStepRunner
+    {
+        public int Runs { get; private set; }
+
+        public Task Run(object message, CancellationToken cancellationToken, SendStepDelegate send)
+        {
+            Runs++;
+
+            return Task.CompletedTask;
         }
     }
 

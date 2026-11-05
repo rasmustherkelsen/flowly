@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessageInfrastructure.SendSteps;
 using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.Transport;
 
@@ -10,9 +11,13 @@ internal class MessageSubmitter<TMessage>(
     string queueName,
     string providerName,
     ISubmitterInstrumentation submitterInstrumentation,
+    ISendStepRunner sendStepRunner,
     bool isStream = false) : IMessageSubmitter<TMessage>
 {
-    public async Task Submit(TMessage message, CancellationToken cancellationToken = default, string? partitionKey = null)
+    public Task Submit(TMessage message, CancellationToken cancellationToken = default, string? partitionKey = null)
+        => sendStepRunner.Run(message!, cancellationToken, () => SubmitCore(message, cancellationToken, partitionKey));
+
+    private async Task SubmitCore(TMessage message, CancellationToken cancellationToken, string? partitionKey)
     {
         var sw = Stopwatch.StartNew();
         var client = clientRegistry.GetTransportClient(providerName);
