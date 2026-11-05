@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Flowly.MessageInfrastructure.Events.Telemetry;
+using Flowly.MessageInfrastructure.HandlerSteps;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.Transport;
@@ -14,7 +15,8 @@ internal class EventHandlerBackgroundService<TEvent, THandler>(
     IServiceScopeFactory serviceScopeFactory,
     EventHandlerSettings<TEvent, THandler> settings,
     ILogger<EventHandlerBackgroundService<TEvent, THandler>> logger,
-    IEventHandlerInstrumentation instrumentation)
+    IEventHandlerInstrumentation instrumentation,
+    IHandlerStepRunner handlerStepRunner)
     : BackgroundService
     where TEvent : class
     where THandler : EventHandlerBase<TEvent>
@@ -73,7 +75,13 @@ internal class EventHandlerBackgroundService<TEvent, THandler>(
                 receivedMessage.Properties.CorrelationId,
                 DateTimeOffset.UtcNow);
 
-            await handler.Handle(context, cancellationToken);
+            await handlerStepRunner.Run(
+                receivedMessage.Body,
+                receivedMessage.Properties,
+                typeof(THandler),
+                scope.ServiceProvider,
+                cancellationToken,
+                () => handler.Handle(context, cancellationToken));
         }
         catch (Exception ex)
         {
