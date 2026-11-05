@@ -37,6 +37,7 @@ internal static class MessageProcessingPipelineExtensions
             handlerSettings,
             sp.GetRequiredService<ILogger<MessageProcessingBackgroundService<TMessage>>>(),
             sp.GetRequiredService<IHandlerInstrumentation>(),
-            strategyFactory(sp)));
+            strategyFactory(sp),
+            sp.GetRequiredService<NonRetryableExceptionClassifier>()));
     }
 }

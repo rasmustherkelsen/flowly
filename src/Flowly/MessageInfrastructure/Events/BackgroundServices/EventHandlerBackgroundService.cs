@@ -16,7 +16,8 @@ internal class EventHandlerBackgroundService<TEvent, THandler>(
     EventHandlerSettings<TEvent, THandler> settings,
     ILogger<EventHandlerBackgroundService<TEvent, THandler>> logger,
     IEventHandlerInstrumentation instrumentation,
-    IHandlerStepRunner handlerStepRunner)
+    IHandlerStepRunner handlerStepRunner,
+    NonRetryableExceptionClassifier nonRetryableExceptionClassifier)
     : BackgroundService
     where TEvent : class
     where THandler : EventHandlerBase<TEvent>
@@ -93,6 +94,14 @@ internal class EventHandlerBackgroundService<TEvent, THandler>(
             instrumentation.RecordSucceeded(settings.HandlerName, settings.TopicName, sw.Elapsed.TotalMilliseconds);
             logger.LogInformation("{HandlerName} handled event", settings.HandlerName);
             await receivedMessage.Complete(cancellationToken);
+            return;
+        }
+
+        if (nonRetryableExceptionClassifier.IsNonRetryable(handlingException))
+        {
+            instrumentation.RecordFailed(settings.HandlerName, settings.TopicName);
+            await receivedMessage.DeadLetter(handlingException.Message, cancellationToken);
+            logger.LogError(handlingException, "{HandlerName} event was rejected and not retried, dead-lettered", settings.HandlerName);
             return;
         }
 

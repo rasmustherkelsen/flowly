@@ -249,6 +249,25 @@ public class CallMessageHandlingStrategyTests
             Assert.True(receivedMessage.WasDeadLettered);
             Assert.Equal("handler blew up", receivedMessage.DeadLetterReason);
         }
+
+        [Fact]
+        public async Task WithMessageRejectedException_DeadLettersMessageWithReason()
+        {
+            var (strategy, _) = CreateStrategy(new CapturingSender());
+            var receivedMessage = new FakeCallReceivedMessage(
+                new PingMessage("p"),
+                new MessageProperties("m", "c", ReplyTo: "r"));
+            var serviceProvider = new ServiceCollection().BuildServiceProvider();
+
+            await strategy.OnRetriesExhausted(
+                receivedMessage,
+                new MessageRejectedException("caller not allowed"),
+                serviceProvider,
+                CancellationToken.None);
+
+            Assert.True(receivedMessage.WasDeadLettered);
+            Assert.Equal("caller not allowed", receivedMessage.DeadLetterReason);
+        }
     }
 
     public class OnMessageHandlingError

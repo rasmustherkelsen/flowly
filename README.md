@@ -914,6 +914,24 @@ For job handlers, exhausted retries transition the job to `Failed` in the databa
 
 Retry policy applies to `MessageHandler<T>`, `JobHandler<T>`, and `BatchMessageHandler<T>`. Recurring jobs do not support retry. See the [Batch handler](#batch-handler) section for delivery-semantics details specific to batch handlers.
 
+### Rejecting a message without retries
+
+Some failures are permanent: retrying an invalid or unauthorized message only delays the inevitable. Two mechanisms mark a failure as non-retryable. Both skip `[RetryPolicy]` and dead-letter the message immediately, using the exception message as the dead letter reason (a job handler fails the job with that reason instead). They apply to message handlers, event handlers, call handlers and job handlers, including the handler steps that run around them. They have no effect on batch handlers and message stream handlers.
+
+Throw `MessageRejectedException` from a handler or a step when you want to reject explicitly:
+
+```csharp
+throw new MessageRejectedException("Order total must be positive");
+```
+
+Register an exception type with `NonRetryable<TException>()` to keep a domain exception free of any dependency on Flowly. The type and every subclass of it become non-retryable:
+
+```csharp
+builder.AddFlowly<MyConfig>(options => options.NonRetryable<NotAuthorizedException>());
+```
+
+For a call handler the message is dead-lettered and the caller times out, exactly as for any other exhausted failure.
+
 ---
 
 ## Dead Letter Tracking

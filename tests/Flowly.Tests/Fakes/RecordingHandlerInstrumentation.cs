@@ -12,8 +12,14 @@ internal sealed class RecordingHandlerInstrumentation : IHandlerInstrumentation
     private readonly List<StreamPartitionTransition> _transitions = [];
     private readonly Channel<string> _halts = Channel.CreateUnbounded<string>();
     private readonly List<long> _receivedCounts = [];
+    private long _failedCount;
+    private long _retriedCount;
 
     public bool IsEnabled => false;
+
+    public long FailedCount => Interlocked.Read(ref _failedCount);
+
+    public long RetriedCount => Interlocked.Read(ref _retriedCount);
 
     public IReadOnlyList<StreamPartitionTransition> Transitions
     {
@@ -53,9 +59,9 @@ internal sealed class RecordingHandlerInstrumentation : IHandlerInstrumentation
 
     public void RecordSucceeded(string handlerName, string queueName, double durationMs, long count = 1) { }
 
-    public void RecordFailed(string handlerName, string queueName, long count = 1) { }
+    public void RecordFailed(string handlerName, string queueName, long count = 1) => Interlocked.Add(ref _failedCount, count);
 
-    public void RecordRetried(string handlerName, string queueName, long count = 1) { }
+    public void RecordRetried(string handlerName, string queueName, long count = 1) => Interlocked.Add(ref _retriedCount, count);
 
     public void RecordHalted(string handlerName, string queueName, string reason) => _halts.Writer.TryWrite(reason);
 

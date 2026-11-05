@@ -115,6 +115,8 @@ Owned by the **message contract**, not the handler. Auto-generated using the act
 
 Apply `[RetryPolicy(maxRetries, delaySeconds)]` to any `MessageHandler<T>` or `JobHandler<T>`. On failure Flowly re-publishes the message to the same queue with a scheduled enqueue time and increments a `flowly-retry-count` application property. When retries are exhausted, normal handlers dead-letter the message; job handlers transition the job to `Failed`. `MessageStreamHandler<T>` also supports `[RetryPolicy]` but retries in-process on the same batch (no requeue) and halts instead of dead-lettering once exhausted.
 
+**Non-retryable failures:** `MessageRejectedException(reason)`, or any exception type (and subclasses) registered with `FlowlyOptions.NonRetryable<TException>()`, skips the retry policy and dead-letters immediately with the exception message as reason (job handlers: the job is failed). The decision is made by `NonRetryableExceptionClassifier`, which unwraps `IHandlerExceptionWrapper` (implemented by the Jobs `JobException`), in `MessageProcessingBackgroundService` (message, call and job handlers) and `EventHandlerBackgroundService`. Batch, stream and recurring handlers are not covered.
+
 ### Message Streams (`MessageStreamHandler<T>`)
 
 Decided designs live in `.claude/rules/message-streaming-conventions.md` (transport-independent), `message-streaming-rabbitmq.md` and `message-streaming-eventhubs.md`; read the relevant ones before touching this area, including when only editing docs, and ask rather than assume. Test-run evidence is in `docs/ai/message-streaming-verification.md`. Summary:

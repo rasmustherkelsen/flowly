@@ -2,6 +2,7 @@ using Flowly.Jobs.BackgroundServices;
 using Flowly.Jobs.Messages;
 using Flowly.Jobs.Model;
 using Flowly.Jobs.Tests.Fakes;
+using Flowly.MessageInfrastructure;
 using Flowly.MessageInfrastructure.HandlerSteps;
 using Flowly.Transport;
 using Microsoft.Extensions.DependencyInjection;
@@ -272,6 +273,28 @@ public class JobMessageHandlingStrategyTests
     public class OnRetriesExhausted
     {
         [Fact]
+        public async Task WithRejectedJob_FailsJobWithRejectionReasonWithoutRetrying()
+        {
+            var jobId = Guid.NewGuid();
+            var fakeMessageSender = new FakeMessageSender();
+            var log = new List<string>();
+            using var serviceProvider = BuildServiceProvider(fakeMessageSender, log, typeof(RejectingStep));
+            var jobMessageHandlingStrategy = new JobMessageHandlingStrategy<TestJobMessage>(
+                serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+                CreateRunner(typeof(RejectingStep)));
+            var receivedMessage = CreateReceivedMessage(jobId);
+
+            var jobException = await Assert.ThrowsAsync<JobException>(
+                () => jobMessageHandlingStrategy.HandleMessage(receivedMessage, serviceProvider, CancellationToken.None));
+            await jobMessageHandlingStrategy.OnRetriesExhausted(receivedMessage, jobException, serviceProvider, CancellationToken.None);
+
+            Assert.True(new NonRetryableExceptionClassifier(new FlowlyOptions()).IsNonRetryable(jobException));
+            var jobFailed = fakeMessageSender.SentMessages.OfType<FlowlysysJobFailedMessage>().Single();
+            Assert.Equal("step rejected", jobFailed.FaultReason);
+            Assert.Empty(log);
+        }
+
+        [Fact]
         public async Task WithJobException_SendsJobFailedUsingJobExceptionJobIdAndInnerExceptionMessage()
         {
             var jobId = new JobId();
@@ -502,6 +525,12 @@ public class JobMessageHandlingStrategyTests
 
         private string SentStates()
             => string.Join(",", fakeMessageSender.SentMessages.OfType<FlowlysysUpdateJobStateMessage>().Select(update => update.JobState));
+    }
+
+    private sealed class RejectingStep : HandlerStep<TestJobMessage>
+    {
+        public override Task Handle(HandlerStepContext<TestJobMessage> context, HandlerStepDelegate next)
+            => throw new MessageRejectedException("step rejected");
     }
 
     private sealed class ThrowingStep : HandlerStep<TestJobMessage>

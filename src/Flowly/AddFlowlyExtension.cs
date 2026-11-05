@@ -1,4 +1,5 @@
 using System.Reflection;
+using Flowly.MessageInfrastructure;
 using Flowly.MessageInfrastructure.Events.Telemetry;
 using Flowly.MessageInfrastructure.HandlerSteps;
 using Flowly.MessageInfrastructure.Model;
@@ -110,6 +111,7 @@ public static class AddFlowlyExtension
             options.InstanceName = designTimeFactory.InstanceName;
 
         services.TryAddSingleton(options);
+        services.TryAddSingleton<NonRetryableExceptionClassifier>();
 
         var topologyNameResolver = (ITopologyNameResolver)Activator.CreateInstance(options.TopologyNameResolverType)!;
         services.TryAddSingleton(topologyNameResolver);

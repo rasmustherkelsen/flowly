@@ -1,3 +1,4 @@
+using Flowly.MessageInfrastructure;
 using Flowly.MessageInfrastructure.Events;
 using Flowly.MessageInfrastructure.Events.BackgroundServices;
 using Flowly.MessageInfrastructure.Events.Telemetry;
@@ -14,7 +15,7 @@ public class EventHandlerBackgroundServiceTests
     private static (EventHandlerBackgroundService<TestEvent, RecordingEventHandler> backgroundService,
         FakeEventCapableMessageBusClient client,
         RecordingEventHandler handler)
-        Build(int maxRetries = 0, int retryDelaySeconds = 0)
+        Build(int maxRetries = 0, int retryDelaySeconds = 0, FlowlyOptions? flowlyOptions = null)
     {
         var handler = new RecordingEventHandler();
         var client = new FakeEventCapableMessageBusClient();
@@ -35,7 +36,8 @@ public class EventHandlerBackgroundServiceTests
             settings,
             NullLogger<EventHandlerBackgroundService<TestEvent, RecordingEventHandler>>.Instance,
             new NullEventHandlerInstrumentation(),
-            HandlerStepRunner.None);
+            HandlerStepRunner.None,
+            new NonRetryableExceptionClassifier(flowlyOptions ?? new FlowlyOptions()));
 
         return (backgroundService, client, handler);
     }
@@ -71,7 +73,8 @@ public class EventHandlerBackgroundServiceTests
             settings,
             NullLogger<EventHandlerBackgroundService<TestEvent, StepAwareEventHandler>>.Instance,
             new NullEventHandlerInstrumentation(),
-            handlerStepRunner);
+            handlerStepRunner,
+            new NonRetryableExceptionClassifier(new FlowlyOptions()));
 
         return (backgroundService, client);
     }
@@ -142,7 +145,8 @@ public class EventHandlerBackgroundServiceTests
                 settings,
                 NullLogger<EventHandlerBackgroundService<TestEvent, RecordingEventHandler>>.Instance,
                 new NullEventHandlerInstrumentation(),
-                HandlerStepRunner.None);
+                HandlerStepRunner.None,
+                new NonRetryableExceptionClassifier(new FlowlyOptions()));
 
             await backgroundService.StartAsync(CancellationToken.None);
 
@@ -366,6 +370,80 @@ public class EventHandlerBackgroundServiceTests
         }
     }
 
+    public class OnHandlerThrowsNonRetryableException
+    {
+        [Fact]
+        public async Task MessageRejectedExceptionWithRetriesLeft_DeadLettersImmediatelyWithReason()
+        {
+            var (backgroundService, client, handler) = Build(maxRetries: 3);
+            handler.ThrowOnNext = new MessageRejectedException("not allowed");
+            await backgroundService.StartAsync(CancellationToken.None);
+            var processor = await client.ProcessorCreated;
+            await processor.Started;
+            var receivedMessage = new FakeReceivedMessage<TestEvent>(new TestEvent("e"), new MessageProperties("m", "c", null, RetryCount: 0));
+
+            await processor.FireProcessMessage(receivedMessage);
+            await backgroundService.StopAsync(CancellationToken.None);
+
+            Assert.True(receivedMessage.DeadLettered);
+            Assert.Equal("not allowed", receivedMessage.DeadLetterReason);
+        }
+
+        [Fact]
+        public async Task MessageRejectedExceptionWithRetriesLeft_DoesNotRepublishForRetry()
+        {
+            var (backgroundService, client, handler) = Build(maxRetries: 3);
+            handler.ThrowOnNext = new MessageRejectedException("not allowed");
+            await backgroundService.StartAsync(CancellationToken.None);
+            var processor = await client.ProcessorCreated;
+            await processor.Started;
+
+            await processor.FireProcessMessage(new FakeReceivedMessage<TestEvent>(new TestEvent("e")));
+            await backgroundService.StopAsync(CancellationToken.None);
+
+            Assert.Empty(client.RetrySenders);
+        }
+
+        [Fact]
+        public async Task RegisteredNonRetryableException_DeadLettersImmediately()
+        {
+            var flowlyOptions = new FlowlyOptions();
+            flowlyOptions.NonRetryable<UnauthorizedAccessException>();
+            var (backgroundService, client, handler) = Build(maxRetries: 3, flowlyOptions: flowlyOptions);
+            handler.ThrowOnNext = new UnauthorizedAccessException("forbidden");
+            await backgroundService.StartAsync(CancellationToken.None);
+            var processor = await client.ProcessorCreated;
+            await processor.Started;
+            var receivedMessage = new FakeReceivedMessage<TestEvent>(new TestEvent("e"));
+
+            await processor.FireProcessMessage(receivedMessage);
+            await backgroundService.StopAsync(CancellationToken.None);
+
+            Assert.True(receivedMessage.DeadLettered);
+            Assert.Equal("forbidden", receivedMessage.DeadLetterReason);
+            Assert.Empty(client.RetrySenders);
+        }
+
+        [Fact]
+        public async Task UnregisteredException_StillRetries()
+        {
+            var flowlyOptions = new FlowlyOptions();
+            flowlyOptions.NonRetryable<UnauthorizedAccessException>();
+            var (backgroundService, client, handler) = Build(maxRetries: 3, flowlyOptions: flowlyOptions);
+            handler.ThrowOnNext = new InvalidOperationException("boom");
+            await backgroundService.StartAsync(CancellationToken.None);
+            var processor = await client.ProcessorCreated;
+            await processor.Started;
+            var receivedMessage = new FakeReceivedMessage<TestEvent>(new TestEvent("e"));
+
+            await processor.FireProcessMessage(receivedMessage);
+            await backgroundService.StopAsync(CancellationToken.None);
+
+            Assert.False(receivedMessage.DeadLettered);
+            Assert.Single(Assert.Single(client.RetrySenders).SentMessages);
+        }
+    }
+
     public class OnProcessMessageWithHandlerSteps
     {
         [Fact]
@@ -512,6 +590,22 @@ public class EventHandlerBackgroundServiceTests
 
             Assert.True(receivedMessage.DeadLettered);
             Assert.Equal("handler failed", receivedMessage.DeadLetterReason);
+            Assert.Empty(client.RetrySenders);
+        }
+
+        [Fact]
+        public async Task WithStepRejectingMessageAndRetriesLeft_DeadLettersEventWithoutRetry()
+        {
+            var log = new List<string>();
+            var (backgroundService, client) = BuildWithSteps(log, [typeof(RejectingStep)], maxRetries: 2);
+            var processor = await StartProcessing(backgroundService, client);
+            var receivedMessage = new FakeReceivedMessage<TestEvent>(new TestEvent("e"), new MessageProperties("m", "c", null, RetryCount: 0));
+
+            await processor.FireProcessMessage(receivedMessage);
+            await backgroundService.StopAsync(CancellationToken.None);
+
+            Assert.True(receivedMessage.DeadLettered);
+            Assert.Equal("step rejected", receivedMessage.DeadLetterReason);
             Assert.Empty(client.RetrySenders);
         }
 
@@ -668,6 +762,12 @@ public class EventHandlerBackgroundServiceTests
             {
             }
         }
+    }
+
+    private sealed class RejectingStep : HandlerStep<TestEvent>
+    {
+        public override Task Handle(HandlerStepContext<TestEvent> context, HandlerStepDelegate next)
+            => throw new MessageRejectedException("step rejected");
     }
 
     private sealed class ThrowingStep : HandlerStep<TestEvent>

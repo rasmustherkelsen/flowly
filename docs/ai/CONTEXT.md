@@ -134,6 +134,8 @@ public class MyHandler : MessageHandler<MyMessage>
 
 Register: `.AddMessageHandler<MyMessage, MyHandler>()`
 
+To reject a message permanently (dead-letter immediately, skipping `[RetryPolicy]`), throw `MessageRejectedException(reason)` from the handler or a handler step, or register a domain exception with `AddFlowly<TConfig>(options => options.NonRetryable<TException>())` (subclasses included). Applies to message, event, call and job handlers; not to batch or stream handlers. The dead letter reason is the exception message; a job is failed with that reason instead.
+
 To opt into dead letter tracking:
 ```csharp
 builder.AddMessageHandler<MyMessage, MyHandler>()

@@ -1,3 +1,4 @@
+using Flowly.MessageInfrastructure;
 using Flowly.MessageInfrastructure.HandlerSteps;
 using Flowly.MessageInfrastructure.BackgroundServices;
 using Flowly.MessageInfrastructure.MessageHandlingStrategies;
@@ -97,6 +98,7 @@ public class MessageProcessingPipelineExtensionsTests
         serviceCollection.AddSingleton<IMessageBusClientRegistry>(new StubClientRegistry());
         serviceCollection.AddSingleton<IServiceScopeFactory>(new StubServiceScopeFactory());
         serviceCollection.AddSingleton<IHandlerInstrumentation, NullHandlerInstrumentation>();
+        serviceCollection.AddSingleton(new NonRetryableExceptionClassifier(new FlowlyOptions()));
         serviceCollection.AddSingleton<ILogger<MessageProcessingBackgroundService<TestMessage>>>(NullLogger<MessageProcessingBackgroundService<TestMessage>>.Instance);
         return serviceCollection;
     }
