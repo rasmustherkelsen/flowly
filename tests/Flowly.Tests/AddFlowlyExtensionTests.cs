@@ -2,6 +2,7 @@ using Flowly.MessageInfrastructure.StreamPartitions;
 using Flowly.MessageInfrastructure;
 using Flowly.MessageInfrastructure.Events.Telemetry;
 using Flowly.MessageInfrastructure.HandlerSteps;
+using Flowly.MessageInfrastructure.SendSteps;
 using Flowly.MessageInfrastructure.Model;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.MessageInfrastructure.Telemetry;
@@ -61,6 +62,18 @@ public class AddFlowlyExtensionTests
             var descriptor = hostApplicationBuilder.Services.Single(s => s.ServiceType == typeof(IHandlerStepRunner));
             Assert.Equal(ServiceLifetime.Singleton, descriptor.Lifetime);
             Assert.Equal(typeof(HandlerStepRunner), descriptor.ImplementationType);
+        }
+
+        [Fact]
+        public void RegistersSendStepRunnerAsSingleton()
+        {
+            var hostApplicationBuilder = new StubHostApplicationBuilder();
+
+            hostApplicationBuilder.AddFlowly<RecordingFlowlyConfiguration>();
+
+            var descriptor = hostApplicationBuilder.Services.Single(s => s.ServiceType == typeof(ISendStepRunner));
+            Assert.Equal(ServiceLifetime.Singleton, descriptor.Lifetime);
+            Assert.Equal(typeof(SendStepRunner), descriptor.ImplementationType);
         }
 
         [Fact]

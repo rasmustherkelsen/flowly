@@ -1,3 +1,5 @@
-﻿namespace Flowly.Jobs.Messages;
+﻿using Flowly.MessageInfrastructure.SendSteps;
 
-internal record FlowlysysCreateRecurringJobStateMessage(string JobTypeName, string Description, DateTime TimeStamp, string CronExpression);
+namespace Flowly.Jobs.Messages;
+
+internal record FlowlysysCreateRecurringJobStateMessage(string JobTypeName, string Description, DateTime TimeStamp, string CronExpression) : IFlowlySystemMessage;

@@ -1,5 +1,6 @@
-﻿using Flowly.Jobs.Model;
+﻿using Flowly.MessageInfrastructure.SendSteps;
+using Flowly.Jobs.Model;
 
 namespace Flowly.Jobs.Messages;
 
-internal record FlowlysysJobFailedMessage(JobId JobId, string FaultReason, DateTime TimeStamp);
+internal record FlowlysysJobFailedMessage(JobId JobId, string FaultReason, DateTime TimeStamp) : IFlowlySystemMessage;

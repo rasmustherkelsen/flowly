@@ -4,6 +4,7 @@ using Flowly.MessageInfrastructure.Events.Telemetry;
 using Flowly.MessageInfrastructure.HandlerSteps;
 using Flowly.MessageInfrastructure.Model;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessageInfrastructure.SendSteps;
 using Flowly.MessageInfrastructure.StreamPartitions;
 using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.Registration;
@@ -143,6 +144,7 @@ public static class AddFlowlyExtension
         services.TryAddSingleton<IHandlerSettingsFactory, HandlerSettingsFactory>();
         services.TryAddSingleton<IQueueRegistrar, QueueRegistrar>();
         services.TryAddSingleton<IHandlerStepRunner, HandlerStepRunner>();
+        services.TryAddSingleton<ISendStepRunner, SendStepRunner>();
         services.TryAddSingleton(new RegisteredHandlerMessageTypes(services));
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, HandlerStepConfigurationValidator>());
 

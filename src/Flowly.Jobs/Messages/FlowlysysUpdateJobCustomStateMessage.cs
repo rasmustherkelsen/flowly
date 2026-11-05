@@ -1,5 +1,6 @@
-﻿using Flowly.Jobs.Model;
+﻿using Flowly.MessageInfrastructure.SendSteps;
+using Flowly.Jobs.Model;
 
 namespace Flowly.Jobs.Messages;
 
-internal record FlowlysysUpdateJobCustomStateMessage(JobId JobId, object CustomState);
+internal record FlowlysysUpdateJobCustomStateMessage(JobId JobId, object CustomState) : IFlowlySystemMessage;
