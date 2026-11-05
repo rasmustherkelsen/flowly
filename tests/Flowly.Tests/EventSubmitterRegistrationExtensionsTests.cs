@@ -4,10 +4,12 @@ using Flowly.MessageInfrastructure.Events.Registration;
 using Flowly.MessageInfrastructure.Events.Telemetry;
 using Flowly.MessageInfrastructure.Receivers;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessageInfrastructure.SendSteps;
 using Flowly.Tests.Fakes;
 using Flowly.Transport;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Flowly.Tests;
 
@@ -27,6 +29,7 @@ public class EventSubmitterRegistrationExtensionsTests
     private static IEventSubmitter<TEvent> ResolveSubmitter<TEvent>(IFlowlyBuilder flowlyBuilder)
     {
         flowlyBuilder.Services.AddSingleton<IEventPublisherInstrumentation, NullEventPublisherInstrumentation>();
+        flowlyBuilder.Services.TryAddSingleton<ISendStepRunner>(SendStepRunner.None);
 
         return flowlyBuilder.Services.BuildServiceProvider().GetRequiredService<IEventSubmitter<TEvent>>();
     }
@@ -144,6 +147,19 @@ public class EventSubmitterRegistrationExtensionsTests
         }
 
         [Fact]
+        public async Task RegisteredSubmitterRunsSendStepsFromTheContainer()
+        {
+            var flowlyBuilder = CreateBuilder("primary");
+            var sendStepRunner = new CountingSendStepRunner();
+            flowlyBuilder.Services.AddSingleton<ISendStepRunner>(sendStepRunner);
+            flowlyBuilder.AddEventSubmitter<OrderPlaced>();
+
+            await ResolveSubmitter<OrderPlaced>(flowlyBuilder).Raise(new OrderPlaced());
+
+            Assert.Equal(1, sendStepRunner.Runs);
+        }
+
+        [Fact]
         public void RegistersExchangeTopologyInManifest()
         {
             var flowlyBuilder = CreateBuilder("primary");
@@ -166,6 +182,18 @@ public class EventSubmitterRegistrationExtensionsTests
             var returned = flowlyBuilder.AddEventSubmitter<OrderPlaced>();
 
             Assert.Same(flowlyBuilder, returned);
+        }
+    }
+
+    private sealed class CountingSendStepRunner : ISendStepRunner
+    {
+        public int Runs { get; private set; }
+
+        public Task Run(object message, CancellationToken cancellationToken, SendStepDelegate send)
+        {
+            Runs++;
+
+            return Task.CompletedTask;
         }
     }
 

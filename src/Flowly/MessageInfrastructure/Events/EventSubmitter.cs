@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Flowly.MessageInfrastructure.Events.Telemetry;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessageInfrastructure.SendSteps;
 using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.Transport;
 
@@ -10,9 +11,13 @@ internal class EventSubmitter<TEvent>(
     IMessageBusClientRegistry clientRegistry,
     string topicName,
     string providerName,
-    IEventPublisherInstrumentation publisherInstrumentation) : IEventSubmitter<TEvent>
+    IEventPublisherInstrumentation publisherInstrumentation,
+    ISendStepRunner sendStepRunner) : IEventSubmitter<TEvent>
 {
-    public async Task Raise(TEvent @event, CancellationToken cancellationToken = default)
+    public Task Raise(TEvent @event, CancellationToken cancellationToken = default)
+        => sendStepRunner.Run(@event!, cancellationToken, () => RaiseCore(@event, cancellationToken));
+
+    private async Task RaiseCore(TEvent @event, CancellationToken cancellationToken)
     {
         var sw = Stopwatch.StartNew();
         var client = clientRegistry.GetTransportClient(providerName);

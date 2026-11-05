@@ -2,6 +2,7 @@ using Flowly.MessageInfrastructure.Events;
 using Flowly.MessageInfrastructure.Events.Registration;
 using Flowly.MessageInfrastructure.Events.Telemetry;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessageInfrastructure.SendSteps;
 using Flowly.Registration;
 using Flowly.Transport;
 using Microsoft.Extensions.DependencyInjection;
@@ -39,7 +40,8 @@ public static class EventSubmitterRegistrationExtensions
                 serviceProvider.GetRequiredService<IMessageBusClientRegistry>(),
                 topicName,
                 providerName,
-                serviceProvider.GetRequiredService<IEventPublisherInstrumentation>()));
+                serviceProvider.GetRequiredService<IEventPublisherInstrumentation>(),
+                serviceProvider.GetRequiredService<ISendStepRunner>()));
 
         flowlyBuilder.Services.TryAddSingleton<IEventSender, EventSender>();
 
