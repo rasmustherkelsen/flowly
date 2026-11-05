@@ -1,5 +1,6 @@
 using System.Reflection;
 using Flowly.MessageInfrastructure.Events.Telemetry;
+using Flowly.MessageInfrastructure.HandlerSteps;
 using Flowly.MessageInfrastructure.Model;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.MessageInfrastructure.StreamPartitions;
@@ -139,6 +140,7 @@ public static class AddFlowlyExtension
         services.TryAddSingleton(callerInstrumentation);
         services.TryAddSingleton<IHandlerSettingsFactory, HandlerSettingsFactory>();
         services.TryAddSingleton<IQueueRegistrar, QueueRegistrar>();
+        services.TryAddSingleton<IHandlerStepRunner, HandlerStepRunner>();
 
         services.AddHostedService<CommandLineParserHostedService>();
 
