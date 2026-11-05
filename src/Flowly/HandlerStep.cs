@@ -18,9 +18,13 @@ namespace Flowly;
 ///         the handler share scoped services such as one <c>DbContext</c>. The first registered step is the outermost.
 ///     </para>
 ///     <para>
-///         Steps run around <see cref="MessageHandler{TMessage}" />.<c>Handle</c> and <see cref="EventHandlerBase{TEvent}" />.<c>Handle</c>.
+///         Steps run around <see cref="MessageHandler{TMessage}" />.<c>Handle</c>, <see cref="EventHandlerBase{TEvent}" />.<c>Handle</c>
+///         and <c>JobHandler&lt;TMessage&gt;.Handle</c>.
 ///         Each subscriber of an event has its own delivery, scope, retry and dead letter path, so an event handler is treated
-///         exactly like a message handler, and steps are filtered by the runtime type of the event.
+///         exactly like a message handler, and steps are filtered by the runtime type of the event. For a job handler the steps run
+///         between the <c>Started</c> and <c>Completed</c> job state messages while the alive signal keeps running; an exception from a
+///         step fails the job attempt like an exception from the handler, and a step that does not call <c>next</c> completes the job
+///         without running the handler. Recurring jobs receive no message and are not covered.
 ///     </para>
 ///     <para>
 ///         Steps wrap only the user's <c>Handle</c> call. Dead lettering of a corrupt body, retry republishing, completion, dead
