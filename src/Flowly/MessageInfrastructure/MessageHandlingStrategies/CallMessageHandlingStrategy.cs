@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Flowly.MessageInfrastructure.HandlerSteps;
 using Flowly.MessageInfrastructure.Model;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.MessageInfrastructure.Telemetry;
@@ -11,7 +12,9 @@ namespace Flowly.MessageInfrastructure.MessageHandlingStrategies;
 internal class CallMessageHandlingStrategy<TMessage, TReturn>(
     IMessageBusClientRegistry clientRegistry,
     IHandlerSettings<TMessage> handlerSettings,
-    IHandlerInstrumentation handlerInstrumentation) : IMessageHandlingStrategy<TMessage>
+    IHandlerInstrumentation handlerInstrumentation,
+    IHandlerStepRunner handlerStepRunner,
+    ILogger<CallMessageHandlingStrategy<TMessage, TReturn>> logger) : IMessageHandlingStrategy<TMessage>
     where TMessage : class, IReturns<TReturn>
     where TReturn : class
 {
@@ -25,7 +28,23 @@ internal class CallMessageHandlingStrategy<TMessage, TReturn>(
                 "Ensure the message was sent via IMessageCaller.Call.");
 
         var handler = serviceProvider.GetRequiredService<CallHandler<TMessage, TReturn>>();
-        var returnMessage = await handler.InvokeHandle(new MessageContext<TMessage>(receivedMessage.Body, cancellationToken));
+
+        TReturn? returnMessage = null;
+        await handlerStepRunner.Run(
+            receivedMessage.Body,
+            receivedMessage.Properties,
+            handler.GetType(),
+            serviceProvider,
+            cancellationToken,
+            async () => returnMessage = await handler.InvokeHandle(new MessageContext<TMessage>(receivedMessage.Body, cancellationToken)));
+
+        if (returnMessage is null)
+        {
+            logger.LogWarning(
+                "A handler step did not call next for call message {MessageType} on queue {QueueName}; no reply is sent and the caller will time out",
+                typeof(TMessage).Name, handlerSettings.QueueName);
+            return;
+        }
 
         var client = clientRegistry.GetClient(handlerSettings.ProviderName);
         var sender = await client.CreateMessageBusSender(replyTo);

@@ -19,12 +19,19 @@ namespace Flowly;
 ///     </para>
 ///     <para>
 ///         Steps run around <see cref="MessageHandler{TMessage}" />.<c>Handle</c>, <see cref="EventHandlerBase{TEvent}" />.<c>Handle</c>
-///         and <c>JobHandler&lt;TMessage&gt;.Handle</c>.
+///         and <c>JobHandler&lt;TMessage&gt;.Handle</c>, and around <see cref="CallHandler{TMessage, TReturn}" />.<c>Handle</c>.
 ///         Each subscriber of an event has its own delivery, scope, retry and dead letter path, so an event handler is treated
 ///         exactly like a message handler, and steps are filtered by the runtime type of the event. For a job handler the steps run
 ///         between the <c>Started</c> and <c>Completed</c> job state messages while the alive signal keeps running; an exception from a
 ///         step fails the job attempt like an exception from the handler, and a step that does not call <c>next</c> completes the job
 ///         without running the handler. Recurring jobs receive no message and are not covered.
+///     </para>
+///     <para>
+///         For a call handler the steps see the request only: the response is neither exposed to nor replaceable by a step. A step
+///         that does not call <c>next</c> produces no reply, logs a warning and completes the delivery, so the caller times out. A
+///         failed or dead lettered call produces no reply either, which is existing behavior. The reply is sent after the steps have
+///         finished, so an after-hook means the handler finished, not that the reply was delivered: if sending the reply fails the
+///         delivery is retried and the steps run again.
 ///     </para>
 ///     <para>
 ///         Steps wrap only the user's <c>Handle</c> call. Dead lettering of a corrupt body, retry republishing, completion, dead
