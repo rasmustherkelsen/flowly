@@ -143,6 +143,8 @@ public static class AddFlowlyExtension
         services.TryAddSingleton<IHandlerSettingsFactory, HandlerSettingsFactory>();
         services.TryAddSingleton<IQueueRegistrar, QueueRegistrar>();
         services.TryAddSingleton<IHandlerStepRunner, HandlerStepRunner>();
+        services.TryAddSingleton(new RegisteredHandlerMessageTypes(services));
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, HandlerStepConfigurationValidator>());
 
         services.AddHostedService<CommandLineParserHostedService>();
 

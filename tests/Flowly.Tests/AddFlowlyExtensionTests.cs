@@ -279,6 +279,18 @@ public class AddFlowlyExtensionTests
         }
 
         [Fact]
+        public void RegistersHandlerStepConfigurationValidatorHostedService()
+        {
+            var hostApplicationBuilder = new StubHostApplicationBuilder();
+
+            hostApplicationBuilder.AddFlowly<RecordingFlowlyConfiguration>();
+
+            Assert.Contains(hostApplicationBuilder.Services, s =>
+                s.ServiceType == typeof(IHostedService) &&
+                s.ImplementationType == typeof(HandlerStepConfigurationValidator));
+        }
+
+        [Fact]
         public void InvokesConfigureOnConfiguration()
         {
             var hostApplicationBuilder = new StubHostApplicationBuilder();
