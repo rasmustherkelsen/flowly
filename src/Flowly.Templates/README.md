@@ -157,13 +157,7 @@ After scaffolding, start the local infrastructure (RabbitMQ, ASB or Event Hubs o
 docker compose up -d
 ```
 
-For Azure Event Hubs the emulator requires accepting its [license terms](https://github.com/Azure/azure-event-hubs-emulator-installer/blob/main/EMULATOR_EULA.md), which the generated `docker-compose.yml` does not do for you: set `ACCEPT_EULA=Y` yourself when you start it.
-
-```bash
-ACCEPT_EULA=Y docker compose up -d
-```
-
-The emulator needs a minute or two to become ready after the containers start.
+For Azure Event Hubs the generated `docker-compose.yml` sets `ACCEPT_EULA=Y` on the emulator, which accepts its [license terms](https://github.com/Azure/azure-event-hubs-emulator-installer/blob/main/EMULATOR_EULA.md) on your behalf, so no extra environment variable is needed. The emulator needs a minute or two to become ready after the containers start.
 
 Then run each project:
 

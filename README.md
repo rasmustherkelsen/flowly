@@ -1674,7 +1674,7 @@ MyApp/
 └── sbconfig.json        ← ASB only
 ```
 
-**Azure Event Hubs** generates the same `Messages`/`Sender`/`Receiver` solution as a RabbitMQ stream, plus a `docker-compose.yml` with the Event Hubs emulator and Azurite and an `ehconfig.json` that declares the event hub `my`, its partition count and the consumer group `MyMessageHandler` (the emulator has no management plane and Flowly never creates event hubs). The Receiver is registered with a blob container on Azurite for partition ownership, so a second Receiver instance shares the partitions. The emulator needs its license terms accepted: start it with `ACCEPT_EULA=Y docker compose up -d`.
+**Azure Event Hubs** generates the same `Messages`/`Sender`/`Receiver` solution as a RabbitMQ stream, plus a `docker-compose.yml` with the Event Hubs emulator and Azurite and an `ehconfig.json` that declares the event hub `my`, its partition count and the consumer group `MyMessageHandler` (the emulator has no management plane and Flowly never creates event hubs). The Receiver is registered with a blob container on Azurite for partition ownership, so a second Receiver instance shares the partitions. The compose file sets `ACCEPT_EULA=Y` on the emulator, which accepts its license terms on your behalf, so `docker compose up -d` works as is.
 
 **InMemory** generates a single-project solution (`App/`) with sender, receiver, and optionally job/dead-letter tracking in the same process. With `--dashboard`, the management UI is embedded in `App/`.
 
