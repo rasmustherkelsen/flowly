@@ -985,17 +985,22 @@ dotnet new flowlymessagelib -o <ProjectName>
 
 **Generated files:** `<ProjectName>.csproj` (references `Flowly`; also `Flowly.Jobs` with `--jobs`), `MyMessage.cs`, `MyJobMessage.cs` (only with `--jobs`). All files use the project name as the top-level namespace.
 
-#### `flowlyskills` — install Claude Code AI skills
+#### `flowlyskills` — install AI agent skills (Claude Code or GitHub Copilot CLI)
 
-Drops Flowly AI skills into `.claude/skills/` in the current directory. Run from the repo root.
+Drops Flowly AI skills into the current directory. Run from the repo root.
 
 ```bash
-dotnet new flowlyskills
+dotnet new flowlyskills                      # Claude Code (default) -> .claude/skills/
+dotnet new flowlyskills --agent copilot      # GitHub Copilot CLI    -> .github/skills/
 ```
 
-No options required. Teaches Claude Code to scaffold message handlers, recurring jobs, contracts assemblies, and configure transports.
+| Option | Values | Default | Description |
+|---|---|---|---|
+| `--agent` | `claude`, `copilot` | `claude` | Target agent. Only the destination folder differs; the skill files are identical. GitHub Copilot CLI also reads `.claude/skills/`, so the default install works with both tools. |
 
-The template pack lives in `src/Flowly.Templates/`. Template content is in `src/Flowly.Templates/content/`. The `SyncSkills` MSBuild target copies the live `.claude/skills/` into `content/flowly-skills/.claude/skills/` at build time.
+Teaches the agent to scaffold message handlers, recurring jobs, contracts assemblies, and configure transports.
+
+The template pack lives in `src/Flowly.Templates/`. Template content is in `src/Flowly.Templates/content/`. The `SyncSkills` MSBuild target copies the live `.claude/skills/` into `content/flowly-skills/.claude/skills/` at build time; the template's `agent` choice parameter renames that folder to `.github/skills/` for `--agent copilot` (a conditional `rename` in the `sources` modifiers of its `template.json`).
 
 ---
 
@@ -1316,7 +1321,7 @@ The Flowly repository ships skills under `.claude/skills/`. Each skill is a dire
 | `create-contracts-assembly/` | `/create-contracts-assembly` | Create a shared `*.Messages` / `*.Contracts` project for multi-service solutions |
 
 > **Skills are deployed to user sites — they must be self-contained.**
-> Skills are synced into `src/Flowly.Templates/content/flowly-skills/` via the `SyncSkills` MSBuild target and shipped to end-users as part of the `Flowly.Templates` NuGet package. When a user runs `dotnet new flowlyskills`, only the contents of `.claude/skills/` land in their project — nothing from `.claude/rules/`, `docs/`, or anywhere else in this repository. Therefore:
+> Skills are synced into `src/Flowly.Templates/content/flowly-skills/` via the `SyncSkills` MSBuild target and shipped to end-users as part of the `Flowly.Templates` NuGet package. When a user runs `dotnet new flowlyskills` (`.claude/skills/`, or `.github/skills/` with `--agent copilot`), only the skill folders land in their project — nothing from `.claude/rules/`, `docs/`, or anywhere else in this repository. Therefore:
 > - Skills must **not** reference files that only exist in this repository (e.g. `.claude/rules/*.md`, source projects, local tooling scripts).
 > - Any instruction a skill needs to give must be **embedded inline** in the `SKILL.md` itself.
 > - Tools like the `flowly` CLI must be installed from NuGet (`dotnet tool install --global Flowly.Tool`), not built from source — user sites do not have `Flowly.Tool/Flowly.Tool.csproj`.

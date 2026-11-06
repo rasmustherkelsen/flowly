@@ -417,13 +417,18 @@ dotnet new flowlymessagelib --jobs -o MyApp.Contracts
 
 ---
 
-### `flowlyskills` — Install Flowly Claude Code skills
+### `flowlyskills` — Install Flowly AI agent skills
 
-Drops Flowly AI skills for [Claude Code](https://claude.ai/code) into `.claude/skills/` in the current directory. Run this from your repository root so skills are available across all projects in the repo.
+Drops Flowly AI skills for [Claude Code](https://claude.ai/code) or [GitHub Copilot CLI](https://docs.github.com/en/copilot/concepts/agents/about-agent-skills) into the current directory. Run this from your repository root so skills are available across all projects in the repo. No project name required.
 
 ```bash
-dotnet new flowlyskills
+dotnet new flowlyskills                      # Claude Code (default) -> .claude/skills/
+dotnet new flowlyskills --agent copilot      # GitHub Copilot CLI    -> .github/skills/
 ```
 
-No options or project name required. The skills teach Claude Code how to scaffold message handlers, handler steps and send steps, recurring jobs, contracts assemblies, and configure Flowly transports.
+| Option | Values | Default | Description |
+|---|---|---|---|
+| `--agent` | `claude`, `copilot` | `claude` | The AI coding agent to install the skills for. `claude` writes `.claude/skills/` (Claude Code); `copilot` writes `.github/skills/` (GitHub Copilot CLI's own project skills folder). |
+
+The skills are identical for both agents; only the target folder differs. GitHub Copilot CLI also discovers project skills in `.claude/skills/`, so the default install works with both tools; use `--agent copilot` to keep skills under `.github/` instead. Install into `.claude/skills/` and `.github/skills/` at the same time only if you want both folders, since a skill present in both is a duplicate. The skills teach the agent how to scaffold message handlers, handler steps and send steps, recurring jobs, contracts assemblies, and configure Flowly transports. A few skills use Claude Code specifics (the `arguments` frontmatter field and the `AskUserQuestion` tool); GitHub Copilot CLI ignores the field and asks in chat instead.
 
