@@ -33,7 +33,8 @@ public sealed class ManagementApiOptions
     /// <summary>
     ///     When <see langword="true" />, also serves a minimal interactive HTML explorer at <c>{BasePath}/docs</c>,
     ///     purely for humans browsing the API by hand. Off by default — the whole premise of this API is "no UI
-    ///     required."
+    ///     required." The page loads the Scalar API reference script from a CDN, pinned to an exact version and
+    ///     verified with a Subresource Integrity hash, so the browser needs internet access to render it.
     /// </summary>
     public bool EnableDocsUi { get; set; }
 
