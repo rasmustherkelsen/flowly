@@ -39,7 +39,8 @@ public interface IDeadLetterService
     ///     Requeues a dead letter message back to its original queue or topic subscription for reprocessing.
     ///     The message must have <see cref="DeadLetterStatus.Pending"/> status to be requeued.
     ///     Throws <see cref="KeyNotFoundException"/> if no message with <paramref name="messageId"/> exists,
-    ///     or <see cref="InvalidOperationException"/> if the message is not in a pending state.
+    ///     or <see cref="InvalidOperationException"/> if the message is not in a pending state, including when a concurrent
+    ///     requeue or discard of the same message won the race: only one caller publishes.
     /// </summary>
     /// <param name="messageId">The unique identifier of the dead letter message to requeue.</param>
     /// <param name="requeuedBy">An optional identifier of the person or process requesting the requeue.</param>
@@ -55,9 +56,10 @@ public interface IDeadLetterService
     ///     <para>
     ///         The content type and the application properties of the stored message are republished unchanged, and event subscription
     ///         dead letters are still addressed to the originating subscriber only. The stored <see cref="IDeadLetter.MessageBody"/> is never
-    ///         modified: once the republish has succeeded, the replacement body is recorded in <see cref="IDeadLetter.ReplacementMessageBody"/>
-    ///         together with the requeue status, so the original and the correction are both kept. When the republish fails, nothing is recorded
-    ///         and the dead letter stays <see cref="DeadLetterStatus.Pending"/>.
+    ///         modified: the replacement body is recorded in <see cref="IDeadLetter.ReplacementMessageBody"/> together with the requeue status
+    ///         before the republish, so the original and the correction are both kept and a concurrent requeue or discard cannot act on the same
+    ///         dead letter. When the republish fails, the requeue is undone and the dead letter is <see cref="DeadLetterStatus.Pending"/> again
+    ///         with no replacement recorded.
     ///     </para>
     ///     <para>
     ///         A replacement is rejected with <see cref="InvalidReplacementMessageBodyException"/> when it is empty or whitespace, when it is
@@ -90,7 +92,7 @@ public interface IDeadLetterService
     ///     Discards a dead letter message, permanently deleting it from the tracking store.
     ///     The message must have <see cref="DeadLetterStatus.Pending"/> status to be discarded.
     ///     Throws <see cref="KeyNotFoundException"/> if no message with <paramref name="messageId"/> exists,
-    ///     or <see cref="InvalidOperationException"/> if the message has already been requeued.
+    ///     or <see cref="InvalidOperationException"/> if the message has already been requeued, including when a concurrent requeue won the race.
     /// </summary>
     /// <param name="messageId">The unique identifier of the dead letter message to discard.</param>
     /// <param name="cancellationToken">A <see cref="CancellationToken"/> that can be used to cancel the operation.</param>

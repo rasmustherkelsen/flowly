@@ -18,9 +18,11 @@ internal interface IDeadLetterRepository
 
     Task<IDeadLetter?> Get(string messageId, CancellationToken cancellationToken = default);
 
-    Task MarkAsRequeued(string messageId, string? requeuedBy, string? replacementMessageBody = null, CancellationToken cancellationToken = default);
+    Task<bool> MarkAsRequeued(string messageId, string? requeuedBy, string? replacementMessageBody = null, CancellationToken cancellationToken = default);
 
-    Task Delete(string messageId, CancellationToken cancellationToken = default);
+    Task RevertRequeued(string messageId, CancellationToken cancellationToken = default);
+
+    Task<bool> DeletePending(string messageId, CancellationToken cancellationToken = default);
 
     Task<int> DeleteRequeuedOlderThan(TimeSpan age, CancellationToken cancellationToken = default);
 

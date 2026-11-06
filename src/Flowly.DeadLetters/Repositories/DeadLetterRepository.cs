@@ -66,27 +66,45 @@ internal class DeadLetterRepository(IDbContextFactory<DeadLetterDataContext> con
             .FirstOrDefaultAsync(d => d.MessageId == messageId, cancellationToken);
     }
 
-    public async Task MarkAsRequeued(string messageId, string? requeuedBy, string? replacementMessageBody = null, CancellationToken cancellationToken = default)
+    public async Task<bool> MarkAsRequeued(string messageId, string? requeuedBy, string? replacementMessageBody = null, CancellationToken cancellationToken = default)
     {
         await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
 
-        await context.DeadLetters
-            .Where(d => d.MessageId == messageId)
+        var updatedCount = await context.DeadLetters
+            .Where(d => d.MessageId == messageId && d.Status == DeadLetterStatus.Pending)
             .ExecuteUpdateAsync(s => s
                     .SetProperty(d => d.Status, DeadLetterStatus.Requeued)
                     .SetProperty(d => d.RequeuedAt, DateTimeOffset.UtcNow)
                     .SetProperty(d => d.RequeuedBy, requeuedBy)
                     .SetProperty(d => d.ReplacementMessageBody, replacementMessageBody),
                 cancellationToken);
+
+        return updatedCount > 0;
     }
 
-    public async Task Delete(string messageId, CancellationToken cancellationToken = default)
+    public async Task RevertRequeued(string messageId, CancellationToken cancellationToken = default)
     {
         await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
 
         await context.DeadLetters
-            .Where(d => d.MessageId == messageId)
+            .Where(d => d.MessageId == messageId && d.Status == DeadLetterStatus.Requeued)
+            .ExecuteUpdateAsync(s => s
+                    .SetProperty(d => d.Status, DeadLetterStatus.Pending)
+                    .SetProperty(d => d.RequeuedAt, (DateTimeOffset?)null)
+                    .SetProperty(d => d.RequeuedBy, (string?)null)
+                    .SetProperty(d => d.ReplacementMessageBody, (string?)null),
+                cancellationToken);
+    }
+
+    public async Task<bool> DeletePending(string messageId, CancellationToken cancellationToken = default)
+    {
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+
+        var deletedCount = await context.DeadLetters
+            .Where(d => d.MessageId == messageId && d.Status == DeadLetterStatus.Pending)
             .ExecuteDeleteAsync(cancellationToken);
+
+        return deletedCount > 0;
     }
 
     public async Task<int> DeleteRequeuedOlderThan(TimeSpan age, CancellationToken cancellationToken = default)

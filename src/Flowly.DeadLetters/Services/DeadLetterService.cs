@@ -51,22 +51,27 @@ internal class DeadLetterService(
         var originalContext = DeadLetterPropertiesConverter.ParseActivityContext(applicationProperties);
         using var activity = instrumentation.StartRequeue(deadLetter.QueueName, messageId, originalContext);
 
+        if (!await repository.MarkAsRequeued(messageId, requeuedBy, replacementMessageBody, cancellationToken))
+        {
+            activity?.SetStatus(ActivityStatusCode.Error);
+            throw new InvalidOperationException($"Dead letter '{messageId}' is no longer pending and cannot be requeued.");
+        }
+
         try
         {
             var providerName = ResolveProviderName(deadLetter.QueueName);
             var client = clientRegistry.GetClient(providerName);
             var sender = await ResolveSender(client, deadLetter, cancellationToken);
             await sender.SendRawMessage(replacementMessageBody ?? deadLetter.MessageBody, applicationProperties, cancellationToken);
-
-            await repository.MarkAsRequeued(messageId, requeuedBy, replacementMessageBody, cancellationToken);
-
-            instrumentation.RecordRequeued(deadLetter.QueueName);
         }
         catch
         {
             activity?.SetStatus(ActivityStatusCode.Error);
+            await repository.RevertRequeued(messageId, CancellationToken.None);
             throw;
         }
+
+        instrumentation.RecordRequeued(deadLetter.QueueName);
     }
 
     public async Task Discard(string messageId, CancellationToken cancellationToken = default)
@@ -83,7 +88,8 @@ internal class DeadLetterService(
 
         try
         {
-            await repository.Delete(messageId, cancellationToken);
+            if (!await repository.DeletePending(messageId, cancellationToken))
+                throw new InvalidOperationException($"Dead letter '{messageId}' is no longer pending and cannot be discarded.");
 
             instrumentation.RecordDiscarded(deadLetter.QueueName, DeadLetterDiscardReason.UserInitiated);
         }
