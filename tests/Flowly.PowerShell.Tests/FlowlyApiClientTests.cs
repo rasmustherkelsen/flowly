@@ -391,6 +391,67 @@ public class FlowlyApiClientTests
         }
     }
 
+    public class ListAllDeadLetters
+    {
+        private static readonly DateTimeOffset DeadLetteredAt = new(2026, 11, 1, 10, 30, 0, TimeSpan.Zero);
+
+        private static DeadLetterDto[] Page(int start, int count)
+            => Enumerable.Range(start, count)
+                .Select(i => new DeadLetterDto($"m{i}", "q", null, "{}", "{}", DeadLetteredAt, null, null, "Pending", null, null))
+                .ToArray();
+
+        [Fact]
+        public async Task WithAShortFirstPage_RequestsOnePageOfOneThousand()
+        {
+            var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(Page(0, 3)) });
+            var connection = ApiKeyConnection.Create(handler);
+
+            var result = await FlowlyApiClient.ListAllDeadLetters(connection, "orders", null, "Pending", null, null, CancellationToken.None);
+
+            Assert.Equal(3, result.Count);
+            Assert.Equal(1, handler.RequestCount);
+            var query = handler.LastRequest!.RequestUri!.Query;
+            Assert.Contains("take=1000", query);
+            Assert.Contains("skip=0", query);
+            Assert.Contains("queue=orders", query);
+            Assert.Contains("status=Pending", query);
+        }
+
+        [Fact]
+        public async Task WithFullPages_KeepsRequestingUntilAShortPageAdvancingSkip()
+        {
+            var skips = new List<string>();
+            var handler = new RecordingHandler(request =>
+            {
+                var skip = int.Parse(System.Web.HttpUtility.ParseQueryString(request.RequestUri!.Query)["skip"]!);
+                skips.Add(skip.ToString());
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(skip < 2005 ? Page(skip, 1000) : Page(skip, 7)) };
+            });
+            var connection = ApiKeyConnection.Create(handler);
+
+            var result = await FlowlyApiClient.ListAllDeadLetters(connection, null, null, null, null, 5, CancellationToken.None);
+
+            Assert.Equal(["5", "1005", "2005"], skips);
+            Assert.Equal(2007, result.Count);
+        }
+
+        [Fact]
+        public async Task WithAFullLastPage_RequestsOneMoreAndStopsOnTheEmptyPage()
+        {
+            var handler = new RecordingHandler(request =>
+            {
+                var skip = int.Parse(System.Web.HttpUtility.ParseQueryString(request.RequestUri!.Query)["skip"]!);
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(skip == 0 ? Page(0, 1000) : Array.Empty<DeadLetterDto>()) };
+            });
+            var connection = ApiKeyConnection.Create(handler);
+
+            var result = await FlowlyApiClient.ListAllDeadLetters(connection, null, null, null, null, null, CancellationToken.None);
+
+            Assert.Equal(1000, result.Count);
+            Assert.Equal(2, handler.RequestCount);
+        }
+    }
+
     public class ListDeadLetters
     {
         private static readonly DateTimeOffset DeadLetteredAt = new(2026, 11, 1, 10, 30, 0, TimeSpan.Zero);

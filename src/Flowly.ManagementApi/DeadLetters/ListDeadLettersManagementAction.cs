@@ -24,7 +24,7 @@ internal sealed class ListDeadLettersManagementAction : IFlowlyManagementAction
             .WithDescription(
                 "Returns the tracked dead letters (message id, queue or topic, subscription, body, properties, broker reason, status, requeue audit, and for a message requeued with a corrected body bodyReplaced and the replacementMessageBody), newest first, " +
                 "optionally filtered by queue (the topic name for an event subscription dead letter), subscription, status (Pending or Requeued) and/or message id, " +
-                $"and paged with skip and take (at most {MaxPageSize} per page; without take everything after skip is returned).")
+                $"and paged with skip and take (at most {MaxPageSize} per page; without take a page of {DeadLetterQuery.DefaultTake} is returned, so page through a longer list with skip).")
             .WithTags(FeatureArea)
             .WithName("ListDeadLetters")
             .Produces<IReadOnlyList<DeadLetterResponse>>()

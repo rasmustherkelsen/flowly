@@ -26,5 +26,6 @@ internal interface IDeadLetterRepository
 
     Task<int> DeleteRequeuedOlderThan(TimeSpan age, CancellationToken cancellationToken = default);
 
-    Task<IReadOnlyCollection<PurgedDeadLetter>> DeletePendingOlderThan(TimeSpan age, CancellationToken cancellationToken = default);
+    /// <summary>Deletes at most <paramref name="batchSize"/> pending dead letters older than <paramref name="age"/> and returns the ones this call deleted; an empty result means nothing is left to purge.</summary>
+    Task<IReadOnlyCollection<PurgedDeadLetter>> DeletePendingOlderThan(TimeSpan age, int batchSize, CancellationToken cancellationToken = default);
 }

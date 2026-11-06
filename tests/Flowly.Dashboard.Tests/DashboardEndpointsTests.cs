@@ -26,7 +26,7 @@ public class DashboardEndpointsTests
         }
 
         [Fact]
-        public async Task WithoutParameters_QueriesEverythingWithoutAnExtraCount()
+        public async Task WithoutParameters_QueriesTheDefaultPageWithoutAnExtraCount()
         {
             var deadLetterService = new RecordingDeadLetterService();
             using var client = CreateClient(deadLetterService);

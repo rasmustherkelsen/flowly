@@ -97,6 +97,44 @@ public class GetFlowlyDeadLetterCommandTests
         }
 
         [Fact]
+        public void WithoutFirst_RequestsPagesOfOneThousandAndWritesEveryDeadLetter()
+        {
+            var handler = new RecordingHandler(request =>
+            {
+                var skip = int.Parse(System.Web.HttpUtility.ParseQueryString(request.RequestUri!.Query)["skip"]!);
+                var count = skip == 0 ? 1000 : 3;
+                var page = Enumerable.Range(skip, count)
+                    .Select(i => new DeadLetterDto($"m{i}", "q", null, "{}", "{}", DeadLetteredAt, null, null, "Pending", null, null))
+                    .ToArray();
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(page) };
+            });
+            using var cmdletHost = new CmdletHost(handler);
+
+            var output = cmdletHost.Invoke("Get-FlowlyDeadLetter");
+
+            Assert.Equal(1003, output.Count);
+            Assert.Equal(2, handler.RequestCount);
+            Assert.Contains("take=1000", handler.LastRequest!.RequestUri!.Query);
+            Assert.Contains("skip=1000", handler.LastRequest.RequestUri.Query);
+        }
+
+        [Fact]
+        public void WithFirst_RequestsASinglePageWithThatTake()
+        {
+            var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(Enumerable.Range(0, 10).Select(i => new DeadLetterDto($"m{i}", "q", null, "{}", "{}", DeadLetteredAt, null, null, "Pending", null, null)).ToArray())
+            });
+            using var cmdletHost = new CmdletHost(handler);
+
+            var output = cmdletHost.Invoke("Get-FlowlyDeadLetter", new Dictionary<string, object?> { ["First"] = 10 });
+
+            Assert.Equal(10, output.Count);
+            Assert.Equal(1, handler.RequestCount);
+            Assert.Contains("take=10", handler.LastRequest!.RequestUri!.Query);
+        }
+
+        [Fact]
         public void WithAnUnknownStatus_FailsParameterValidationWithoutCallingTheApi()
         {
             var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(Array.Empty<DeadLetterDto>()) });

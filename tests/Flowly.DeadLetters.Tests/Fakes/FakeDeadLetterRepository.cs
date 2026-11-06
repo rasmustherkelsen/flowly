@@ -16,6 +16,8 @@ internal class FakeDeadLetterRepository : IDeadLetterRepository
     public string? DeletedMessageId { get; private set; }
     public int RequeuedOlderThanCountToReturn { get; set; }
     public IReadOnlyCollection<PurgedDeadLetter> PendingOlderThanToReturn { get; set; } = [];
+    public List<int> PendingOlderThanBatchSizes { get; } = [];
+    private bool _pendingOlderThanReturned;
     public bool ThrowOnSaveBatch { get; set; }
     public string? MessageIdToThrowOnDelete { get; set; }
     public List<IDeadLetterMessage> SavedMessages { get; } = [];
@@ -87,8 +89,16 @@ internal class FakeDeadLetterRepository : IDeadLetterRepository
     public Task<int> DeleteRequeuedOlderThan(TimeSpan age, CancellationToken cancellationToken = default)
         => Task.FromResult(RequeuedOlderThanCountToReturn);
 
-    public Task<IReadOnlyCollection<PurgedDeadLetter>> DeletePendingOlderThan(TimeSpan age, CancellationToken cancellationToken = default)
-        => Task.FromResult(PendingOlderThanToReturn);
+    public Task<IReadOnlyCollection<PurgedDeadLetter>> DeletePendingOlderThan(TimeSpan age, int batchSize, CancellationToken cancellationToken = default)
+    {
+        PendingOlderThanBatchSizes.Add(batchSize);
+
+        if (_pendingOlderThanReturned)
+            return Task.FromResult<IReadOnlyCollection<PurgedDeadLetter>>([]);
+
+        _pendingOlderThanReturned = true;
+        return Task.FromResult(PendingOlderThanToReturn);
+    }
 
     public Task<IReadOnlyCollection<IDeadLetter>> GetAll(CancellationToken cancellationToken = default)
         => Task.FromResult<IReadOnlyCollection<IDeadLetter>>(_store.Values.ToList());

@@ -34,7 +34,11 @@ public sealed class GetFlowlyDeadLetterCommand : PSCmdlet
     [ValidateRange(0, int.MaxValue)]
     public int? Skip { get; set; }
 
-    /// <summary>Return at most this many dead letters (1 to 1000). Omit to return everything after <see cref="Skip" />.</summary>
+    /// <summary>
+    ///     Return at most this many dead letters (1 to 1000), taken from a single page of the Management API. Omit to return every dead
+    ///     letter after <see cref="Skip" />: the cmdlet then reads the list in pages of 1000, because the API answers a request without
+    ///     <c>take</c> with at most 100.
+    /// </summary>
     [Parameter]
     [ValidateRange(1, 1000)]
     public int? First { get; set; }
@@ -44,8 +48,9 @@ public sealed class GetFlowlyDeadLetterCommand : PSCmdlet
     {
         var connection = FlowlySession.RequireCurrent();
 
-        var deadLetters = FlowlyApiClient.ListDeadLetters(connection, QueueName, SubscriptionName, Status, MessageId, Skip, First, CancellationToken.None)
-            .GetAwaiter().GetResult();
+        var deadLetters = First is null
+            ? FlowlyApiClient.ListAllDeadLetters(connection, QueueName, SubscriptionName, Status, MessageId, Skip, CancellationToken.None).GetAwaiter().GetResult()
+            : FlowlyApiClient.ListDeadLetters(connection, QueueName, SubscriptionName, Status, MessageId, Skip, First, CancellationToken.None).GetAwaiter().GetResult();
 
         foreach (var deadLetter in deadLetters)
         {

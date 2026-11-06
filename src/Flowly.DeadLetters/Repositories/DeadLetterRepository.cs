@@ -7,8 +7,6 @@ namespace Flowly.DeadLetters.Repositories;
 
 internal class DeadLetterRepository(IDbContextFactory<DeadLetterDataContext> contextFactory) : IDeadLetterRepository
 {
-    private const int PurgeChunkSize = 500;
-
     public async Task SaveBatch(IReadOnlyCollection<IDeadLetterMessage> messages, string queueName, CancellationToken cancellationToken = default)
     {
         await PersistBatch(messages, queueName, null, cancellationToken);
@@ -118,7 +116,7 @@ internal class DeadLetterRepository(IDbContextFactory<DeadLetterDataContext> con
             .ExecuteDeleteAsync(cancellationToken);
     }
 
-    public async Task<IReadOnlyCollection<PurgedDeadLetter>> DeletePendingOlderThan(TimeSpan age, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyCollection<PurgedDeadLetter>> DeletePendingOlderThan(TimeSpan age, int batchSize, CancellationToken cancellationToken = default)
     {
         await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
 
@@ -127,18 +125,14 @@ internal class DeadLetterRepository(IDbContextFactory<DeadLetterDataContext> con
         var candidates = await context.DeadLetters
             .AsNoTracking()
             .Where(d => d.Status == DeadLetterStatus.Pending && d.DeadLetteredAt < cutOff)
+            .Take(batchSize)
             .Select(d => new PurgedDeadLetter(d.MessageId, d.QueueName, d.MessageProperties))
             .ToListAsync(cancellationToken);
 
         if (candidates.Count == 0)
             return candidates;
 
-        var purged = new List<PurgedDeadLetter>();
-
-        foreach (var chunk in candidates.Chunk(PurgeChunkSize))
-            purged.AddRange(await DeletePendingChunk(context, chunk, cutOff, cancellationToken));
-
-        return purged;
+        return await DeletePendingBatch(context, candidates, cutOff, cancellationToken);
     }
 
     private async Task<IReadOnlyList<IDeadLetter>> ReadPage(DeadLetterQuery deadLetterQuery, CancellationToken cancellationToken)
@@ -150,9 +144,7 @@ internal class DeadLetterRepository(IDbContextFactory<DeadLetterDataContext> con
             .ThenBy(d => d.MessageId);
 
         var skipped = deadLetterQuery.Skip > 0 ? ordered.Skip(deadLetterQuery.Skip) : ordered;
-        var paged = deadLetterQuery.Take is { } take ? skipped.Take(take) : skipped;
-
-        return await paged.ToListAsync(cancellationToken);
+        return await skipped.Take(deadLetterQuery.EffectiveTake).ToListAsync(cancellationToken);
     }
 
     private async Task<int?> CountMatching(DeadLetterQuery deadLetterQuery, CancellationToken cancellationToken)
@@ -187,23 +179,23 @@ internal class DeadLetterRepository(IDbContextFactory<DeadLetterDataContext> con
         return deadLetters;
     }
 
-    private static async Task<IReadOnlyCollection<PurgedDeadLetter>> DeletePendingChunk(DeadLetterDataContext context, PurgedDeadLetter[] chunk, DateTimeOffset cutOff, CancellationToken cancellationToken)
+    private static async Task<IReadOnlyCollection<PurgedDeadLetter>> DeletePendingBatch(DeadLetterDataContext context, IReadOnlyList<PurgedDeadLetter> batch, DateTimeOffset cutOff, CancellationToken cancellationToken)
     {
-        var chunkIds = chunk.Select(d => d.MessageId).ToHashSet();
+        var batchIds = batch.Select(d => d.MessageId).ToHashSet();
 
         var deletedCount = await context.DeadLetters
-            .Where(d => chunkIds.Contains(d.MessageId) && d.Status == DeadLetterStatus.Pending && d.DeadLetteredAt < cutOff)
+            .Where(d => batchIds.Contains(d.MessageId) && d.Status == DeadLetterStatus.Pending && d.DeadLetteredAt < cutOff)
             .ExecuteDeleteAsync(cancellationToken);
 
-        if (deletedCount == chunk.Length)
-            return chunk;
+        if (deletedCount == batch.Count)
+            return batch;
 
         var survivingIds = await context.DeadLetters
-            .Where(d => chunkIds.Contains(d.MessageId))
+            .Where(d => batchIds.Contains(d.MessageId))
             .Select(d => d.MessageId)
             .ToHashSetAsync(cancellationToken);
 
-        return chunk.Where(d => !survivingIds.Contains(d.MessageId)).ToList();
+        return batch.Where(d => !survivingIds.Contains(d.MessageId)).ToList();
     }
 
     private async Task PersistBatch(IReadOnlyCollection<IDeadLetterMessage> messages, string queueName, string? subscriptionName, CancellationToken cancellationToken)

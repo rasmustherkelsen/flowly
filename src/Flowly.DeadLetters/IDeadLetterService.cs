@@ -19,6 +19,7 @@ public interface IDeadLetterService
     ///     Retrieves one page of the persisted dead letter messages matching the filters of <paramref name="deadLetterQuery"/>,
     ///     newest first by <see cref="IDeadLetter.DeadLetteredAt"/> with the <see cref="IDeadLetter.MessageId"/> as tie-breaker.
     ///     Prefer this over <see cref="GetDeadLetters(CancellationToken)"/> when only a subset is needed.
+    ///     Without <see cref="DeadLetterQuery.Take"/> the page holds at most <see cref="DeadLetterQuery.DefaultTake"/> dead letters.
     /// </summary>
     /// <remarks>
     ///     The built-in implementation filters, orders and pages in the database, so only the requested page is loaded; a total

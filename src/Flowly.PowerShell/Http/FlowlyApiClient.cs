@@ -11,6 +11,8 @@ namespace Flowly.PowerShell.Http;
 /// </summary>
 internal static class FlowlyApiClient
 {
+    private const int DeadLetterMaxPageSize = 1000;
+
     public static async Task<IReadOnlyList<CheckpointDto>> ListCheckpoints(FlowlyConnection connection, string? queue, string? consumer, CancellationToken cancellationToken)
     {
         await EnsureAuthorized(connection, cancellationToken);
@@ -95,6 +97,24 @@ internal static class FlowlyApiClient
         await EnsureSuccess(response, cancellationToken);
 
         return await response.Content.ReadFromJsonAsync<IReadOnlyList<DeadLetterDto>>(cancellationToken) ?? [];
+    }
+
+    public static async Task<IReadOnlyList<DeadLetterDto>> ListAllDeadLetters(
+        FlowlyConnection connection, string? queue, string? subscription, string? status, string? messageId, int? skip, CancellationToken cancellationToken)
+    {
+        var deadLetters = new List<DeadLetterDto>();
+        var nextSkip = skip ?? 0;
+
+        while (true)
+        {
+            var page = await ListDeadLetters(connection, queue, subscription, status, messageId, nextSkip, DeadLetterMaxPageSize, cancellationToken);
+            deadLetters.AddRange(page);
+
+            if (page.Count < DeadLetterMaxPageSize)
+                return deadLetters;
+
+            nextSkip += page.Count;
+        }
     }
 
     public static async Task RequeueDeadLetter(FlowlyConnection connection, string messageId, string? requeuedBy, CancellationToken cancellationToken, string? messageBody = null)

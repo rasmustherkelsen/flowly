@@ -1,7 +1,7 @@
 namespace Flowly.DeadLetters;
 
 /// <summary>
-///     Describes which dead letters <see cref="IDeadLetterService.QueryDeadLetters"/> returns: optional filters, an optional page
+///     Describes which dead letters <see cref="IDeadLetterService.QueryDeadLetters"/> returns: optional filters, a page (<see cref="DefaultTake"/> dead letters unless <see cref="Take"/> is set)
 ///     and whether the total number of matching dead letters is wanted as well.
 ///     Results are always ordered newest first by <see cref="IDeadLetter.DeadLetteredAt"/>, with the
 ///     <see cref="IDeadLetter.MessageId"/> as tie-breaker, so a page is stable between calls while the data does not change.
@@ -12,6 +12,11 @@ namespace Flowly.DeadLetters;
 /// </remarks>
 public sealed record DeadLetterQuery
 {
+    /// <summary>
+    ///     The page size applied when <see cref="Take"/> is <see langword="null"/>: <c>100</c>.
+    /// </summary>
+    public const int DefaultTake = 100;
+
     private readonly int _skip;
     private readonly int? _take;
 
@@ -53,8 +58,10 @@ public sealed record DeadLetterQuery
     }
 
     /// <summary>
-    ///     The maximum number of dead letters in the page. <see langword="null"/> (the default) returns everything after
-    ///     <see cref="Skip"/>; <c>0</c> returns no items, which together with <see cref="IncludeTotalCount"/> is a count-only query.
+    ///     The maximum number of dead letters in the page. <see langword="null"/> (the default) returns at most
+    ///     <see cref="DefaultTake"/> (<c>100</c>) dead letters after <see cref="Skip"/>; <c>0</c> returns no items, which together with
+    ///     <see cref="IncludeTotalCount"/> is a count-only query. There is no upper bound here: page through a larger result with
+    ///     <see cref="Skip"/>, or use <see cref="IDeadLetterService.GetDeadLetters(System.Threading.CancellationToken)"/> to load everything.
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException">The value is negative.</exception>
     public int? Take
@@ -70,6 +77,8 @@ public sealed record DeadLetterQuery
             _take = value;
         }
     }
+
+    internal int EffectiveTake => _take ?? DefaultTake;
 
     /// <summary>
     ///     When <see langword="true"/>, <see cref="DeadLetterPage.TotalCount"/> holds the number of dead letters matching the filters

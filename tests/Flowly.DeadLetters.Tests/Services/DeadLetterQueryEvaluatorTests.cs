@@ -69,6 +69,27 @@ public class DeadLetterQueryEvaluatorTests
         }
 
         [Fact]
+        public void WithoutTake_ReturnsOnlyTheDefaultPageSize()
+        {
+            var deadLetters = Enumerable.Range(0, DeadLetterQuery.DefaultTake + 1).Select(i => Build($"m{i:D3}", i)).ToArray();
+
+            var result = DeadLetterQueryEvaluator.Evaluate(deadLetters, new DeadLetterQuery { IncludeTotalCount = true });
+
+            Assert.Equal(DeadLetterQuery.DefaultTake, result.Items.Count);
+            Assert.Equal(DeadLetterQuery.DefaultTake + 1, result.TotalCount);
+        }
+
+        [Fact]
+        public void WithTakeAboveTheDefault_HonorsTheExplicitTake()
+        {
+            var deadLetters = Enumerable.Range(0, DeadLetterQuery.DefaultTake + 5).Select(i => Build($"m{i:D3}", i)).ToArray();
+
+            var result = DeadLetterQueryEvaluator.Evaluate(deadLetters, new DeadLetterQuery { Take = DeadLetterQuery.DefaultTake + 5 });
+
+            Assert.Equal(DeadLetterQuery.DefaultTake + 5, result.Items.Count);
+        }
+
+        [Fact]
         public void WithSkipBeyondTheEnd_ReturnsEmptyPageButFullTotal()
         {
             var result = DeadLetterQueryEvaluator.Evaluate([Build("a"), Build("b")], new DeadLetterQuery { Skip = 5, Take = 2, IncludeTotalCount = true });

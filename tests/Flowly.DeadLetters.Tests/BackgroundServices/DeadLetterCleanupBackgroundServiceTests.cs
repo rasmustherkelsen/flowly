@@ -116,6 +116,24 @@ public class DeadLetterCleanupBackgroundServiceTests
         }
 
         [Fact]
+        public async Task WithExpiredPendingDeadLetters_PurgesInBoundedBatchesUntilNoneRemain()
+        {
+            var repository = new FakeDeadLetterRepository
+            {
+                PendingOlderThanToReturn = [BuildDeadLetter("msg-1")]
+            };
+            var cleanupInstrumentation = new FakeDeadLetterCleanupInstrumentation();
+            var deadLetterCleanupBackgroundService = BuildService(new DeadLetterTrackingOptions
+            {
+                DeleteDeadLetteredMessagesAfter = TimeSpan.FromDays(30)
+            }, cleanupInstrumentation, new FakeDeadLetterOperationInstrumentation());
+
+            await deadLetterCleanupBackgroundService.RunCleanup(repository, CancellationToken.None);
+
+            Assert.Equal([500, 500], repository.PendingOlderThanBatchSizes);
+        }
+
+        [Fact]
         public async Task WithExpiredPendingDeadLetters_RecordsDiscardPerMessageWithExpiredReason()
         {
             var repository = new FakeDeadLetterRepository

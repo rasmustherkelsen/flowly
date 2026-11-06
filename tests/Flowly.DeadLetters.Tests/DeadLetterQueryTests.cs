@@ -19,6 +19,15 @@ public class DeadLetterQueryTests
         }
     }
 
+    public class DefaultTake
+    {
+        [Fact]
+        public void IsOneHundred()
+        {
+            Assert.Equal(100, DeadLetterQuery.DefaultTake);
+        }
+    }
+
     public class Skip
     {
         [Fact]
