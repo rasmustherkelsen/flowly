@@ -1,3 +1,6 @@
+using System.Security.Cryptography;
+using System.Text;
+
 namespace Flowly.ManagementApi;
 
 internal enum ManagementApiAuthMode
@@ -49,8 +52,11 @@ public sealed class ManagementApiOptions
     ///     Simplest option for a solo-operator scenario — grants both <see cref="ManagementCapability.Read" /> and
     ///     <see cref="ManagementCapability.Write" />.
     /// </summary>
+    /// <param name="apiKey">The key to accept. Must not be <see langword="null" />, empty or whitespace.</param>
+    /// <exception cref="ArgumentException"><paramref name="apiKey" /> is null, empty or whitespace.</exception>
     public void RequireApiKey(string apiKey)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(apiKey);
         ReadApiKey = apiKey;
         WriteApiKey = apiKey;
         AuthMode = ManagementApiAuthMode.ApiKey;
@@ -61,8 +67,16 @@ public sealed class ManagementApiOptions
     ///     <see cref="ManagementCapability.Read" />; <paramref name="writeApiKey" /> grants both. A lightweight
     ///     read/write split without needing full OAuth2.
     /// </summary>
+    /// <param name="readApiKey">The key granting only read access. Must not be <see langword="null" />, empty or whitespace.</param>
+    /// <param name="writeApiKey">The key granting read and write access. Must not be <see langword="null" />, empty or whitespace.</param>
+    /// <exception cref="ArgumentException"><paramref name="readApiKey" /> or <paramref name="writeApiKey" /> is null, empty or whitespace, or both keys are equal (an identical "read" key would silently grant write access; use <see cref="RequireApiKey(string)" /> for a single key).</exception>
     public void RequireApiKey(string readApiKey, string writeApiKey)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(readApiKey);
+        ArgumentException.ThrowIfNullOrWhiteSpace(writeApiKey);
+
+        if (CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(readApiKey), Encoding.UTF8.GetBytes(writeApiKey)))
+            throw new ArgumentException("The read and write API keys must differ, otherwise the read key grants write access.", nameof(writeApiKey));
         ReadApiKey = readApiKey;
         WriteApiKey = writeApiKey;
         AuthMode = ManagementApiAuthMode.ApiKey;
