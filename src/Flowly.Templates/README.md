@@ -425,5 +425,5 @@ Drops Flowly AI skills for [Claude Code](https://claude.ai/code) into `.claude/s
 dotnet new flowlyskills
 ```
 
-No options or project name required. The skills teach Claude Code how to scaffold message handlers, recurring jobs, contracts assemblies, and configure Flowly transports.
+No options or project name required. The skills teach Claude Code how to scaffold message handlers, handler steps and send steps, recurring jobs, contracts assemblies, and configure Flowly transports.
 

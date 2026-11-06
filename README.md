@@ -2070,6 +2070,7 @@ Flowly ships with a set of [Claude Code](https://claude.ai/code) skills that giv
 | Setup Azure Event Hubs | `/flowly-setup-azure-event-hubs` | Adds Flowly with Azure Event Hubs (stream-only) to a project — template-first, or packages, `FlowlyConfiguration`, the event hub and consumer group, partition ownership, the local emulator and Aspire AppHost wiring |
 | Create message handler | `/create-message-handler OrderPlacedMessage` | Scaffolds a complete handler: message contract record, handler class, registration snippet, and unit tests |
 | Create recurring job | `/create-recurring-job NightlyCleanupHandler` | Scaffolds a `RecurringJobHandler` with `[RecurringJob]` attribute, registration, and unit tests |
+| Create handler step | `/create-handler-step AuditStep` | Scaffolds a handler step (receiver) or send step (sender): step class, optional marker interface on the message contract, registration, and recipes for audit, logging scope, validation, idempotency, unit of work and sender-side authorization |
 | Create contracts assembly | `/create-contracts-assembly` | Creates a shared message contracts project for solutions where multiple services exchange the same message types |
 
 ### Installation
@@ -2083,6 +2084,7 @@ cp -r .claude/skills/ /path/to/your-project/.claude/skills/
 # Or copy individual skills
 cp -r .claude/skills/create-message-handler/ /path/to/your-project/.claude/skills/
 cp -r .claude/skills/create-recurring-job/ /path/to/your-project/.claude/skills/
+cp -r .claude/skills/create-handler-step/ /path/to/your-project/.claude/skills/
 ```
 
 Claude Code discovers skills under `.claude/skills/` automatically and makes them available as slash commands in any session within that project.

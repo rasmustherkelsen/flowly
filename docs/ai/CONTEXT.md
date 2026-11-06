@@ -1291,6 +1291,7 @@ The Flowly repository ships skills under `.claude/skills/`. Each skill is a dire
 | `create-event-handler/` | `/create-event-handler <EventName>` | Scaffold event contract, `EventHandlerBase<TEvent>` subclass, and registration |
 | `create-call-handler/` | `/create-call-handler <MessageName>` | Scaffold RPC call message (`IReturns<T>`), `CallHandler<T, TReturn>`, and sender/receiver registration |
 | `create-recurring-job/` | `/create-recurring-job <HandlerName>` | Scaffold `RecurringJobHandler` subclass with `[RecurringJob]` attribute and registration |
+| `create-handler-step/` | `/create-handler-step [StepName]` | Scaffold a handler step (`HandlerStep<T>`, receiver) or send step (`SendStep<T>`, sender): step class, optional marker interface, `AddHandlerStep` / `AddSendStep` registration, recipes for audit, logging scope, validation (`MessageRejectedException`), idempotency, unit of work and sender-side authorization through an `IHttpContextAccessor`-backed `ICurrentUser` |
 
 #### Infrastructure
 

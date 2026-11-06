@@ -210,6 +210,7 @@ With Flowly wired up, add handlers and submitters:
 - `/create-event-handler` — add a fan-out event subscriber
 - `/create-job-handler` — add a tracked job handler (requires job tracking)
 - `/create-recurring-job` — add a CRON-scheduled background job
+- `/create-handler-step` — add cross-cutting behavior (audit, validation, authorization) around handlers or before sends
 - `/add-jobtracking` — add job state tracking if not yet configured
 - `/add-deadletter` — add dead letter tracking if not yet configured
 - `/add-dashboard` — add the Flowly management Dashboard

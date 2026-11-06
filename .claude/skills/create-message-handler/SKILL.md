@@ -87,6 +87,10 @@ If the project also needs to **send** this message (not just receive), also add:
 builder.AddMessageSubmitter<$0>();
 ```
 
+### Cross-cutting behavior (optional)
+
+If the same concern (auditing, a logging scope, validation, idempotency, a unit of work) should apply to this handler and other handlers, or authorization should run before this message is sent, do not repeat it in the handler: run `/create-handler-step` to scaffold a handler step (receiving side) or a send step (sending side) selected by message type.
+
 ### Dead letter tracking (optional)
 
 If the user wants failed messages persisted to a database, follow these steps exactly.
@@ -188,6 +192,7 @@ Fix any errors before reporting the task as complete.
 - [ ] Handler class created (`internal`, primary constructor for any dependencies)
 - [ ] Registered with `AddMessageHandler` in `FlowlyConfiguration`
 - [ ] Submitter added with `AddMessageSubmitter` in `FlowlyConfiguration` if this project also sends the message
+- [ ] (Cross-cutting concern wanted) Pointed the user to `/create-handler-step` instead of repeating the logic in the handler
 - [ ] (Dead letter tracking wanted) Confirmed `AddXxxDeadLetterTracking` is present (ran `/add-deadletter` first if it wasn't); chained `.WithDeadLetterTracking()` on the handler registration
 - [ ] (Dashboard exists) Checked whether each Dashboard project references the contracts project; asked the user before adding a missing reference
 - [ ] (Dashboard exists) `AddMessageSubmitter<$0>()` registered in each Dashboard's (or embedding project's) `FlowlyConfiguration`

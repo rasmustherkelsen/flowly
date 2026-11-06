@@ -35,6 +35,7 @@ Update skills in the same change as the code they describe: ask whether the chan
 
 - new registration method (transport or backend package) → `flowly-setup-azure-service-bus/SKILL.md` and the other setup skills
 - new handler base-class capabilities or options → `create-message-handler/SKILL.md`
+- `HandlerStep` / `SendStep` API, registration or semantics changes → `create-handler-step/SKILL.md`
 - `RecurringJobHandler` / `[RecurringJob]` changes → `create-recurring-job/SKILL.md`
 - contracts project pattern or `IJobMessage` changes → `create-contracts-assembly/SKILL.md`
 - `Flowly.OpenTelemetry` registration pattern changes in the `flowly-project` or `flowlyaspireapp` templates → `add-opentelemetry/SKILL.md`
