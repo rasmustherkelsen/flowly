@@ -11,13 +11,17 @@ internal sealed class RecordingHandlerInstrumentation : IHandlerInstrumentation
     private readonly Lock _lock = new();
     private readonly List<StreamPartitionTransition> _transitions = [];
     private readonly Channel<string> _halts = Channel.CreateUnbounded<string>();
+    private readonly Channel<long> _successes = Channel.CreateUnbounded<long>();
     private readonly List<long> _receivedCounts = [];
+    private long _haltCount;
     private long _failedCount;
     private long _retriedCount;
 
     public bool IsEnabled => false;
 
     public long FailedCount => Interlocked.Read(ref _failedCount);
+
+    public long HaltCount => Interlocked.Read(ref _haltCount);
 
     public long RetriedCount => Interlocked.Read(ref _retriedCount);
 
@@ -45,6 +49,8 @@ internal sealed class RecordingHandlerInstrumentation : IHandlerInstrumentation
 
     public async Task<string> NextHalt() => await _halts.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
 
+    public async Task<long> NextSuccess() => await _successes.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+
     public Activity? StartHandling(string handlerName, string queueName, string messagingSystem, MessageProperties messageProperties, ActivityContext parentContext = default) => null;
 
     public Activity? StartHandling(string handlerName, string queueName, string messagingSystem, MessageProperties messageProperties, IEnumerable<ActivityLink> links) => null;
@@ -57,13 +63,17 @@ internal sealed class RecordingHandlerInstrumentation : IHandlerInstrumentation
         }
     }
 
-    public void RecordSucceeded(string handlerName, string queueName, double durationMs, long count = 1) { }
+    public void RecordSucceeded(string handlerName, string queueName, double durationMs, long count = 1) => _successes.Writer.TryWrite(count);
 
     public void RecordFailed(string handlerName, string queueName, long count = 1) => Interlocked.Add(ref _failedCount, count);
 
     public void RecordRetried(string handlerName, string queueName, long count = 1) => Interlocked.Add(ref _retriedCount, count);
 
-    public void RecordHalted(string handlerName, string queueName, string reason) => _halts.Writer.TryWrite(reason);
+    public void RecordHalted(string handlerName, string queueName, string reason)
+    {
+        Interlocked.Increment(ref _haltCount);
+        _halts.Writer.TryWrite(reason);
+    }
 
     public void RecordStreamPartitionTransition(string handlerName, string queueName, string consumerName, int? partition, StreamPartitionState state)
     {
