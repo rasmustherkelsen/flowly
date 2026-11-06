@@ -395,6 +395,26 @@ public class RabbitMqPartitionedStreamConsumerTests
         }
 
         [Fact]
+        public async Task WhenResolvingTheStartPositionIsStillPendingWhenTheWindowEnds_CancelsTheAttempt()
+        {
+            CancellationToken attemptToken = default;
+            var time = new ManualTimeProvider();
+            var rabbitMqPartitionedStreamConsumer = Build((_, cancellationToken) =>
+            {
+                attemptToken = cancellationToken;
+                return new TaskCompletionSource<StartPosition>().Task;
+            }, time);
+
+            var update = rabbitMqPartitionedStreamConsumer.OnConsumerUpdate("orders-1", true);
+            await time.WhenTimerArmed(Timings.ResolveWindow);
+            Assert.False(attemptToken.IsCancellationRequested);
+            time.Advance(Timings.ResolveWindow);
+            await Assert.ThrowsAsync<TimeoutException>(() => update);
+
+            Assert.True(attemptToken.IsCancellationRequested);
+        }
+
+        [Fact]
         public async Task WhenResolvingTheStartPositionFailsUntilTheWindowEnds_LogsTheFailureAsAnError()
         {
             var time = new ManualTimeProvider();
