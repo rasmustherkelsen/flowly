@@ -19,9 +19,15 @@ nuget.org is not a trusted repository by default, so `Install-PSResource` asks f
 ## Usage
 
 ```powershell
-Connect-Flowly -BaseUri https://myapp.example.com/flowly/management -ApiKey $env:FLOWLY_API_KEY
+$apiKey = Read-Host -Prompt "Flowly API key" -AsSecureString
+Connect-Flowly -BaseUri https://myapp.example.com/flowly/management -ApiKey $apiKey
+# or from an environment variable:
+Connect-Flowly -BaseUri https://myapp.example.com/flowly/management -ApiKey (ConvertTo-SecureString $env:FLOWLY_API_KEY -AsPlainText -Force)
 # or, for Entra ID client-credentials:
+$clientSecret = Read-Host -Prompt "Client secret" -AsSecureString
 Connect-Flowly -BaseUri https://myapp.example.com/flowly/management -TenantId $tenantId -ClientId $clientId -ClientSecret $clientSecret -Scope "api://flowly-management/.default"
+# or, for another identity provider, with its complete token endpoint (no -TenantId):
+Connect-Flowly -BaseUri https://myapp.example.com/flowly/management -TokenEndpoint https://idp.example.com/connect/token -ClientId $clientId -ClientSecret $clientSecret -Scope "flowly"
 
 Get-FlowlyMessageStreamCheckpoint
 Get-FlowlyMessageStreamCheckpoint -QueueName my-queue -ConsumerName MyHandler
@@ -40,6 +46,10 @@ Get-FlowlyDeadLetter -Status Pending -First 20 | Remove-FlowlyDeadLetter
 
 Disconnect-Flowly
 ```
+
+`-ApiKey` and `-ClientSecret` of `Connect-Flowly` are `SecureString` parameters; a plain string is rejected, and an empty value fails the connect. The module keeps a read-only copy of each as a `SecureString` and reveals it as text only while the API key header or the token request is built; it never logs either. Create one with `Read-Host -AsSecureString` or `ConvertTo-SecureString -AsPlainText -Force`.
+
+`Connect-Flowly -Authority` sets the base URL the OAuth2 token is requested from (default `https://login.microsoftonline.com`, for a sovereign cloud use for example `https://login.microsoftonline.us`); the token endpoint is `{Authority}/{TenantId}/oauth2/v2.0/token`, so the authority must follow the Entra ID v2.0 layout. `-TokenEndpoint` replaces that whole URL for identity providers other than Entra ID; it is an alternative to `-TenantId` and `-Authority`, which cannot be combined with it, and `-TenantId` is neither required nor used with it. Both take an absolute https URL. A failed token request or API call fails with the error text the server sent.
 
 `Reset-FlowlyMessageStreamCheckpoint` supports `-WhatIf`/`-Confirm` (PowerShell's standard confirmation gate for destructive actions) since resetting a position causes reprocessing of any messages after the new offset once the handler restarts.
 

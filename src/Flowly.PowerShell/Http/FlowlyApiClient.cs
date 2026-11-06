@@ -24,7 +24,7 @@ internal static class FlowlyApiClient
 
         var path = "message-streams/checkpoints" + (query.Length > 0 ? $"?{query}" : "");
         var response = await connection.HttpClient.GetAsync(path, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccess(response, cancellationToken);
 
         return await response.Content.ReadFromJsonAsync<IReadOnlyList<CheckpointDto>>(cancellationToken) ?? [];
     }
@@ -38,7 +38,7 @@ internal static class FlowlyApiClient
             new { QueueName = queueName, ConsumerName = consumerName, Partition = partition, Offset = offset },
             cancellationToken);
 
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccess(response, cancellationToken);
     }
 
     public static async Task<IReadOnlyList<StreamPartitionDto>> ListStreamPartitions(
@@ -147,6 +147,22 @@ internal static class FlowlyApiClient
         }
     }
 
+    private static async Task<string?> ReadTokenError(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var body = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
+            var error = body.RootElement.TryGetProperty("error", out var errorElement) ? errorElement.GetString() : null;
+            var description = body.RootElement.TryGetProperty("error_description", out var descriptionElement) ? descriptionElement.GetString() : null;
+
+            return error is null ? description : description is null ? error : $"{error}: {description}";
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
     private static async Task EnsureAuthorized(FlowlyConnection connection, CancellationToken cancellationToken)
     {
         if (!connection.UsesOAuth2)
@@ -155,21 +171,32 @@ internal static class FlowlyApiClient
         if (connection.CachedAccessToken is not null && connection.TokenExpiresAtUtc > DateTimeOffset.UtcNow.AddMinutes(1))
             return;
 
-        var tokenEndpoint = $"https://login.microsoftonline.com/{connection.TenantId}/oauth2/v2.0/token";
+        var tokenEndpoint = connection.TokenEndpoint ?? $"{connection.Authority.TrimEnd('/')}/{Uri.EscapeDataString(connection.TenantId!)}/oauth2/v2.0/token";
         var form = new Dictionary<string, string>
         {
             ["grant_type"] = "client_credentials",
             ["client_id"] = connection.ClientId!,
-            ["client_secret"] = connection.ClientSecret!,
+            ["client_secret"] = connection.ClientSecret!.ToPlainText(),
             ["scope"] = connection.Scope!,
         };
 
-        using var tokenClient = new HttpClient();
+        using var tokenClient = connection.TokenMessageHandler is null ? new HttpClient() : new HttpClient(connection.TokenMessageHandler, false);
         var response = await tokenClient.PostAsync(tokenEndpoint, new FormUrlEncodedContent(form), cancellationToken);
-        response.EnsureSuccessStatusCode();
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await ReadTokenError(response, cancellationToken);
+
+            throw new HttpRequestException(
+                error is null
+                    ? $"The token endpoint answered {(int)response.StatusCode} ({response.ReasonPhrase})."
+                    : $"The token endpoint answered {(int)response.StatusCode}: {error}",
+                null,
+                response.StatusCode);
+        }
 
         var token = await response.Content.ReadFromJsonAsync<TokenResponse>(cancellationToken)
-            ?? throw new InvalidOperationException("Entra ID token endpoint returned an empty response.");
+            ?? throw new InvalidOperationException("The token endpoint returned an empty response.");
 
         connection.CachedAccessToken = token.AccessToken;
         connection.TokenExpiresAtUtc = DateTimeOffset.UtcNow.AddSeconds(token.ExpiresInSeconds);

@@ -591,7 +591,7 @@ It is unhealthy while any owned partition is `Halted` or `Waiting` and healthy o
 The list returns, per partition, the handler name, queue, consumer name, partition, state, when the state was entered and the last error (message, exception type, time). A resume re-runs the batch the partition is holding with a fresh set of in-process retries and lets the partition continue from it; it answers `204`. Nothing is skipped: when the batch fails again the partition halts again (and can be resumed again). It answers `404` when the instance does not own the partition and `409` when the partition is not `Halted` (a `Waiting` partition has no processing loop yet and is retried automatically, see [Recovery of a waiting partition on RabbitMQ](#recovery-of-a-waiting-partition-on-rabbitmq); there is no action that retries it sooner). Fix the cause first (the handler, a downstream dependency), then resume:
 
 ```powershell
-Connect-Flowly -BaseUri https://myapp.example.com/flowly/management -ApiKey $env:FLOWLY_API_KEY
+Connect-Flowly -BaseUri https://myapp.example.com/flowly/management -ApiKey (ConvertTo-SecureString $env:FLOWLY_API_KEY -AsPlainText -Force)
 Get-FlowlyMessageStreamPartition -State Halted
 Get-FlowlyMessageStreamPartition -State Halted | Resume-FlowlyMessageStreamPartition
 ```
@@ -708,7 +708,7 @@ flowly message-stream reset-checkpoint --provider sqlite --connection "Data Sour
 
 ```powershell
 # Flowly.PowerShell — talks to a running Flowly.ManagementApi instance over HTTPS instead
-Connect-Flowly -BaseUri https://myapp.example.com/flowly/management -ApiKey $env:FLOWLY_API_KEY
+Connect-Flowly -BaseUri https://myapp.example.com/flowly/management -ApiKey (ConvertTo-SecureString $env:FLOWLY_API_KEY -AsPlainText -Force)
 Get-FlowlyMessageStreamCheckpoint
 Reset-FlowlyMessageStreamCheckpoint -QueueName my-queue -ConsumerName MyHandler -Offset 42
 ```
