@@ -26,7 +26,7 @@ internal sealed class OAuth2TestHost : IDisposable
 
     public FakeDeadLetterService DeadLetters { get; } = new();
 
-    public OAuth2TestHost()
+    public OAuth2TestHost(Action<IServiceCollection>? configureHostServices = null)
     {
         DeadLetters.Add("m1");
 
@@ -40,12 +40,13 @@ internal sealed class OAuth2TestHost : IDisposable
                     services.AddLogging();
                     services.AddRouting();
                     DeadLetters.AddTo(services);
+                    configureHostServices?.Invoke(services);
                     services.AddFlowlyManagementApi(options => options.UseOAuth2(oauth =>
                     {
                         oauth.Authority = Issuer;
                         oauth.Audience = Audience;
                     }));
-                    services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
+                    services.PostConfigure<JwtBearerOptions>(ManagementApiRegistrationExtensions.OAuthSchemeName, options =>
                     {
                         var configuration = new OpenIdConnectConfiguration { Issuer = Issuer };
                         configuration.SigningKeys.Add(_signingKey);

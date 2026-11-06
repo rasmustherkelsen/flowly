@@ -307,7 +307,7 @@ public class ManagementApiRequeuedByEndToEndTests
                         oauth.Authority = Issuer;
                         oauth.Audience = Audience;
                     }));
-                    services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
+                    services.PostConfigure<JwtBearerOptions>(ManagementApiRegistrationExtensions.OAuthSchemeName, options =>
                     {
                         var configuration = new OpenIdConnectConfiguration { Issuer = Issuer };
                         configuration.SigningKeys.Add(_signingKey);

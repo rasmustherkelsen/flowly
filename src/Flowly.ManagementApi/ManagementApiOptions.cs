@@ -85,12 +85,24 @@ public sealed class ManagementApiOptions
 
     /// <summary>
     ///     Protects the API with OAuth2 bearer tokens (e.g. an Entra ID app registration using the client-credentials
-    ///     flow). See <see cref="ManagementApiOAuthOptions" /> for the App Role / scope matching rule.
+    ///     flow). See <see cref="ManagementApiOAuthOptions" /> for the App Role / scope matching rule. The bearer scheme
+    ///     is registered under a Flowly-specific name and does not become the host's default authentication scheme.
     /// </summary>
+    /// <exception cref="InvalidOperationException">
+    ///     Thrown when <see cref="ManagementApiOAuthOptions.Authority" /> or <see cref="ManagementApiOAuthOptions.Audience" />
+    ///     is empty after <paramref name="configure" /> ran.
+    /// </exception>
     public void UseOAuth2(Action<ManagementApiOAuthOptions> configure)
     {
         var oauth = new ManagementApiOAuthOptions { Authority = "", Audience = "" };
         configure(oauth);
+
+        if (string.IsNullOrWhiteSpace(oauth.Authority))
+            throw new InvalidOperationException("Flowly Management API OAuth2 requires a non-empty Authority.");
+
+        if (string.IsNullOrWhiteSpace(oauth.Audience))
+            throw new InvalidOperationException("Flowly Management API OAuth2 requires a non-empty Audience.");
+
         OAuth = oauth;
         AuthMode = ManagementApiAuthMode.OAuth2;
     }
