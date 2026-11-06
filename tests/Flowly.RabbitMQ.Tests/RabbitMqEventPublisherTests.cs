@@ -68,6 +68,18 @@ public class RabbitMqEventPublisherTests
         }
 
         [Fact]
+        public async Task WithCustomProperties_PublishesThemAsHeaders()
+        {
+            var recordingChannel = new RecordingChannel();
+            var rabbitMqEventPublisher = new RabbitMqEventPublisher("orders-exchange", recordingChannel, null);
+            var messageProperties = new MessageProperties("m", "") { CustomProperties = new Dictionary<string, string> { ["tenant"] = "contoso" } };
+
+            await rabbitMqEventPublisher.SendMessage(new OrderPlaced("order-1"), messageProperties);
+
+            Assert.Equal("contoso", recordingChannel.LastBasicProperties!.Headers!["tenant"]);
+        }
+
+        [Fact]
         public async Task WhenRetryCountIsZero_DoesNotAddRetryCountHeader()
         {
             var recordingChannel = new RecordingChannel();

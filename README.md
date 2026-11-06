@@ -360,6 +360,35 @@ public class OrderService(IMessageSender sender)
 }
 ```
 
+### Custom message properties
+
+A message can carry application-defined string key/value pairs next to its body, for example the tenant or the id of a business operation, without every contract declaring those fields. Pass them in the optional `customProperties` parameter, which `Send`, `Record`, `RaiseEvent`, `Call` and `QueueJob` all take as their last parameter:
+
+```csharp
+await sender.Send(
+    new OrderCreated(order.Id, order.Total),
+    customProperties: new Dictionary<string, string> { ["tenant"] = "contoso" });
+```
+
+The receiver reads them from `MessageProperties.CustomProperties`, which is never `null` (empty when the message carries none). `IMessageContext<T>` (message, call and job handlers), `IEventContext<T>` and a handler step's context expose a `Properties` value; `IBatchMessageContext<T>` and `IMessageStreamContext<T>` expose `Properties` as a list with one entry per message, in the order of `Messages`:
+
+```csharp
+public class OrderCreatedHandler : MessageHandler<OrderCreated>
+{
+    public override Task Handle(IMessageContext<OrderCreated> context)
+    {
+        var tenant = context.Properties.CustomProperties.GetValueOrDefault("tenant");
+        ...
+    }
+}
+```
+
+- **Strings only.** The value type every transport round-trips unchanged: RabbitMQ headers, Azure Service Bus application properties, Azure Event Hubs event properties and the InMemory envelope. Serialize anything richer yourself.
+- **Reserved keys.** Keys starting with `flowly-` (case-insensitive), `traceparent` and `tracestate` belong to Flowly and the W3C trace context. Passing one, an empty key or a `null` value throws `ArgumentException` at the call site before anything is sent, and reserved keys never show up in `CustomProperties` on a received message. Other keys, including `x-` keys, are carried as they are; on RabbitMQ the broker-set `x-first-death-*` and `x-last-death-*` headers are not part of the bag.
+- **Preserved by retries and requeues.** A retry re-publishes the message with its properties, and a dead letter requeue re-sends the stored raw application properties, so the pairs follow the message. A call handler's reply is a new message and does not carry the request's properties.
+- **Streams.** Stream records carry the properties on RabbitMQ (streams and Super Streams), Azure Event Hubs and InMemory, and a stream handler reads them per message from `context.Properties[i].CustomProperties`.
+- **Not authenticated.** Anyone who can publish to the queue can set any value, so the properties are not proof of identity. Sign the value yourself if a receiver has to trust it, and rely on the broker's access control as the real boundary.
+
 ---
 
 ## RPC-Style Calls
@@ -1040,7 +1069,7 @@ services.AddSingleton<ICurrentUser, CurrentUser>();
 - **No per-message timeout step.** A timeout step would have to hand the handler a different cancellation token, which a step cannot do.
 - **Call handlers.** A call handler that is rejected or skipped by a step, or that fails, produces no reply, so the caller times out. "Audited" means the handler finished, not that the reply was delivered: if sending the reply fails, the delivery is retried and the handler and its steps run again, so an audit store should key on `MessageId` plus `RetryCount`.
 - **No transaction sharing on the sending side.** A send step cannot join the caller's `DbContext` or transaction, so send steps cannot implement a transactional outbox.
-- **Identity on the receiving side.** `MessageProperties` has no identity field, so the user has to travel in the message (for example an `IssuedBy` property on the command). A receiver step on the same marker is a useful second guard that catches a sender lacking its send step, but it cannot defend against someone publishing manually: whoever can publish can forge the identity. The broker's access control is the real boundary.
+- **Identity on the receiving side.** `MessageProperties` has no identity field. The user can travel in the message (for example an `IssuedBy` property on the command) or in the unauthenticated custom message properties (`MessageProperties.CustomProperties`, see "Custom message properties"), which a send step cannot stamp yet because it has no access to the outgoing properties. A receiver step on the same marker is a useful second guard that catches a sender lacking its send step, but it cannot defend against someone publishing manually: whoever can publish can forge the identity. The broker's access control is the real boundary.
 
 ---
 

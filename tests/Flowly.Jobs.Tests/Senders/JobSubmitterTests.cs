@@ -72,6 +72,33 @@ public class JobSubmitterTests
         }
 
         [Fact]
+        public async Task SendsJobMessageWithCustomProperties()
+        {
+            var fakeMessageBusClient = new FakeMessageBusClient();
+            var fakeMessageBusClientRegistry = new FakeMessageBusClientRegistry(fakeMessageBusClient);
+            var jobSubmitter = new JobSubmitter<SomeJobMessage>(fakeMessageBusClientRegistry, "some-job-queue", "primary", new FakeMessageSender(), SendStepRunner.None);
+
+            await jobSubmitter.SubmitJob(new SomeJobMessage(), customProperties: new Dictionary<string, string> { ["tenant"] = "contoso" });
+
+            var (_, properties) = fakeMessageBusClient.GetSender("some-job-queue").SentMessages[0];
+            Assert.Equal("contoso", properties.CustomProperties["tenant"]);
+        }
+
+        [Fact]
+        public async Task WithReservedCustomPropertyKey_ThrowsArgumentExceptionBeforeCreatingJobState()
+        {
+            var fakeMessageSender = new FakeMessageSender();
+            var fakeMessageBusClientRegistry = new FakeMessageBusClientRegistry(new FakeMessageBusClient());
+            var jobSubmitter = new JobSubmitter<SomeJobMessage>(fakeMessageBusClientRegistry, "some-job-queue", "primary", fakeMessageSender, SendStepRunner.None);
+
+            await Assert.ThrowsAsync<ArgumentException>(() => jobSubmitter.SubmitJob(
+                new SomeJobMessage(),
+                customProperties: new Dictionary<string, string> { ["flowly-x"] = "1" }));
+
+            Assert.Empty(fakeMessageSender.SentMessages);
+        }
+
+        [Fact]
         public async Task CreateJobStateCarriesSameJobIdAsSubmittedMessage()
         {
             var fakeMessageSender = new FakeMessageSender();
@@ -266,7 +293,7 @@ public class JobSubmitterTests
     {
         public List<object> SentMessages { get; } = [];
 
-        public Task Send<TMessage>(TMessage message, CancellationToken cancellationToken = default)
+        public Task Send<TMessage>(TMessage message, CancellationToken cancellationToken = default, IReadOnlyDictionary<string, string>? customProperties = null)
             => sendStepRunner.Run(message!, cancellationToken, () =>
             {
                 SentMessages.Add(message!);

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.MessageInfrastructure.SendSteps;
 using Flowly.MessageInfrastructure.Telemetry;
+using Flowly.Transport;
 
 namespace Flowly.MessageInfrastructure.Callers;
 
@@ -17,18 +18,20 @@ internal class CallSubmitter<TMessage, TReturn>(
     where TMessage : class, IReturns<TReturn>
     where TReturn : class
 {
-    public async Task<TReturn> Submit(TMessage message, CancellationToken cancellationToken)
+    public async Task<TReturn> Submit(TMessage message, CancellationToken cancellationToken, IReadOnlyDictionary<string, string>? customProperties = null)
     {
+        CustomMessageProperties.Validate(customProperties, nameof(customProperties));
+
         TReturn? response = null;
 
-        await sendStepRunner.Run(message, cancellationToken, async () => response = await SubmitCore(message, cancellationToken));
+        await sendStepRunner.Run(message, cancellationToken, async () => response = await SubmitCore(message, cancellationToken, customProperties));
 
         return response ?? throw new InvalidOperationException(
             $"A send step prevented the call of '{typeof(TMessage).Name}' from being sent, so there is no '{typeof(TReturn).Name}' reply to return. " +
             "Throw from the send step to reject the call instead of returning without calling next.");
     }
 
-    private async Task<TReturn> SubmitCore(TMessage message, CancellationToken cancellationToken)
+    private async Task<TReturn> SubmitCore(TMessage message, CancellationToken cancellationToken, IReadOnlyDictionary<string, string>? customProperties)
     {
         var client = clientRegistry.GetClient(providerName);
         var correlationId = Guid.NewGuid().ToString();
@@ -49,7 +52,7 @@ internal class CallSubmitter<TMessage, TReturn>(
 
             await sender.SendMessage(
                 message,
-                new MessageProperties(messageId, correlationId, ReplyTo: returnQueueName),
+                new MessageProperties(messageId, correlationId, ReplyTo: returnQueueName) { CustomProperties = customProperties ?? CustomMessageProperties.Empty },
                 cancellationToken);
 
             var response = await responseTask;

@@ -47,6 +47,18 @@ public class MessageBusSenderTests
         }
 
         [Fact]
+        public async Task WithCustomProperties_SetsThemAsApplicationProperties()
+        {
+            var serviceBusSender = new FakeServiceBusSender();
+            var sender = new MessageBusSender(serviceBusSender, null);
+            var messageProperties = new MessageProperties("m", "c") { CustomProperties = new Dictionary<string, string> { ["tenant"] = "contoso" } };
+
+            await sender.SendMessage(new TestMessage("hello"), messageProperties);
+
+            Assert.Equal("contoso", serviceBusSender.LastSentMessage!.ApplicationProperties["tenant"]);
+        }
+
+        [Fact]
         public async Task WithExtraApplicationProperties_SetsThemOnTheOutgoingMessage()
         {
             var serviceBusSender = new FakeServiceBusSender();

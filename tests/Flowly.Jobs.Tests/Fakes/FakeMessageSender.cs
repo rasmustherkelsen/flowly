@@ -6,7 +6,7 @@ internal class FakeMessageSender : IMessageSender
 {
     public List<object> SentMessages { get; } = [];
 
-    public Task Send<TMessage>(TMessage message, CancellationToken cancellationToken = default)
+    public Task Send<TMessage>(TMessage message, CancellationToken cancellationToken = default, IReadOnlyDictionary<string, string>? customProperties = null)
     {
         SentMessages.Add(message!);
         return Task.CompletedTask;

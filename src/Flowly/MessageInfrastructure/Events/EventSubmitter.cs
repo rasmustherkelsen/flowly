@@ -14,10 +14,14 @@ internal class EventSubmitter<TEvent>(
     IEventPublisherInstrumentation publisherInstrumentation,
     ISendStepRunner sendStepRunner) : IEventSubmitter<TEvent>
 {
-    public Task Raise(TEvent @event, CancellationToken cancellationToken = default)
-        => sendStepRunner.Run(@event!, cancellationToken, () => RaiseCore(@event, cancellationToken));
+    public Task Raise(TEvent @event, CancellationToken cancellationToken = default, IReadOnlyDictionary<string, string>? customProperties = null)
+    {
+        CustomMessageProperties.Validate(customProperties, nameof(customProperties));
 
-    private async Task RaiseCore(TEvent @event, CancellationToken cancellationToken)
+        return sendStepRunner.Run(@event!, cancellationToken, () => RaiseCore(@event, cancellationToken, customProperties));
+    }
+
+    private async Task RaiseCore(TEvent @event, CancellationToken cancellationToken, IReadOnlyDictionary<string, string>? customProperties)
     {
         var sw = Stopwatch.StartNew();
         var client = clientRegistry.GetTransportClient(providerName);
@@ -30,7 +34,8 @@ internal class EventSubmitter<TEvent>(
         try
         {
             var publisher = await eventCapableClient.CreateEventPublisher(topicName);
-            await publisher.SendMessage(@event, new MessageProperties(messageId, string.Empty), cancellationToken);
+            await publisher.SendMessage(@event, new MessageProperties(messageId, string.Empty) { CustomProperties = customProperties ?? CustomMessageProperties.Empty },
+                cancellationToken);
             publisherInstrumentation.RecordRaised(topicName, sw.Elapsed.TotalMilliseconds);
         }
         catch

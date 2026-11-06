@@ -2,5 +2,5 @@
 
 internal interface IMessageSubmitter<in TMessage>
 {
-    Task Submit(TMessage message, CancellationToken cancellationToken = default, string? partitionKey = null);
+    Task Submit(TMessage message, CancellationToken cancellationToken = default, string? partitionKey = null, IReadOnlyDictionary<string, string>? customProperties = null);
 }

@@ -122,6 +122,50 @@ public class MessageSubmitterTests
         }
 
         [Fact]
+        public async Task PassesCustomPropertiesThroughToSentMessageProperties()
+        {
+            var capturingSender = new CapturingSender();
+            var client = new FakeMessageBusClient(capturingSender);
+            var registry = new SingleClientRegistry(client, "primary");
+            var messageSubmitter = new MessageSubmitter<OrderPlaced>(registry, "order-placed", "primary", new StubSubmitterInstrumentation(), SendStepRunner.None);
+
+            await messageSubmitter.Submit(new OrderPlaced("x"), CancellationToken.None, customProperties: new Dictionary<string, string> { ["tenant"] = "contoso" });
+
+            Assert.Equal("contoso", capturingSender.SentMessages[0].Properties.CustomProperties["tenant"]);
+        }
+
+        [Fact]
+        public async Task WithoutCustomProperties_SendsEmptyCustomProperties()
+        {
+            var capturingSender = new CapturingSender();
+            var client = new FakeMessageBusClient(capturingSender);
+            var registry = new SingleClientRegistry(client, "primary");
+            var messageSubmitter = new MessageSubmitter<OrderPlaced>(registry, "order-placed", "primary", new StubSubmitterInstrumentation(), SendStepRunner.None);
+
+            await messageSubmitter.Submit(new OrderPlaced("x"), CancellationToken.None);
+
+            Assert.Empty(capturingSender.SentMessages[0].Properties.CustomProperties);
+        }
+
+        [Fact]
+        public async Task WithReservedCustomPropertyKey_ThrowsBeforeSendingAnything()
+        {
+            var capturingSender = new CapturingSender();
+            var client = new FakeMessageBusClient(capturingSender);
+            var registry = new SingleClientRegistry(client, "primary");
+            var instrumentation = new StubSubmitterInstrumentation();
+            var messageSubmitter = new MessageSubmitter<OrderPlaced>(registry, "order-placed", "primary", instrumentation, SendStepRunner.None);
+
+            await Assert.ThrowsAsync<ArgumentException>(() => messageSubmitter.Submit(
+                new OrderPlaced("x"),
+                CancellationToken.None,
+                customProperties: new Dictionary<string, string> { ["flowly-retry-count"] = "5" }));
+
+            Assert.Empty(capturingSender.SentMessages);
+            Assert.Empty(instrumentation.Started);
+        }
+
+        [Fact]
         public async Task OnStreamOnlyClient_SendsThroughStreamSender()
         {
             var sender = new FakeMessageBusSender();

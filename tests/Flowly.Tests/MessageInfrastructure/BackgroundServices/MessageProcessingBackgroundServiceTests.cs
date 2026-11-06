@@ -317,6 +317,19 @@ public class MessageProcessingBackgroundServiceTests
         }
 
         [Fact]
+        public async Task WhenRetrying_RepublishesMessageWithItsCustomProperties()
+        {
+            var (messageProcessingBackgroundService, client) = BuildWithSteps([], [typeof(ThrowingStep)], maxRetries: 3);
+            var processor = await StartProcessing(messageProcessingBackgroundService, client);
+            var properties = new MessageProperties("msg-1", "corr-1") { CustomProperties = new Dictionary<string, string> { ["tenant"] = "contoso" } };
+
+            await processor.FireProcessMessage(new FakeReceivedMessage<TestMessage>(new TestMessage("hello"), properties));
+            await messageProcessingBackgroundService.StopAsync(CancellationToken.None);
+
+            Assert.Equal("contoso", Assert.Single(client.RepublishedProperties).CustomProperties["tenant"]);
+        }
+
+        [Fact]
         public async Task WithUnregisteredException_StillRetries()
         {
             var instrumentation = new RecordingHandlerInstrumentation();
@@ -730,11 +743,12 @@ public class MessageProcessingBackgroundServiceTests
         public void RecordResponseFailed(string callQueueName) { }
     }
 
-    private sealed class RecordingMessageBusSender(List<int> republishedRetryCounts) : IMessageBusSender
+    private sealed class RecordingMessageBusSender(List<int> republishedRetryCounts, List<MessageProperties> republishedProperties) : IMessageBusSender
     {
         public Task SendMessage<TMessage>(TMessage message, MessageProperties messageProperties, CancellationToken cancellationToken = default)
         {
             republishedRetryCounts.Add(messageProperties.RetryCount);
+            republishedProperties.Add(messageProperties);
             return Task.CompletedTask;
         }
 
@@ -752,6 +766,8 @@ public class MessageProcessingBackgroundServiceTests
         public string MessagingSystem => "fake";
 
         public List<int> RepublishedRetryCounts { get; } = [];
+
+        public List<MessageProperties> RepublishedProperties { get; } = [];
 
         public Task<IMessageBusProcessor<TMessage>> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options)
         {
@@ -771,7 +787,7 @@ public class MessageProcessingBackgroundServiceTests
         }
 
         public Task<IMessageBusSender> CreateMessageBusSender(string queueName)
-            => Task.FromResult<IMessageBusSender>(new RecordingMessageBusSender(RepublishedRetryCounts));
+            => Task.FromResult<IMessageBusSender>(new RecordingMessageBusSender(RepublishedRetryCounts, RepublishedProperties));
 
         public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName)
         {

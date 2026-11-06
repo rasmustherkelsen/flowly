@@ -28,7 +28,17 @@ public interface IMessageRecorder
     ///     <paramref name="cancellationToken" />, not before it, so existing positional
     ///     <c>Record(message, cancellationToken)</c> call sites keep compiling unchanged.
     /// </param>
+    /// <param name="customProperties">
+    ///     Optional application-defined string key/value pairs delivered with the message and readable by the receiver in
+    ///     <see cref="MessageProperties.CustomProperties" />. Keys starting with <c>flowly-</c> and the keys
+    ///     <c>traceparent</c> and <c>tracestate</c> are reserved. The values are not authenticated.
+    /// </param>
     /// <typeparam name="TMessage">The type of message to be recorded.</typeparam>
     /// <returns>A task representing the asynchronous operation of recording the message.</returns>
-    Task Record<TMessage>(TMessage message, CancellationToken cancellationToken = default, string? partitionKey = null);
+    /// <exception cref="ArgumentException"><paramref name="customProperties" /> contains an empty or reserved key or a null value.</exception>
+    Task Record<TMessage>(
+        TMessage message,
+        CancellationToken cancellationToken = default,
+        string? partitionKey = null,
+        IReadOnlyDictionary<string, string>? customProperties = null);
 }

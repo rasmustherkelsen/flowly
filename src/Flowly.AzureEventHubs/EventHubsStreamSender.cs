@@ -23,6 +23,11 @@ internal sealed class EventHubsStreamSender(
             MessageId = !string.IsNullOrEmpty(messageProperties.MessageId) ? messageProperties.MessageId : Guid.NewGuid().ToString()
         };
 
+        foreach (var (key, value) in messageProperties.CustomProperties)
+        {
+            eventData.Properties[key] = value;
+        }
+
         if (!string.IsNullOrEmpty(messageProperties.CorrelationId))
             eventData.CorrelationId = messageProperties.CorrelationId;
 

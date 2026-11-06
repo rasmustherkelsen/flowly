@@ -19,7 +19,10 @@ internal sealed class EventHubsReceivedMessage<TMessage>(EventData eventData) : 
         RetryCount: GetRetryCount(eventData.Properties),
         Traceparent: GetString(eventData.Properties, TraceparentProperty),
         Tracestate: GetString(eventData.Properties, TracestateProperty),
-        StreamOffset: eventData.SequenceNumber);
+        StreamOffset: eventData.SequenceNumber)
+    {
+        CustomProperties = CustomMessageProperties.Read(eventData.Properties!)
+    };
 
     public Task Complete(CancellationToken cancellationToken = default) => Task.CompletedTask;
 

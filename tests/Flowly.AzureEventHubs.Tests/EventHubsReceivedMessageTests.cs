@@ -96,6 +96,32 @@ public class EventHubsReceivedMessageTests
         }
 
         [Fact]
+        public void MapsStringPropertiesToCustomProperties_AndSkipsFlowlyTraceAndNonTextValues()
+        {
+            var eventHubsReceivedMessage = new EventHubsReceivedMessage<string>(
+                TestEvents.Create(
+                    1,
+                    properties: new Dictionary<string, object>
+                    {
+                        ["tenant"] = "contoso",
+                        [FlowlyMessageProperties.RetryCount] = 2,
+                        ["traceparent"] = "00-trace-span-01",
+                        ["attempts"] = 4
+                    }));
+
+            Assert.Equal(["tenant"], eventHubsReceivedMessage.Properties.CustomProperties.Keys);
+            Assert.Equal("contoso", eventHubsReceivedMessage.Properties.CustomProperties["tenant"]);
+        }
+
+        [Fact]
+        public void WithoutProperties_LeavesCustomPropertiesEmpty()
+        {
+            var eventHubsReceivedMessage = new EventHubsReceivedMessage<string>(TestEvents.Create(1));
+
+            Assert.Empty(eventHubsReceivedMessage.Properties.CustomProperties);
+        }
+
+        [Fact]
         public void WithoutTheTraceContext_LeavesItEmpty()
         {
             var eventHubsReceivedMessage = new EventHubsReceivedMessage<string>(TestEvents.Create(1));

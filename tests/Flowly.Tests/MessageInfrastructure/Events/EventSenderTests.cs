@@ -40,6 +40,20 @@ public class EventSenderTests
         }
 
         [Fact]
+        public async Task PassesCustomPropertiesThroughToSubmitter()
+        {
+            var serviceProvider = new FakeServiceProvider();
+            var capturingSubmitter = new CapturingSubmitter<OrderPlaced>();
+            serviceProvider.Register<IEventSubmitter<OrderPlaced>>(capturingSubmitter);
+            var eventSender = new EventSender(serviceProvider);
+            var customProperties = new Dictionary<string, string> { ["tenant"] = "contoso" };
+
+            await eventSender.RaiseEvent(new OrderPlaced("x"), customProperties: customProperties);
+
+            Assert.Same(customProperties, capturingSubmitter.ReceivedCustomProperties);
+        }
+
+        [Fact]
         public async Task WithoutRegisteredSubmitter_ThrowsInvalidOperationException()
         {
             var eventSender = new EventSender(new FakeServiceProvider());
@@ -151,9 +165,11 @@ public class EventSenderTests
     {
         public TEvent? Raised { get; private set; }
         public CancellationToken ReceivedToken { get; private set; }
+        public IReadOnlyDictionary<string, string>? ReceivedCustomProperties { get; private set; }
 
-        public Task Raise(TEvent @event, CancellationToken cancellationToken = default)
+        public Task Raise(TEvent @event, CancellationToken cancellationToken = default, IReadOnlyDictionary<string, string>? customProperties = null)
         {
+            ReceivedCustomProperties = customProperties;
             Raised = @event;
             ReceivedToken = cancellationToken;
             return Task.CompletedTask;
@@ -162,7 +178,7 @@ public class EventSenderTests
 
     private class ThrowingSubmitter<TEvent>(Exception exception) : IEventSubmitter<TEvent>
     {
-        public Task Raise(TEvent @event, CancellationToken cancellationToken = default) => Task.FromException(exception);
+        public Task Raise(TEvent @event, CancellationToken cancellationToken = default, IReadOnlyDictionary<string, string>? customProperties = null) => Task.FromException(exception);
     }
 
     private record OrderPlaced(string OrderId);

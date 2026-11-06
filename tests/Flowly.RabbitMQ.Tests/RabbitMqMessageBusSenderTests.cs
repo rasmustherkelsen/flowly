@@ -50,6 +50,18 @@ public class RabbitMqMessageBusSenderTests
         }
 
         [Fact]
+        public async Task WithCustomProperties_PublishesThemAsHeaders()
+        {
+            var recordingChannel = new RecordingChannel();
+            var sender = new RabbitMqMessageBusSender("test-queue", recordingChannel, null);
+            var messageProperties = new MessageProperties("m", "c") { CustomProperties = new Dictionary<string, string> { ["tenant"] = "contoso" } };
+
+            await sender.SendMessage(new TestMessage("hello"), messageProperties);
+
+            Assert.Equal("contoso", recordingChannel.LastBasicProperties!.Headers!["tenant"]);
+        }
+
+        [Fact]
         public async Task WhenMessageIdIsMissing_GeneratesOne()
         {
             var recordingChannel = new RecordingChannel();

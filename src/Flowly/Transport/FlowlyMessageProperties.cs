@@ -9,6 +9,25 @@ namespace Flowly.Transport;
 public static class FlowlyMessageProperties
 {
     /// <summary>
+    ///     The key prefix reserved for properties Flowly writes itself (for example <see cref="RetryCount" /> and
+    ///     <see cref="TargetSubscription" />). Application-defined keys in <see cref="MessageProperties.CustomProperties" />
+    ///     cannot start with it, compared ignoring case.
+    /// </summary>
+    public const string ReservedPrefix = "flowly-";
+
+    /// <summary>
+    ///     The name of the property carrying the W3C <c>traceparent</c> value. Reserved: it cannot be used as a custom
+    ///     property key.
+    /// </summary>
+    public const string Traceparent = "traceparent";
+
+    /// <summary>
+    ///     The name of the property carrying the W3C <c>tracestate</c> value. Reserved: it cannot be used as a custom
+    ///     property key.
+    /// </summary>
+    public const string Tracestate = "tracestate";
+
+    /// <summary>
     ///     The name of the message property used to store the retry count for a message. This is used by Flowly to track how
     ///     many times a message has been retried. When a message is processed and fails, Flowly can increment this property to
     ///     keep track of how many times the message has been retried. This can be used to implement retry policies, such as

@@ -74,7 +74,8 @@ internal class EventHandlerBackgroundService<TEvent, THandler>(
                 receivedMessage.Body,
                 receivedMessage.Properties.MessageId,
                 receivedMessage.Properties.CorrelationId,
-                DateTimeOffset.UtcNow);
+                DateTimeOffset.UtcNow,
+                receivedMessage.Properties);
 
             await handlerStepRunner.Run(
                 receivedMessage.Body,

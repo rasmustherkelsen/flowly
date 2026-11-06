@@ -19,7 +19,7 @@ internal class StandardMessageHandlingStrategy<TMessage>(IHandlerStepRunner hand
             handler.GetType(),
             serviceProvider,
             cancellationToken,
-            () => handler.Handle(new MessageContext<TMessage>(receivedMessage.Body, cancellationToken)));
+            () => handler.Handle(new MessageContext<TMessage>(receivedMessage.Body, cancellationToken, receivedMessage.Properties)));
     }
 
     public async Task OnRetriesExhausted(IReceivedMessage<TMessage> receivedMessage, Exception exception, IServiceProvider serviceProvider, CancellationToken cancellationToken)

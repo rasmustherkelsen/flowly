@@ -27,7 +27,8 @@ internal class JobMessageHandlingStrategy<TMessage>(IServiceScopeFactory service
                 jobId,
                 receivedMessage.Body,
                 serviceProvider.GetRequiredService<IMessageSender>(),
-                cancellationToken);
+                cancellationToken,
+                receivedMessage.Properties);
 
             await handlerStepRunner.Run(
                 receivedMessage.Body,

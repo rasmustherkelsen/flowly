@@ -293,7 +293,7 @@ internal class RequirePermissionSendStep(ICurrentUser user, IAuthorization autho
 
 `IAuthorization` is the user's own service and `IRequiresPermission` a marker with a `string Permission { get; }` property on the message contracts. `IHttpContextAccessor.HttpContext` is visible in the step when the send is awaited within the request's async flow.
 
-Receiving side: `MessageProperties` has no identity field, so the user has to travel in the message (for example an `IssuedBy` property). A handler step on the same marker is a useful second guard that catches a sender lacking its send step, but it cannot defend against someone publishing manually — the broker's access control is the real boundary.
+Receiving side: `MessageProperties` has no identity field, so the user has to travel in the message (for example an `IssuedBy` property) or in the unauthenticated `MessageProperties.CustomProperties` that the caller set through the `customProperties` parameter of `Send`/`Record`/`RaiseEvent`/`Call`/`QueueJob` (a send step cannot stamp them). A handler step on the same marker is a useful second guard that catches a sender lacking its send step, but it cannot defend against someone publishing manually — the broker's access control is the real boundary.
 
 ## Step 4 — Register the step
 

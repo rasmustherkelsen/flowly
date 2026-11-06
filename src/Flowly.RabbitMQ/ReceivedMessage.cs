@@ -26,7 +26,10 @@ internal class RabbitMqReceivedMessage<TMessage>(IChannel channel, BasicDeliverE
         Traceparent: GetStringHeader(args.BasicProperties, "traceparent"),
         Tracestate: GetStringHeader(args.BasicProperties, "tracestate"),
         ReplyTo: string.IsNullOrEmpty(args.BasicProperties.ReplyTo) ? null : args.BasicProperties.ReplyTo,
-        StreamOffset: StreamOffsetHeader.Read(args.BasicProperties));
+        StreamOffset: StreamOffsetHeader.Read(args.BasicProperties))
+    {
+        CustomProperties = RabbitMqCustomProperties.Read(args.BasicProperties.Headers)
+    };
 
     public Task Complete(CancellationToken cancellationToken = default)
     {
@@ -77,5 +80,8 @@ internal class RabbitMqUntypedReceivedMessage(BasicDeliverEventArgs args) : IRec
 
     public MessageProperties Properties { get; } = new(
         args.BasicProperties.MessageId ?? string.Empty,
-        args.BasicProperties.CorrelationId ?? string.Empty);
+        args.BasicProperties.CorrelationId ?? string.Empty)
+    {
+        CustomProperties = RabbitMqCustomProperties.Read(args.BasicProperties.Headers)
+    };
 }

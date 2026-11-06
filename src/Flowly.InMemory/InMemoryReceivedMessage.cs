@@ -30,9 +30,9 @@ internal class InMemoryReceivedMessage<TMessage>(InMemoryEnvelope envelope, Chan
         e.ApplicationProperties.TryGetValue(FlowlyMessageProperties.RetryCount, out var rc);
         e.ApplicationProperties.TryGetValue("traceparent", out var tp);
         e.ApplicationProperties.TryGetValue("tracestate", out var ts);
-        e.ApplicationProperties.TryGetValue("sessionId", out var sid);
-        e.ApplicationProperties.TryGetValue("correlationId", out var cid);
-        e.ApplicationProperties.TryGetValue("replyTo", out var replyTo);
+        e.ApplicationProperties.TryGetValue(InMemoryConstants.SessionIdKey, out var sid);
+        e.ApplicationProperties.TryGetValue(InMemoryConstants.CorrelationIdKey, out var cid);
+        e.ApplicationProperties.TryGetValue(InMemoryConstants.ReplyToKey, out var replyTo);
 
         return new MessageProperties(
             e.MessageId,
@@ -42,7 +42,10 @@ internal class InMemoryReceivedMessage<TMessage>(InMemoryEnvelope envelope, Chan
             Tracestate: ts as string,
             SessionId: sid as string,
             ReplyTo: replyTo as string,
-            StreamOffset: streamOffset);
+            StreamOffset: streamOffset)
+        {
+            CustomProperties = CustomMessageProperties.Read(e.ApplicationProperties!)
+        };
     }
 
     private static InMemoryEnvelope CreateDeadLetterEnvelope(InMemoryEnvelope source, string? reason)

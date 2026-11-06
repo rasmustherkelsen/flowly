@@ -65,5 +65,6 @@ public class EventHandlerBaseTests
         public string MessageId => "msg-1";
         public string? CorrelationId => null;
         public DateTimeOffset EnqueuedAt => DateTimeOffset.UtcNow;
+        public MessageProperties Properties => MessageProperties.Empty;
     }
 }

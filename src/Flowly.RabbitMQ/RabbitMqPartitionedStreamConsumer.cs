@@ -712,7 +712,10 @@ internal sealed class RabbitMqPartitionedStreamConsumer<TMessage> : IPartitioned
             RetryCount: GetRetryCount(message.ApplicationProperties),
             Traceparent: GetStringProperty(message.ApplicationProperties, "traceparent"),
             Tracestate: GetStringProperty(message.ApplicationProperties, "tracestate"),
-            StreamOffset: offset);
+            StreamOffset: offset)
+        {
+            CustomProperties = CustomMessageProperties.Read(message.ApplicationProperties)
+        };
 
         public Task Complete(CancellationToken cancellationToken = default) => Task.CompletedTask;
 

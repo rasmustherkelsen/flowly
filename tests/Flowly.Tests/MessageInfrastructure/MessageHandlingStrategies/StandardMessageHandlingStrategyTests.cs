@@ -27,6 +27,22 @@ public class StandardMessageHandlingStrategyTests
         }
 
         [Fact]
+        public async Task PassesTheDeliverysPropertiesToTheHandlerContext()
+        {
+            var handler = new TestOrderHandler();
+            var services = new ServiceCollection();
+            services.AddScoped<MessageHandler<OrderMessage>>(_ => handler);
+            using var scope = services.BuildServiceProvider().CreateScope();
+            var properties = new MessageProperties("m", "c") { CustomProperties = new Dictionary<string, string> { ["tenant"] = "contoso" } };
+            var receivedMessage = new FakeReceivedMessage<OrderMessage>(new OrderMessage("order-1"), properties);
+            var standardMessageHandlingStrategy = new StandardMessageHandlingStrategy<OrderMessage>(HandlerStepRunner.None);
+
+            await standardMessageHandlingStrategy.HandleMessage(receivedMessage, scope.ServiceProvider, CancellationToken.None);
+
+            Assert.Equal("contoso", handler.ReceivedProperties?.CustomProperties["tenant"]);
+        }
+
+        [Fact]
         public async Task WithNoHandlerRegistered_Throws()
         {
             var serviceProvider = new ServiceCollection().BuildServiceProvider();
@@ -213,10 +229,12 @@ public class StandardMessageHandlingStrategyTests
     private sealed class TestOrderHandler : MessageHandler<OrderMessage>
     {
         public string? ReceivedOrderId { get; private set; }
+        public MessageProperties? ReceivedProperties { get; private set; }
 
         public override Task Handle(IMessageContext<OrderMessage> messageContext)
         {
             ReceivedOrderId = messageContext.Message?.OrderId;
+            ReceivedProperties = messageContext.Properties;
             return Task.CompletedTask;
         }
     }

@@ -113,6 +113,31 @@ public class CallSubmitterTests
         }
 
         [Fact]
+        public async Task SendsMessageWithCustomProperties()
+        {
+            var capturingSender = new CapturingSender();
+            var callSubmitter = CreateSubmitter(new CapturingCallerInstrumentation(), sender: capturingSender);
+
+            await callSubmitter.Submit(new PingMessage("hi"), CancellationToken.None, new Dictionary<string, string> { ["tenant"] = "contoso" });
+
+            Assert.Equal("contoso", capturingSender.LastProperties?.CustomProperties["tenant"]);
+        }
+
+        [Fact]
+        public async Task WithReservedCustomPropertyKey_ThrowsArgumentExceptionWithoutSending()
+        {
+            var capturingSender = new CapturingSender();
+            var callSubmitter = CreateSubmitter(new CapturingCallerInstrumentation(), sender: capturingSender);
+
+            await Assert.ThrowsAsync<ArgumentException>(() => callSubmitter.Submit(
+                new PingMessage("hi"),
+                CancellationToken.None,
+                new Dictionary<string, string> { ["traceparent"] = "x" }));
+
+            Assert.Null(capturingSender.LastProperties);
+        }
+
+        [Fact]
         public async Task SendsMessageWithReplyToQueue()
         {
             var capturingSender = new CapturingSender();

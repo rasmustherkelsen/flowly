@@ -4,5 +4,5 @@ namespace Flowly.Jobs.Senders;
 
 internal interface IJobSubmitter<in TMessage> where TMessage : IJobMessage
 {
-    Task<JobId> SubmitJob(TMessage message, CancellationToken cancellationToken = default);
+    Task<JobId> SubmitJob(TMessage message, CancellationToken cancellationToken = default, IReadOnlyDictionary<string, string>? customProperties = null);
 }

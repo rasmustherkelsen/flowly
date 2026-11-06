@@ -16,12 +16,21 @@ public interface IJobMessageSender
     /// </summary>
     /// <param name="message">The job message to enqueue. Must implement <see cref="IJobMessage" />.</param>
     /// <param name="cancellationToken">A cancellation token that can be used to cancel the send operation.</param>
+    /// <param name="customProperties">
+    ///     Optional application-defined string key/value pairs delivered with the job message and readable by the handler in
+    ///     <see cref="MessageProperties.CustomProperties" />. Keys starting with <c>flowly-</c> and the keys
+    ///     <c>traceparent</c> and <c>tracestate</c> are reserved. The values are not authenticated.
+    /// </param>
     /// <typeparam name="TMessage">The job message type. Must implement <see cref="IJobMessage" />.</typeparam>
     /// <returns>
     ///     A <see cref="JobId" /> that uniquely identifies the queued job and can be used to query its state via
     ///     <see cref="IJobTrackingService" />.
     /// </returns>
-    Task<JobId> QueueJob<TMessage>(TMessage message, CancellationToken cancellationToken = default) where TMessage : IJobMessage;
+    /// <exception cref="ArgumentException"><paramref name="customProperties" /> contains an empty or reserved key or a null value.</exception>
+    Task<JobId> QueueJob<TMessage>(
+        TMessage message,
+        CancellationToken cancellationToken = default,
+        IReadOnlyDictionary<string, string>? customProperties = null) where TMessage : IJobMessage;
 
     /// <summary>
     ///     Triggers an immediate execution of the recurring job identified by <paramref name="jobId" />, bypassing the

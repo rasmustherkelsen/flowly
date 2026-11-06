@@ -6,11 +6,11 @@ namespace Flowly.Jobs.Senders;
 
 internal class JobMessageSender(IServiceProvider serviceProvider, IMessageSender messageSender) : IJobMessageSender
 {
-    public async Task<JobId> QueueJob<TMessage>(TMessage message, CancellationToken cancellationToken = default) where TMessage : IJobMessage
-    {
-        var messageSubmitter = serviceProvider.GetRequiredService<IJobSubmitter<TMessage>>();
-        return await messageSubmitter.SubmitJob(message, cancellationToken);
-    }
+    public Task<JobId> QueueJob<TMessage>(
+        TMessage message,
+        CancellationToken cancellationToken = default,
+        IReadOnlyDictionary<string, string>? customProperties = null) where TMessage : IJobMessage
+        => serviceProvider.GetRequiredService<IJobSubmitter<TMessage>>().SubmitJob(message, cancellationToken, customProperties);
 
     public async Task StartRecurringJob(Guid jobId)
     {

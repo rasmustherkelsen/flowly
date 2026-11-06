@@ -198,7 +198,7 @@ internal sealed class StreamPartitionRunner<TMessage, THandler>(
 
             try
             {
-                await messageHandler.Handle(new MessageStreamContext<TMessage>(batch.Select(m => m.Body).ToList(), stoppingToken, partition));
+                await messageHandler.Handle(new MessageStreamContext<TMessage>(batch.Select(m => m.Body).ToList(), stoppingToken, partition, batch.Select(m => m.Properties).ToList()));
 
                 foreach (var receivedMessage in batch)
                     await receivedMessage.Complete(stoppingToken);

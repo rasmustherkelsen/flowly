@@ -27,6 +27,25 @@ public class BatchMessageContextTests
         }
 
         [Fact]
+        public void AssignsPropertiesInMessageOrder()
+        {
+            var first = new MessageProperties("m1", "c") { CustomProperties = new Dictionary<string, string> { ["tenant"] = "a" } };
+            var second = new MessageProperties("m2", "c") { CustomProperties = new Dictionary<string, string> { ["tenant"] = "b" } };
+
+            var batchMessageContext = new BatchMessageContext<SomeMessage>([new SomeMessage("1"), new SomeMessage("2")], CancellationToken.None, [first, second]);
+
+            Assert.Equal(["a", "b"], batchMessageContext.Properties.Select(properties => properties.CustomProperties["tenant"]));
+        }
+
+        [Fact]
+        public void WithoutProperties_HasEmptyPropertiesPerMessage()
+        {
+            var batchMessageContext = new BatchMessageContext<SomeMessage>([new SomeMessage("1"), new SomeMessage("2")], CancellationToken.None);
+
+            Assert.Equal(2, batchMessageContext.Properties.Count);
+        }
+
+        [Fact]
         public void WithEmptyCollection_MessagesIsEmpty()
         {
             var batchMessageContext = new BatchMessageContext<SomeMessage>([], CancellationToken.None);

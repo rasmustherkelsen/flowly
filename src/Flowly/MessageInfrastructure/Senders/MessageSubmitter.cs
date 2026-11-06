@@ -14,10 +14,18 @@ internal class MessageSubmitter<TMessage>(
     ISendStepRunner sendStepRunner,
     bool isStream = false) : IMessageSubmitter<TMessage>
 {
-    public Task Submit(TMessage message, CancellationToken cancellationToken = default, string? partitionKey = null)
-        => sendStepRunner.Run(message!, cancellationToken, () => SubmitCore(message, cancellationToken, partitionKey));
+    public Task Submit(
+        TMessage message,
+        CancellationToken cancellationToken = default,
+        string? partitionKey = null,
+        IReadOnlyDictionary<string, string>? customProperties = null)
+    {
+        CustomMessageProperties.Validate(customProperties, nameof(customProperties));
 
-    private async Task SubmitCore(TMessage message, CancellationToken cancellationToken, string? partitionKey)
+        return sendStepRunner.Run(message!, cancellationToken, () => SubmitCore(message, cancellationToken, partitionKey, customProperties));
+    }
+
+    private async Task SubmitCore(TMessage message, CancellationToken cancellationToken, string? partitionKey, IReadOnlyDictionary<string, string>? customProperties)
     {
         var sw = Stopwatch.StartNew();
         var client = clientRegistry.GetTransportClient(providerName);
@@ -28,7 +36,8 @@ internal class MessageSubmitter<TMessage>(
         try
         {
             var sender = await CreateSender(client);
-            await sender.SendMessage(message, new MessageProperties(messageId, string.Empty, PartitionKey: partitionKey), cancellationToken);
+            await sender.SendMessage(message, new MessageProperties(messageId, string.Empty, PartitionKey: partitionKey) { CustomProperties = customProperties ?? CustomMessageProperties.Empty },
+                cancellationToken);
             submitterInstrumentation.RecordSent(queueName, sw.Elapsed.TotalMilliseconds);
         }
         catch

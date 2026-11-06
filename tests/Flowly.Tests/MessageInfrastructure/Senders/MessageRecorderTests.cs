@@ -67,6 +67,20 @@ public class MessageRecorderTests
         }
 
         [Fact]
+        public async Task PassesCustomPropertiesThroughToSubmitter()
+        {
+            var submitter = new CapturingSubmitter<SomeMessage>();
+            var serviceProvider = new FakeServiceProvider();
+            serviceProvider.Register<IMessageSubmitter<SomeMessage>>(submitter);
+            var messageRecorder = new MessageRecorder(serviceProvider);
+            var customProperties = new Dictionary<string, string> { ["tenant"] = "contoso" };
+
+            await messageRecorder.Record(new SomeMessage("x"), customProperties: customProperties);
+
+            Assert.Same(customProperties, submitter.ReceivedCustomProperties);
+        }
+
+        [Fact]
         public async Task WithoutRegisteredSubmitter_ThrowsInvalidOperationException()
         {
             var messageRecorder = new MessageRecorder(new FakeServiceProvider());
@@ -181,9 +195,11 @@ public class MessageRecorderTests
         public TMessage? Submitted { get; private set; }
         public CancellationToken ReceivedToken { get; private set; }
         public string? ReceivedPartitionKey { get; private set; }
+        public IReadOnlyDictionary<string, string>? ReceivedCustomProperties { get; private set; }
 
-        public Task Submit(TMessage message, CancellationToken cancellationToken = default, string? partitionKey = null)
+        public Task Submit(TMessage message, CancellationToken cancellationToken = default, string? partitionKey = null, IReadOnlyDictionary<string, string>? customProperties = null)
         {
+            ReceivedCustomProperties = customProperties;
             Submitted = message;
             ReceivedToken = cancellationToken;
             ReceivedPartitionKey = partitionKey;

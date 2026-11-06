@@ -54,11 +54,16 @@ internal class InMemoryMessageBusSender(
     {
         var props = new Dictionary<string, object>();
 
+        foreach (var (key, value) in messageProperties.CustomProperties)
+        {
+            props[key] = value;
+        }
+
         if (!string.IsNullOrEmpty(messageProperties.CorrelationId))
-            props["correlationId"] = messageProperties.CorrelationId;
+            props[InMemoryConstants.CorrelationIdKey] = messageProperties.CorrelationId;
 
         if (!string.IsNullOrEmpty(messageProperties.SessionId))
-            props["sessionId"] = messageProperties.SessionId;
+            props[InMemoryConstants.SessionIdKey] = messageProperties.SessionId;
 
         if (messageProperties.RetryCount > 0)
             props[FlowlyMessageProperties.RetryCount] = messageProperties.RetryCount;
@@ -74,7 +79,7 @@ internal class InMemoryMessageBusSender(
             props["tracestate"] = actTs;
 
         if (!string.IsNullOrEmpty(messageProperties.ReplyTo))
-            props["replyTo"] = messageProperties.ReplyTo;
+            props[InMemoryConstants.ReplyToKey] = messageProperties.ReplyTo;
 
         var messageId = !string.IsNullOrEmpty(messageProperties.MessageId)
             ? messageProperties.MessageId

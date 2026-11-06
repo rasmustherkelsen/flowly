@@ -295,7 +295,7 @@ A handler kind is a good fit when it has a single delivery unit, a DI scope per 
 | Short-circuit | Not calling `next`; no `Abort` flag | Section 11 |
 | Location | `Flowly` core | Transport independent; contracts assemblies already reference `Flowly` |
 | Sender side | Separate `SendStep` type with a fresh DI scope per send | Section 12 |
-| Properties bag | Not part of this design; a generic headers / application-properties concept is tracked as a separate feature in Gitea | Until it exists, identity travels in the command |
+| Properties bag | Not part of this design. Custom message properties (`MessageProperties.CustomProperties`, set through the `customProperties` parameter of the send methods) exist as a separate feature, but a send step has no way to stamp them on the outgoing message | Identity travels in the command, or in the unauthenticated custom properties set by the caller |
 
 ## 10. Risks and drawbacks
 
@@ -417,7 +417,7 @@ A holder that request middleware populates (a scoped service with a settable pro
 
 A receiver step on the same marker is a useful second guard, but:
 
-- `MessageProperties` has no identity field and no generic header bag, so the user must travel in the message (an `IssuedBy` on the command). A generic properties bag is a separate feature tracked in Gitea.
+- `MessageProperties` has no identity field. The user can travel in the message (an `IssuedBy` on the command) or in `MessageProperties.CustomProperties`, which the caller sets through the `customProperties` parameter of the send methods; a send step cannot stamp them because it has no access to the outgoing properties.
 - The guard does not defend against someone publishing manually: whoever can publish can forge the identity, unless it is a signed token, which brings its own problem of token lifetime versus time spent in a queue or in retries. The receiver check mainly catches a sender that lacks its step; the broker's access control is the real boundary.
 
 ## 13. What was verified and what was not

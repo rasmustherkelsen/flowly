@@ -42,6 +42,31 @@ public class MessagePropertiesTests
         }
     }
 
+    public class CustomProperties
+    {
+        [Fact]
+        public void Default_IsEmptyAndNotNull()
+        {
+            var messageProperties = new MessageProperties("msg-1", "corr-1");
+
+            Assert.Empty(messageProperties.CustomProperties);
+        }
+
+        [Fact]
+        public void WithExpression_KeepsCustomPropertiesOfSource()
+        {
+            var messageProperties = new MessageProperties("msg-1", "corr-1") { CustomProperties = new Dictionary<string, string> { ["tenant"] = "contoso" } };
+
+            var retried = messageProperties with { RetryCount = 2 };
+
+            Assert.Equal("contoso", retried.CustomProperties["tenant"]);
+        }
+
+        [Fact]
+        public void EmptyInstance_HasNoCustomProperties()
+            => Assert.Empty(MessageProperties.Empty.CustomProperties);
+    }
+
     public class EmptyInstance
     {
         [Fact]

@@ -32,4 +32,11 @@ public interface IEventContext<out TEvent>
     ///     that have been in the queue for too long or implementing retry policies based on message age.
     /// </summary>
     DateTimeOffset EnqueuedAt { get; }
+
+    /// <summary>
+    ///     The transport-level properties of the delivery being processed, including the application-defined
+    ///     <see cref="MessageProperties.CustomProperties" /> the publisher attached. The custom properties are not
+    ///     authenticated and must not be treated as proof of identity.
+    /// </summary>
+    MessageProperties Properties { get; }
 }

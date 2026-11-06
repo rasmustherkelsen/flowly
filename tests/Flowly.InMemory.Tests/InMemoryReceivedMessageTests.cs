@@ -42,9 +42,32 @@ public class InMemoryReceivedMessageTests
     public class Properties
     {
         [Fact]
+        public void WithApplicationAndFlowlyProperties_ExposesOnlyApplicationOnesAsCustomProperties()
+        {
+            var envelope = BuildEnvelope(applicationProperties: new Dictionary<string, object>
+            {
+                ["tenant"] = "contoso",
+                ["flowly-reply-to"] = "reply-queue",
+                [FlowlyMessageProperties.RetryCount] = 2,
+                ["traceparent"] = "00-trace-01"
+            });
+            var receivedMessage = new InMemoryReceivedMessage<TestPayload>(envelope, Channel.CreateUnbounded<InMemoryEnvelope>());
+
+            Assert.Equal(["tenant"], receivedMessage.Properties.CustomProperties.Keys);
+        }
+
+        [Fact]
+        public void WithoutApplicationProperties_CustomPropertiesAreEmpty()
+        {
+            var receivedMessage = new InMemoryReceivedMessage<TestPayload>(BuildEnvelope(), Channel.CreateUnbounded<InMemoryEnvelope>());
+
+            Assert.Empty(receivedMessage.Properties.CustomProperties);
+        }
+
+        [Fact]
         public void WithReplyTo_ExtractsReplyToFromApplicationProperties()
         {
-            var envelope = BuildEnvelope(applicationProperties: new Dictionary<string, object> { ["replyTo"] = "reply-queue" });
+            var envelope = BuildEnvelope(applicationProperties: new Dictionary<string, object> { ["flowly-reply-to"] = "reply-queue" });
             var deadLetterChannel = Channel.CreateUnbounded<InMemoryEnvelope>();
             var receivedMessage = new InMemoryReceivedMessage<TestPayload>(envelope, deadLetterChannel);
 

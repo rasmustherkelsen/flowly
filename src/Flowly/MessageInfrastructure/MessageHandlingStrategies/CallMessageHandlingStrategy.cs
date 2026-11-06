@@ -36,7 +36,7 @@ internal class CallMessageHandlingStrategy<TMessage, TReturn>(
             handler.GetType(),
             serviceProvider,
             cancellationToken,
-            async () => returnMessage = await handler.InvokeHandle(new MessageContext<TMessage>(receivedMessage.Body, cancellationToken)));
+            async () => returnMessage = await handler.InvokeHandle(new MessageContext<TMessage>(receivedMessage.Body, cancellationToken, receivedMessage.Properties)));
 
         if (returnMessage is null)
         {

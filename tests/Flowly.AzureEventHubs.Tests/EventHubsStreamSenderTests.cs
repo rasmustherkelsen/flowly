@@ -59,6 +59,18 @@ public class EventHubsStreamSenderTests
         }
 
         [Fact]
+        public async Task WithCustomProperties_SetsThemAsEventProperties()
+        {
+            var producer = new FakeEventHubsProducer();
+            var eventHubsStreamSender = new EventHubsStreamSender("readings", producer, null, false);
+            var messageProperties = Properties() with { CustomProperties = new Dictionary<string, string> { ["tenant"] = "contoso" } };
+
+            await eventHubsStreamSender.SendMessage(new Reading("sensor-1", 21), messageProperties);
+
+            Assert.Equal("contoso", Assert.Single(producer.Sent).EventData.Properties["tenant"]);
+        }
+
+        [Fact]
         public async Task WithRetryCount_SetsRetryCountProperty()
         {
             var producer = new FakeEventHubsProducer();

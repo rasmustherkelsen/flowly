@@ -41,6 +41,20 @@ public class MessageSenderTests
         }
 
         [Fact]
+        public async Task PassesCustomPropertiesThroughToSubmitter()
+        {
+            var submitter = new CapturingSubmitter<SomeMessage>();
+            var serviceProvider = new FakeServiceProvider();
+            serviceProvider.Register<IMessageSubmitter<SomeMessage>>(submitter);
+            var messageSender = new MessageSender(serviceProvider);
+            var customProperties = new Dictionary<string, string> { ["tenant"] = "contoso" };
+
+            await messageSender.Send(new SomeMessage("x"), customProperties: customProperties);
+
+            Assert.Same(customProperties, submitter.ReceivedCustomProperties);
+        }
+
+        [Fact]
         public async Task WithoutRegisteredSubmitter_ThrowsInvalidOperationException()
         {
             var messageSender = new MessageSender(new FakeServiceProvider());
@@ -173,9 +187,11 @@ public class MessageSenderTests
     {
         public TMessage? Submitted { get; private set; }
         public CancellationToken ReceivedToken { get; private set; }
+        public IReadOnlyDictionary<string, string>? ReceivedCustomProperties { get; private set; }
 
-        public Task Submit(TMessage message, CancellationToken cancellationToken = default, string? partitionKey = null)
+        public Task Submit(TMessage message, CancellationToken cancellationToken = default, string? partitionKey = null, IReadOnlyDictionary<string, string>? customProperties = null)
         {
+            ReceivedCustomProperties = customProperties;
             Submitted = message;
             ReceivedToken = cancellationToken;
             return Task.CompletedTask;
@@ -184,6 +200,6 @@ public class MessageSenderTests
 
     private class ThrowingSubmitter<TMessage>(Exception exception) : IMessageSubmitter<TMessage>
     {
-        public Task Submit(TMessage message, CancellationToken cancellationToken = default, string? partitionKey = null) => Task.FromException(exception);
+        public Task Submit(TMessage message, CancellationToken cancellationToken = default, string? partitionKey = null, IReadOnlyDictionary<string, string>? customProperties = null) => Task.FromException(exception);
     }
 }

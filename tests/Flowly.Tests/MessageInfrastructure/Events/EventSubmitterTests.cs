@@ -31,6 +31,32 @@ public class EventSubmitterTests
         }
 
         [Fact]
+        public async Task SendsEventWithCustomProperties()
+        {
+            var publisher = new CapturingEventPublisher();
+            var registry = new SingleClientRegistry(new FakeEventCapableClient(publisher), "primary");
+            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, "order-placed", "primary", new StubPublisherInstrumentation(), SendStepRunner.None);
+
+            await eventSubmitter.Raise(new OrderPlaced("x"), customProperties: new Dictionary<string, string> { ["tenant"] = "contoso" });
+
+            Assert.Equal("contoso", publisher.SentMessages[0].Properties.CustomProperties["tenant"]);
+        }
+
+        [Fact]
+        public async Task WithReservedCustomPropertyKey_ThrowsArgumentExceptionWithoutPublishing()
+        {
+            var publisher = new CapturingEventPublisher();
+            var registry = new SingleClientRegistry(new FakeEventCapableClient(publisher), "primary");
+            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, "order-placed", "primary", new StubPublisherInstrumentation(), SendStepRunner.None);
+
+            await Assert.ThrowsAsync<ArgumentException>(() => eventSubmitter.Raise(
+                new OrderPlaced("x"),
+                customProperties: new Dictionary<string, string> { ["flowly-target-subscription"] = "other" }));
+
+            Assert.Empty(publisher.SentMessages);
+        }
+
+        [Fact]
         public async Task SentMessageHasGeneratedMessageIdAndEmptyCorrelationId()
         {
             var publisher = new CapturingEventPublisher();

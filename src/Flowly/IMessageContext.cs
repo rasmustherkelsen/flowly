@@ -20,4 +20,11 @@ public interface IMessageContext<T>
     ///     processing should be aborted.
     /// </summary>
     CancellationToken CancellationToken { get; }
+
+    /// <summary>
+    ///     The transport-level properties of the delivery being processed: message and correlation id, retry count and the
+    ///     application-defined <see cref="MessageProperties.CustomProperties" /> the sender attached. The custom properties
+    ///     are not authenticated and must not be treated as proof of identity.
+    /// </summary>
+    MessageProperties Properties { get; }
 }

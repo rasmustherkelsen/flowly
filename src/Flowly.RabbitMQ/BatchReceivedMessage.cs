@@ -18,7 +18,10 @@ internal class RabbitMqBatchReceivedMessage<TMessage>(IChannel channel, ulong de
         properties.CorrelationId ?? string.Empty,
         RetryCount: GetRetryCount(properties),
         Traceparent: GetStringHeader(properties, "traceparent"),
-        Tracestate: GetStringHeader(properties, "tracestate"));
+        Tracestate: GetStringHeader(properties, "tracestate"))
+    {
+        CustomProperties = RabbitMqCustomProperties.Read(properties.Headers)
+    };
 
     public Task Complete(CancellationToken cancellationToken = default)
     {
