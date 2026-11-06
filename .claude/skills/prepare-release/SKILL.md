@@ -225,7 +225,7 @@ dotnet restore 2>&1 | tee restore.log && dotnet build --no-restore 2>&1 | tee bu
 grep -hE "NU190[123]" restore.log build.log | sort -u
 ```
 
-6. Record **PASS** or **FAIL** (with error summary on failure). Any `NU1901`/`NU1902`/`NU1903` line is a **FAIL** for that variant even when the build succeeds: a scaffolded project must restore without known-vulnerable packages. The usual fix is a direct `PackageReference` override of the flagged transitive package in the template `.csproj` (like the `MessagePack` and `System.Security.Cryptography.Pkcs` overrides in the Aspire AppHost template), at the lowest stable version that is not flagged.
+6. Record **PASS** or **FAIL** (with error summary on failure). Any `NU1901`/`NU1902`/`NU1903` line is a **FAIL** for that variant even when the build succeeds: a scaffolded project must restore without known-vulnerable packages. The usual fix is a direct `PackageReference` override of the flagged transitive package in the template `.csproj` (like the `System.Security.Cryptography.Pkcs` override in the Aspire AppHost template), at the lowest stable version that is not flagged. Re-check each existing override whenever Aspire moves: remove it once the Aspire packages restore clean without it (the `MessagePack` override went away with Aspire 13.6.4, where keeping it pinned below Aspire's own requirement fails with `NU1605`).
 
 | Test name | Command |
 |---|---|

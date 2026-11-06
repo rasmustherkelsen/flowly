@@ -891,7 +891,7 @@ Run everything with: `dotnet run --project MyApp.AppHost`
 
 **Aspire CLI bundle mode:** the AppHost `.csproj` sets `<AspireUseCliBundle>true</AspireUseCliBundle>` (matching Microsoft's own 13.x templates; replaces the former explicit `<IsAspireHost>`, which the SDK sets anyway) and the template root carries `aspire.config.json` pointing at `MyAspireApp.AppHost/MyAspireApp.AppHost.csproj`. In this mode `dotnet run` delegates to `aspire run` using the `aspire` on PATH or, failing that, `dnx --yes Aspire.Cli` (ships with the .NET 10 SDK; restores the CLI from NuGet on first run). Dashboard and DCP then come from the CLI bundle instead of the `Aspire.Dashboard.Sdk`/`Aspire.Hosting.Orchestration` NuGet packages. With `AspireUseCliBundle=false` (the SDK default) the build emits `ASPIRE010`. `launchSettings.json` uses the `ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL`/`ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL` variable names (the older `DOTNET_*` names are still accepted by Aspire).
 
-**Aspire SDK version:** `Aspire.AppHost.Sdk` and every `Aspire.*` package in the AppHost are pinned to one Aspire release (currently 13.6.1) — they must always move together. `ServiceDefaults/Extensions.cs` is a copy of the Microsoft-generated boilerplate (Aspire 13.6.1, comments stripped) and can be regenerated with `dotnet new aspire-servicedefaults` if Aspire upgrades.
+**Aspire SDK version:** `Aspire.AppHost.Sdk` and every `Aspire.*` package in the AppHost are pinned to one Aspire release (currently 13.6.4) — they must always move together. `ServiceDefaults/Extensions.cs` is a copy of the Microsoft-generated boilerplate (Aspire 13.6.1, comments stripped) and can be regenerated with `dotnet new aspire-servicedefaults` if Aspire upgrades.
 
 ---
 
