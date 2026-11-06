@@ -8,12 +8,15 @@ internal sealed class FakeStreamStartOffsetResolver(List<string>? events = null)
 
     public Exception? ExceptionToThrow { get; set; }
 
+    public Action? OnResolve { get; set; }
+
     public List<ResolveCall> Calls { get; } = [];
 
     public Task<long?> ResolveStartOffset(string queueName, int? partition, StartPosition startPosition, CancellationToken cancellationToken)
     {
         events?.Add("Resolve");
         Calls.Add(new ResolveCall(queueName, partition, startPosition));
+        OnResolve?.Invoke();
 
         return ExceptionToThrow is null ? Task.FromResult(Result) : Task.FromException<long?>(ExceptionToThrow);
     }

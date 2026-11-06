@@ -19,7 +19,8 @@ namespace Flowly;
 ///         (see <see cref="Transport.IStreamStartOffsetResolver" />), Flowly stores that offset minus one through
 ///         <see cref="SaveStreamPosition" /> before consumption starts, flagged with
 ///         <see cref="MessageStreamCheckpointSaveContext.IsBootstrapSeed" />. Messages published while the process was down
-///         are then delivered after the next restart even if no batch was ever processed. <see cref="StartPosition.First" />
+///         are then delivered after the next restart even if no batch was ever processed. A seed is written only when no
+///         position is stored yet and never overwrites one (see <see cref="SaveStreamPosition" />). <see cref="StartPosition.First" />
 ///         and <see cref="StartPosition.Offset" /> do not change meaning between restarts and are not stored up front. If the
 ///         transport cannot resolve the position, or storing it fails, the configured start position is used and the position
 ///         is first stored after the first processed batch.
@@ -97,6 +98,16 @@ public abstract class MessageStreamCheckpoint<TMessage>
     ///         reader will start at offset <c>0</c> — so an implementation must accept negative values and must not treat
     ///         every call as proof that a batch was handled. A row for the reader may not exist yet: store the position
     ///         whether or not <see cref="InitializeCheckpoint" /> created one.
+    ///     </para>
+    ///     <para>
+    ///         <strong>A bootstrap seed never overwrites a stored position.</strong> When
+    ///         <see cref="MessageStreamCheckpointSaveContext.IsBootstrapSeed" /> is <see langword="true" />, write the position only
+    ///         if none is stored yet for the reader (a row created by <see cref="InitializeCheckpoint" /> without a position counts
+    ///         as none stored), and do nothing otherwise. Do the check and the write as one atomic operation, such as a conditional
+    ///         insert or an update that requires an empty position, because a seed can complete late, after the reader has started
+    ///         and saved a higher position, and an unconditional write would move the position backwards. Flowly re-reads the
+    ///         position with <see cref="GetStreamPosition" /> just before it saves a seed, which narrows the window but does not
+    ///         close it. A save without the flag always overwrites.
     ///     </para>
     /// </summary>
     /// <param name="context">Identifies the reader this checkpoint belongs to and the position to store.</param>

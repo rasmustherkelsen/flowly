@@ -127,6 +127,14 @@ internal static class MessageStreamCheckpointHelper
                 return fallback;
             }
 
+            var positionStoredMeanwhile = await checkpoint.GetStreamPosition(context, cancellationToken);
+
+            if (positionStoredMeanwhile.HasValue)
+            {
+                handlerInstrumentation.RecordCheckpointResolved(handlerName, queueName, CheckpointResolution.Resumed);
+                return StartPosition.Offset(positionStoredMeanwhile.Value + 1);
+            }
+
             await checkpoint.SaveStreamPosition(
                 new MessageStreamCheckpointSaveContext(context.ConsumerName, context.Partition, startOffset.Value - 1) { IsBootstrapSeed = true },
                 cancellationToken);

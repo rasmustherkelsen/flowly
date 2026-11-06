@@ -360,7 +360,65 @@ public class MessageStreamCheckpointHelperTests
 
             await Resolve(checkpoint, StartPosition.Last(), resolver);
 
-            Assert.Equal(["Initialize", "Get", "Resolve", "Save"], events);
+            Assert.Equal(["Initialize", "Get", "Resolve", "Get", "Save"], events);
+        }
+
+        [Fact]
+        public async Task WhenAPositionIsStoredWhileTheStartOffsetIsResolved_DoesNotSaveTheSeed()
+        {
+            var checkpoint = new FakeCheckpoint();
+            var resolver = new FakeStreamStartOffsetResolver { Result = 120, OnResolve = () => checkpoint.StoredPosition = 500 };
+
+            await Resolve(checkpoint, StartPosition.Last(), resolver);
+
+            Assert.Empty(checkpoint.SaveCalls);
+            Assert.Equal(500, checkpoint.StoredPosition);
+        }
+
+        [Fact]
+        public async Task WhenAPositionIsStoredWhileTheStartOffsetIsResolved_ResumesAfterTheStoredPosition()
+        {
+            var checkpoint = new FakeCheckpoint();
+            var resolver = new FakeStreamStartOffsetResolver { Result = 120, OnResolve = () => checkpoint.StoredPosition = 500 };
+
+            var startPosition = await Resolve(checkpoint, StartPosition.Last(), resolver);
+
+            Assert.Equal(StartPosition.Offset(501), startPosition);
+        }
+
+        [Fact]
+        public async Task WhenAPositionIsStoredWhileTheStartOffsetIsResolved_RecordsResumedOutcome()
+        {
+            var checkpoint = new FakeCheckpoint();
+            var resolver = new FakeStreamStartOffsetResolver { Result = 120, OnResolve = () => checkpoint.StoredPosition = 500 };
+            var instrumentation = new SpyHandlerInstrumentation();
+
+            await Resolve(checkpoint, StartPosition.Last(), resolver, instrumentation: instrumentation);
+
+            Assert.Equal(CheckpointResolution.Resumed, Assert.Single(instrumentation.CheckpointResolvedCalls).Resolution);
+        }
+
+        [Fact]
+        public async Task WhenAStoredMinusOneAppearsWhileTheStartOffsetIsResolved_ResumesAtOffsetZero()
+        {
+            var checkpoint = new FakeCheckpoint();
+            var resolver = new FakeStreamStartOffsetResolver { Result = 120, OnResolve = () => checkpoint.StoredPosition = -1 };
+
+            var startPosition = await Resolve(checkpoint, StartPosition.Last(), resolver);
+
+            Assert.Equal(StartPosition.Offset(0), startPosition);
+            Assert.Empty(checkpoint.SaveCalls);
+        }
+
+        [Fact]
+        public async Task WhenNoPositionIsStoredWhileTheStartOffsetIsResolved_StillSavesTheSeed()
+        {
+            var checkpoint = new FakeCheckpoint();
+            var resolver = new FakeStreamStartOffsetResolver { Result = 120 };
+
+            await Resolve(checkpoint, StartPosition.Last(), resolver);
+
+            Assert.Equal(119, Assert.Single(checkpoint.SaveCalls).Position);
         }
 
         [Fact]
@@ -372,7 +430,7 @@ public class MessageStreamCheckpointHelperTests
 
             var startPosition = await Resolve(checkpoint, StartPosition.Last(), resolver, partition: 1, initializeCheckpoint: false);
 
-            Assert.Equal(["Get", "Resolve", "Save"], events);
+            Assert.Equal(["Get", "Resolve", "Get", "Save"], events);
             Assert.Equal(StartPosition.Offset(4), startPosition);
         }
 
