@@ -52,7 +52,7 @@ The actions call the same `IDeadLetterService` the Dashboard uses, so they list,
 
 Exactly one authorization mode must be configured, or `UseFlowlyManagementApi()` throws at startup:
 
-- **API key** — `options.RequireApiKey(apiKey)` (single key, both read and write) or `options.RequireApiKey(readApiKey, writeApiKey)` (read/write split). Presented via the `X-Flowly-Api-Key` request header.
+- **API key** — `options.RequireApiKey(apiKey)` (single key, both read and write) or `options.RequireApiKey(readApiKey, writeApiKey)` (read/write split). Presented via the `X-Flowly-Api-Key` request header. A null, empty or whitespace key throws `ArgumentException` when it is configured, so a missing configuration value fails at startup instead of leaving the API open; a blank header is always rejected, and keys are compared case-sensitively in fixed time. The read key and the write key of the two-key overload must differ (`ArgumentException` otherwise), because an identical read key would grant write access; use the single-key overload when one key should do both.
 - **OAuth2** — `options.UseOAuth2(oauth => { oauth.Authority = "..."; oauth.Audience = "..."; })`, for protecting the API with an Entra ID (or any OIDC) app registration, including the client-credentials flow. The `ReadRequirement`/`WriteRequirement` claim values are checked against both the `roles` claim (Entra App Roles — what an app-only, client-credentials token carries) and the `scp` claim (delegated OAuth scopes — what an interactive sign-in token carries; a space-separated list, matched per scope). The JWT bearer handler maps an incoming `scp` claim to the type `http://schemas.microsoft.com/identity/claims/scope` by default, and both claim types are matched. Values are compared case-sensitively. `Authority` and `Audience` must be non-empty, otherwise `UseOAuth2` throws.
 - **Existing policies** — `options.RequireAuthorizationPolicies(readPolicyName, writePolicyName)` defers entirely to authorization policies the host already configured.
 
@@ -60,7 +60,7 @@ In the API key and OAuth2 modes the authentication scheme is registered under a 
 
 ## Discovery
 
-`UseFlowlyManagementApi()` maps a standard OpenAPI document at `{BasePath}/openapi.json` (protected by the Read policy by default — set `options.ProtectDiscoveryDocument = false` to make it public). Set `options.EnableDocsUi = true` to also serve a minimal interactive explorer at `{BasePath}/docs`.
+`UseFlowlyManagementApi()` maps a standard OpenAPI document at `{BasePath}/openapi.json` (protected by the Read policy by default — set `options.ProtectDiscoveryDocument = false` to make it public). Set `options.EnableDocsUi = true` to also serve a minimal interactive explorer at `{BasePath}/docs`. The page loads the Scalar API reference script from a CDN, pinned to an exact version and verified with a Subresource Integrity hash, so the browser needs internet access to render it.
 
 ## Extensibility
 

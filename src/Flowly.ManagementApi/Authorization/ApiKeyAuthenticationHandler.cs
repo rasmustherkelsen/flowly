@@ -1,4 +1,6 @@
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Logging;
@@ -20,12 +22,15 @@ internal sealed class ApiKeyAuthenticationHandler(
             return Task.FromResult(AuthenticateResult.Fail($"Missing {HeaderName} header."));
 
         var key = providedKey.ToString();
+        if (string.IsNullOrWhiteSpace(key))
+            return Task.FromResult(AuthenticateResult.Fail("Invalid API key."));
+
         var claims = new List<Claim>();
 
-        if (key == Options.ReadApiKey)
+        if (KeyMatches(key, Options.ReadApiKey))
             claims.Add(new Claim(ClaimTypes.Role, "Flowly.Management.Read"));
 
-        if (key == Options.WriteApiKey)
+        if (KeyMatches(key, Options.WriteApiKey))
         {
             claims.Add(new Claim(ClaimTypes.Role, "Flowly.Management.Read"));
             claims.Add(new Claim(ClaimTypes.Role, "Flowly.Management.Write"));
@@ -37,5 +42,15 @@ internal sealed class ApiKeyAuthenticationHandler(
         var identity = new ClaimsIdentity(claims.Distinct(), SchemeName);
         var ticket = new AuthenticationTicket(new ClaimsPrincipal(identity), SchemeName);
         return Task.FromResult(AuthenticateResult.Success(ticket));
+    }
+
+    private static bool KeyMatches(string providedKey, string configuredKey)
+    {
+        if (string.IsNullOrWhiteSpace(configuredKey))
+            return false;
+
+        return CryptographicOperations.FixedTimeEquals(
+            Encoding.UTF8.GetBytes(providedKey),
+            Encoding.UTF8.GetBytes(configuredKey));
     }
 }
