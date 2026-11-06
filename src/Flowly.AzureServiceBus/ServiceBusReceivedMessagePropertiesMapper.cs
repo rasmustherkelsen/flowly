@@ -14,7 +14,10 @@ internal static class ServiceBusReceivedMessagePropertiesMapper
         Traceparent: GetStringProperty(message.ApplicationProperties, "traceparent"),
         Tracestate: GetStringProperty(message.ApplicationProperties, "tracestate"),
         ReplyTo: string.IsNullOrEmpty(message.ReplyTo) ? null : message.ReplyTo,
-        DeliveryCount: message.DeliveryCount);
+        DeliveryCount: message.DeliveryCount)
+    {
+        CustomProperties = CustomMessageProperties.Read(message.ApplicationProperties!)
+    };
 
     private static int GetRetryCount(IReadOnlyDictionary<string, object> applicationProperties)
     {

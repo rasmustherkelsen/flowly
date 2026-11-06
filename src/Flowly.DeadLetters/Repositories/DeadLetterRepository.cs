@@ -47,6 +47,16 @@ internal class DeadLetterRepository(IDbContextFactory<DeadLetterDataContext> con
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<DeadLetterPage> Query(DeadLetterQuery deadLetterQuery, CancellationToken cancellationToken = default)
+    {
+        var items = ReadPage(deadLetterQuery, cancellationToken);
+        var totalCount = deadLetterQuery.IncludeTotalCount ? CountMatching(deadLetterQuery, cancellationToken) : Task.FromResult<int?>(null);
+
+        await Task.WhenAll(items, totalCount);
+
+        return new DeadLetterPage(await items, await totalCount);
+    }
+
     public async Task<IDeadLetter?> Get(string messageId, CancellationToken cancellationToken = default)
     {
         await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
@@ -56,7 +66,7 @@ internal class DeadLetterRepository(IDbContextFactory<DeadLetterDataContext> con
             .FirstOrDefaultAsync(d => d.MessageId == messageId, cancellationToken);
     }
 
-    public async Task MarkAsRequeued(string messageId, string? requeuedBy, CancellationToken cancellationToken = default)
+    public async Task MarkAsRequeued(string messageId, string? requeuedBy, string? replacementMessageBody = null, CancellationToken cancellationToken = default)
     {
         await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
 
@@ -65,7 +75,8 @@ internal class DeadLetterRepository(IDbContextFactory<DeadLetterDataContext> con
             .ExecuteUpdateAsync(s => s
                     .SetProperty(d => d.Status, DeadLetterStatus.Requeued)
                     .SetProperty(d => d.RequeuedAt, DateTimeOffset.UtcNow)
-                    .SetProperty(d => d.RequeuedBy, requeuedBy),
+                    .SetProperty(d => d.RequeuedBy, requeuedBy)
+                    .SetProperty(d => d.ReplacementMessageBody, replacementMessageBody),
                 cancellationToken);
     }
 
@@ -110,6 +121,52 @@ internal class DeadLetterRepository(IDbContextFactory<DeadLetterDataContext> con
             purged.AddRange(await DeletePendingChunk(context, chunk, cutOff, cancellationToken));
 
         return purged;
+    }
+
+    private async Task<IReadOnlyList<IDeadLetter>> ReadPage(DeadLetterQuery deadLetterQuery, CancellationToken cancellationToken)
+    {
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+
+        var ordered = Filter(context.DeadLetters.AsNoTracking(), deadLetterQuery)
+            .OrderByDescending(d => d.DeadLetteredAt)
+            .ThenBy(d => d.MessageId);
+
+        var skipped = deadLetterQuery.Skip > 0 ? ordered.Skip(deadLetterQuery.Skip) : ordered;
+        var paged = deadLetterQuery.Take is { } take ? skipped.Take(take) : skipped;
+
+        return await paged.ToListAsync(cancellationToken);
+    }
+
+    private async Task<int?> CountMatching(DeadLetterQuery deadLetterQuery, CancellationToken cancellationToken)
+    {
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+
+        return await Filter(context.DeadLetters.AsNoTracking(), deadLetterQuery).CountAsync(cancellationToken);
+    }
+
+    private static IQueryable<DeadLetter> Filter(IQueryable<DeadLetter> deadLetters, DeadLetterQuery deadLetterQuery)
+    {
+        if (deadLetterQuery.QueueName is { } queueName)
+        {
+            deadLetters = deadLetters.Where(d => d.QueueName == queueName);
+        }
+
+        if (deadLetterQuery.SubscriptionName is { } subscriptionName)
+        {
+            deadLetters = deadLetters.Where(d => d.SubscriptionName == subscriptionName);
+        }
+
+        if (deadLetterQuery.Status is { } status)
+        {
+            deadLetters = deadLetters.Where(d => d.Status == status);
+        }
+
+        if (deadLetterQuery.MessageId is { } messageId)
+        {
+            deadLetters = deadLetters.Where(d => d.MessageId == messageId);
+        }
+
+        return deadLetters;
     }
 
     private static async Task<IReadOnlyCollection<PurgedDeadLetter>> DeletePendingChunk(DeadLetterDataContext context, PurgedDeadLetter[] chunk, DateTimeOffset cutOff, CancellationToken cancellationToken)

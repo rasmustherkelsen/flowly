@@ -4,5 +4,5 @@ internal interface ICallSubmitter<TMessage, TReturn>
     where TMessage : class, IReturns<TReturn>
     where TReturn : class
 {
-    Task<TReturn> Submit(TMessage message, CancellationToken cancellationToken);
+    Task<TReturn> Submit(TMessage message, CancellationToken cancellationToken, IReadOnlyDictionary<string, string>? customProperties = null);
 }

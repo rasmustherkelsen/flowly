@@ -3,21 +3,22 @@ namespace Flowly;
 /// <summary>
 ///     Base class for handlers that consume an append-only, replayable message stream. Register with
 ///     <c>AddMessageStreamHandler&lt;TMessage, THandler&gt;()</c>. Only supported on transports whose client implements
-///     <see cref="Transport.IStreamCapableMessageBusClient" /> (currently RabbitMQ or InMemory) — registration throws
+///     <see cref="Transport.IStreamCapableMessageBusClient" /> (for example RabbitMQ and InMemory) — registration throws
 ///     <see cref="InvalidOperationException" /> at startup on any other transport.
 ///     <para>
 ///         Messages are delivered in batches shaped by <see cref="MessageStreamHandlerOptions.MaxMessagesBeforeProcessing" />
 ///         and <see cref="MessageStreamHandlerOptions.MaxWaitTime" />. Consumption begins at the
 ///         <see cref="MessageStreamHandlerOptions.StartPosition" /> configured in <see cref="Configure" /> — a required,
-///         explicit choice that is re-evaluated on every process restart (offsets are not persisted).
+///         explicit choice that is re-evaluated on every process restart unless a <see cref="MessageStreamCheckpoint{TMessage}" /> is registered and holds a stored position.
 ///     </para>
 ///     <para>
 ///         Retry is opt-in via <see cref="RetryPolicyAttribute" /> on the handler class and runs as an in-process loop
 ///         over the same batch — failed messages are never re-published to the stream, which would permanently corrupt
-///         the replayable log. When retries are exhausted the handler <strong>halts consumption entirely</strong>
-///         rather than skipping the failed batch: the stream offset never advances past it, a critical log entry and a
-///         <c>flowly.message.handler.halted</c> metric are emitted, and manual intervention (fix and restart) is
-///         required. Dead letter tracking is not supported.
+///         the replayable log. When retries are exhausted the handler <strong>halts consumption</strong>
+///         of that stream (or partition) rather than skipping the failed batch: the stream offset never advances past it, a critical log entry and a
+///         <c>flowly.message.handler.halted</c> metric are emitted, the failed batch is held and the transport stops receiving (nothing is dropped; the
+///         broker keeps the rest of the stream), and manual intervention is required. Fixing the handler and restarting the process replays the failed
+///         batch from the stored position. Dead letter tracking is not supported.
 ///     </para>
 /// </summary>
 /// <typeparam name="TMessage">The message contract type consumed from the stream.</typeparam>

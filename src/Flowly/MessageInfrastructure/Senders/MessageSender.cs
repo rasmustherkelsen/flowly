@@ -4,9 +4,6 @@ namespace Flowly.MessageInfrastructure.Senders;
 
 internal class MessageSender(IServiceProvider serviceProvider) : IMessageSender
 {
-    public async Task Send<TMessage>(TMessage message, CancellationToken cancellationToken = default)
-    {
-        var messageSubmitter = serviceProvider.GetRequiredService<IMessageSubmitter<TMessage>>();
-        await messageSubmitter.Submit(message, cancellationToken);
-    }
+    public Task Send<TMessage>(TMessage message, CancellationToken cancellationToken = default, IReadOnlyDictionary<string, string>? customProperties = null)
+        => serviceProvider.GetRequiredService<IMessageSubmitter<TMessage>>().Submit(message, cancellationToken, customProperties: customProperties);
 }

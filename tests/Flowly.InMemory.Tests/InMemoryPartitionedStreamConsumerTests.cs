@@ -106,6 +106,79 @@ public class InMemoryPartitionedStreamConsumerTests
             Assert.Equal(["partition-zero-message"], receivedByPartition[0]);
             Assert.Equal(["partition-one-message"], receivedByPartition[1]);
         }
+
+        [Fact]
+        public async Task WithLast_DeliversOnlyMessagesAppendedAfterTheConsumerAttached()
+        {
+            var (broker, manifest) = CreateBrokerWithStreamManifest();
+            manifest.MarkAsStream("orders", null, null, partitionCount: 3);
+            for (var partition = 0; partition < 3; partition++)
+            {
+                broker.GetOrCreatePartitionedStreamLog("orders", partition).Append(CreateEnvelope($"existing-{partition}"));
+            }
+
+            var consumer = new InMemoryPartitionedStreamConsumer<TestMessage>(broker, "orders", 3, (_, _) => Task.FromResult(StartPosition.Last()));
+            var received = new List<string>();
+            var allReceived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            consumer.PartitionAssigned += (_, processor) =>
+            {
+                processor.ProcessMessage += (msg, _) =>
+                {
+                    lock (received)
+                    {
+                        received.Add(msg.Body.Value);
+                        if (received.Count == 3)
+                        {
+                            allReceived.TrySetResult();
+                        }
+                    }
+
+                    return Task.CompletedTask;
+                };
+
+                return processor.StartProcessingMessages();
+            };
+
+            await consumer.StartProcessingMessages();
+
+            for (var partition = 0; partition < 3; partition++)
+            {
+                broker.GetOrCreatePartitionedStreamLog("orders", partition).Append(CreateEnvelope($"new-{partition}"));
+            }
+
+            await allReceived.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await consumer.StopProcessing(CancellationToken.None);
+
+            Assert.Equal(["new-0", "new-1", "new-2"], received.OrderBy(value => value));
+        }
+    }
+
+    public class StopProcessing
+    {
+        [Fact]
+        public async Task AfterPartitionProcessorsWereDisposed_DoesNotThrow()
+        {
+            var (broker, manifest) = CreateBrokerWithStreamManifest();
+            manifest.MarkAsStream("orders", null, null, partitionCount: 3);
+            var assigned = new List<IMessageBusProcessor<TestMessage>>();
+            var consumer = new InMemoryPartitionedStreamConsumer<TestMessage>(broker, "orders", 3, (_, _) => Task.FromResult(StartPosition.First()));
+            consumer.PartitionAssigned += async (_, processor) =>
+            {
+                assigned.Add(processor);
+                await processor.StartProcessingMessages();
+            };
+            await consumer.StartProcessingMessages();
+
+            foreach (var processor in assigned)
+            {
+                await processor.StopProcessing(CancellationToken.None);
+                await processor.DisposeAsync();
+            }
+
+            await consumer.StopProcessing(CancellationToken.None);
+            await consumer.DisposeAsync();
+        }
     }
 
     private static async Task WaitUntil(Func<bool> condition, int timeoutMs = 5000)

@@ -1,5 +1,6 @@
 using Flowly.MessageInfrastructure.Model;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessageInfrastructure.StreamPartitions;
 using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.Transport;
 using Microsoft.Extensions.DependencyInjection;
@@ -12,32 +13,36 @@ internal sealed class MessageStreamProcessingBackgroundService<TMessage, THandle
     MessageStreamHandlerSettings<TMessage, THandler> handlerSettings,
     IServiceScopeFactory serviceScopeFactory,
     ILogger<MessageStreamProcessingBackgroundService<TMessage, THandler>> logger,
-    IHandlerInstrumentation handlerInstrumentation) : MessageProcessingBackgroundServiceBase<TMessage>
+    IHandlerInstrumentation handlerInstrumentation,
+    IStreamPartitionStateRegistry stateRegistry,
+    IStreamPartitionResumeRegistry resumeRegistry) : MessageProcessingBackgroundServiceBase<TMessage>
     where TMessage : class
     where THandler : MessageStreamHandler<TMessage>
 {
+    private readonly StreamPartitionStateReporter _stateReporter = new(
+        stateRegistry, handlerInstrumentation, handlerSettings.HandlerName, handlerSettings.QueueName, handlerSettings.ConsumerName);
+
     private StreamPartitionRunner<TMessage, THandler>? _runner;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var client = clientRegistry.GetClient(handlerSettings.ProviderName);
+        var streamCapableClient = clientRegistry.GetClient<IStreamCapableMessageBusClient>(handlerSettings.ProviderName);
 
-        if (client is not IStreamCapableMessageBusClient streamCapableClient)
-            throw new InvalidOperationException(
-                $"The message bus client for provider '{handlerSettings.ProviderName}' does not support message streaming. " +
-                $"The client must implement {nameof(IStreamCapableMessageBusClient)}.");
-
-        var messagingSystem = client.MessagingSystem;
+        var messagingSystem = streamCapableClient.MessagingSystem;
         MessageStreamCheckpointHelper.ThrowIfCheckpointRegisteredForInMemory<TMessage>(serviceScopeFactory, messagingSystem);
 
         var startPosition = await MessageStreamCheckpointHelper.ResolveStartPosition<TMessage>(
             serviceScopeFactory, handlerSettings.ConsumerName, null, handlerSettings.StartPosition,
-            handlerSettings.HandlerName, handlerSettings.QueueName, handlerInstrumentation, stoppingToken);
+            handlerSettings.HandlerName, handlerSettings.QueueName, handlerInstrumentation, logger, stoppingToken,
+            startOffsetResolver: streamCapableClient as IStreamStartOffsetResolver);
 
         var processor = await streamCapableClient.CreateStreamProcessor<TMessage>(
             handlerSettings.QueueName,
             startPosition,
-            new MessageBusProcessorOptions(handlerSettings.MaxMessagesBeforeProcessing, MessageBusReceiveMode.PeekLock));
+            new MessageBusProcessorOptions(handlerSettings.MaxMessagesBeforeProcessing, MessageBusReceiveMode.PeekLock)
+            {
+                ConsumerName = handlerSettings.ConsumerName
+            });
 
         _runner = new StreamPartitionRunner<TMessage, THandler>(
             processor,
@@ -52,19 +57,28 @@ internal sealed class MessageStreamProcessingBackgroundService<TMessage, THandle
             messagingSystem,
             serviceScopeFactory,
             logger,
-            handlerInstrumentation);
+            handlerInstrumentation,
+            _stateReporter.Running(null),
+            resumeRegistry);
 
         await _runner.Run(stoppingToken);
     }
 
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
-        if (_runner != null)
+        try
         {
-            await _runner.StopProcessing(cancellationToken);
-            await _runner.DisposeAsync();
-        }
+            await base.StopAsync(cancellationToken);
 
-        await base.StopAsync(cancellationToken);
+            if (_runner != null)
+            {
+                await _runner.StopProcessing(cancellationToken);
+                await _runner.DisposeAsync();
+            }
+        }
+        finally
+        {
+            _stateReporter.Stopped();
+        }
     }
 }

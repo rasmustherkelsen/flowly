@@ -5,4 +5,6 @@ internal class TestMessageContext<T>(T message, CancellationToken cancellationTo
     public T Message { get; } = message;
 
     public CancellationToken CancellationToken { get; } = cancellationToken;
+
+    public MessageProperties Properties { get; } = MessageProperties.Empty;
 }

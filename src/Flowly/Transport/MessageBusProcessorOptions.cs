@@ -13,4 +13,16 @@ namespace Flowly.Transport;
 ///     Whether messages should be locked during processing (<see cref="MessageBusReceiveMode.PeekLock" />) or
 ///     removed immediately upon receipt (<see cref="MessageBusReceiveMode.ReceiveAndDelete" />).
 /// </param>
-public record MessageBusProcessorOptions(int MaxConcurrentCalls, MessageBusReceiveMode ReceiveMode);
+public record MessageBusProcessorOptions(int MaxConcurrentCalls, MessageBusReceiveMode ReceiveMode)
+{
+    /// <summary>
+    ///     The logical name of the reader the processor or consumer is created for. Set by the stream background services
+    ///     from the resolved <see cref="MessageStreamHandlerOptions.ConsumerName" /> (the handler type name unless overridden), the
+    ///     same value that keys a registered <see cref="MessageStreamCheckpoint{TMessage}" />, when they call
+    ///     <see cref="IStreamCapableMessageBusClient.CreateStreamProcessor{TMessage}" /> or
+    ///     <see cref="IPartitionedStreamCapableMessageBusClient.CreatePartitionedStreamConsumer{TMessage}" />. A transport may use it
+    ///     to identify the reader on the broker, for example as a broker-side consumer group; transports with no such concept
+    ///     ignore it. <see langword="null" /> for processors that are not stream readers.
+    /// </summary>
+    public string? ConsumerName { get; init; }
+}

@@ -1,5 +1,8 @@
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessageInfrastructure.SendSteps;
 using Flowly.MessageInfrastructure.Senders;
+using Flowly.MessageInfrastructure.Telemetry;
+using Flowly.Transport;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -24,15 +27,19 @@ public static class MessageSubmitterRegistrationExtensions
     /// <returns>The same <see cref="IFlowlyBuilder" /> instance for further configuration.</returns>
     public static IFlowlyBuilder AddMessageSubmitter<TMessage>(this IFlowlyBuilder flowlyBuilder)
     {
-        if (flowlyBuilder.Services.Any(s => s.ImplementationType == typeof(MessageSubmitter<TMessage>)))
+        if (flowlyBuilder.Services.Any(s => s.ServiceType == typeof(IMessageSubmitter<TMessage>)))
             return flowlyBuilder;
 
         var queueName = flowlyBuilder.TopologyNameResolver.ResolveQueueName<TMessage>();
-        var providerName = ProviderNameResolver.Resolve(flowlyBuilder.Services, typeof(TMessage));
+        var providerName = ProviderNameResolver.Resolve<IMessageBusClient>(flowlyBuilder.Services, typeof(TMessage));
 
         flowlyBuilder.Services
-            .AddSingleton(new MessageSubmitter<TMessage>.QueueSettings(queueName, providerName))
-            .AddSingleton<IMessageSubmitter<TMessage>, MessageSubmitter<TMessage>>();
+            .AddSingleton<IMessageSubmitter<TMessage>>(serviceProvider => new MessageSubmitter<TMessage>(
+                serviceProvider.GetRequiredService<IMessageBusClientRegistry>(),
+                queueName,
+                providerName,
+                serviceProvider.GetRequiredService<ISubmitterInstrumentation>(),
+                serviceProvider.GetRequiredService<ISendStepRunner>()));
 
         flowlyBuilder.Services.TryAddSingleton<IMessageSender, MessageSender>();
 

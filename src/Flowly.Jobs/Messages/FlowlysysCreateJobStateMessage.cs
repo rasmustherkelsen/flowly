@@ -1,5 +1,6 @@
-﻿using Flowly.Jobs.Model;
+﻿using Flowly.MessageInfrastructure.SendSteps;
+using Flowly.Jobs.Model;
 
 namespace Flowly.Jobs.Messages;
 
-internal record FlowlysysCreateJobStateMessage(JobId JobId, string JobTypeName, string Description, DateTime TimeStamp);
+internal record FlowlysysCreateJobStateMessage(JobId JobId, string JobTypeName, string Description, DateTime TimeStamp) : IFlowlySystemMessage;

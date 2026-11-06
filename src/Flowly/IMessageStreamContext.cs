@@ -25,4 +25,11 @@ public interface IMessageStreamContext<T>
     ///     this same partition; batches never mix partitions, since ordering guarantees only hold within one.
     /// </summary>
     int? Partition { get; }
+
+    /// <summary>
+    ///     The transport-level properties of each message in <see cref="Messages" />, one entry per message in the same
+    ///     order, including the application-defined <see cref="MessageProperties.CustomProperties" /> the recorder attached.
+    ///     The custom properties are not authenticated and must not be treated as proof of identity.
+    /// </summary>
+    IReadOnlyList<MessageProperties> Properties { get; }
 }

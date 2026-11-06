@@ -24,6 +24,12 @@ public static class FlowlyMeterProviderBuilderExtensions
     ///         </item>
     ///         <item>
     ///             <description>
+    ///                 <b>Message stream partitions</b> — <see cref="FlowlyInstrumentationConstants.StreamPartitionCurrentState" /> (gauge),
+    ///                 <see cref="FlowlyInstrumentationConstants.StreamPartitionTransitions" />
+    ///             </description>
+    ///         </item>
+    ///         <item>
+    ///             <description>
     ///                 <b>Submitter</b> — <see cref="FlowlyInstrumentationConstants.SubmitterMessagesSent" />,
     ///                 <see cref="FlowlyInstrumentationConstants.SubmitterMessagesFailed" />,
     ///                 <see cref="FlowlyInstrumentationConstants.SubmitterSendDuration" />

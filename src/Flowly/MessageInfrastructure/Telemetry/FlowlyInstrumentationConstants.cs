@@ -46,6 +46,31 @@ public static class FlowlyInstrumentationConstants
     /// <summary>Counter: number of times a stream handler halted consumption after exhausting its in-process retries.</summary>
     public const string HandlerMessagesHalted = "flowly.message.handler.halted";
 
+    /// <summary>
+    ///     Gauge: the current state of each stream partition owned by this process, as <c>0</c> (running), <c>1</c> (waiting for an
+    ///     unresolved start position) or <c>2</c> (halted after exhausted retries); a partition that is revoked stops being reported.
+    /// </summary>
+    public const string StreamPartitionCurrentState = "flowly.message.stream.partition.state";
+
+    /// <summary>Counter: number of times a stream partition entered a state, tagged <c>state=running|waiting|halted</c>.</summary>
+    public const string StreamPartitionTransitions = "flowly.message.stream.partition.transitions";
+
+    /// <summary>
+    ///     Counter: number of stream messages a transport dropped because this process had no processing loop for the partition they
+    ///     arrived on (a partition waiting for an unresolved start position, or a handover in progress), tagged with the queue
+    ///     (<c>messaging.destination.name</c>), the <c>consumer</c> and the <c>partition</c>. Nothing is lost: a dropped message is replayed
+    ///     from the stored position when the partition is processed again.
+    /// </summary>
+    public const string StreamPartitionDropped = "flowly.message.stream.partition.dropped";
+
+    /// <summary>
+    ///     Counter: number of times a RabbitMQ partitioned stream consumer stood down, that is kept its consumer closed for a cool-down after
+    ///     several consecutive automatic recreations that still left a partition waiting for an unresolved start position, so the broker can
+    ///     hand the partitions to another instance. Tagged with the queue (<c>messaging.destination.name</c>) and the <c>consumer</c>.
+    ///     Nothing is lost: the partitions are replayed from the stored position when they are processed again.
+    /// </summary>
+    public const string StreamPartitionStandDowns = "flowly.message.stream.partition.stand_downs";
+
     /// <summary>Histogram: message processing duration in milliseconds for handlers.</summary>
     public const string HandlerProcessingDuration = "flowly.message.handler.duration";
 

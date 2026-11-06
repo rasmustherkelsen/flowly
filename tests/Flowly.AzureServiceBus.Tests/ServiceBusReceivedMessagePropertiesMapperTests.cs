@@ -1,3 +1,4 @@
+using Flowly.Transport;
 using Azure.Messaging.ServiceBus;
 
 namespace Flowly.AzureServiceBus.Tests;
@@ -62,6 +63,33 @@ public class ServiceBusReceivedMessagePropertiesMapperTests
 
             Assert.Null(messageProperties.Traceparent);
             Assert.Null(messageProperties.Tracestate);
+        }
+
+        [Fact]
+        public void WithoutApplicationProperties_LeavesCustomPropertiesEmpty()
+        {
+            var messageProperties = ServiceBusReceivedMessagePropertiesMapper.Map(ServiceBusModelFactory.ServiceBusReceivedMessage());
+
+            Assert.Empty(messageProperties.CustomProperties);
+        }
+
+        [Fact]
+        public void PopulatesCustomPropertiesFromStringApplicationProperties()
+        {
+            var applicationProperties = new Dictionary<string, object>
+            {
+                ["tenant"] = "contoso",
+                [FlowlyMessageProperties.RetryCount] = 2,
+                [FlowlyMessageProperties.TargetSubscription] = "sub",
+                ["traceparent"] = "00-trace-01",
+                ["attempts"] = 4
+            };
+            var serviceBusReceivedMessage = ServiceBusModelFactory.ServiceBusReceivedMessage(properties: applicationProperties);
+
+            var messageProperties = ServiceBusReceivedMessagePropertiesMapper.Map(serviceBusReceivedMessage);
+
+            Assert.Equal(["tenant"], messageProperties.CustomProperties.Keys);
+            Assert.Equal("contoso", messageProperties.CustomProperties["tenant"]);
         }
 
         [Fact]

@@ -1,6 +1,11 @@
+#if (UseAzureEventHubs)
+using Azure.Storage.Blobs;
+#endif
 using Flowly;
 #if (UseRabbitMQ)
 using Flowly.RabbitMQ;
+#elif (UseAzureEventHubs)
+using Flowly.AzureEventHubs;
 #else
 using Flowly.AzureServiceBus;
 #endif
@@ -18,10 +23,19 @@ namespace MyAspireApp.Receiver;
 
 internal class FlowlyConfiguration : Configuration
 {
+#if (UseAzureEventHubs)
+    internal static BlobContainerClient CreatePartitionOwnershipContainerClient(IConfiguration configuration)
+        => new(configuration.GetConnectionString("PartitionOwnership"), "my-partition-ownership");
+
+#endif
     public override void Configure(IFlowlyBuilder builder)
     {
 #if (UseRabbitMQ)
         builder.UseRabbitMq(connection: "RabbitMQ");
+#elif (UseAzureEventHubs)
+        builder.UseAzureEventHubs(
+            connection: "EventHubs",
+            partitionOwnershipContainer: CreatePartitionOwnershipContainerClient(builder.Configuration));
 #else
         builder.UseAzureServiceBus(connection: "AzureServiceBus");
 #endif

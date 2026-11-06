@@ -17,7 +17,7 @@ public sealed class ProviderQueueManifest
     ///     Initialises a new manifest for a specific provider.
     /// </summary>
     /// <param name="providerName">The unique name of the transport provider (e.g. <c>"AzureServiceBus"</c>).</param>
-    /// <param name="isPrimary"><see langword="true" /> if this is the default (primary) provider.</param>
+    /// <param name="isPrimary"><see langword="true" /> if this is the primary provider, the first registered provider that supports queue-based messaging.</param>
     /// <param name="transportType">A string identifying the transport type (e.g. <c>"AzureServiceBus"</c>).</param>
     public ProviderQueueManifest(string providerName, bool isPrimary, string transportType)
     {
@@ -32,7 +32,8 @@ public sealed class ProviderQueueManifest
     public string ProviderName { get; }
 
     /// <summary>
-    ///     <see langword="true" /> if this is the primary (default) provider.
+    ///     <see langword="true" /> if this is the primary provider, the first registered provider that supports queue-based
+    ///     messaging. A stream-only provider is never primary.
     /// </summary>
     public bool IsPrimary { get; }
 

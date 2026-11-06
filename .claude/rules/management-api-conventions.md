@@ -1,3 +1,11 @@
+---
+paths:
+  - "src/Flowly.ManagementApi/**"
+  - "src/Flowly.PowerShell/**"
+  - "tests/Flowly.ManagementApi.Tests/**"
+  - "tests/Flowly.PowerShell.Tests/**"
+---
+
 # Management API Conventions
 
 `Flowly.ManagementApi` is a general, growing operational HTTP surface for Flowly — not a one-off endpoint. `Flowly.PowerShell` is its thin client. Every other cross-cutting area in this repo that requires several files to move together in lockstep has its own dedicated rules file (`templates-conventions.md`, `template-otel-versions.md`, `nuget-package-descriptions.md`); this is that file for the Management API + PowerShell client.
@@ -22,11 +30,17 @@ One `IFlowlyManagementAction` maps to exactly one cmdlet:
 | Change | Update |
 |---|---|
 | New/changed `IFlowlyManagementAction` implementation | `src/Flowly.ManagementApi/**` (the action itself) |
-| Matching cmdlet | `src/Flowly.PowerShell/Cmdlets/*.cs`, plus the `CmdletsToExport` list in `src/Flowly.PowerShell/Flowly.psd1` |
+| Matching cmdlet | `src/Flowly.PowerShell/Cmdlets/*.cs`, plus the `CmdletsToExport` list in `src/Flowly.PowerShell/Flowly.PowerShell.psd1` |
 | Usage docs | `src/Flowly.ManagementApi/README.md`, `src/Flowly.PowerShell/README.md`, `README.md` (root), `docs/ai/CONTEXT.md` |
 
-This table itself must be extended whenever a new feature package starts contributing actions (e.g. Jobs or DeadLetters actions land here later) — the same self-maintaining instruction `template-otel-versions.md` carries for its own file list.
+The stream partition list/resume actions live in `src/Flowly.ManagementApi/MessageStreams/` next to the checkpoint actions, but read and resume through the internal `IStreamPartitionStateReader` and `IStreamPartitionResumer` of core `Flowly` (`InternalsVisibleTo`); changing the partition state model or the resumer contract means updating those actions and their cmdlets too.
+
+The dead letter list/requeue/discard actions live in `src/Flowly.ManagementApi/DeadLetters/` and call the public `IDeadLetterService` of `Flowly.DeadLetters` (resolved per request, the service is scoped; the actions are mapped when `IServiceProviderIsService` reports it registered). They carry no dead letter logic of their own, so changing requeue or discard behaviour happens in `IDeadLetterService`, and changing its contract means updating these actions and their cmdlets (`Get-`/`Submit-`/`Remove-FlowlyDeadLetter`) too.
+
+This table itself must be extended whenever a new feature package starts contributing actions (e.g. Jobs actions) — the same self-maintaining instruction `template-otel-versions.md` carries for its own file list.
 
 ## Version alignment
 
-Bump the published `Flowly.PowerShell` module version (`ModuleVersion` in `Flowly.psd1`) and `Flowly.ManagementApi`'s package version together whenever the action set changes, so a mismatch between them is visible at a glance in the PowerShell Gallery / NuGet listings. The exact scheme (lockstep version numbers vs. independent semver with a documented compatibility table) is an implementation-time decision — but *some* explicit alignment signal is required, not silence.
+The release tag sets every version: `.gitea/workflows/publish.yaml` passes the tag (without the leading `v`) as `/p:Version` for all NuGet packages, including `Flowly.ManagementApi`, and a step before the build writes the same value into `ModuleVersion` of `src/Flowly.PowerShell/Flowly.PowerShell.psd1`. The module and the Management API package therefore always carry the same version, and there is no manual bump when the action set changes. `ModuleVersion` in the repository is a placeholder (`0.0.0`) that only keeps the manifest valid for local imports and tests; do not edit it by hand.
+
+A tag with a prerelease suffix (`v1.5.0-rc1`) puts the numeric part into `ModuleVersion` and the suffix, reduced to letters and digits as PowerShell requires, into `PrivateData.PSData.Prerelease`. The step fails the publish when the tag does not start with a numeric version of two to four parts or when a line it rewrites is missing from the manifest, so keep the `ModuleVersion` and `Prerelease` lines in `Flowly.PowerShell.psd1`. The manifest file name must equal the package id: PSResourceGet installs a package into a folder named after the id, and `Import-Module <name>` only finds a module whose manifest has the same name as that folder.

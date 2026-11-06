@@ -1,5 +1,6 @@
 using Flowly.MessageInfrastructure.Receivers;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.Transport;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Flowly.MessageInfrastructure.Model;
@@ -8,7 +9,7 @@ internal class HandlerSettingsFactory(ITopologyNameResolver topologyNameResolver
 {
     public HandlerRegistration<TMessage> Create<THandler, TMessage>(IServiceCollection serviceCollection) where THandler : class
     {
-        var providerName = ProviderNameResolver.Resolve(serviceCollection, typeof(TMessage));
+        var providerName = ProviderNameResolver.Resolve<IMessageBusClient>(serviceCollection, typeof(TMessage));
 
         var resolvedQueueOptions = MessageHandlerOptionsResolver.Resolve<THandler, TMessage>(topologyNameResolver);
 

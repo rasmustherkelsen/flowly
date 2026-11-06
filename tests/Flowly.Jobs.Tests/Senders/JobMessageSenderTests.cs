@@ -35,6 +35,20 @@ public class JobMessageSenderTests
 
             Assert.Equal(cancellationTokenSource.Token, capturingSubmitter.ReceivedToken);
         }
+
+        [Fact]
+        public async Task PassesCustomPropertiesThroughToSubmitter()
+        {
+            var serviceProvider = new FakeServiceProvider();
+            var capturingSubmitter = new FakeJobSubmitter<SomeJobMessage>(new JobId());
+            serviceProvider.Register<IJobSubmitter<SomeJobMessage>>(capturingSubmitter);
+            var jobMessageSender = new JobMessageSender(serviceProvider, new FakeMessageSender());
+            var customProperties = new Dictionary<string, string> { ["tenant"] = "contoso" };
+
+            await jobMessageSender.QueueJob(new SomeJobMessage(), customProperties: customProperties);
+
+            Assert.Same(customProperties, capturingSubmitter.ReceivedCustomProperties);
+        }
     }
 
     public class StartRecurringJob
@@ -66,10 +80,12 @@ public class JobMessageSenderTests
     private class FakeJobSubmitter<TMessage>(JobId returnedJobId) : IJobSubmitter<TMessage> where TMessage : IJobMessage
     {
         public CancellationToken ReceivedToken { get; private set; }
+        public IReadOnlyDictionary<string, string>? ReceivedCustomProperties { get; private set; }
 
-        public Task<JobId> SubmitJob(TMessage message, CancellationToken cancellationToken = default)
+        public Task<JobId> SubmitJob(TMessage message, CancellationToken cancellationToken = default, IReadOnlyDictionary<string, string>? customProperties = null)
         {
             ReceivedToken = cancellationToken;
+            ReceivedCustomProperties = customProperties;
             return Task.FromResult(returnedJobId);
         }
     }

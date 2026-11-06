@@ -23,7 +23,8 @@ internal sealed class MessageProcessingBackgroundService<TMessage>(
     IHandlerSettings<TMessage> handlerSettings,
     ILogger<MessageProcessingBackgroundService<TMessage>> logger,
     IHandlerInstrumentation handlerInstrumentation,
-    IMessageHandlingStrategy<TMessage> strategy) : MessageProcessingBackgroundServiceBase<TMessage>
+    IMessageHandlingStrategy<TMessage> strategy,
+    NonRetryableExceptionClassifier nonRetryableExceptionClassifier) : MessageProcessingBackgroundServiceBase<TMessage>
     where TMessage : class
 {
     private readonly ILogger _logger = logger;
@@ -92,6 +93,14 @@ internal sealed class MessageProcessingBackgroundService<TMessage>(
             _logger.LogInformation("{HandlerName} handled message", handlerSettings.HandlerName);
             if (!handlerSettings.ReadAndDelete)
                 await receivedMessage.Complete(cancellationToken);
+            return;
+        }
+
+        if (nonRetryableExceptionClassifier.IsNonRetryable(handlingException))
+        {
+            handlerInstrumentation.RecordFailed(handlerSettings.HandlerName, handlerSettings.QueueName);
+            await strategy.OnRetriesExhausted(receivedMessage, handlingException, scope.ServiceProvider, cancellationToken);
+            _logger.LogError(handlingException, "{HandlerName} message was rejected and not retried", handlerSettings.HandlerName);
             return;
         }
 

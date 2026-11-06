@@ -27,7 +27,7 @@ Full-featured Flowly sample using RabbitMQ with .NET Aspire. Demonstrates the co
 ## Prerequisites
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)
-- [.NET Aspire workload](https://learn.microsoft.com/en-us/dotnet/aspire/fundamentals/setup-tooling): `dotnet workload install aspire`
+- Network access on first run: the AppHost uses `AspireUseCliBundle`, so `dotnet run` is delegated to the Aspire CLI, which the .NET 10 SDK's `dnx` downloads automatically if `aspire` is not already on your PATH (no separate workload needed)
 - [Docker Desktop](https://www.docker.com/products/docker-desktop)
 
 ## How to run

@@ -1,3 +1,4 @@
+using Flowly.MessageInfrastructure.StreamPartitions;
 using System.Diagnostics;
 using Flowly;
 using Flowly.MessageInfrastructure;
@@ -5,6 +6,7 @@ using Flowly.Jobs.BackgroundServices;
 using Flowly.Jobs.Messages;
 using Flowly.Jobs.Model;
 using Flowly.Jobs.Tests.Fakes;
+using Flowly.MessageInfrastructure.Registration;
 using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.Transport;
 using Microsoft.Extensions.DependencyInjection;
@@ -44,6 +46,30 @@ public class RecurringJobHandlerBackgroundServiceTests
             Assert.Equal("test-session", message.JobTypeName);
             Assert.Equal("Test job description", message.Description);
             Assert.Equal("* * * * *", message.CronExpression);
+        }
+
+        [Fact]
+        public async Task WithStreamOnlyProviderRegisteredFirst_RunsOnFirstQueueCapableProvider()
+        {
+            var processor = new FakeExecutionLaneProcessor();
+            var client = new FakeMessageBusClientWithLaneProcessor(processor);
+            var registry = new MessageBusClientRegistry();
+            registry.Register("streams", new FakeStreamOnlyClient(), null);
+            registry.Register("queues", client, null);
+            var services = new ServiceCollection();
+            services.AddSingleton<IMessageSender>(new FakeMessageSender());
+            var service = new TestableService(
+                registry,
+                services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
+                MakeSettings(),
+                new KebabCaseTopologyNameResolver(),
+                NullLogger<RecurringJobHandlerBackgroundService<CapturingRecurringJobHandler>>.Instance,
+                new FakeHandlerInstrumentation());
+
+            await service.ExecuteAsync(CancellationToken.None);
+
+            Assert.Equal("flowlysys-recurring-jobs", client.CapturedQueueName);
+            Assert.True(processor.StartProcessingCalled);
         }
 
         [Fact]
@@ -388,11 +414,13 @@ public class RecurringJobHandlerBackgroundServiceTests
 
         public void RecordHalted(string handlerName, string queueName, string reason) { }
 
+        public void RecordStreamPartitionTransition(string handlerName, string queueName, string consumerName, int? partition, StreamPartitionState state) { }
+
         public void RecordCheckpointSaved(string handlerName, string queueName, double durationMs) { }
 
         public void RecordCheckpointSaveFailed(string handlerName, string queueName) { }
 
-        public void RecordCheckpointResolved(string handlerName, string queueName, bool resumed) { }
+        public void RecordCheckpointResolved(string handlerName, string queueName, CheckpointResolution resolution) { }
 
         public Activity? StartSendingResponse(string callQueueName, string replyQueueName, string messagingSystem, string messageId, string correlationId) => null;
 

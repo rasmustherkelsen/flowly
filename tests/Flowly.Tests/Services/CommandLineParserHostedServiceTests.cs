@@ -2,6 +2,9 @@ using System.Text.Json;
 using Flowly.MessageInfrastructure.Events.Registration;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.Services;
+using Flowly.Tests.Fakes;
+using Flowly.Transport;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
 namespace Flowly.Tests.Services;
@@ -125,6 +128,39 @@ public class CommandLineParserHostedServiceTests
 
                 Assert.Equal(TimeSpan.FromMinutes(15).ToString("c"), queue.GetProperty("DefaultMessageTimeToLive").GetString());
                 Assert.Equal(TimeSpan.FromMinutes(2).ToString("c"), queue.GetProperty("LockDuration").GetString());
+            }
+            finally
+            {
+                if (File.Exists(outputPath)) File.Delete(outputPath);
+            }
+        }
+
+        [Fact]
+        public async Task WithStreamOnlyProviderRegisteredFirst_ReportsOnlyTheQueueCapableProviderAsPrimary()
+        {
+            var outputPath = Path.Combine(Path.GetTempPath(), $"flowly-discovery-{Guid.NewGuid():N}.json");
+            using var environmentSwitch = TemporaryEnvironmentVariable.Set(outputPath);
+            var clientRegistry = new MessageBusClientRegistry();
+            var services = new ServiceCollection();
+            clientRegistry.Register("event-hubs", new FakeStreamOnlyClient(), null);
+            TransportRegistrationHelper.RegisterProviderManifest(services, clientRegistry, "event-hubs", "Stub");
+            clientRegistry.Register("service-bus", new FakeMessageBusClient(), null);
+            TransportRegistrationHelper.RegisterProviderManifest(services, clientRegistry, "service-bus", "Stub");
+            var manifests = services.Select(descriptor => descriptor.ImplementationInstance).OfType<ProviderQueueManifest>().ToList();
+            manifests.Single(manifest => manifest.ProviderName == "event-hubs").Add(new DeferredQueueRegistration("telemetry-reading"));
+            manifests.Single(manifest => manifest.ProviderName == "service-bus").Add(new DeferredQueueRegistration("orders"));
+            var commandLineParserHostedService = new CommandLineParserHostedService(manifests, new RecordingHostApplicationLifetime());
+
+            try
+            {
+                await commandLineParserHostedService.StartingAsync(CancellationToken.None);
+
+                using var document = JsonDocument.Parse(await File.ReadAllTextAsync(outputPath));
+                var primaryQueues = document.RootElement.GetProperty("Queues").EnumerateArray()
+                    .Where(queue => queue.GetProperty("IsPrimary").GetBoolean())
+                    .Select(queue => queue.GetProperty("ProviderName").GetString());
+
+                Assert.Equal(["service-bus"], primaryQueues);
             }
             finally
             {

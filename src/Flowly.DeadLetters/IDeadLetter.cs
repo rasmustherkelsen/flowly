@@ -26,6 +26,7 @@ public interface IDeadLetter
 
     /// <summary>
     ///     The raw message body exactly as it was stored on the broker dead letter queue.
+    ///     It is never changed, not even when the message is requeued with a replacement body; see <see cref="ReplacementMessageBody"/>.
     /// </summary>
     string MessageBody { get; }
 
@@ -70,4 +71,12 @@ public interface IDeadLetter
     ///     <see langword="null"/> when the message has not been requeued or no requester identity was supplied.
     /// </summary>
     string? RequeuedBy { get; }
+
+    /// <summary>
+    ///     The replacement body the message was requeued with, exactly as it was republished to its original queue or topic.
+    ///     <see langword="null"/> when the message has not been requeued or was requeued with the stored <see cref="MessageBody"/> as it was.
+    ///     It is only recorded after the republish succeeded, and the original <see cref="MessageBody"/> is kept next to it as the audit trail.
+    ///     The default implementation returns <see langword="null"/>, so custom implementations that do not track replacement bodies keep working.
+    /// </summary>
+    string? ReplacementMessageBody => null;
 }

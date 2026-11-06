@@ -1,6 +1,8 @@
 using Flowly.Jobs.Messages;
 using Flowly.Jobs.Senders;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessageInfrastructure.SendSteps;
+using Flowly.Transport;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Flowly.Jobs;
@@ -38,15 +40,19 @@ public static class SubmitterRegistrationExtensions
         /// <returns>The same <see cref="IFlowlyBuilder" /> instance for further configuration.</returns>
         public IFlowlyBuilder AddJobSubmitter<TMessage>() where TMessage : class, IJobMessage
         {
-            if (flowlyBuilder.Services.Any(s => s.ImplementationType == typeof(JobSubmitter<TMessage>)))
+            if (flowlyBuilder.Services.Any(s => s.ServiceType == typeof(IJobSubmitter<TMessage>)))
                 return flowlyBuilder;
 
             var queueName = flowlyBuilder.TopologyNameResolver.ResolveQueueName<TMessage>();
-            var providerName = ProviderNameResolver.Resolve(flowlyBuilder.Services, typeof(TMessage));
+            var providerName = ProviderNameResolver.Resolve<IMessageBusClient>(flowlyBuilder.Services, typeof(TMessage));
 
             flowlyBuilder.Services
-                .AddSingleton(new JobSubmitter<TMessage>.QueueSettings(queueName, providerName))
-                .AddSingleton<IJobSubmitter<TMessage>, JobSubmitter<TMessage>>()
+                .AddSingleton<IJobSubmitter<TMessage>>(serviceProvider => new JobSubmitter<TMessage>(
+                    serviceProvider.GetRequiredService<IMessageBusClientRegistry>(),
+                    queueName,
+                    providerName,
+                    serviceProvider.GetRequiredService<IMessageSender>(),
+                    serviceProvider.GetRequiredService<ISendStepRunner>()))
                 .AddSingleton<IJobMessageSender, JobMessageSender>();
 
             FlowlySubmitterManifest.GetOrCreate(flowlyBuilder.Services)

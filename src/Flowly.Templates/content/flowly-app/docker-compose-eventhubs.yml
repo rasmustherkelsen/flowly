@@ -1,0 +1,57 @@
+services:
+  eventhubs-emulator:
+    image: mcr.microsoft.com/azure-messaging/eventhubs-emulator:latest
+    container_name: eventhubs-emulator
+    ports:
+      - "5672:5672"
+    environment:
+      BLOB_SERVER: azurite
+      METADATA_SERVER: azurite
+      ACCEPT_EULA: ${ACCEPT_EULA:?Set ACCEPT_EULA=Y to accept the Azure Event Hubs emulator license terms}
+    volumes:
+      - ./ehconfig.json:/Eventhubs_Emulator/ConfigFiles/Config.json
+    depends_on:
+      - azurite
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:latest
+    container_name: azurite
+    ports:
+      - "10000:10000"
+#if (NeedsSqlServerInfrastructure)
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: sqlserver
+    ports:
+      - "1433:1433"
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=Password1!
+#endif
+#if (NeedsPostgresInfrastructure)
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+#endif
+#if (UseOtelExportJaeger)
+  jaeger:
+    image: cr.jaegertracing.io/jaegertracing/jaeger:2.19.0
+    container_name: jaeger
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "16686:16686"
+      - "5778:5778"
+      - "9411:9411"
+#endif
+#if (UseOtelExportZipkin)
+  zipkin:
+    image: openzipkin/zipkin:3
+    container_name: zipkin
+    ports:
+      - "9411:9411"
+#endif

@@ -2,8 +2,11 @@ using System.Diagnostics;
 using Flowly.MessageInfrastructure.Events;
 using Flowly.MessageInfrastructure.Events.Telemetry;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessageInfrastructure.SendSteps;
 using Flowly.MessageInfrastructure.Telemetry;
+using Flowly.Tests.Fakes;
 using Flowly.Transport;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Flowly.Tests.MessageInfrastructure.Events;
 
@@ -18,8 +21,7 @@ public class EventSubmitterTests
             var client = new FakeEventCapableClient(publisher);
             var registry = new SingleClientRegistry(client, "primary");
             var instrumentation = new StubPublisherInstrumentation();
-            var topicSettings = new EventSubmitter<OrderPlaced>.TopicSettings("order-placed", "primary");
-            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, topicSettings, instrumentation);
+            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, "order-placed", "primary", instrumentation, SendStepRunner.None);
 
             await eventSubmitter.Raise(new OrderPlaced("order-1"));
 
@@ -29,13 +31,38 @@ public class EventSubmitterTests
         }
 
         [Fact]
+        public async Task SendsEventWithCustomProperties()
+        {
+            var publisher = new CapturingEventPublisher();
+            var registry = new SingleClientRegistry(new FakeEventCapableClient(publisher), "primary");
+            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, "order-placed", "primary", new StubPublisherInstrumentation(), SendStepRunner.None);
+
+            await eventSubmitter.Raise(new OrderPlaced("x"), customProperties: new Dictionary<string, string> { ["tenant"] = "contoso" });
+
+            Assert.Equal("contoso", publisher.SentMessages[0].Properties.CustomProperties["tenant"]);
+        }
+
+        [Fact]
+        public async Task WithReservedCustomPropertyKey_ThrowsArgumentExceptionWithoutPublishing()
+        {
+            var publisher = new CapturingEventPublisher();
+            var registry = new SingleClientRegistry(new FakeEventCapableClient(publisher), "primary");
+            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, "order-placed", "primary", new StubPublisherInstrumentation(), SendStepRunner.None);
+
+            await Assert.ThrowsAsync<ArgumentException>(() => eventSubmitter.Raise(
+                new OrderPlaced("x"),
+                customProperties: new Dictionary<string, string> { ["flowly-target-subscription"] = "other" }));
+
+            Assert.Empty(publisher.SentMessages);
+        }
+
+        [Fact]
         public async Task SentMessageHasGeneratedMessageIdAndEmptyCorrelationId()
         {
             var publisher = new CapturingEventPublisher();
             var registry = new SingleClientRegistry(new FakeEventCapableClient(publisher), "primary");
             var instrumentation = new StubPublisherInstrumentation();
-            var topicSettings = new EventSubmitter<OrderPlaced>.TopicSettings("order-placed", "primary");
-            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, topicSettings, instrumentation);
+            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, "order-placed", "primary", instrumentation, SendStepRunner.None);
 
             await eventSubmitter.Raise(new OrderPlaced("x"));
 
@@ -45,12 +72,23 @@ public class EventSubmitterTests
         }
 
         [Fact]
+        public async Task WhenClientIsStreamOnly_ThrowsInvalidOperationExceptionNamingEvents()
+        {
+            var registry = new MessageBusClientRegistry();
+            registry.Register("primary", new FakeStreamOnlyClient(), null);
+            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, "order-placed", "primary", new StubPublisherInstrumentation(), SendStepRunner.None);
+
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => eventSubmitter.Raise(new OrderPlaced("x")));
+
+            Assert.Contains("'primary' does not support events", exception.Message);
+        }
+
+        [Fact]
         public async Task WhenClientIsNotEventCapable_ThrowsInvalidOperationException()
         {
             var registry = new SingleClientRegistry(new NonEventCapableClient(), "primary");
             var instrumentation = new StubPublisherInstrumentation();
-            var topicSettings = new EventSubmitter<OrderPlaced>.TopicSettings("order-placed", "primary");
-            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, topicSettings, instrumentation);
+            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, "order-placed", "primary", instrumentation, SendStepRunner.None);
 
             var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => eventSubmitter.Raise(new OrderPlaced("x")));
 
@@ -64,8 +102,7 @@ public class EventSubmitterTests
             var publisher = new CapturingEventPublisher();
             var registry = new SingleClientRegistry(new FakeEventCapableClient(publisher), "primary");
             var instrumentation = new StubPublisherInstrumentation();
-            var topicSettings = new EventSubmitter<OrderPlaced>.TopicSettings("order-placed", "primary");
-            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, topicSettings, instrumentation);
+            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, "order-placed", "primary", instrumentation, SendStepRunner.None);
 
             await eventSubmitter.Raise(new OrderPlaced("x"));
 
@@ -80,8 +117,7 @@ public class EventSubmitterTests
             var publisher = new ThrowingEventPublisher(new InvalidOperationException("boom"));
             var registry = new SingleClientRegistry(new FakeEventCapableClient(publisher), "primary");
             var instrumentation = new StubPublisherInstrumentation();
-            var topicSettings = new EventSubmitter<OrderPlaced>.TopicSettings("order-placed", "primary");
-            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, topicSettings, instrumentation);
+            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, "order-placed", "primary", instrumentation, SendStepRunner.None);
 
             var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => eventSubmitter.Raise(new OrderPlaced("x")));
 
@@ -98,8 +134,7 @@ public class EventSubmitterTests
             var client = new FakeEventCapableClient(publisher) { MessagingSystem = "fake-bus" };
             var registry = new SingleClientRegistry(client, "primary");
             var instrumentation = new StubPublisherInstrumentation();
-            var topicSettings = new EventSubmitter<OrderPlaced>.TopicSettings("order-placed", "primary");
-            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, topicSettings, instrumentation);
+            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, "order-placed", "primary", instrumentation, SendStepRunner.None);
 
             await eventSubmitter.Raise(new OrderPlaced("x"));
 
@@ -116,8 +151,7 @@ public class EventSubmitterTests
             var publisher = new CapturingEventPublisher();
             var registry = new SingleClientRegistry(new FakeEventCapableClient(publisher), "primary");
             var instrumentation = new StubPublisherInstrumentation();
-            var topicSettings = new EventSubmitter<OrderPlaced>.TopicSettings("order-placed", "primary");
-            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, topicSettings, instrumentation);
+            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, "order-placed", "primary", instrumentation, SendStepRunner.None);
             using var cancellationTokenSource = new CancellationTokenSource();
 
             await eventSubmitter.Raise(new OrderPlaced("x"), cancellationTokenSource.Token);
@@ -126,7 +160,7 @@ public class EventSubmitterTests
         }
 
         [Fact]
-        public async Task UsesProviderNameFromTopicSettingsToResolveClient()
+        public async Task UsesConfiguredProviderNameToResolveClient()
         {
             var secondaryPublisher = new CapturingEventPublisher();
             var secondaryClient = new FakeEventCapableClient(secondaryPublisher);
@@ -136,8 +170,7 @@ public class EventSubmitterTests
                 "secondary",
                 secondaryClient);
             var instrumentation = new StubPublisherInstrumentation();
-            var topicSettings = new EventSubmitter<OrderPlaced>.TopicSettings("order-placed", "secondary");
-            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, topicSettings, instrumentation);
+            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, "order-placed", "secondary", instrumentation, SendStepRunner.None);
 
             await eventSubmitter.Raise(new OrderPlaced("x"));
 
@@ -153,8 +186,7 @@ public class EventSubmitterTests
             var publisher = new CapturingEventPublisher();
             var instrumentation = new ActivityReturningStubInstrumentation();
             var registry = new SingleClientRegistry(new FakeEventCapableClient(publisher), "primary");
-            var topicSettings = new EventSubmitter<TaggedOrderPlaced>.TopicSettings("order-placed", "primary");
-            var eventSubmitter = new EventSubmitter<TaggedOrderPlaced>(registry, topicSettings, instrumentation);
+            var eventSubmitter = new EventSubmitter<TaggedOrderPlaced>(registry, "order-placed", "primary", instrumentation, SendStepRunner.None);
 
             await eventSubmitter.Raise(new TaggedOrderPlaced("order-123"));
 
@@ -167,8 +199,7 @@ public class EventSubmitterTests
             var publisher = new CapturingEventPublisher();
             var instrumentation = new ActivityReturningStubInstrumentation();
             var registry = new SingleClientRegistry(new FakeEventCapableClient(publisher), "primary");
-            var topicSettings = new EventSubmitter<OrderPlaced>.TopicSettings("order-placed", "primary");
-            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, topicSettings, instrumentation);
+            var eventSubmitter = new EventSubmitter<OrderPlaced>(registry, "order-placed", "primary", instrumentation, SendStepRunner.None);
 
             await eventSubmitter.Raise(new OrderPlaced("x"));
 
@@ -176,7 +207,204 @@ public class EventSubmitterTests
         }
     }
 
+    public class WithSendSteps
+    {
+        [Fact]
+        public async Task StepRunsBeforeAnythingIsPublished()
+        {
+            var observations = new List<string>();
+            var publisher = new CapturingEventPublisher();
+            var instrumentation = new StubPublisherInstrumentation();
+            var services = new ServiceCollection();
+            services.AddSingleton(observations);
+            services.AddSingleton<Func<string>>(() => $"published:{publisher.SentMessages.Count},started:{instrumentation.Started.Count}");
+            services.AddScoped<ObservingStep>();
+            using var serviceProvider = services.BuildServiceProvider();
+            var eventSubmitter = CreateEventSubmitter<OrderPlaced>(serviceProvider, publisher, instrumentation, typeof(ObservingStep));
+
+            await eventSubmitter.Raise(new OrderPlaced("x"));
+
+            Assert.Equal(["before:published:0,started:0", "after:published:1,started:1"], observations);
+        }
+
+        [Fact]
+        public async Task StepThatThrows_PublishesNothingAndRecordsNeitherRaisedNorFailed()
+        {
+            var publisher = new CapturingEventPublisher();
+            var instrumentation = new StubPublisherInstrumentation();
+            using var serviceProvider = CreateServiceProvider(typeof(RejectingStep));
+            var eventSubmitter = CreateEventSubmitter<OrderPlaced>(serviceProvider, publisher, instrumentation, typeof(RejectingStep));
+
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() => eventSubmitter.Raise(new OrderPlaced("x")));
+
+            Assert.Empty(publisher.SentMessages);
+            Assert.Empty(instrumentation.Started);
+            Assert.Empty(instrumentation.Raised);
+            Assert.Empty(instrumentation.Failed);
+        }
+
+        [Fact]
+        public async Task StepThatThrows_ExceptionReachesCallerUnchanged()
+        {
+            using var serviceProvider = CreateServiceProvider(typeof(RejectingStep));
+            var eventSubmitter = CreateEventSubmitter<OrderPlaced>(serviceProvider, new CapturingEventPublisher(), new StubPublisherInstrumentation(), typeof(RejectingStep));
+
+            var exception = await Assert.ThrowsAsync<UnauthorizedAccessException>(() => eventSubmitter.Raise(new OrderPlaced("x")));
+
+            Assert.Equal("rejected", exception.Message);
+        }
+
+        [Fact]
+        public async Task StepThatSkipsNext_PublishesNothingAndDoesNotThrow()
+        {
+            var publisher = new CapturingEventPublisher();
+            var instrumentation = new StubPublisherInstrumentation();
+            using var serviceProvider = CreateServiceProvider(typeof(SkippingStep));
+            var eventSubmitter = CreateEventSubmitter<OrderPlaced>(serviceProvider, publisher, instrumentation, typeof(SkippingStep));
+
+            await eventSubmitter.Raise(new OrderPlaced("x"));
+
+            Assert.Empty(publisher.SentMessages);
+            Assert.Empty(instrumentation.Raised);
+            Assert.Empty(instrumentation.Failed);
+        }
+
+        [Fact]
+        public async Task StepPassingThrough_PublishesEventAndRecordsRaised()
+        {
+            var publisher = new CapturingEventPublisher();
+            var instrumentation = new StubPublisherInstrumentation();
+            using var serviceProvider = CreateServiceProvider(typeof(PassThroughStep));
+            var eventSubmitter = CreateEventSubmitter<OrderPlaced>(serviceProvider, publisher, instrumentation, typeof(PassThroughStep));
+            var @event = new OrderPlaced("x");
+
+            await eventSubmitter.Raise(@event);
+
+            Assert.Same(@event, publisher.SentMessages.Single().Message);
+            Assert.Single(instrumentation.Raised);
+        }
+
+        [Fact]
+        public async Task StepForOtherEventType_IsNotRun()
+        {
+            var publisher = new CapturingEventPublisher();
+            using var serviceProvider = CreateServiceProvider(typeof(OrderCancelledOnlyStep));
+            var eventSubmitter = CreateEventSubmitter<OrderPlaced>(serviceProvider, publisher, new StubPublisherInstrumentation(), typeof(OrderCancelledOnlyStep));
+
+            await eventSubmitter.Raise(new OrderPlaced("x"));
+
+            Assert.Single(publisher.SentMessages);
+        }
+
+        [Fact]
+        public async Task StepForRaisedEventType_ReceivesEventAndCancellationToken()
+        {
+            var contexts = new List<SendStepContext<OrderPlaced>>();
+            var services = new ServiceCollection();
+            services.AddSingleton(contexts);
+            services.AddScoped<ContextCapturingStep>();
+            using var serviceProvider = services.BuildServiceProvider();
+            var eventSubmitter = CreateEventSubmitter<OrderPlaced>(serviceProvider, new CapturingEventPublisher(), new StubPublisherInstrumentation(), typeof(ContextCapturingStep));
+            var @event = new OrderPlaced("x");
+            using var cancellationTokenSource = new CancellationTokenSource();
+
+            await eventSubmitter.Raise(@event, cancellationTokenSource.Token);
+
+            var sendStepContext = Assert.Single(contexts);
+            Assert.Same(@event, sendStepContext.Message);
+            Assert.Equal(cancellationTokenSource.Token, sendStepContext.CancellationToken);
+        }
+
+        [Fact]
+        public async Task WithoutRegisteredSteps_CreatesNoScope()
+        {
+            var publisher = new CapturingEventPublisher();
+            var eventSubmitter = new EventSubmitter<OrderPlaced>(
+                new SingleClientRegistry(new FakeEventCapableClient(publisher), "primary"),
+                "order-placed",
+                "primary",
+                new StubPublisherInstrumentation(),
+                new SendStepRunner([], new ThrowingServiceScopeFactory()));
+
+            await eventSubmitter.Raise(new OrderPlaced("x"));
+
+            Assert.Single(publisher.SentMessages);
+        }
+
+        private static ServiceProvider CreateServiceProvider(params Type[] stepTypes)
+        {
+            var services = new ServiceCollection();
+
+            foreach (var stepType in stepTypes)
+            {
+                services.AddScoped(stepType);
+            }
+
+            return services.BuildServiceProvider();
+        }
+
+        private static EventSubmitter<TEvent> CreateEventSubmitter<TEvent>(
+            IServiceProvider serviceProvider,
+            CapturingEventPublisher publisher,
+            StubPublisherInstrumentation instrumentation,
+            params Type[] stepTypes)
+            => new(
+                new SingleClientRegistry(new FakeEventCapableClient(publisher), "primary"),
+                "order-placed",
+                "primary",
+                instrumentation,
+                new SendStepRunner(
+                    stepTypes.Select(stepType => new SendStepRegistration(stepType, SendStepRegistration.ResolveFilterType(stepType))),
+                    serviceProvider.GetRequiredService<IServiceScopeFactory>()));
+    }
+
     private record OrderPlaced(string OrderId);
+
+    private record OrderCancelled(string OrderId);
+
+    private sealed class ThrowingServiceScopeFactory : IServiceScopeFactory
+    {
+        public IServiceScope CreateScope() => throw new InvalidOperationException("no scope expected");
+    }
+
+    private sealed class ObservingStep(List<string> observations, Func<string> probe) : SendStep
+    {
+        public override async Task Handle(SendStepContext<object> context, SendStepDelegate next)
+        {
+            observations.Add($"before:{probe()}");
+            await next();
+            observations.Add($"after:{probe()}");
+        }
+    }
+
+    private sealed class RejectingStep : SendStep
+    {
+        public override Task Handle(SendStepContext<object> context, SendStepDelegate next)
+            => throw new UnauthorizedAccessException("rejected");
+    }
+
+    private sealed class SkippingStep : SendStep
+    {
+        public override Task Handle(SendStepContext<object> context, SendStepDelegate next) => Task.CompletedTask;
+    }
+
+    private sealed class PassThroughStep : SendStep;
+
+    private sealed class OrderCancelledOnlyStep : SendStep<OrderCancelled>
+    {
+        public override Task Handle(SendStepContext<OrderCancelled> context, SendStepDelegate next)
+            => throw new UnauthorizedAccessException("must not run");
+    }
+
+    private sealed class ContextCapturingStep(List<SendStepContext<OrderPlaced>> contexts) : SendStep<OrderPlaced>
+    {
+        public override Task Handle(SendStepContext<OrderPlaced> context, SendStepDelegate next)
+        {
+            contexts.Add(context);
+
+            return next();
+        }
+    }
 
     private record TaggedOrderPlaced(string OrderId) : IOpenTelemetryTagsProvider
     {

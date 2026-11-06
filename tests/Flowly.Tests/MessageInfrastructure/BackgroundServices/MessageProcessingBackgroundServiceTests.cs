@@ -1,9 +1,14 @@
+using Flowly.MessageInfrastructure;
+using Flowly.MessageInfrastructure.HandlerSteps;
+using Flowly.MessageInfrastructure.StreamPartitions;
 using System.Diagnostics;
 using Flowly.MessageInfrastructure.BackgroundServices;
 using Flowly.MessageInfrastructure.MessageHandlingStrategies;
 using Flowly.MessageInfrastructure.Model;
 using Flowly.MessageInfrastructure.Telemetry;
+using Flowly.Tests.Fakes;
 using Flowly.Transport;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Flowly.Tests.MessageInfrastructure.BackgroundServices;
@@ -28,8 +33,49 @@ public class MessageProcessingBackgroundServiceTests
             settings,
             NullLogger<MessageProcessingBackgroundService<TestMessage>>.Instance,
             instrumentation ?? new NullHandlerInstrumentation(),
-            new StandardMessageHandlingStrategy<TestMessage>());
+            new StandardMessageHandlingStrategy<TestMessage>(HandlerStepRunner.None),
+            new NonRetryableExceptionClassifier(new FlowlyOptions()));
         return (messageProcessingBackgroundService, client);
+    }
+
+    private static (MessageProcessingBackgroundService<TestMessage> messageProcessingBackgroundService, FakeMessageBusClient<TestMessage> client) BuildWithSteps(
+        List<string> log,
+        Type[] stepTypes,
+        int maxRetries = 0,
+        IHandlerInstrumentation? instrumentation = null,
+        FlowlyOptions? flowlyOptions = null)
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(log);
+        services.AddScoped<ScopedState>();
+        services.AddScoped<MessageHandler<TestMessage>, StepAwareMessageHandler>();
+
+        foreach (var stepType in stepTypes)
+        {
+            services.AddScoped(stepType);
+        }
+
+        var serviceProvider = services.BuildServiceProvider();
+        var handlerStepRunner = new HandlerStepRunner(stepTypes.Select(stepType => new HandlerStepRegistration(stepType, HandlerStepRegistration.ResolveFilterType(stepType))));
+        var client = new FakeMessageBusClient<TestMessage>();
+        var settings = new HandlerSettings<TestMessage>("test-queue", "azure-service-bus", "TestHandler", false, 1, maxRetries, 0, 0, TimeSpan.Zero);
+        var messageProcessingBackgroundService = new MessageProcessingBackgroundService<TestMessage>(
+            new FakeMessageBusClientRegistry(client),
+            serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+            settings,
+            NullLogger<MessageProcessingBackgroundService<TestMessage>>.Instance,
+            instrumentation ?? new NullHandlerInstrumentation(),
+            new StandardMessageHandlingStrategy<TestMessage>(handlerStepRunner),
+            new NonRetryableExceptionClassifier(flowlyOptions ?? new FlowlyOptions()));
+        return (messageProcessingBackgroundService, client);
+    }
+
+    private static async Task<FakeMessageBusProcessor<TestMessage>> StartProcessing(MessageProcessingBackgroundService<TestMessage> messageProcessingBackgroundService, FakeMessageBusClient<TestMessage> client)
+    {
+        await messageProcessingBackgroundService.StartAsync(CancellationToken.None);
+        var processor = await client.ProcessorCreated;
+        await processor.Started;
+        return processor;
     }
 
     private static (MessageProcessingBackgroundService<TaggedTestMessage> service, FakeMessageBusClient<TaggedTestMessage> client) BuildTagged(
@@ -45,7 +91,8 @@ public class MessageProcessingBackgroundServiceTests
             settings,
             NullLogger<MessageProcessingBackgroundService<TaggedTestMessage>>.Instance,
             instrumentation ?? new NullHandlerInstrumentation(),
-            new StandardMessageHandlingStrategy<TaggedTestMessage>());
+            new StandardMessageHandlingStrategy<TaggedTestMessage>(HandlerStepRunner.None),
+            new NonRetryableExceptionClassifier(new FlowlyOptions()));
         return (service, client);
     }
 
@@ -210,6 +257,232 @@ public class MessageProcessingBackgroundServiceTests
         }
     }
 
+    public class OnProcessMessageWithNonRetryableFailure
+    {
+        [Fact]
+        public async Task WithStepThrowingMessageRejectedExceptionAndRetriesLeft_DeadLettersWithReason()
+        {
+            var (messageProcessingBackgroundService, client) = BuildWithSteps([], [typeof(RejectingStep)], maxRetries: 3);
+            var processor = await StartProcessing(messageProcessingBackgroundService, client);
+            var receivedMessage = new FakeReceivedMessage<TestMessage>(new TestMessage("hello"));
+
+            await processor.FireProcessMessage(receivedMessage);
+            await messageProcessingBackgroundService.StopAsync(CancellationToken.None);
+
+            Assert.True(receivedMessage.DeadLettered);
+            Assert.Equal("step rejected", receivedMessage.DeadLetterReason);
+        }
+
+        [Fact]
+        public async Task WithStepThrowingMessageRejectedExceptionAndRetriesLeft_DoesNotRepublish()
+        {
+            var (messageProcessingBackgroundService, client) = BuildWithSteps([], [typeof(RejectingStep)], maxRetries: 3);
+            var processor = await StartProcessing(messageProcessingBackgroundService, client);
+
+            await processor.FireProcessMessage(new FakeReceivedMessage<TestMessage>(new TestMessage("hello")));
+            await messageProcessingBackgroundService.StopAsync(CancellationToken.None);
+
+            Assert.Empty(client.RepublishedRetryCounts);
+        }
+
+        [Fact]
+        public async Task WithStepThrowingMessageRejectedExceptionAndRetriesLeft_RecordsFailedAndNotRetried()
+        {
+            var instrumentation = new RecordingHandlerInstrumentation();
+            var (messageProcessingBackgroundService, client) = BuildWithSteps([], [typeof(RejectingStep)], maxRetries: 3, instrumentation: instrumentation);
+            var processor = await StartProcessing(messageProcessingBackgroundService, client);
+
+            await processor.FireProcessMessage(new FakeReceivedMessage<TestMessage>(new TestMessage("hello")));
+            await messageProcessingBackgroundService.StopAsync(CancellationToken.None);
+
+            Assert.Equal(1, instrumentation.FailedCount);
+            Assert.Equal(0, instrumentation.RetriedCount);
+        }
+
+        [Fact]
+        public async Task WithRegisteredNonRetryableException_DeadLettersImmediately()
+        {
+            var flowlyOptions = new FlowlyOptions();
+            flowlyOptions.NonRetryable<UnauthorizedAccessException>();
+            var (messageProcessingBackgroundService, client) = BuildWithSteps([], [typeof(UnauthorizedStep)], maxRetries: 3, flowlyOptions: flowlyOptions);
+            var processor = await StartProcessing(messageProcessingBackgroundService, client);
+            var receivedMessage = new FakeReceivedMessage<TestMessage>(new TestMessage("hello"));
+
+            await processor.FireProcessMessage(receivedMessage);
+            await messageProcessingBackgroundService.StopAsync(CancellationToken.None);
+
+            Assert.True(receivedMessage.DeadLettered);
+            Assert.Equal("not authorized", receivedMessage.DeadLetterReason);
+            Assert.Empty(client.RepublishedRetryCounts);
+        }
+
+        [Fact]
+        public async Task WhenRetrying_RepublishesMessageWithItsCustomProperties()
+        {
+            var (messageProcessingBackgroundService, client) = BuildWithSteps([], [typeof(ThrowingStep)], maxRetries: 3);
+            var processor = await StartProcessing(messageProcessingBackgroundService, client);
+            var properties = new MessageProperties("msg-1", "corr-1") { CustomProperties = new Dictionary<string, string> { ["tenant"] = "contoso" } };
+
+            await processor.FireProcessMessage(new FakeReceivedMessage<TestMessage>(new TestMessage("hello"), properties));
+            await messageProcessingBackgroundService.StopAsync(CancellationToken.None);
+
+            Assert.Equal("contoso", Assert.Single(client.RepublishedProperties).CustomProperties["tenant"]);
+        }
+
+        [Fact]
+        public async Task WithUnregisteredException_StillRetries()
+        {
+            var instrumentation = new RecordingHandlerInstrumentation();
+            var (messageProcessingBackgroundService, client) = BuildWithSteps([], [typeof(ThrowingStep)], maxRetries: 3, instrumentation: instrumentation);
+            var processor = await StartProcessing(messageProcessingBackgroundService, client);
+            var receivedMessage = new FakeReceivedMessage<TestMessage>(new TestMessage("hello"));
+
+            await processor.FireProcessMessage(receivedMessage);
+            await messageProcessingBackgroundService.StopAsync(CancellationToken.None);
+
+            Assert.Equal([1], client.RepublishedRetryCounts);
+            Assert.False(receivedMessage.DeadLettered);
+            Assert.Equal(1, instrumentation.RetriedCount);
+            Assert.Equal(0, instrumentation.FailedCount);
+        }
+    }
+
+    public class OnProcessMessageWithHandlerSteps
+    {
+        [Fact]
+        public async Task RunsStepAroundHandlerAndCompletesMessage()
+        {
+            var log = new List<string>();
+            var (messageProcessingBackgroundService, client) = BuildWithSteps(log, [typeof(LoggingStep)]);
+            var processor = await StartProcessing(messageProcessingBackgroundService, client);
+            var receivedMessage = new FakeReceivedMessage<TestMessage>(new TestMessage("hello"));
+
+            await processor.FireProcessMessage(receivedMessage);
+            await messageProcessingBackgroundService.StopAsync(CancellationToken.None);
+
+            Assert.Equal(["step:before", "handler", "step:after"], log);
+            Assert.True(receivedMessage.Completed);
+        }
+
+        [Fact]
+        public async Task StepAndHandlerShareScopedService()
+        {
+            var log = new List<string>();
+            var (messageProcessingBackgroundService, client) = BuildWithSteps(log, [typeof(ScopedStateStep)]);
+            var processor = await StartProcessing(messageProcessingBackgroundService, client);
+
+            await processor.FireProcessMessage(new FakeReceivedMessage<TestMessage>(new TestMessage("hello")));
+            await messageProcessingBackgroundService.StopAsync(CancellationToken.None);
+
+            Assert.Equal(["handler:state=from-step"], log);
+        }
+
+        [Fact]
+        public async Task StepRunsInsideHandlingActivity()
+        {
+            var log = new List<string>();
+            var instrumentation = new ActivityStartingHandlerInstrumentation();
+            var (messageProcessingBackgroundService, client) = BuildWithSteps(log, [typeof(ActivityRecordingStep)], instrumentation: instrumentation);
+            var processor = await StartProcessing(messageProcessingBackgroundService, client);
+
+            await processor.FireProcessMessage(new FakeReceivedMessage<TestMessage>(new TestMessage("hello")));
+            await messageProcessingBackgroundService.StopAsync(CancellationToken.None);
+
+            Assert.Equal([$"step:{instrumentation.Activity?.Id}", "handler"], log);
+        }
+
+        [Fact]
+        public async Task WithStepNotCallingNext_CompletesMessageWithoutInvokingHandler()
+        {
+            var log = new List<string>();
+            var (messageProcessingBackgroundService, client) = BuildWithSteps(log, [typeof(SkippingStep)]);
+            var processor = await StartProcessing(messageProcessingBackgroundService, client);
+            var receivedMessage = new FakeReceivedMessage<TestMessage>(new TestMessage("hello"));
+
+            await processor.FireProcessMessage(receivedMessage);
+            await messageProcessingBackgroundService.StopAsync(CancellationToken.None);
+
+            Assert.Equal(["step:skipped"], log);
+            Assert.True(receivedMessage.Completed);
+        }
+
+        [Fact]
+        public async Task WithStepSwallowingHandlerException_CompletesMessage()
+        {
+            var log = new List<string>();
+            var (messageProcessingBackgroundService, client) = BuildWithSteps(log, [typeof(SwallowingStep), typeof(ThrowingHandlerTriggerStep)]);
+            var processor = await StartProcessing(messageProcessingBackgroundService, client);
+            var receivedMessage = new FakeReceivedMessage<TestMessage>(new TestMessage("hello"));
+
+            await processor.FireProcessMessage(receivedMessage);
+            await messageProcessingBackgroundService.StopAsync(CancellationToken.None);
+
+            Assert.True(receivedMessage.Completed);
+            Assert.False(receivedMessage.DeadLettered);
+        }
+
+        [Fact]
+        public async Task WithThrowingStepAndNoRetriesLeft_DeadLettersMessage()
+        {
+            var log = new List<string>();
+            var (messageProcessingBackgroundService, client) = BuildWithSteps(log, [typeof(ThrowingStep)]);
+            var processor = await StartProcessing(messageProcessingBackgroundService, client);
+            var receivedMessage = new FakeReceivedMessage<TestMessage>(new TestMessage("hello"));
+
+            await processor.FireProcessMessage(receivedMessage);
+            await messageProcessingBackgroundService.StopAsync(CancellationToken.None);
+
+            Assert.True(receivedMessage.DeadLettered);
+            Assert.Equal("step failed", receivedMessage.DeadLetterReason);
+            Assert.Empty(log);
+        }
+
+        [Fact]
+        public async Task WithThrowingStepAndRetriesLeft_RepublishesMessageWithIncrementedRetryCount()
+        {
+            var log = new List<string>();
+            var (messageProcessingBackgroundService, client) = BuildWithSteps(log, [typeof(ThrowingStep)], maxRetries: 2);
+            var processor = await StartProcessing(messageProcessingBackgroundService, client);
+            var receivedMessage = new FakeReceivedMessage<TestMessage>(new TestMessage("hello"));
+
+            await processor.FireProcessMessage(receivedMessage);
+            await messageProcessingBackgroundService.StopAsync(CancellationToken.None);
+
+            Assert.Equal([1], client.RepublishedRetryCounts);
+            Assert.True(receivedMessage.Completed);
+            Assert.False(receivedMessage.DeadLettered);
+        }
+
+        [Fact]
+        public async Task WithThrowingHandlerAndRetriesLeft_RepublishesMessageAfterStepsRan()
+        {
+            var log = new List<string>();
+            var (messageProcessingBackgroundService, client) = BuildWithSteps(log, [typeof(LoggingStep), typeof(ThrowingHandlerTriggerStep)], maxRetries: 2);
+            var processor = await StartProcessing(messageProcessingBackgroundService, client);
+
+            await processor.FireProcessMessage(new FakeReceivedMessage<TestMessage>(new TestMessage("hello")));
+            await messageProcessingBackgroundService.StopAsync(CancellationToken.None);
+
+            Assert.Equal(["step:before", "handler:throwing"], log);
+            Assert.Equal([1], client.RepublishedRetryCounts);
+        }
+
+        [Fact]
+        public async Task WithCorruptBody_DeadLettersBeforeAnyStepRuns()
+        {
+            var log = new List<string>();
+            var (messageProcessingBackgroundService, client) = BuildWithSteps(log, [typeof(LoggingStep)]);
+            var processor = await StartProcessing(messageProcessingBackgroundService, client);
+            var poisonMessage = new ThrowingReceivedMessage<TestMessage>();
+
+            await processor.FireProcessMessage(poisonMessage);
+            await messageProcessingBackgroundService.StopAsync(CancellationToken.None);
+
+            Assert.True(poisonMessage.DeadLettered);
+            Assert.Empty(log);
+        }
+    }
+
     public class OnProcessError
     {
         [Fact]
@@ -300,11 +573,13 @@ public class MessageProcessingBackgroundServiceTests
 
         public void RecordHalted(string handlerName, string queueName, string reason) { }
 
+        public void RecordStreamPartitionTransition(string handlerName, string queueName, string consumerName, int? partition, StreamPartitionState state) { }
+
         public void RecordCheckpointSaved(string handlerName, string queueName, double durationMs) { }
 
         public void RecordCheckpointSaveFailed(string handlerName, string queueName) { }
 
-        public void RecordCheckpointResolved(string handlerName, string queueName, bool resumed) { }
+        public void RecordCheckpointResolved(string handlerName, string queueName, CheckpointResolution resolution) { }
 
         public Activity? StartSendingResponse(string callQueueName, string replyQueueName, string messagingSystem, string messageId, string correlationId) => null;
 
@@ -324,6 +599,164 @@ public class MessageProcessingBackgroundServiceTests
         }
     }
 
+    private sealed class ScopedState
+    {
+        public string? Value { get; set; }
+        public bool ThrowInHandler { get; set; }
+    }
+
+    private sealed class StepAwareMessageHandler(List<string> log, ScopedState scopedState) : MessageHandler<TestMessage>
+    {
+        public override Task Handle(IMessageContext<TestMessage> messageContext)
+        {
+            if (scopedState.ThrowInHandler)
+            {
+                log.Add("handler:throwing");
+                throw new InvalidOperationException("handler failed");
+            }
+
+            log.Add(scopedState.Value is null ? "handler" : $"handler:state={scopedState.Value}");
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class LoggingStep(List<string> log) : HandlerStep<TestMessage>
+    {
+        protected override Task OnBeforeHandlerExecution(HandlerStepContext<TestMessage> context)
+        {
+            log.Add("step:before");
+            return Task.CompletedTask;
+        }
+
+        protected override Task OnAfterHandlerExecution(HandlerStepContext<TestMessage> context)
+        {
+            log.Add("step:after");
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class ScopedStateStep(ScopedState scopedState) : HandlerStep<TestMessage>
+    {
+        protected override Task OnBeforeHandlerExecution(HandlerStepContext<TestMessage> context)
+        {
+            scopedState.Value = "from-step";
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class ThrowingHandlerTriggerStep(ScopedState scopedState) : HandlerStep<TestMessage>
+    {
+        protected override Task OnBeforeHandlerExecution(HandlerStepContext<TestMessage> context)
+        {
+            scopedState.ThrowInHandler = true;
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class SkippingStep(List<string> log) : HandlerStep<TestMessage>
+    {
+        public override Task Handle(HandlerStepContext<TestMessage> context, HandlerStepDelegate next)
+        {
+            log.Add("step:skipped");
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class SwallowingStep : HandlerStep<TestMessage>
+    {
+        public override async Task Handle(HandlerStepContext<TestMessage> context, HandlerStepDelegate next)
+        {
+            try
+            {
+                await next();
+            }
+            catch (InvalidOperationException)
+            {
+            }
+        }
+    }
+
+    private sealed class RejectingStep : HandlerStep<TestMessage>
+    {
+        public override Task Handle(HandlerStepContext<TestMessage> context, HandlerStepDelegate next)
+            => throw new MessageRejectedException("step rejected");
+    }
+
+    private sealed class UnauthorizedStep : HandlerStep<TestMessage>
+    {
+        public override Task Handle(HandlerStepContext<TestMessage> context, HandlerStepDelegate next)
+            => throw new UnauthorizedAccessException("not authorized");
+    }
+
+    private sealed class ThrowingStep : HandlerStep<TestMessage>
+    {
+        public override Task Handle(HandlerStepContext<TestMessage> context, HandlerStepDelegate next)
+            => throw new InvalidOperationException("step failed");
+    }
+
+    private sealed class ActivityRecordingStep(List<string> log) : HandlerStep<TestMessage>
+    {
+        protected override Task OnBeforeHandlerExecution(HandlerStepContext<TestMessage> context)
+        {
+            log.Add($"step:{Activity.Current?.Id}");
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class ActivityStartingHandlerInstrumentation : IHandlerInstrumentation
+    {
+        public Activity? Activity { get; private set; }
+
+        public bool IsEnabled => true;
+
+        public Activity? StartHandling(string handlerName, string queueName, string messagingSystem, MessageProperties messageProperties, ActivityContext parentContext = default)
+        {
+            Activity = new Activity("flowly.handle test").Start();
+            return Activity;
+        }
+
+        public Activity? StartHandling(string handlerName, string queueName, string messagingSystem, MessageProperties messageProperties, IEnumerable<ActivityLink> links)
+            => StartHandling(handlerName, queueName, messagingSystem, messageProperties);
+
+        public void RecordReceived(string handlerName, string queueName, long count = 1) { }
+
+        public void RecordSucceeded(string handlerName, string queueName, double durationMs, long count = 1) { }
+
+        public void RecordFailed(string handlerName, string queueName, long count = 1) { }
+
+        public void RecordRetried(string handlerName, string queueName, long count = 1) { }
+
+        public void RecordHalted(string handlerName, string queueName, string reason) { }
+
+        public void RecordStreamPartitionTransition(string handlerName, string queueName, string consumerName, int? partition, StreamPartitionState state) { }
+
+        public void RecordCheckpointSaved(string handlerName, string queueName, double durationMs) { }
+
+        public void RecordCheckpointSaveFailed(string handlerName, string queueName) { }
+
+        public void RecordCheckpointResolved(string handlerName, string queueName, CheckpointResolution resolution) { }
+
+        public Activity? StartSendingResponse(string callQueueName, string replyQueueName, string messagingSystem, string messageId, string correlationId) => null;
+
+        public void RecordResponseSent(string callQueueName, double durationMs) { }
+
+        public void RecordResponseFailed(string callQueueName) { }
+    }
+
+    private sealed class RecordingMessageBusSender(List<int> republishedRetryCounts, List<MessageProperties> republishedProperties) : IMessageBusSender
+    {
+        public Task SendMessage<TMessage>(TMessage message, MessageProperties messageProperties, CancellationToken cancellationToken = default)
+        {
+            republishedRetryCounts.Add(messageProperties.RetryCount);
+            republishedProperties.Add(messageProperties);
+            return Task.CompletedTask;
+        }
+
+        public Task SendEmptyMessage(MessageProperties messageProperties, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+
+        public Task SendRawMessage(string rawBody, IReadOnlyDictionary<string, object> applicationProperties, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+    }
+
     private class FakeMessageBusClient<TMsg> : IMessageBusClient where TMsg : class
     {
         private readonly TaskCompletionSource<FakeMessageBusProcessor<TMsg>> _processorCreated = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -331,6 +764,10 @@ public class MessageProcessingBackgroundServiceTests
         public Task<FakeMessageBusProcessor<TMsg>> ProcessorCreated => _processorCreated.Task;
 
         public string MessagingSystem => "fake";
+
+        public List<int> RepublishedRetryCounts { get; } = [];
+
+        public List<MessageProperties> RepublishedProperties { get; } = [];
 
         public Task<IMessageBusProcessor<TMessage>> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options)
         {
@@ -350,9 +787,7 @@ public class MessageProcessingBackgroundServiceTests
         }
 
         public Task<IMessageBusSender> CreateMessageBusSender(string queueName)
-        {
-            throw new NotImplementedException();
-        }
+            => Task.FromResult<IMessageBusSender>(new RecordingMessageBusSender(RepublishedRetryCounts, RepublishedProperties));
 
         public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName)
         {

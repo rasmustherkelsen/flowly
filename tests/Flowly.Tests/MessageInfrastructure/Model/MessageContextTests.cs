@@ -27,6 +27,24 @@ public class MessageContextTests
         }
 
         [Fact]
+        public void AssignsPropertiesProperty()
+        {
+            var properties = new MessageProperties("m", "c") { CustomProperties = new Dictionary<string, string> { ["tenant"] = "contoso" } };
+
+            var messageContext = new MessageContext<SomeMessage>(new SomeMessage("x"), CancellationToken.None, properties);
+
+            Assert.Same(properties, messageContext.Properties);
+        }
+
+        [Fact]
+        public void WithoutProperties_UsesEmptyProperties()
+        {
+            var messageContext = new MessageContext<SomeMessage>(new SomeMessage("x"), CancellationToken.None);
+
+            Assert.Same(MessageProperties.Empty, messageContext.Properties);
+        }
+
+        [Fact]
         public void WithNullMessage_StoresNull()
         {
             var messageContext = new MessageContext<SomeMessage?>(null, CancellationToken.None);

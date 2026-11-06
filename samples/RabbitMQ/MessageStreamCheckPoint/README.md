@@ -14,7 +14,7 @@ A partitioned, append-only message stream that survives process restarts by pers
 
 - `AddPostgresMessageStreamPersistence("MsgStreamDb")` — registers the default (unnamed) PostgreSQL-backed checkpoint store
 - `UseMessageStreamCheckpoint<MyMessage>()` — opts the handler into that store, keyed by `(ConsumerName, Partition)`; `ConsumerName` is left at its default (the handler type name)
-- Restart survival: `[StreamStartPosition(StreamStartPositionKind.First)]` on the handler is only a bootstrap value used on the very first run — once a checkpoint row exists for a partition, the stored position takes over on every subsequent start
+- Restart survival: `[StreamStartPosition(StreamStartPositionKind.First)]` on the handler is only a bootstrap value used on the very first run (and with `Last()` it would be resolved to an offset and stored before the first message arrives) — once a checkpoint row exists for a partition, the stored position takes over on every subsequent start
 - `[StreamPartitions(2)]` combined with checkpointing — each partition's position is tracked and resumed independently
 - `IMessageRecorder.Record(message, cancellationToken, partitionKey)` — the same key always routes to the same partition
 - `WithTopologyNameResolver<DotCaseTopologyNameResolver>()` — dot-case exchange/queue naming, the RabbitMQ project convention

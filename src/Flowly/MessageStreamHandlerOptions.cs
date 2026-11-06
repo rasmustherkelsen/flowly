@@ -20,9 +20,16 @@ public class MessageStreamHandlerOptions
     ///     between <see cref="Flowly.StartPosition.First" />, <see cref="Flowly.StartPosition.Last" />,
     ///     <see cref="Flowly.StartPosition.Offset" />, and <see cref="Flowly.StartPosition.Timestamp" />.
     ///     <para>
-    ///         Re-evaluated fresh on every process restart — offsets are not persisted. Avoid values computed relative
+    ///         Re-evaluated fresh on every process restart unless a <see cref="MessageStreamCheckpoint{TMessage}" /> is registered and
+    ///         holds a stored position, which then takes precedence. Avoid values computed relative
     ///         to the current time (e.g. <c>StartPosition.Timestamp(DateTime.UtcNow - TimeSpan.FromHours(2))</c>),
-    ///         which never converge across restarts.
+    ///         which never converge across restarts without a checkpoint.
+    ///     </para>
+    ///     <para>
+    ///         With a registered checkpoint this value is only a bootstrap: on the first run
+    ///         <see cref="Flowly.StartPosition.Last" /> and <see cref="Flowly.StartPosition.Timestamp" /> are resolved to a concrete
+    ///         offset and stored before consumption starts (where the transport can resolve them), after which the stored position
+    ///         is used and changing this value has no effect.
     ///     </para>
     /// </summary>
     public StartPosition? StartPosition { get; set; }
@@ -32,7 +39,10 @@ public class MessageStreamHandlerOptions
     ///     is registered — disambiguates independent readers of the same stream (e.g. two different services each
     ///     replaying the stream independently) so their stored positions don't collide. If not set, defaults to the
     ///     handler's type name. Pin this explicitly if the handler class may be renamed later, since the default
-    ///     would otherwise silently orphan a previously stored position.
+    ///     would otherwise silently orphan a previously stored position. The resolved name is also passed to the transport as
+    ///     <see cref="Transport.MessageBusProcessorOptions.ConsumerName" />, which may use it to identify the reader on the broker
+    ///     (for example as a consumer group): Azure Event Hubs reads the event hub through the consumer group with this name, which must
+    ///     exist on the event hub (<c>"$Default"</c> selects the default consumer group), while the RabbitMQ and InMemory transports ignore it.
     /// </summary>
     public string? ConsumerName { get; set; }
 

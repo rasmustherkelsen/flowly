@@ -2,6 +2,8 @@ using Flowly.Jobs.BackgroundServices;
 using Flowly.Jobs.Messages;
 using Flowly.Jobs.Model;
 using Flowly.Jobs.Tests.Fakes;
+using Flowly.MessageInfrastructure;
+using Flowly.MessageInfrastructure.HandlerSteps;
 using Flowly.Transport;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -21,7 +23,8 @@ public class JobMessageHandlingStrategyTests
 
             var serviceProvider = BuildServiceProvider(fakeMessageSender, capturingJobHandler);
             var jobMessageHandlingStrategy = new JobMessageHandlingStrategy<TestJobMessage>(
-                serviceProvider.GetRequiredService<IServiceScopeFactory>());
+                serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+                HandlerStepRunner.None);
 
             var receivedMessage = new FakeReceivedMessage<TestJobMessage>(
                 new TestJobMessage("import"),
@@ -46,7 +49,8 @@ public class JobMessageHandlingStrategyTests
 
             var serviceProvider = BuildServiceProvider(fakeMessageSender, capturingJobHandler);
             var jobMessageHandlingStrategy = new JobMessageHandlingStrategy<TestJobMessage>(
-                serviceProvider.GetRequiredService<IServiceScopeFactory>());
+                serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+                HandlerStepRunner.None);
 
             var receivedMessage = new FakeReceivedMessage<TestJobMessage>(
                 new TestJobMessage("payload-value"),
@@ -66,7 +70,8 @@ public class JobMessageHandlingStrategyTests
 
             var serviceProvider = BuildServiceProvider(fakeMessageSender, capturingJobHandler);
             var jobMessageHandlingStrategy = new JobMessageHandlingStrategy<TestJobMessage>(
-                serviceProvider.GetRequiredService<IServiceScopeFactory>());
+                serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+                HandlerStepRunner.None);
 
             var receivedMessage = new FakeReceivedMessage<TestJobMessage>(
                 new TestJobMessage("import"),
@@ -87,7 +92,8 @@ public class JobMessageHandlingStrategyTests
 
             var serviceProvider = BuildServiceProvider(fakeMessageSender, throwingJobHandler);
             var jobMessageHandlingStrategy = new JobMessageHandlingStrategy<TestJobMessage>(
-                serviceProvider.GetRequiredService<IServiceScopeFactory>());
+                serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+                HandlerStepRunner.None);
 
             var receivedMessage = new FakeReceivedMessage<TestJobMessage>(
                 new TestJobMessage("import"),
@@ -109,7 +115,8 @@ public class JobMessageHandlingStrategyTests
 
             var serviceProvider = BuildServiceProvider(fakeMessageSender, throwingJobHandler);
             var jobMessageHandlingStrategy = new JobMessageHandlingStrategy<TestJobMessage>(
-                serviceProvider.GetRequiredService<IServiceScopeFactory>());
+                serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+                HandlerStepRunner.None);
 
             var receivedMessage = new FakeReceivedMessage<TestJobMessage>(
                 new TestJobMessage("import"),
@@ -129,7 +136,8 @@ public class JobMessageHandlingStrategyTests
 
             var serviceProvider = BuildServiceProvider(fakeMessageSender, capturingJobHandler);
             var jobMessageHandlingStrategy = new JobMessageHandlingStrategy<TestJobMessage>(
-                serviceProvider.GetRequiredService<IServiceScopeFactory>());
+                serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+                HandlerStepRunner.None);
 
             var receivedMessage = new FakeReceivedMessage<TestJobMessage>(
                 new TestJobMessage("import"),
@@ -145,7 +153,8 @@ public class JobMessageHandlingStrategyTests
         {
             var serviceProvider = BuildServiceProvider(new FakeMessageSender(), new CapturingJobHandler());
             var jobMessageHandlingStrategy = new JobMessageHandlingStrategy<TestJobMessage>(
-                serviceProvider.GetRequiredService<IServiceScopeFactory>());
+                serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+                HandlerStepRunner.None);
 
             var receivedMessage = new FakeReceivedMessage<TestJobMessage>(
                 new TestJobMessage("import"),
@@ -154,10 +163,137 @@ public class JobMessageHandlingStrategyTests
             await Assert.ThrowsAsync<FormatException>(
                 () => jobMessageHandlingStrategy.HandleMessage(receivedMessage, serviceProvider, CancellationToken.None));
         }
+
+        [Fact]
+        public async Task StepsRunBetweenStartedAndCompletedUpdates()
+        {
+            var log = new List<string>();
+            var fakeMessageSender = new FakeMessageSender();
+            using var serviceProvider = BuildServiceProvider(fakeMessageSender, log, typeof(UpdateLoggingStep));
+            using var scope = serviceProvider.CreateScope();
+            var jobMessageHandlingStrategy = new JobMessageHandlingStrategy<TestJobMessage>(
+                serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+                CreateRunner(typeof(UpdateLoggingStep)));
+
+            await jobMessageHandlingStrategy.HandleMessage(CreateReceivedMessage(), scope.ServiceProvider, CancellationToken.None);
+
+            Assert.Equal(["step:before:Started", "handler", "step:after:Started"], log);
+            Assert.Equal(
+                [JobState.Started, JobState.Completed],
+                fakeMessageSender.SentMessages.OfType<FlowlysysUpdateJobStateMessage>().Select(update => update.JobState));
+        }
+
+        [Fact]
+        public async Task WithThrowingStep_WrapsExceptionInJobExceptionWithoutInvokingHandlerOrCompleting()
+        {
+            var log = new List<string>();
+            var fakeMessageSender = new FakeMessageSender();
+            var jobId = Guid.NewGuid();
+            using var serviceProvider = BuildServiceProvider(fakeMessageSender, log, typeof(ThrowingStep));
+            using var scope = serviceProvider.CreateScope();
+            var jobMessageHandlingStrategy = new JobMessageHandlingStrategy<TestJobMessage>(
+                serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+                CreateRunner(typeof(ThrowingStep)));
+
+            var jobException = await Assert.ThrowsAsync<JobException>(
+                () => jobMessageHandlingStrategy.HandleMessage(CreateReceivedMessage(jobId), scope.ServiceProvider, CancellationToken.None));
+
+            Assert.Equal(jobId, jobException.JobId.InnerId);
+            Assert.Equal("step failed", jobException.InnerException!.Message);
+            Assert.Empty(log);
+            Assert.DoesNotContain(fakeMessageSender.SentMessages.OfType<FlowlysysUpdateJobStateMessage>(), update => update.JobState == JobState.Completed);
+        }
+
+        [Fact]
+        public async Task WithSkippingStep_CompletesJobWithoutInvokingHandler()
+        {
+            var log = new List<string>();
+            var fakeMessageSender = new FakeMessageSender();
+            using var serviceProvider = BuildServiceProvider(fakeMessageSender, log, typeof(SkippingStep));
+            using var scope = serviceProvider.CreateScope();
+            var jobMessageHandlingStrategy = new JobMessageHandlingStrategy<TestJobMessage>(
+                serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+                CreateRunner(typeof(SkippingStep)));
+
+            await jobMessageHandlingStrategy.HandleMessage(CreateReceivedMessage(), scope.ServiceProvider, CancellationToken.None);
+
+            Assert.Equal(["step:skipped"], log);
+            Assert.Equal(
+                [JobState.Started, JobState.Completed],
+                fakeMessageSender.SentMessages.OfType<FlowlysysUpdateJobStateMessage>().Select(update => update.JobState));
+        }
+
+        [Fact]
+        public async Task StepAndHandlerShareScopedService()
+        {
+            var log = new List<string>();
+            using var serviceProvider = BuildServiceProvider(new FakeMessageSender(), log, typeof(ScopedStateStep));
+            using var scope = serviceProvider.CreateScope();
+            var jobMessageHandlingStrategy = new JobMessageHandlingStrategy<TestJobMessage>(
+                serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+                CreateRunner(typeof(ScopedStateStep)));
+
+            await jobMessageHandlingStrategy.HandleMessage(CreateReceivedMessage(), scope.ServiceProvider, CancellationToken.None);
+
+            Assert.Equal(["handler:state=from-step"], log);
+        }
+
+        [Fact]
+        public async Task PassesHandlerTypeAndPropertiesToStep()
+        {
+            var log = new List<string>();
+            var jobId = Guid.NewGuid();
+            using var serviceProvider = BuildServiceProvider(new FakeMessageSender(), log, typeof(ContextLoggingStep));
+            using var scope = serviceProvider.CreateScope();
+            var jobMessageHandlingStrategy = new JobMessageHandlingStrategy<TestJobMessage>(
+                serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+                CreateRunner(typeof(ContextLoggingStep)));
+
+            await jobMessageHandlingStrategy.HandleMessage(CreateReceivedMessage(jobId), scope.ServiceProvider, CancellationToken.None);
+
+            Assert.Equal([$"step:{nameof(LoggingJobHandler)}:{jobId}", "handler"], log);
+        }
+
+        [Fact]
+        public async Task WithStepForOtherMessageType_DoesNotRunStep()
+        {
+            var log = new List<string>();
+            using var serviceProvider = BuildServiceProvider(new FakeMessageSender(), log, typeof(OtherMessageOnlyStep));
+            using var scope = serviceProvider.CreateScope();
+            var jobMessageHandlingStrategy = new JobMessageHandlingStrategy<TestJobMessage>(
+                serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+                CreateRunner(typeof(OtherMessageOnlyStep)));
+
+            await jobMessageHandlingStrategy.HandleMessage(CreateReceivedMessage(), scope.ServiceProvider, CancellationToken.None);
+
+            Assert.Equal(["handler"], log);
+        }
     }
 
     public class OnRetriesExhausted
     {
+        [Fact]
+        public async Task WithRejectedJob_FailsJobWithRejectionReasonWithoutRetrying()
+        {
+            var jobId = Guid.NewGuid();
+            var fakeMessageSender = new FakeMessageSender();
+            var log = new List<string>();
+            using var serviceProvider = BuildServiceProvider(fakeMessageSender, log, typeof(RejectingStep));
+            var jobMessageHandlingStrategy = new JobMessageHandlingStrategy<TestJobMessage>(
+                serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+                CreateRunner(typeof(RejectingStep)));
+            var receivedMessage = CreateReceivedMessage(jobId);
+
+            var jobException = await Assert.ThrowsAsync<JobException>(
+                () => jobMessageHandlingStrategy.HandleMessage(receivedMessage, serviceProvider, CancellationToken.None));
+            await jobMessageHandlingStrategy.OnRetriesExhausted(receivedMessage, jobException, serviceProvider, CancellationToken.None);
+
+            Assert.True(new NonRetryableExceptionClassifier(new FlowlyOptions()).IsNonRetryable(jobException));
+            var jobFailed = fakeMessageSender.SentMessages.OfType<FlowlysysJobFailedMessage>().Single();
+            Assert.Equal("step rejected", jobFailed.FaultReason);
+            Assert.Empty(log);
+        }
+
         [Fact]
         public async Task WithJobException_SendsJobFailedUsingJobExceptionJobIdAndInnerExceptionMessage()
         {
@@ -166,7 +302,8 @@ public class JobMessageHandlingStrategyTests
             var fakeMessageSender = new FakeMessageSender();
             var serviceProvider = BuildServiceProvider(fakeMessageSender, new CapturingJobHandler());
             var jobMessageHandlingStrategy = new JobMessageHandlingStrategy<TestJobMessage>(
-                serviceProvider.GetRequiredService<IServiceScopeFactory>());
+                serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+                HandlerStepRunner.None);
 
             var receivedMessage = new FakeReceivedMessage<TestJobMessage>(
                 new TestJobMessage("import"),
@@ -187,7 +324,8 @@ public class JobMessageHandlingStrategyTests
             var fakeMessageSender = new FakeMessageSender();
             var serviceProvider = BuildServiceProvider(fakeMessageSender, new CapturingJobHandler());
             var jobMessageHandlingStrategy = new JobMessageHandlingStrategy<TestJobMessage>(
-                serviceProvider.GetRequiredService<IServiceScopeFactory>());
+                serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+                HandlerStepRunner.None);
 
             var receivedMessage = new FakeReceivedMessage<TestJobMessage>(
                 new TestJobMessage("import"),
@@ -207,7 +345,8 @@ public class JobMessageHandlingStrategyTests
             var fakeMessageSender = new FakeMessageSender();
             var serviceProvider = BuildServiceProvider(fakeMessageSender, new CapturingJobHandler());
             var jobMessageHandlingStrategy = new JobMessageHandlingStrategy<TestJobMessage>(
-                serviceProvider.GetRequiredService<IServiceScopeFactory>());
+                serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+                HandlerStepRunner.None);
 
             var receivedMessage = new FakeReceivedMessage<TestJobMessage>(
                 new TestJobMessage("import"),
@@ -230,7 +369,8 @@ public class JobMessageHandlingStrategyTests
             var fakeMessageSender = new FakeMessageSender();
             var serviceProvider = BuildServiceProvider(fakeMessageSender, new CapturingJobHandler());
             var jobMessageHandlingStrategy = new JobMessageHandlingStrategy<TestJobMessage>(
-                serviceProvider.GetRequiredService<IServiceScopeFactory>());
+                serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+                HandlerStepRunner.None);
 
             var receivedMessage = new FakeReceivedMessage<TestJobMessage>(
                 new TestJobMessage("import"),
@@ -251,7 +391,8 @@ public class JobMessageHandlingStrategyTests
             var fakeMessageSender = new FakeMessageSender();
             var serviceProvider = BuildServiceProvider(fakeMessageSender, new CapturingJobHandler());
             var jobMessageHandlingStrategy = new JobMessageHandlingStrategy<TestJobMessage>(
-                serviceProvider.GetRequiredService<IServiceScopeFactory>());
+                serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+                HandlerStepRunner.None);
 
             var receivedMessage = new FakeReceivedMessage<TestJobMessage>(
                 new TestJobMessage("import"),
@@ -274,7 +415,8 @@ public class JobMessageHandlingStrategyTests
             var fakeMessageSender = new FakeMessageSender();
             var serviceProvider = BuildServiceProvider(fakeMessageSender, new CapturingJobHandler());
             var jobMessageHandlingStrategy = new JobMessageHandlingStrategy<TestJobMessage>(
-                serviceProvider.GetRequiredService<IServiceScopeFactory>());
+                serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+                HandlerStepRunner.None);
 
             var receivedMessage = new FakeReceivedMessage<TestJobMessage>(
                 new TestJobMessage("import"),
@@ -296,7 +438,8 @@ public class JobMessageHandlingStrategyTests
         {
             var serviceProvider = BuildServiceProvider(new FakeMessageSender(), new CapturingJobHandler());
             var jobMessageHandlingStrategy = new JobMessageHandlingStrategy<TestJobMessage>(
-                serviceProvider.GetRequiredService<IServiceScopeFactory>());
+                serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+                HandlerStepRunner.None);
 
             var capturingLogger = new CapturingLogger();
             var exception = new InvalidOperationException("broker error");
@@ -319,9 +462,117 @@ public class JobMessageHandlingStrategyTests
         return services.BuildServiceProvider();
     }
 
+    private static ServiceProvider BuildServiceProvider(FakeMessageSender fakeMessageSender, List<string> log, params Type[] stepTypes)
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IMessageSender>(fakeMessageSender);
+        services.AddSingleton(fakeMessageSender);
+        services.AddSingleton(log);
+        services.AddScoped<ScopedState>();
+        services.AddScoped<JobHandler<TestJobMessage>, LoggingJobHandler>();
+
+        foreach (var stepType in stepTypes)
+        {
+            services.AddScoped(stepType);
+        }
+
+        return services.BuildServiceProvider();
+    }
+
+    private static HandlerStepRunner CreateRunner(params Type[] stepTypes)
+        => new(stepTypes.Select(stepType => new HandlerStepRegistration(stepType, HandlerStepRegistration.ResolveFilterType(stepType))));
+
+    private static FakeReceivedMessage<TestJobMessage> CreateReceivedMessage(Guid? jobId = null)
+        => new(new TestJobMessage("import"), new MessageProperties((jobId ?? Guid.NewGuid()).ToString(), string.Empty));
+
     private sealed record TestJobMessage(string Description) : IJobMessage
     {
         public string JobTypeName => nameof(TestJobMessage);
+    }
+
+    private sealed record OtherJobMessage(string Description) : IJobMessage
+    {
+        public string JobTypeName => nameof(OtherJobMessage);
+    }
+
+    private sealed class ScopedState
+    {
+        public string? Value { get; set; }
+    }
+
+    private sealed class LoggingJobHandler(List<string> log, ScopedState scopedState) : JobHandler<TestJobMessage>
+    {
+        public override Task Handle(IJobMessageContext<TestJobMessage> messageContext)
+        {
+            log.Add(scopedState.Value is null ? "handler" : $"handler:state={scopedState.Value}");
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class UpdateLoggingStep(List<string> log, FakeMessageSender fakeMessageSender) : HandlerStep<TestJobMessage>
+    {
+        protected override Task OnBeforeHandlerExecution(HandlerStepContext<TestJobMessage> context)
+        {
+            log.Add($"step:before:{SentStates()}");
+            return Task.CompletedTask;
+        }
+
+        protected override Task OnAfterHandlerExecution(HandlerStepContext<TestJobMessage> context)
+        {
+            log.Add($"step:after:{SentStates()}");
+            return Task.CompletedTask;
+        }
+
+        private string SentStates()
+            => string.Join(",", fakeMessageSender.SentMessages.OfType<FlowlysysUpdateJobStateMessage>().Select(update => update.JobState));
+    }
+
+    private sealed class RejectingStep : HandlerStep<TestJobMessage>
+    {
+        public override Task Handle(HandlerStepContext<TestJobMessage> context, HandlerStepDelegate next)
+            => throw new MessageRejectedException("step rejected");
+    }
+
+    private sealed class ThrowingStep : HandlerStep<TestJobMessage>
+    {
+        public override Task Handle(HandlerStepContext<TestJobMessage> context, HandlerStepDelegate next)
+            => throw new InvalidOperationException("step failed");
+    }
+
+    private sealed class SkippingStep(List<string> log) : HandlerStep<TestJobMessage>
+    {
+        public override Task Handle(HandlerStepContext<TestJobMessage> context, HandlerStepDelegate next)
+        {
+            log.Add("step:skipped");
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class ScopedStateStep(ScopedState scopedState) : HandlerStep<TestJobMessage>
+    {
+        protected override Task OnBeforeHandlerExecution(HandlerStepContext<TestJobMessage> context)
+        {
+            scopedState.Value = "from-step";
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class ContextLoggingStep(List<string> log) : HandlerStep<TestJobMessage>
+    {
+        protected override Task OnBeforeHandlerExecution(HandlerStepContext<TestJobMessage> context)
+        {
+            log.Add($"step:{context.HandlerType.Name}:{context.Properties.MessageId}");
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class OtherMessageOnlyStep(List<string> log) : HandlerStep<OtherJobMessage>
+    {
+        public override Task Handle(HandlerStepContext<OtherJobMessage> context, HandlerStepDelegate next)
+        {
+            log.Add("other-step");
+            return next();
+        }
     }
 
     private sealed class CapturingJobHandler : JobHandler<TestJobMessage>

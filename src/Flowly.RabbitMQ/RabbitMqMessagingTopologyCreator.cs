@@ -6,6 +6,8 @@ namespace Flowly.RabbitMQ;
 
 internal class RabbitMqMessagingTopologyCreator(IRabbitMqConnectionPool connectionPool, StreamQueueManifest? streamQueueManifest = null) : IMessagingTopologyCreator, IEventTopologyCreator
 {
+    private readonly RabbitMqPartitionedStreamCountVerifier _partitionCountVerifier = new(connectionPool);
+
     public async Task CreateEventTopology(IReadOnlyCollection<IEventDescription> eventDescriptions, CancellationToken cancellationToken)
     {
         var connection = await connectionPool.GetConsumerConnection(cancellationToken);
@@ -31,6 +33,7 @@ internal class RabbitMqMessagingTopologyCreator(IRabbitMqConnectionPool connecti
             if (retention.PartitionCount is { } partitionCount)
             {
                 await DeclarePartitionedStreamTopology(channel, queue.Name, retention, partitionCount, cancellationToken);
+                await _partitionCountVerifier.Verify(queue.Name, partitionCount, cancellationToken);
                 return;
             }
 
@@ -126,7 +129,10 @@ internal class RabbitMqMessagingTopologyCreator(IRabbitMqConnectionPool connecti
     ///     how a Super Stream can be created with any AMQP client, not just the RabbitMQ Stream protocol client.
     ///     Producers publish with the partition index as the routing key (see <c>RabbitMqMessageBusSender</c>);
     ///     only partitioned <em>consumption</em> needs the Stream protocol client, for its broker-coordinated
-    ///     Single Active Consumer rebalancing, which AMQP has no equivalent for.
+    ///     Single Active Consumer rebalancing, which AMQP has no equivalent for. The declaration is additive: it
+    ///     creates missing partition streams and bindings but never removes any, so a broker that has more
+    ///     partitions than declared is caught by the partition count check that follows it in
+    ///     <see cref="DeclareQueueTopology" />.
     /// </summary>
     private static async Task DeclarePartitionedStreamTopology(IChannel channel, string queueName, StreamRetentionSettings retention, int partitionCount, CancellationToken cancellationToken)
     {

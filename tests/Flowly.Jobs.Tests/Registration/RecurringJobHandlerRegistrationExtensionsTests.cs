@@ -30,6 +30,42 @@ public class RecurringJobHandlerRegistrationExtensionsTests
     public class AddRecurringJob
     {
         [Fact]
+        public void WithStreamOnlyPrimaryProvider_ThrowsDescriptiveError()
+        {
+            var services = new ServiceCollection();
+            var registry = new MessageBusClientRegistry();
+            registry.Register("streams", new FakeStreamOnlyClient(), null);
+            services.AddSingleton<IMessageBusClientRegistry>(registry);
+            var builder = new StubFlowlyBuilder(services);
+
+            var exception = Assert.Throws<InvalidOperationException>(() => builder.AddRecurringJob<SomeRecurringJob>());
+
+            Assert.Contains("no primary provider", exception.Message);
+            Assert.Contains("streams (message streaming)", exception.Message);
+        }
+
+        [Fact]
+        public void WithStreamOnlyProviderRegisteredFirst_RegistersRecurringJobsQueueOnFirstQueueCapableProvider()
+        {
+            var services = new ServiceCollection();
+            var registry = new MessageBusClientRegistry();
+            registry.Register("streams", new FakeStreamOnlyClient(), null);
+            registry.Register("queues", new FakeMessageBusClient(), null);
+            services.AddSingleton<IMessageBusClientRegistry>(registry);
+            var streamsManifest = new ProviderQueueManifest("streams", false, "Fake");
+            var queuesManifest = new ProviderQueueManifest("queues", true, "Fake");
+            services.AddSingleton(streamsManifest);
+            services.AddSingleton(queuesManifest);
+            services.AddSingleton<IQueueRegistrar, QueueRegistrar>();
+            var builder = new StubFlowlyBuilder(services);
+
+            builder.AddRecurringJob<SomeRecurringJob>();
+
+            Assert.Empty(streamsManifest.Queues);
+            Assert.Contains(queuesManifest.Queues, q => q.QueueName == "flowlysys-recurring-jobs" && q.RequiresSession);
+        }
+
+        [Fact]
         public void RegistersHandlerAsScoped()
         {
             var builder = BuildBuilder();

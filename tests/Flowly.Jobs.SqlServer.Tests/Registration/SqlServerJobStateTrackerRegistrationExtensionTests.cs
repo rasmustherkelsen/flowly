@@ -105,8 +105,19 @@ public class SqlServerJobStateTrackerRegistrationExtensionTests
     {
         public string PrimaryProviderName => "primary";
         public void Register(string providerName, IMessageBusClient client, bool? createTopologyOverride) { }
-        public IMessageBusClient GetClient(string providerName) => throw new NotImplementedException();
+        public IMessageBusClient GetClient(string providerName) => new StubMessageBusClient();
         public bool IsRegistered(string providerName) => false;
-        public IReadOnlyList<RegisteredTransport> GetAll() => [];
+        public IReadOnlyList<RegisteredTransport> GetAll() => [new RegisteredTransport(PrimaryProviderName, true, null)];
+    }
+
+    private sealed class StubMessageBusClient : IMessageBusClient
+    {
+        public string MessagingSystem => "stub";
+        public Task<IMessageBusReceiver> CreateReceiver(string queueName) => throw new NotSupportedException();
+        public Task<IMessageBusProcessor<TMessage>> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options) => throw new NotSupportedException();
+        public Task<IExecutionLaneProcessor> CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options) => throw new NotSupportedException();
+        public Task<IMessageBusSender> CreateMessageBusSender(string queueName) => throw new NotSupportedException();
+        public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName) => throw new NotSupportedException();
+        public Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 }

@@ -88,7 +88,7 @@ internal class FlowlyConfiguration : Configuration
 {
     public override void Configure(IFlowlyBuilder builder)
     {
-        builder.UseRabbitMq(connection: "RabbitMQ")
+        builder.UseRabbitMq("RabbitMQ")
                .AddSqlServerJobStateTracking(connection: "JobsDb");
     }
 }
@@ -152,7 +152,7 @@ internal class FlowlyConfiguration : Configuration
 {
     public override void Configure(IFlowlyBuilder builder)
     {
-        builder.UseRabbitMq(connection: "RabbitMQ")
+        builder.UseRabbitMq("RabbitMQ")
                .AddPostgresJobStateTracking(connection: "JobsDb");
     }
 }
@@ -218,7 +218,7 @@ internal class FlowlyConfiguration : Configuration
 {
     public override void Configure(IFlowlyBuilder builder)
     {
-        builder.UseRabbitMq(connection: "RabbitMQ")
+        builder.UseRabbitMq("RabbitMQ")
                .AddSQLiteJobStateTracking(connection: "JobsDb");
     }
 }
@@ -348,7 +348,7 @@ internal class FlowlyConfiguration : Configuration
 {
     public override void Configure(IFlowlyBuilder builder)
     {
-        builder.UseRabbitMq(connection: "RabbitMQ")
+        builder.UseRabbitMq("RabbitMQ")
                .AddMessageHandler<MyMessage, MyMessageHandler>()
                .AddJobHandler<ProcessJobMessage, ProcessJobHandler>();
     }
@@ -381,7 +381,7 @@ internal class FlowlyConfiguration : Configuration
 {
     public override void Configure(IFlowlyBuilder builder)
     {
-        builder.UseRabbitMq(connection: "RabbitMQ")
+        builder.UseRabbitMq("RabbitMQ")
                .AddMessageSubmitter<MyMessage>()
                .AddJobSubmitter<ProcessJobMessage>();
     }

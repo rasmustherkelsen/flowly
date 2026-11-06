@@ -5,19 +5,24 @@ namespace Flowly.MessageStreams.Tests.Fakes;
 
 internal sealed class FakeMessageBusClientRegistry : IMessageBusClientRegistry
 {
-    private readonly Dictionary<string, IMessageBusClient> _clients = new();
+    private readonly Dictionary<string, ITransportClient> _clients = new();
 
     public string PrimaryProviderName { get; private set; } = "primary";
 
     public void Register(string providerName, IMessageBusClient client, bool? createTopologyOverride)
+        => Register(providerName, (ITransportClient)client, createTopologyOverride);
+
+    public void Register(string providerName, ITransportClient client, bool? createTopologyOverride)
     {
-        if (_clients.Count == 0)
+        if (client is IMessageBusClient && !_clients.Values.Any(existing => existing is IMessageBusClient))
             PrimaryProviderName = providerName;
 
         _clients[providerName] = client;
     }
 
-    public IMessageBusClient GetClient(string providerName) => _clients[providerName];
+    public IMessageBusClient GetClient(string providerName) => (IMessageBusClient)_clients[providerName];
+
+    public ITransportClient GetTransportClient(string providerName) => _clients[providerName];
 
     public bool IsRegistered(string providerName) => _clients.ContainsKey(providerName);
 

@@ -4,6 +4,7 @@ using Flowly.Jobs.Messages;
 using Flowly.Jobs.RecurringJobs;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.Registration;
+using Flowly.Transport;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Flowly;
@@ -28,6 +29,9 @@ public static class RecurringJobHandlerRegistrationExtensions
     public static IFlowlyBuilder AddRecurringJob<TRecurringJob>(this IFlowlyBuilder flowlyBuilder) where TRecurringJob : RecurringJobHandler
     {
         var resolvedOptions = RecurringJobHandlerOptionsResolver.Resolve<TRecurringJob>();
+        var clientRegistry = ProviderNameResolver.GetRegistry(flowlyBuilder.Services);
+        var primaryProviderName = clientRegistry.PrimaryProviderName;
+        clientRegistry.GetClient<IMessageBusClient>(primaryProviderName);
         
         using var serviceProvider = flowlyBuilder.Services.BuildServiceProvider();
         var queueRegistrar = serviceProvider.GetRequiredService<IQueueRegistrar>();
@@ -36,7 +40,7 @@ public static class RecurringJobHandlerRegistrationExtensions
             flowlyBuilder.Services, 
             flowlyBuilder.TopologyNameResolver.ResolveQueueName<FlowlysysRecurringJobsMessage>(), 
             true, 
-            ProviderNameResolver.GetRegistry(flowlyBuilder.Services).PrimaryProviderName);
+            primaryProviderName);
 
         flowlyBuilder.Services
             .AddSingleton(new RecurringJobHandlerBackgroundService<TRecurringJob>.RecurringJobSettings(

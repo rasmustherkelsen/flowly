@@ -1,3 +1,5 @@
+using Flowly.MessageInfrastructure.SendSteps;
+
 namespace Flowly.Jobs.Messages;
 
-internal record FlowlysysRecurringJobsMessage();
+internal record FlowlysysRecurringJobsMessage() : IFlowlySystemMessage;

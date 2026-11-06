@@ -1,3 +1,11 @@
+---
+paths:
+  - "src/Flowly.Jobs*/**"
+  - "src/Flowly.DeadLetters*/**"
+  - "src/Flowly.MessageStreams*/**"
+  - "src/Flowly.Dashboard/**"
+---
+
 # Entity Framework Core Conventions
 
 ## Read queries: no tracking, shallowest projection possible

@@ -7,6 +7,11 @@ namespace Flowly.Transport;
 ///     Shared helpers for transport provider registration. Centralises the boilerplate that every
 ///     transport provider (<c>UseRabbitMq</c>, <c>UseAzureServiceBus</c>, <c>UseInMemory</c>, …) needs
 ///     when wiring itself into the Flowly infrastructure.
+///     <para>
+///         Registering an <see cref="IMessagingTopologyCreator" /> is optional: a stream-only provider that creates no queues
+///         does not call <see cref="RegisterTopologyCreators(IServiceCollection, string, IMessagingTopologyCreator)" /> at all,
+///         and the framework then skips queue topology creation for it.
+///     </para>
 /// </summary>
 public static class TransportRegistrationHelper
 {
@@ -57,12 +62,7 @@ public static class TransportRegistrationHelper
         IMessagingTopologyCreator messagingTopologyCreator,
         IEventTopologyCreator eventTopologyCreator)
     {
-        services
-            .Where(s => s.ServiceType == typeof(IMessagingTopologyCreatorRegistry))
-            .Select(s => s.ImplementationInstance)
-            .OfType<IMessagingTopologyCreatorRegistry>()
-            .First()
-            .Register(effectiveName, messagingTopologyCreator);
+        RegisterTopologyCreators(services, effectiveName, messagingTopologyCreator);
 
         services
             .Where(s => s.ServiceType == typeof(IEventTopologyCreatorRegistry))
@@ -73,8 +73,29 @@ public static class TransportRegistrationHelper
     }
 
     /// <summary>
+    ///     Registers <paramref name="messagingTopologyCreator" /> for the given provider name without an event topology
+    ///     creator, for transports that do not support events (for example a stream-only transport). Event registrations
+    ///     against such a provider are not given any topology; a warning is logged at startup when topology creation is
+    ///     enabled, and nothing is logged when it is disabled.
+    /// </summary>
+    /// <param name="services">The <see cref="IServiceCollection" /> containing the topology registries.</param>
+    /// <param name="effectiveName">The resolved provider name.</param>
+    /// <param name="messagingTopologyCreator">The <see cref="IMessagingTopologyCreator" /> for this provider.</param>
+    public static void RegisterTopologyCreators(
+        IServiceCollection services,
+        string effectiveName,
+        IMessagingTopologyCreator messagingTopologyCreator)
+        => services
+            .Where(s => s.ServiceType == typeof(IMessagingTopologyCreatorRegistry))
+            .Select(s => s.ImplementationInstance)
+            .OfType<IMessagingTopologyCreatorRegistry>()
+            .First()
+            .Register(effectiveName, messagingTopologyCreator);
+
+    /// <summary>
     ///     Adds a <see cref="ProviderQueueManifest" /> singleton for the provider. The manifest marks the provider as
-    ///     primary when it is the only registered provider at this point.
+    ///     primary when the registry reports it as the primary provider, which is the first registered provider that supports
+    ///     queue-based messaging; a stream-only provider is never primary.
     /// </summary>
     /// <param name="services">The <see cref="IServiceCollection" /> to register the manifest with.</param>
     /// <param name="clientRegistry">The <see cref="IMessageBusClientRegistry" /> used to determine primary status.</param>
@@ -86,7 +107,7 @@ public static class TransportRegistrationHelper
         string effectiveName,
         string transportType)
     {
-        var isPrimary = clientRegistry.GetAll().Count == 1;
+        var isPrimary = clientRegistry.GetAll().Single(transport => transport.Name == effectiveName).IsPrimary;
         services.AddSingleton(new ProviderQueueManifest(effectiveName, isPrimary, transportType));
     }
 

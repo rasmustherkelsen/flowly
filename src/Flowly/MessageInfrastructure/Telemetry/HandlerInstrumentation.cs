@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
+using Flowly.MessageInfrastructure.StreamPartitions;
 
 namespace Flowly.MessageInfrastructure.Telemetry;
 
@@ -11,12 +12,14 @@ namespace Flowly.MessageInfrastructure.Telemetry;
 /// </summary>
 internal sealed class HandlerInstrumentation : IHandlerInstrumentation, IDisposable
 {
+    private readonly IStreamPartitionStateReader _streamPartitionStates;
     private readonly Meter _meter;
     private readonly Counter<long> _received;
     private readonly Counter<long> _succeeded;
     private readonly Counter<long> _failed;
     private readonly Counter<long> _retried;
     private readonly Counter<long> _halted;
+    private readonly Counter<long> _streamPartitionTransitions;
     private readonly Histogram<double> _duration;
     private readonly Counter<long> _checkpointSaved;
     private readonly Histogram<double> _checkpointSaveDuration;
@@ -29,14 +32,18 @@ internal sealed class HandlerInstrumentation : IHandlerInstrumentation, IDisposa
     /// <summary>
     ///     Initialises the OTel meter and creates all metric instruments.
     /// </summary>
-    public HandlerInstrumentation()
+    /// <param name="streamPartitionStates">The source the <c>flowly.message.stream.partition.state</c> gauge observes.</param>
+    public HandlerInstrumentation(IStreamPartitionStateReader streamPartitionStates)
     {
+        _streamPartitionStates = streamPartitionStates;
         _meter = new Meter(FlowlyInstrumentationConstants.MeterName);
         _received = _meter.CreateCounter<long>(FlowlyInstrumentationConstants.HandlerMessagesReceived);
         _succeeded = _meter.CreateCounter<long>(FlowlyInstrumentationConstants.HandlerMessagesSucceeded);
         _failed = _meter.CreateCounter<long>(FlowlyInstrumentationConstants.HandlerMessagesFailed);
         _retried = _meter.CreateCounter<long>(FlowlyInstrumentationConstants.HandlerMessagesRetried);
         _halted = _meter.CreateCounter<long>(FlowlyInstrumentationConstants.HandlerMessagesHalted);
+        _streamPartitionTransitions = _meter.CreateCounter<long>(FlowlyInstrumentationConstants.StreamPartitionTransitions);
+        _meter.CreateObservableGauge(FlowlyInstrumentationConstants.StreamPartitionCurrentState, ObserveStreamPartitionStates);
         _duration = _meter.CreateHistogram<double>(FlowlyInstrumentationConstants.HandlerProcessingDuration, "ms");
         _checkpointSaved = _meter.CreateCounter<long>(FlowlyInstrumentationConstants.CheckpointSaved);
         _checkpointSaveDuration = _meter.CreateHistogram<double>(FlowlyInstrumentationConstants.CheckpointSaveDuration, "ms");
@@ -125,6 +132,10 @@ internal sealed class HandlerInstrumentation : IHandlerInstrumentation, IDisposa
     }
 
     /// <inheritdoc />
+    public void RecordStreamPartitionTransition(string handlerName, string queueName, string consumerName, int? partition, StreamPartitionState state)
+        => _streamPartitionTransitions.Add(1, StreamPartitionTags(handlerName, queueName, consumerName, partition, state));
+
+    /// <inheritdoc />
     public void RecordCheckpointSaved(string handlerName, string queueName, double durationMs)
     {
         var tags = new TagList { { "handler", handlerName }, { FlowlyInstrumentationConstants.MessagingDestinationName, queueName } };
@@ -138,13 +149,58 @@ internal sealed class HandlerInstrumentation : IHandlerInstrumentation, IDisposa
         => _checkpointSaveFailed.Add(1, new TagList { { "handler", handlerName }, { FlowlyInstrumentationConstants.MessagingDestinationName, queueName } });
 
     /// <inheritdoc />
-    public void RecordCheckpointResolved(string handlerName, string queueName, bool resumed)
+    public void RecordCheckpointResolved(string handlerName, string queueName, CheckpointResolution resolution)
         => _checkpointResolved.Add(1, new TagList
         {
             { "handler", handlerName },
             { FlowlyInstrumentationConstants.MessagingDestinationName, queueName },
-            { "outcome", resumed ? "resumed" : "fresh" },
+            { "outcome", ToOutcomeTag(resolution) },
         });
+
+    private IEnumerable<Measurement<int>> ObserveStreamPartitionStates()
+    {
+        foreach (var status in _streamPartitionStates.GetAll())
+        {
+            yield return new Measurement<int>(
+                (int)status.State,
+                StreamPartitionTags(status.HandlerName, status.Key.QueueName, status.Key.ConsumerName, status.Key.Partition, null));
+        }
+    }
+
+    private static TagList StreamPartitionTags(string handlerName, string queueName, string consumerName, int? partition, StreamPartitionState? state)
+    {
+        var tags = new TagList
+        {
+            { "handler", handlerName },
+            { FlowlyInstrumentationConstants.MessagingDestinationName, queueName },
+            { "consumer", consumerName },
+        };
+
+        if (partition is { } partitionIndex)
+            tags.Add("partition", partitionIndex);
+
+        if (state is { } transitionState)
+            tags.Add("state", ToStateTag(transitionState));
+
+        return tags;
+    }
+
+    private static string ToStateTag(StreamPartitionState state) => state switch
+    {
+        StreamPartitionState.Running => "running",
+        StreamPartitionState.Waiting => "waiting",
+        StreamPartitionState.Halted => "halted",
+        _ => throw new ArgumentOutOfRangeException(nameof(state), state, null)
+    };
+
+    private static string ToOutcomeTag(CheckpointResolution resolution) => resolution switch
+    {
+        CheckpointResolution.Resumed => "resumed",
+        CheckpointResolution.Fresh => "fresh",
+        CheckpointResolution.Seeded => "seeded",
+        CheckpointResolution.SeedFailed => "seed_failed",
+        _ => throw new ArgumentOutOfRangeException(nameof(resolution), resolution, null)
+    };
 
     /// <inheritdoc />
     public Activity? StartSendingResponse(string callQueueName, string replyQueueName, string messagingSystem, string messageId, string correlationId)

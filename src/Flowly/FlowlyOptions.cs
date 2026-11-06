@@ -43,7 +43,33 @@ public class FlowlyOptions
     /// </summary>
     public TimeSpan MessageCallTimeout { get; set; } = TimeSpan.FromMinutes(2);
 
+    private readonly List<Type> _nonRetryableExceptionTypes = [];
+
     internal Type TopologyNameResolverType { get; private set; } = typeof(KebabCaseTopologyNameResolver);
+
+    internal IReadOnlyCollection<Type> NonRetryableExceptionTypes => _nonRetryableExceptionTypes;
+
+    /// <summary>
+    ///     Registers an exception type whose occurrence in a handler is a permanent failure: the message is not retried
+    ///     regardless of <see cref="RetryPolicyAttribute" /> and is dead-lettered immediately with the exception message
+    ///     as the reason (a job handler fails the job instead). <typeparamref name="TException" /> and every exception
+    ///     type derived from it are non-retryable. Use it to keep a domain exception such as
+    ///     <c>NotAuthorizedException</c> free of any dependency on Flowly; use <see cref="MessageRejectedException" /> to
+    ///     reject a message explicitly. May be called several times to register several types, and registering the same
+    ///     type again has no effect.
+    ///     <para>
+    ///         Applies to message handlers, event handlers, call handlers and job handlers, including the handler steps
+    ///         that run around them. It has no effect on batch handlers and message stream handlers.
+    ///     </para>
+    /// </summary>
+    /// <typeparam name="TException">The exception type, including its subclasses, to treat as non-retryable.</typeparam>
+    public void NonRetryable<TException>() where TException : Exception
+    {
+        if (!_nonRetryableExceptionTypes.Contains(typeof(TException)))
+        {
+            _nonRetryableExceptionTypes.Add(typeof(TException));
+        }
+    }
 
     /// <summary>
     ///     Overrides the default <see cref="ITopologyNameResolver" /> used to derive broker-level names for queues, event

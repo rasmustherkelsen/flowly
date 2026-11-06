@@ -1,6 +1,6 @@
 ---
 name: add-message-stream-persistence
-description: Add built-in, database-backed position persistence to an existing Flowly MessageStreamHandler<T> using Flowly.MessageStreams (SQL Server, PostgreSQL, or SQLite) — RabbitMQ only. Use when the user wants restart-survival for a stream handler backed by a real database, with no hand-written storage code. For custom storage (a cache, a file, a bespoke repository), use the add-message-stream-checkpoint skill instead.
+description: Add built-in, database-backed position persistence to an existing Flowly MessageStreamHandler<T> using Flowly.MessageStreams (SQL Server, PostgreSQL, or SQLite) — RabbitMQ or Azure Event Hubs, not InMemory. Use when the user wants restart-survival for a stream handler backed by a real database, with no hand-written storage code. For custom storage (a cache, a file, a bespoke repository), use the add-message-stream-checkpoint skill instead.
 arguments:
   - name: messageName
     description: "PascalCase message class name of the existing stream, including the Message suffix. Example: TelemetryReadingMessage"
@@ -10,7 +10,8 @@ arguments:
 Add built-in checkpoint persistence for an **existing** `MessageStreamHandler<$0>` registration, so the stream's read position survives a process restart using one of Flowly's own SQL Server/PostgreSQL/SQLite backends — no hand-written storage code. Follow all steps below.
 
 > **Important constraints to communicate upfront:**
-> - **RabbitMQ only.** Registering checkpoint persistence against an InMemory-backed stream throws `InvalidOperationException` — the in-process log has no cross-restart persistence, so a saved position would point at data that no longer exists after a restart.
+> - **Not for InMemory.** Registering checkpoint persistence against an InMemory-backed stream throws `InvalidOperationException` — the in-process log has no cross-restart persistence, so a saved position would point at data that no longer exists after a restart. RabbitMQ and Azure Event Hubs streams support it; the stores hold no transport-specific code, and on Azure Event Hubs the stored position is the event's sequence number within its partition, keyed by the event hub name.
+> - **The first run's position is stored up front.** With a registered checkpoint, `StartPosition.Last()` and `StartPosition.Timestamp(...)` are resolved to an offset and saved before the handler starts consuming, so a restart before the first message does not skip messages published in the meantime; the table can therefore show a position of `-1` (start at offset 0) for a reader that has processed nothing. If the transport cannot resolve it (the broker did not answer in time, or on Azure Event Hubs a timestamp at or before the last enqueued event), a warning is logged and the position is stored after the first processed batch instead. `StartPosition.First()` and `.Offset(n)` are not stored up front.
 > - **Multiple named stores are supported.** The first unnamed `Add<Provider>MessageStreamPersistence(...)` call becomes the default; a second unnamed registration throws — pass `name: "..."` to register additional stores, and the matching name to `UseMessageStreamCheckpoint<T>("...")`.
 > - **Migrations run automatically by default.** `enableMigrations: true` (the default) applies pending EF Core migrations for the checkpoint schema at startup. Set `enableMigrations: false` for teams that apply schema changes during deployment instead — see the "Idempotent migration scripts" note below.
 
@@ -23,15 +24,15 @@ grep -rn "MessageStreamHandler<$0>" --include="*.cs" .
 - **No match** → stop and tell the user: "No `MessageStreamHandler<$0>` was found. Checkpoint persistence attaches to an existing stream handler — use `/create-message-stream-handler` first if `$0` doesn't have one yet." Do not scaffold anything with nothing to attach it to.
 - **Match found** → note the handler's project and namespace; persistence is registered in the **same project** as the handler (the consumer side), not the producer.
 
-## Step 2 — Confirm the transport is RabbitMQ
+## Step 2 — Confirm the transport is RabbitMQ or Azure Event Hubs
 
 ```bash
-grep -r "UseRabbitMq\|UseInMemory\|UseAzureServiceBus" --include="*.cs" <handler project path>
+grep -r "UseRabbitMq\|UseAzureEventHubs\|UseInMemory\|UseAzureServiceBus" --include="*.cs" <handler project path>
 ```
 
-- **RabbitMQ found** → proceed.
-- **InMemory found** → stop and tell the user: "This stream is InMemory-backed. Message stream checkpoint persistence is RabbitMQ-only — the in-process log has no cross-restart persistence for a saved position to point at." Do not scaffold anything.
-- **Azure Service Bus found, or no transport found** → this shouldn't be possible for a project that already has a `MessageStreamHandler` (streams require RabbitMQ or InMemory), but if it happens, stop and flag it to the user as unexpected before proceeding.
+- **RabbitMQ or Azure Event Hubs found** → proceed.
+- **InMemory found** → stop and tell the user: "This stream is InMemory-backed. Message stream checkpoint persistence needs RabbitMQ or Azure Event Hubs — the in-process log has no cross-restart persistence for a saved position to point at." Do not scaffold anything.
+- **Azure Service Bus found, or no transport found** → this shouldn't be possible for a project that already has a `MessageStreamHandler` (streams require RabbitMQ, InMemory or Azure Event Hubs), but if it happens, stop and flag it to the user as unexpected before proceeding.
 
 ## Step 3 — Ask which storage backend
 
@@ -79,7 +80,7 @@ internal class FlowlyConfiguration : Configuration
 {
     public override void Configure(IFlowlyBuilder builder)
     {
-        builder.UseRabbitMq(connection: "RabbitMQ");
+        builder.UseRabbitMq("RabbitMQ");
 
         builder.AddSqlServerMessageStreamPersistence("MsgStreamDb");
         builder.AddMessageStreamHandler<$0, $0Handler>();
@@ -142,7 +143,7 @@ Fix any errors before reporting the task as complete.
 ## Checklist
 
 - [ ] Confirmed `MessageStreamHandler<$0>` already exists (did not scaffold persistence with nothing to attach it to)
-- [ ] Confirmed the target project uses RabbitMQ, not InMemory
+- [ ] Confirmed the target project uses RabbitMQ or Azure Event Hubs, not InMemory
 - [ ] Asked the user which backend (SQL Server, PostgreSQL, or SQLite), without guessing
 - [ ] Package reference added to the handler's project
 - [ ] `FlowlyConfiguration` updated with `Add<Provider>MessageStreamPersistence(...)` and `UseMessageStreamCheckpoint<$0>()`

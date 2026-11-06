@@ -52,6 +52,45 @@ jobs:
           fi
           echo "All template OpenTelemetry package versions match $CANONICAL"
 
+      - name: Check template project paths
+        run: |
+          set -euo pipefail
+          FAIL=0
+          while IFS= read -r slnx; do
+            while IFS= read -r path; do
+              if [ ! -f "$(dirname "$slnx")/$path" ]; then
+                echo "::error::$slnx references missing project $path (file names are case-sensitive here)"
+                FAIL=1
+              fi
+            done < <(grep -oP '(?<=<Project Path=")[^"]+' "$slnx")
+          done < <(find src/Flowly.Templates/content -name '*.slnx')
+          while IFS= read -r csproj; do
+            while IFS= read -r ref; do
+              if [ ! -f "$(dirname "$csproj")/${ref//\\//}" ]; then
+                echo "::error::$csproj references missing project $ref (file names are case-sensitive here)"
+                FAIL=1
+              fi
+            done < <(grep -oP '(?<=<ProjectReference Include=")[^"]+' "$csproj")
+          done < <(find src/Flowly.Templates/content -name '*.csproj' -not -path '*/flowly-skills/*')
+          exit $FAIL
+
+      - name: Install Aspire CLI bundle
+        run: |
+          set -euo pipefail
+          VERSION=$(grep -oP '(?<=Sdk="Aspire.AppHost.Sdk/)[^"]+' samples/RabbitMQ/Aspire/RabbitMQAspire.AppHost/RabbitMQAspire.AppHost.csproj)
+          echo "Aspire CLI version (Aspire.AppHost.Sdk of the sample AppHosts): $VERSION"
+
+          for attempt in 1 2 3 4 5; do
+            if timeout 300 dotnet dnx --yes "aspire.cli@$VERSION" -- setup --install-path "${ASPIRE_HOME:-$HOME/.aspire}"; then
+              exit 0
+            fi
+            echo "::warning::Aspire CLI bundle setup attempt $attempt failed"
+            sleep $((attempt * 15))
+          done
+
+          echo "::error::Aspire CLI bundle setup failed after 5 attempts"
+          exit 1
+
       - name: Build
         run: dotnet build --configuration Release
 

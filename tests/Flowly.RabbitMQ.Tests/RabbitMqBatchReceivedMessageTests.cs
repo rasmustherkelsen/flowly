@@ -45,6 +45,28 @@ public class RabbitMqBatchReceivedMessageTests
         }
 
         [Fact]
+        public void WithApplicationHeader_ExtractsCustomProperties()
+        {
+            var basicProperties = new BasicProperties
+            {
+                Headers = new Dictionary<string, object?>
+                {
+                    ["tenant"] = Encoding.UTF8.GetBytes("contoso"),
+                    [FlowlyMessageProperties.RetryCount] = 1
+                }
+            };
+
+            var message = new RabbitMqBatchReceivedMessage<TestMessage>(
+                new FakeChannel(),
+                1,
+                SerializeBody(new TestMessage("x")),
+                basicProperties);
+
+            Assert.Equal(["tenant"], message.Properties.CustomProperties.Keys);
+            Assert.Equal("contoso", message.Properties.CustomProperties["tenant"]);
+        }
+
+        [Fact]
         public void WithRetryCountHeaderAsBytes_ExtractsRetryCount()
         {
             var basicProperties = new BasicProperties

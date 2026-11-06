@@ -76,7 +76,7 @@ internal class BatchProcessingBackgroundService<TMessage>(
 
         try
         {
-            await messageHandler.Handle(new BatchMessageContext<TMessage>(receivedMessages.Select(rm => rm.Body).ToList(), cancellationToken));
+            await messageHandler.Handle(new BatchMessageContext<TMessage>(receivedMessages.Select(rm => rm.Body).ToList(), cancellationToken, receivedMessages.Select(rm => rm.Properties).ToList()));
             handlerInstrumentation.RecordSucceeded(handlerName, handlerSettings.QueueName, sw.Elapsed.TotalMilliseconds, receivedMessages.Count);
             logger.LogInformation("{MessageHandlerName} completed {ReceivedMessagesCount} messages", handlerName, receivedMessages.Count);
         }
@@ -97,7 +97,7 @@ internal class BatchProcessingBackgroundService<TMessage>(
     {
         try
         {
-            await messageHandler.Handle(new BatchMessageContext<TMessage>(receivedMessages.Select(rm => rm.Body).ToList(), cancellationToken));
+            await messageHandler.Handle(new BatchMessageContext<TMessage>(receivedMessages.Select(rm => rm.Body).ToList(), cancellationToken, receivedMessages.Select(rm => rm.Properties).ToList()));
             await receiver.CompleteMessages(receivedMessages, cancellationToken);
             handlerInstrumentation.RecordSucceeded(handlerName, handlerSettings.QueueName, sw.Elapsed.TotalMilliseconds, receivedMessages.Count);
             logger.LogInformation("{MessageHandlerName} completed {ReceivedMessagesCount} messages", handlerName, receivedMessages.Count);

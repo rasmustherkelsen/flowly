@@ -20,7 +20,13 @@ internal class DeadLetterService(
         return await repository.GetAll(cancellationToken);
     }
 
-    public async Task Requeue(string messageId, string? requeuedBy = null, CancellationToken cancellationToken = default)
+    public Task<DeadLetterPage> QueryDeadLetters(DeadLetterQuery deadLetterQuery, CancellationToken cancellationToken = default)
+        => repository.Query(deadLetterQuery, cancellationToken);
+
+    public Task Requeue(string messageId, string? requeuedBy = null, CancellationToken cancellationToken = default)
+        => Requeue(messageId, requeuedBy, null, cancellationToken);
+
+    public async Task Requeue(string messageId, string? requeuedBy, string? replacementMessageBody, CancellationToken cancellationToken = default)
     {
         var deadLetter = await repository.Get(messageId, cancellationToken)
                          ?? throw new KeyNotFoundException($"Dead letter with ID '{messageId}' was not found.");
@@ -28,6 +34,11 @@ internal class DeadLetterService(
         if (deadLetter.Status != DeadLetterStatus.Pending)
             throw new InvalidOperationException(
                 $"Dead letter '{messageId}' has status '{deadLetter.Status}' and cannot be requeued.");
+
+        if (replacementMessageBody is not null)
+        {
+            ReplacementMessageBodyValidator.Validate(deadLetter.MessageBody, replacementMessageBody);
+        }
 
         var rawProperties = JsonSerializer.Deserialize<Dictionary<string, object>>(deadLetter.MessageProperties) ?? [];
         var applicationProperties = DeadLetterPropertiesConverter.ConvertProperties(rawProperties);
@@ -45,9 +56,9 @@ internal class DeadLetterService(
             var providerName = ResolveProviderName(deadLetter.QueueName);
             var client = clientRegistry.GetClient(providerName);
             var sender = await ResolveSender(client, deadLetter, cancellationToken);
-            await sender.SendRawMessage(deadLetter.MessageBody, applicationProperties, cancellationToken);
+            await sender.SendRawMessage(replacementMessageBody ?? deadLetter.MessageBody, applicationProperties, cancellationToken);
 
-            await repository.MarkAsRequeued(messageId, requeuedBy, cancellationToken);
+            await repository.MarkAsRequeued(messageId, requeuedBy, replacementMessageBody, cancellationToken);
 
             instrumentation.RecordRequeued(deadLetter.QueueName);
         }

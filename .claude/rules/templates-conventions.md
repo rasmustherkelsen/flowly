@@ -1,30 +1,32 @@
+---
+paths:
+  - "src/Flowly.Templates/**"
+---
+
 # Flowly.Templates Conventions
 
 ## Keeping template documentation current
 
-Whenever `src/Flowly.Templates/` changes, update **all** of the following in the same change:
+Whenever `src/Flowly.Templates/` changes, update **all** of these in the same change:
 
-1. `src/Flowly.Templates/README.md` — the NuGet package readme; the authoritative reference for template usage
-2. `README.md` (root) — the Project Templates section
+1. `src/Flowly.Templates/README.md` — NuGet package readme; the authoritative reference
+2. `README.md` (root) — Project Templates section
 3. `docs/ai/CONTEXT.md` — section 12, Project Templates
-4. `.claude/CLAUDE.md` — the `Flowly.Templates/` entry in the Project Structure list
+4. `.claude/CLAUDE.md` — the `Flowly.Templates/` entry in Project Structure
 
 The task is **not done** until all four are consistent.
 
 ## Template inventory
 
-The package ships four templates:
-
 | Short name | Command | Purpose |
 |---|---|---|
-| `flowly` | `dotnet new flowly --transport <value> [options]` | Scaffold a new Flowly ASP.NET Core project |
-| `flowlymessagelib` | `dotnet new flowlymessagelib [--jobs] [options]` | Scaffold a Flowly message contracts class library |
-| `flowlyskills` | `dotnet new flowlyskills` | Install Flowly Claude Code AI skills into `.claude/skills/` |
-| `flowlydocker` | `dotnet new flowlydocker [options]` | Generate a Docker Compose file with local infrastructure |
+| `flowly` | `dotnet new flowly --transport <value> [options]` | Single Flowly ASP.NET Core project |
+| `flowlyapp` | `dotnet new flowlyapp --transport <value> [options]` | Complete solution (Messages + Sender + Receiver) |
+| `flowlyaspireapp` | `dotnet new flowlyaspireapp --transport <value> [options]` | Complete .NET Aspire solution |
+| `flowlymessagelib` | `dotnet new flowlymessagelib [--jobs] [options]` | Message contracts class library |
+| `flowlyskills` | `dotnet new flowlyskills` | Install Flowly Claude Code skills into `.claude/skills/` |
 
-## `flowly` template parameters
-
-`--transport <value>` is **required**. Accepted values and aliases:
+## `--transport` (required)
 
 | Value | Alias | Transport |
 |---|---|---|
@@ -32,29 +34,24 @@ The package ships four templates:
 | `azureservicebus` | `asb` | Azure Service Bus |
 | `inmemory` | `inm` | In-Memory (no broker) |
 
-Transport is a single `--transport` parameter, **not** individual boolean flags. Do not document or generate commands like `--rabbitmq` or `--AzureServiceBus`.
+`flowlyapp` and `flowlyaspireapp` also accept `eventhubs` (alias `eh`): stream-only, implies `--stream`, and rejects `--call`, `--jobs` and `--deadletter` at scaffold time (through the conditionally required `eventhubs-streams-only-remove-call-jobs-deadletter` parameter). The `flowly` template does not offer it. Templates stay single-transport: never scaffold two transports in one project.
 
-Optional feature flags: `--jobtracking` / `--jobs`, `--deadlettertracking` / `--deadletter`, `--opentelemetry` / `--otel`, `--inline`.
+Transport is a single `--transport` parameter, **not** boolean flags: never document or generate `--rabbitmq` or `--AzureServiceBus`.
 
-Database backend flags (required when jobs or dead-letter tracking is enabled): `--sqlserver`, `--postgres`, `--sqlite`.
+Optional feature flags: `--jobtracking`/`--jobs`, `--deadlettertracking`/`--deadletter`, `--opentelemetry`/`--otel`, `--inline`. Database flags (required with jobs or dead-letter tracking): `--sqlserver`, `--postgres`, `--sqlite`.
 
 ## SyncSkills MSBuild target
 
-The `SyncSkills` target in `Flowly.Templates.csproj` copies `.claude/skills/**` into `content/flowly-skills/.claude/skills/` at build time. Skills are therefore not committed directly under `content/flowly-skills/` — they are generated. Do not manually edit files under `content/flowly-skills/`; edit the source under `.claude/skills/` instead.
+`SyncSkills` in `Flowly.Templates.csproj` copies `.claude/skills/**` into `content/flowly-skills/.claude/skills/` at build time. Those files are generated: never edit them; edit the source under `.claude/skills/`.
 
 ## Template parity: flowlyapp ↔ flowlyaspireapp
 
-`flowlyapp` and `flowlyaspireapp` must maintain **architectural parity** for `--jobs` and `--deadletter`:
+Both scaffold a dedicated `JobTracker` project (job state persistence) and a dedicated `DeadLetterTracker` project (monitors dead-letter sub-queues, persists failed messages) for `--jobs` / `--deadletter`; the Receiver is a pure message-processing worker. InMemory is the exception: everything is embedded in a single `App/` project in both. **When changing either template's architecture for these features, apply the equivalent change to the other.**
 
-- Both templates scaffold a dedicated `JobTracker` project (owns job state persistence) and a dedicated `DeadLetterTracker` project (monitors dead-letter sub-queues and persists failed messages). The Receiver in both templates is a pure message-processing worker.
-- InMemory transport is the only exception: both templates embed everything inline in a single `App/` project.
+## File names are case-sensitive
 
-**When changing either template's architecture for these features, apply the equivalent change to the other template.**
+Template content is scaffolded on Linux too, where `DeadLetterTracker.csproj` and `DeadletterTracker.csproj` are different files. Spell every project file and directory exactly as the solution files (`.slnx`) and `ProjectReference` items name them; macOS and Windows hide a mismatch. The CI step "Check template project paths" fails on any `.slnx` project path or `ProjectReference` in template content that does not resolve to an existing file.
 
 ## Adding or removing a template parameter
 
-When a parameter is added, removed, or renamed in `content/flowly-project/.template.config/template.json`:
-
-1. Update `src/Flowly.Templates/README.md` first — it is the source of truth
-2. Propagate to `README.md`, `docs/ai/CONTEXT.md`, and `.claude/CLAUDE.md`
-3. Update any skills in `.claude/skills/` that reference template usage
+When a parameter in `content/flowly-project/.template.config/template.json` is added, removed or renamed: update `src/Flowly.Templates/README.md` first (source of truth), then `README.md`, `docs/ai/CONTEXT.md` and `.claude/CLAUDE.md`, then any skills in `.claude/skills/` that reference template usage.

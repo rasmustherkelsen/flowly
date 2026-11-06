@@ -1,9 +1,13 @@
 using Flowly.MessageInfrastructure;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessageInfrastructure.SendSteps;
 using Flowly.MessageInfrastructure.Senders;
+using Flowly.MessageInfrastructure.Telemetry;
+using Flowly.Tests.Fakes;
 using Flowly.Transport;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 
 namespace Flowly.Tests;
@@ -21,8 +25,92 @@ public class MessageRecorderRegistrationExtensionsTests
         return new StubFlowlyBuilder(services);
     }
 
+    private static IMessageSubmitter<TMessage> ResolveSubmitter<TMessage>(IFlowlyBuilder flowlyBuilder)
+    {
+        flowlyBuilder.Services.AddSingleton<ISubmitterInstrumentation, NullSubmitterInstrumentation>();
+        flowlyBuilder.Services.TryAddSingleton<ISendStepRunner>(SendStepRunner.None);
+
+        return flowlyBuilder.Services.BuildServiceProvider().GetRequiredService<IMessageSubmitter<TMessage>>();
+    }
+
+    private static IFlowlyBuilder CreateStreamOnlyBuilder(string providerName, FakeStreamOnlyClient? client = null)
+    {
+        var services = new ServiceCollection();
+        var registry = new MessageBusClientRegistry();
+        registry.Register(providerName, client ?? new FakeStreamOnlyClient(), null);
+        services.AddSingleton<IMessageBusClientRegistry>(registry);
+        services.AddSingleton(new ProviderQueueManifest(providerName, true, "Stub"));
+
+        return new StubFlowlyBuilder(services);
+    }
+
     public class AddMessageRecorder
     {
+        [Fact]
+        public void WithStreamOnlyProvider_RegistersMessageSubmitterForMessageType()
+        {
+            var flowlyBuilder = CreateStreamOnlyBuilder("streams");
+
+            flowlyBuilder.AddMessageRecorder<TelemetryReading>();
+
+            Assert.Contains(flowlyBuilder.Services, s => s.ServiceType == typeof(IMessageSubmitter<TelemetryReading>));
+        }
+
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public async Task WithQueueOnlyAndStreamOnlyProvidersInEitherOrder_RoutesStreamToStreamOnlyProvider(bool queueProviderFirst)
+        {
+            var services = new ServiceCollection();
+            var registry = new MessageBusClientRegistry();
+            var streamsManifest = new ProviderQueueManifest("streams", false, "Stub");
+            var queuesManifest = new ProviderQueueManifest("queues", true, "Stub");
+            services.AddSingleton<IMessageBusClientRegistry>(registry);
+            services.AddSingleton(streamsManifest);
+            services.AddSingleton(queuesManifest);
+            var streamsClient = new FakeStreamOnlyClient(new FakeMessageBusSender());
+            var providers = new (string Name, ITransportClient Client)[] { ("queues", new StubMessageBusClient()), ("streams", streamsClient) };
+
+            foreach (var provider in queueProviderFirst ? providers : providers.Reverse())
+            {
+                registry.Register(provider.Name, provider.Client, null);
+            }
+
+            var flowlyBuilder = new StubFlowlyBuilder(services);
+
+            flowlyBuilder.AddMessageRecorder<TelemetryReading>();
+
+            await ResolveSubmitter<TelemetryReading>(flowlyBuilder).Submit(new TelemetryReading());
+            Assert.Equal("telemetry-reading", streamsClient.CreatedStreamSenderForQueue);
+            Assert.Empty(queuesManifest.Queues);
+            Assert.Single(streamsManifest.Queues);
+        }
+
+        [Fact]
+        public async Task RegisteredSubmitterSendsThroughStreamSender()
+        {
+            var streamClient = new FakeStreamOnlyClient(new FakeMessageBusSender());
+            var flowlyBuilder = CreateStreamOnlyBuilder("primary", streamClient);
+
+            flowlyBuilder.AddMessageRecorder<TelemetryReading>();
+
+            await ResolveSubmitter<TelemetryReading>(flowlyBuilder).Submit(new TelemetryReading());
+            Assert.Equal("telemetry-reading", streamClient.CreatedStreamSenderForQueue);
+        }
+
+        [Fact]
+        public async Task RegisteredSubmitterRunsSendStepsFromTheContainer()
+        {
+            var flowlyBuilder = CreateBuilder("primary");
+            var sendStepRunner = new CountingSendStepRunner();
+            flowlyBuilder.Services.AddSingleton<ISendStepRunner>(sendStepRunner);
+            flowlyBuilder.AddMessageRecorder<TelemetryReading>();
+
+            await ResolveSubmitter<TelemetryReading>(flowlyBuilder).Submit(new TelemetryReading());
+
+            Assert.Equal(1, sendStepRunner.Runs);
+        }
+
         [Fact]
         public void RegistersMessageSubmitterForMessageType()
         {
@@ -32,7 +120,8 @@ public class MessageRecorderRegistrationExtensionsTests
 
             var descriptor = flowlyBuilder.Services.FirstOrDefault(s => s.ServiceType == typeof(IMessageSubmitter<TelemetryReading>));
             Assert.NotNull(descriptor);
-            Assert.Equal(typeof(MessageSubmitter<TelemetryReading>), descriptor.ImplementationType);
+            Assert.Equal(ServiceLifetime.Singleton, descriptor.Lifetime);
+            Assert.IsType<MessageSubmitter<TelemetryReading>>(ResolveSubmitter<TelemetryReading>(flowlyBuilder));
         }
 
         [Fact]
@@ -142,6 +231,10 @@ public class MessageRecorderRegistrationExtensionsTests
             var exception = Assert.Throws<InvalidOperationException>(() => flowlyBuilder.AddMessageRecorder<PartitionedReading>());
 
             Assert.Contains(nameof(IPartitionedStreamCapableMessageBusClient), exception.Message);
+            Assert.Contains(nameof(PartitionedReading), exception.Message);
+            Assert.Contains("[StreamPartitions]", exception.Message);
+            Assert.Contains("'primary' does not support partitioned message streaming", exception.Message);
+            Assert.Contains("primary (queue-based messaging, message streaming)", exception.Message);
         }
     }
 
@@ -154,6 +247,18 @@ public class MessageRecorderRegistrationExtensionsTests
         services.AddSingleton(new ProviderQueueManifest(providerName, true, "Stub"));
 
         return new StubFlowlyBuilder(services);
+    }
+
+    private sealed class CountingSendStepRunner : ISendStepRunner
+    {
+        public int Runs { get; private set; }
+
+        public Task Run(object message, CancellationToken cancellationToken, SendStepDelegate send)
+        {
+            Runs++;
+
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class StubFlowlyBuilder(IServiceCollection services) : IFlowlyBuilder

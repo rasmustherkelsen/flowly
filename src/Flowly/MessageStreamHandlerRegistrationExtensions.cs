@@ -2,6 +2,7 @@ using Flowly.MessageInfrastructure.BackgroundServices;
 using Flowly.MessageInfrastructure.Model;
 using Flowly.MessageInfrastructure.Receivers;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessageInfrastructure.StreamPartitions;
 using Flowly.Registration;
 using Flowly.Transport;
 using Microsoft.Extensions.DependencyInjection;
@@ -18,13 +19,13 @@ public static class MessageStreamHandlerRegistrationExtensions
     ///     The handler must set <see cref="MessageStreamHandlerOptions.StartPosition" /> in its
     ///     <see cref="MessageStreamHandler{TMessage}.Configure" /> override — registration throws when no start
     ///     position is configured. Retry is opt-in via <see cref="RetryPolicyAttribute" /> on the handler class and
-    ///     runs in-process; when retries are exhausted the handler halts consumption entirely rather than skipping the
-    ///     failed batch. Throws <see cref="InvalidOperationException" /> at registration time when the resolved
-    ///     provider's client does not implement <see cref="IStreamCapableMessageBusClient" /> (streams are currently
-    ///     supported on RabbitMQ and InMemory only), when THandler is already registered for TMessage, when a
+    ///     runs in-process; when retries are exhausted the handler halts consumption (holding the failed batch) rather than
+    ///     skipping it. Throws <see cref="InvalidOperationException" /> at registration time when the resolved
+    ///     provider's client does not implement <see cref="IStreamCapableMessageBusClient" /> (for example Azure Service
+    ///     Bus, which has no stream primitive), when THandler is already registered for TMessage, when a
     ///     <see cref="MessageStreamCheckpoint{TMessage}" /> is registered against an InMemory-backed stream, or when
     ///     TMessage carries <see cref="StreamPartitionsAttribute" /> but the resolved provider's client does not
-    ///     implement <see cref="IPartitionedStreamCapableMessageBusClient" /> (currently RabbitMQ and InMemory).
+    ///     implement <see cref="IPartitionedStreamCapableMessageBusClient" />.
     /// </summary>
     /// <param name="flowlyBuilder">The Flowly builder to register with.</param>
     /// <typeparam name="TMessage">The message contract type consumed from the stream.</typeparam>
@@ -46,11 +47,9 @@ public static class MessageStreamHandlerRegistrationExtensions
                 $"{typeof(THandler).Name} is already registered as a message stream handler for {typeof(TMessage).Name}. " +
                 "Registering the same handler type twice is not supported.");
 
-        var providerName = ProviderNameResolver.Resolve(flowlyBuilder.Services, typeof(TMessage));
+        var providerName = ProviderNameResolver.Resolve<IStreamCapableMessageBusClient>(flowlyBuilder.Services, typeof(TMessage));
 
-        MessageRecorderRegistrationExtensions.ThrowIfNotStreamCapable(flowlyBuilder.Services, providerName);
-
-        var client = ProviderNameResolver.GetRegistry(flowlyBuilder.Services).GetClient(providerName);
+        var client = ProviderNameResolver.GetRegistry(flowlyBuilder.Services).GetClient<IStreamCapableMessageBusClient>(providerName);
         if (client.MessagingSystem == "in-memory" && flowlyBuilder.Services.Any(s => s.ServiceType == typeof(MessageStreamCheckpoint<TMessage>)))
             throw new InvalidOperationException(
                 $"A {nameof(MessageStreamCheckpoint<TMessage>)}<{typeof(TMessage).Name}> is registered, but InMemory-backed streams do not " +
@@ -64,6 +63,7 @@ public static class MessageStreamHandlerRegistrationExtensions
             .MarkAsStream(resolved.QueueName, resolved.MaxAgeSeconds, resolved.MaxLengthBytes, resolved.PartitionCount);
 
         flowlyBuilder.Services.AddScoped<THandler>();
+        StreamPartitionStateRegistry.GetOrCreate(flowlyBuilder.Services);
 
         if (resolved.PartitionCount is { } partitionCount)
         {

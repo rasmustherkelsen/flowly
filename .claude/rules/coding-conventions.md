@@ -1,3 +1,8 @@
+---
+paths:
+  - "**/*.cs"
+---
+
 # General Coding Conventions
 
 - Make the code testable

@@ -323,7 +323,7 @@ internal class FlowlyConfiguration : Configuration
     public override void Configure(IFlowlyBuilder builder)
     {
         builder
-            .UseRabbitMq(connection: "RabbitMQ")
+            .UseRabbitMq("RabbitMQ")
             .AddDeadLetterTrackingClient("FlowlyDeadLetters")
             .AddMessageSubmitter<MyMessage>();
     }

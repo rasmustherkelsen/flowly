@@ -4,8 +4,9 @@ namespace Flowly.Transport;
 
 /// <summary>
 ///     Optional capability interface for transports that support partitioned, append-only, replayable message
-///     streams (e.g. RabbitMQ Super Streams). Implemented alongside <see cref="IMessageBusClient" /> and, typically,
-///     <see cref="IStreamCapableMessageBusClient" /> by clients whose broker offers a partitioned-stream primitive.
+///     streams (e.g. RabbitMQ Super Streams). Implemented alongside <see cref="IStreamCapableMessageBusClient" /> by
+///     clients whose broker offers a partitioned-stream primitive. It does not require <see cref="IMessageBusClient" />,
+///     so a stream-only transport can implement both stream interfaces without supporting queues.
 ///     Flowly checks for this interface eagerly at registration time — registering a
 ///     <see cref="MessageStreamHandler{TMessage}" /> or <see cref="IMessageRecorder" /> for a message contract
 ///     carrying <see cref="StreamPartitionsAttribute" /> against a provider whose client does not implement it
@@ -32,9 +33,16 @@ public interface IPartitionedStreamCapableMessageBusClient
     ///     — once when this process first becomes responsible for that partition. Wired by Flowly to consult a
     ///     registered <see cref="MessageStreamCheckpoint{TMessage}" /> if present, falling back to the configured
     ///     <see cref="MessageStreamHandlerOptions.StartPosition" /> otherwise — the same precedence as the
-    ///     non-partitioned case, evaluated per partition.
+    ///     non-partitioned case, evaluated per partition. For a partition without a stored position, Flowly also resolves
+    ///     and stores the configured start position inside this delegate when the client implements
+    ///     <see cref="IStreamStartOffsetResolver" />, so the transport should call it before it subscribes the partition and
+    ///     must tolerate it taking as long as that resolution (and the checkpoint store) needs.
     /// </param>
-    /// <param name="options">Processor options such as the maximum number of messages to accumulate before invoking the handler.</param>
+    /// <param name="options">
+    ///     Processor options such as the maximum number of messages to accumulate before invoking the handler and the
+    ///     <see cref="MessageBusProcessorOptions.ConsumerName" /> of the reader, which a transport may use to identify the
+    ///     reader on the broker (for example as a consumer group).
+    /// </param>
     /// <param name="logger">
     ///     A logger scoped to the owning background service, used by transports whose delegation model can
     ///     transiently receive a message for a partition this process no longer (or does not yet) own — e.g. during

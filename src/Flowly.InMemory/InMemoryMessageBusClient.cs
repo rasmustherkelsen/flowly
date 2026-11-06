@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 namespace Flowly.InMemory;
 
 internal class InMemoryMessageBusClient(InMemoryBroker broker, InMemoryOptions options)
-    : IMessageBusClient, IEventCapableMessageBusClient, IStreamCapableMessageBusClient, IPartitionedStreamCapableMessageBusClient
+    : IMessageBusClient, IEventCapableMessageBusClient, IStreamCapableMessageBusClient, IPartitionedStreamCapableMessageBusClient, IStreamStartOffsetResolver
 {
     private readonly SemaphoreSlim _senderLock = new(1, 1);
     private readonly ConcurrentDictionary<string, IMessageBusSender> _senders = new();
@@ -38,6 +38,13 @@ internal class InMemoryMessageBusClient(InMemoryBroker broker, InMemoryOptions o
         ILogger logger)
         => Task.FromResult<IPartitionedStreamConsumer<TMessage>>(
             new InMemoryPartitionedStreamConsumer<TMessage>(broker, queueName, partitionCount, resolveStartPosition));
+
+    public Task<long?> ResolveStartOffset(string queueName, int? partition, StartPosition startPosition, CancellationToken cancellationToken)
+    {
+        var log = partition is { } partitionIndex ? broker.GetOrCreatePartitionedStreamLog(queueName, partitionIndex) : broker.GetOrCreateStreamLog(queueName);
+
+        return Task.FromResult<long?>(log.ResolveStartOffset(startPosition));
+    }
 
     public Task<IExecutionLaneProcessor> CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions processorOptions)
         => Task.FromResult<IExecutionLaneProcessor>(new InMemoryExecutionLaneProcessor(broker.GetSessionChannel(queueName, laneFilter), queueName));

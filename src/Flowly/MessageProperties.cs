@@ -61,6 +61,19 @@ public record MessageProperties(
     int? DeliveryCount = null)
 {
     /// <summary>
+    ///     Application-defined key/value pairs that travel with the message from the sender to the receiver, mapped to the
+    ///     transport's native concept (RabbitMQ headers, Azure Service Bus application properties, Azure Event Hubs event
+    ///     properties, InMemory envelope properties). Set by the sender through the <c>customProperties</c> parameter of
+    ///     <see cref="IMessageSender" />, <see cref="IMessageRecorder" />, <see cref="IEventSender" /> and
+    ///     <see cref="IMessageCaller" /> (and <c>IJobMessageSender</c>), and read here by handlers and handler steps. Empty,
+    ///     never <see langword="null" />, when the message carries none. Keys that Flowly reserves (see
+    ///     <see cref="CustomMessageProperties.IsReserved" />) are never present. Retries and dead letter requeues carry the
+    ///     pairs along unchanged; a call handler's reply does not. The values are not authenticated: anyone who can publish to
+    ///     the destination can set any value, so do not treat them as proof of identity unless the application signs them.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> CustomProperties { get; init; } = CustomMessageProperties.Empty;
+
+    /// <summary>
     ///     A default empty <see cref="MessageProperties" /> instance with empty strings for required fields. Used as a
     ///     placeholder in contexts where real properties are not available.
     /// </summary>

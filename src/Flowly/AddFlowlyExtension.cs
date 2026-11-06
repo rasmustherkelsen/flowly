@@ -1,7 +1,11 @@
 using System.Reflection;
+using Flowly.MessageInfrastructure;
 using Flowly.MessageInfrastructure.Events.Telemetry;
+using Flowly.MessageInfrastructure.HandlerSteps;
 using Flowly.MessageInfrastructure.Model;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessageInfrastructure.SendSteps;
+using Flowly.MessageInfrastructure.StreamPartitions;
 using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.Registration;
 using Flowly.Services;
@@ -108,14 +112,13 @@ public static class AddFlowlyExtension
             options.InstanceName = designTimeFactory.InstanceName;
 
         services.TryAddSingleton(options);
+        services.TryAddSingleton<NonRetryableExceptionClassifier>();
 
         var topologyNameResolver = (ITopologyNameResolver)Activator.CreateInstance(options.TopologyNameResolverType)!;
         services.TryAddSingleton(topologyNameResolver);
 
-        IHandlerInstrumentation handlerInstrumentation = options.EnableTelemetry
-            ? new HandlerInstrumentation()
-            : new NullHandlerInstrumentation();
-        
+        var streamPartitionStates = StreamPartitionStateRegistry.GetOrCreate(services);
+
         ISubmitterInstrumentation submitterInstrumentation = options.EnableTelemetry
             ? new SubmitterInstrumentation()
             : new NullSubmitterInstrumentation();
@@ -132,13 +135,18 @@ public static class AddFlowlyExtension
             ? new CallerInstrumentation()
             : new NullCallerInstrumentation();
 
-        services.TryAddSingleton(handlerInstrumentation);
+        services.TryAddSingleton<IHandlerInstrumentation>(
+            _ => options.EnableTelemetry ? new HandlerInstrumentation(streamPartitionStates) : new NullHandlerInstrumentation());
         services.TryAddSingleton(submitterInstrumentation);
         services.TryAddSingleton(eventHandlerInstrumentation);
         services.TryAddSingleton(eventPublisherInstrumentation);
         services.TryAddSingleton(callerInstrumentation);
         services.TryAddSingleton<IHandlerSettingsFactory, HandlerSettingsFactory>();
         services.TryAddSingleton<IQueueRegistrar, QueueRegistrar>();
+        services.TryAddSingleton<IHandlerStepRunner, HandlerStepRunner>();
+        services.TryAddSingleton<ISendStepRunner, SendStepRunner>();
+        services.TryAddSingleton(new RegisteredHandlerMessageTypes(services));
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, HandlerStepConfigurationValidator>());
 
         services.AddHostedService<CommandLineParserHostedService>();
 

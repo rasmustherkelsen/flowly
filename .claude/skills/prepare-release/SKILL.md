@@ -1,6 +1,6 @@
 ---
 name: prepare-release
-description: Pre-release verification for the Flowly repository — checks documentation currency, template Flowly package version consistency, third-party dependency freshness and known vulnerabilities (including template-only packages that dotnet list package can't see), dependency floor hygiene in src/, and smoke-tests all template variants by scaffolding and building them against local packages.
+description: Pre-release verification for the Flowly repository — checks documentation currency, template Flowly package version consistency, updates third-party dependencies (tests, samples, templates, dashboard UI) and Aspire to the latest stable, checks known vulnerabilities (including template-only packages that dotnet list package can't see), dependency floor hygiene in src/, and smoke-tests all template variants by scaffolding and building them against local packages.
 ---
 
 Run every step below in order and report the outcome of each. All findings feed the final checklist.
@@ -9,7 +9,7 @@ Run every step below in order and report the outcome of each. All findings feed 
 
 Read and cross-check these files for consistency:
 
-- `README.md` — packages table must list all 17 NuGet packages (Flowly, Flowly.AzureServiceBus, Flowly.AzureServiceBus.Aspire, Flowly.RabbitMQ, Flowly.InMemory, Flowly.OpenTelemetry, Flowly.Dashboard, Flowly.Jobs, Flowly.Jobs.SqlServer, Flowly.Jobs.Postgres, Flowly.Jobs.SQLite, Flowly.DeadLetters, Flowly.DeadLetters.SqlServer, Flowly.DeadLetters.Postgres, Flowly.DeadLetters.SQLite, Flowly.Tool, Flowly.Templates)
+- `README.md` — packages table must list all 24 NuGet packages (Flowly, Flowly.AzureServiceBus, Flowly.AzureServiceBus.Aspire, Flowly.RabbitMQ, Flowly.AzureEventHubs, Flowly.InMemory, Flowly.OpenTelemetry, Flowly.Dashboard, Flowly.Jobs, Flowly.Jobs.SqlServer, Flowly.Jobs.Postgres, Flowly.Jobs.SQLite, Flowly.DeadLetters, Flowly.DeadLetters.SqlServer, Flowly.DeadLetters.Postgres, Flowly.DeadLetters.SQLite, Flowly.MessageStreams, Flowly.MessageStreams.SqlServer, Flowly.MessageStreams.Postgres, Flowly.MessageStreams.SQLite, Flowly.ManagementApi, Flowly.PowerShell, Flowly.Tool, Flowly.Templates)
 - `docs/README.md` — should be a table of contents linking to `README.md` as the full reference; no packages table of its own
 - `docs/ai/CONTEXT.md` — registration API section must reflect current code
 - `src/Flowly.Templates/README.md` — template parameters table must match the `template.json` files
@@ -41,6 +41,8 @@ git tag --sort=-version:refname | head -5
 
 Report any mismatch. If the template version does not match the latest tag, flag it — the release workflow's `sed` step updates them at publish time, but confirm they look correct for the upcoming release.
 
+`ModuleVersion` in `src/Flowly.PowerShell/Flowly.PowerShell.psd1` is a placeholder (`0.0.0`) that the same workflow overwrites from the tag, together with the manifest's `Prerelease` label for a tag with a suffix. Confirm the file still has both lines and was not bumped by hand.
+
 ---
 
 ## Step 3 — Third-party dependency health
@@ -57,6 +59,8 @@ Report which packages have newer versions available. Classify each as:
 - **Patch** (safe to update now)
 - **Minor** (review changelog, generally safe)
 - **Major** (needs evaluation — may be breaking)
+
+This is the discovery pass. Step 3e applies the updates and Step 3f updates Aspire.
 
 ### 3b — Known vulnerabilities in the resolved graph
 
@@ -87,6 +91,78 @@ grep -rn "OpenTelemetry\.\|Microsoft\.Extensions\.Http\.Resilience\|Microsoft\.E
 ```
 
 Per `.claude/rules/template-otel-versions.md`: `OpenTelemetry.Extensions.Hosting`, `OpenTelemetry.Exporter.OpenTelemetryProtocol`, and `OpenTelemetry.Exporter.Zipkin` in template content must exactly match `Flowly.OpenTelemetry.csproj`; `OpenTelemetry.Instrumentation.*` packages must match `OpenTelemetry.Extensions.Hosting`'s version. Report any mismatch as a blocking finding, not just a freshness note — CI will already fail the build on this, so it must be fixed before the release branch is tagged.
+
+### 3e — Update dependencies to the latest stable versions
+
+Apply the updates found in 3a and 3d. Only stable versions — never prereleases (no `-preview`, `-rc`, `-beta`). Scope:
+
+| Location | Policy |
+|---|---|
+| `tests/**/*.csproj` | Update to latest stable |
+| `samples/**/*.csproj` | Update to latest stable |
+| `src/Flowly.Templates/content/**/*.csproj` (third-party packages only; `Flowly.*` stays untouched, the release workflow sets it) | Update to latest stable, except OpenTelemetry — see below |
+| `src/Flowly.Dashboard/ui/package.json` | Update to latest stable (`npm outdated`, then `npm update` / bump the ranges and `npm install`), then run `npm run build` in that directory |
+| `dotnet-tools.json` | Update to latest stable (`dotnet tool list`, then edit the version) |
+| `src/*.csproj` (the distributable packages) | **Do not bump to latest.** These are dependency floors; see 3c. Only touch one to fix an `NU190x` finding or because the code genuinely needs an API from a newer version, and then to the *lowest* version that satisfies that need |
+
+Rules:
+
+- Update a package everywhere it appears in the same change (e.g. a `Microsoft.Extensions.*` or test-framework package shared by several test projects) so the repo never carries two versions of the same package by accident.
+- **OpenTelemetry:** template versions must equal `Flowly.OpenTelemetry.csproj` (see the OTel rule above), and that file is a `src/` floor. If a newer OTel release exists, do not bump templates past `src/`. Report it as "held back by floor policy" and let the user decide whether to raise the `src/` floor. If they say yes, bump `Flowly.OpenTelemetry.csproj` and every template file in the OTel rule's file table together, with `OpenTelemetry.Instrumentation.*` at the same version as `OpenTelemetry.Extensions.Hosting`.
+- **Template-only .NET/Aspire train packages** (`Microsoft.Extensions.Http.Resilience`, `Microsoft.Extensions.ServiceDiscovery`): update to the latest stable that matches the Aspire release chosen in 3f.
+- **Major version bumps:** apply them, then build and test. If a major bump breaks the build or tests and the fix is not small and mechanical, revert that one package, keep the rest, and list it under "held back" with the reason. Do not leave the tree broken.
+- Do not downgrade anything. If the latest stable is lower than what is pinned, leave it and mention it.
+- Use `dotnet list <project-or-sln> package --outdated` for solution projects and the NuGet flat-container API from 3d for template-only packages.
+
+### 3f — Update Aspire to the latest release
+
+Aspire ships as one release train: `Aspire.AppHost.Sdk` and every `Aspire.*` package (e.g. `Aspire.Hosting.RabbitMQ`, `Aspire.Hosting.Azure.ServiceBus`, `Aspire.Hosting.Azure.EventHubs`, `Aspire.Hosting.Azure.Storage`, `Aspire.Hosting.SqlServer`, `Aspire.Hosting.PostgreSQL`, `Aspire.Hosting.JavaScript`, `Aspire.Azure.Messaging.ServiceBus`) must be on the **same version**. Mixing versions causes restore downgrade errors or runtime mismatches.
+
+1. Find the latest stable Aspire version (not a preview):
+
+```bash
+curl -s https://api.nuget.org/v3-flatcontainer/aspire.hosting.apphost/index.json | grep -oE '"[0-9]+\.[0-9]+\.[0-9]+"' | tail -1
+```
+
+2. List every place Aspire is pinned:
+
+```bash
+grep -rnE 'Aspire\.AppHost\.Sdk/|Include="Aspire\.' --include="*.csproj" src samples tests
+```
+
+3. Set the SDK version in the `<Project Sdk="Aspire.AppHost.Sdk/X.Y.Z">` line and every `Aspire.*` `PackageReference` to the new version in:
+   - `src/Flowly.Templates/content/flowly-aspire-app/MyAspireApp.AppHost/MyAspireApp.AppHost.csproj`
+   - every AppHost and service project under `samples/` (e.g. `samples/RabbitMQ/Aspire/`, `samples/AzureServiceBus/Aspire/`)
+   - any `tests/` project that references Aspire
+4. `src/Flowly.AzureServiceBus.Aspire` and `src/Flowly.AzureServiceBus` also reference `Aspire.*` packages. Per the floor policy in 3e, leave those at their current version unless the code needs the newer API. The sample and template AppHosts on the newer Aspire are what prove the floor still works with it (Step 4 `TestAspireAsb`, `TestAspireRabbitMq` and `TestAspireEventHubs` also exercise it; the Event Hubs variant is the only one that uses `Aspire.Hosting.Azure.EventHubs` and `Aspire.Hosting.Azure.Storage`).
+5. Regenerate the Aspire ServiceDefaults boilerplate so it matches the new release:
+
+```bash
+SCRATCH=$(mktemp -d) && cd "$SCRATCH" && dotnet new aspire-servicedefaults -n Scratch.ServiceDefaults && cd - >/dev/null
+```
+
+   Diff the generated `Extensions.cs` against `src/Flowly.Templates/content/flowly-aspire-app/MyAspireApp.ServiceDefaults/Extensions.cs`. Port upstream changes while keeping the Flowly-specific parts (namespace, template conditionals). Also compare the generated `.csproj`'s package set with the template's, then set `Microsoft.Extensions.Http.Resilience` and `Microsoft.Extensions.ServiceDiscovery` to the versions the new Aspire release's template uses. Remove `$SCRATCH` afterwards.
+6. Check whether the installed Aspire tooling/templates are older than the new release (`dotnet new list aspire`, `aspire --version` if the CLI is present). Mention it in the report if so, but do not install global tooling without asking.
+7. Update every doc that states an Aspire version so it stays true. Check at least `docs/ai/CONTEXT.md` (the note about the Aspire SDK version and `Extensions.cs`), `src/Flowly.Templates/README.md`, the root `README.md`, `samples/**/README.md`, and `.claude/skills/flowly-setup-aspire/SKILL.md`:
+
+```bash
+grep -rnE 'Aspire[^|]{0,40}1[0-9]\.[0-9]+(\.[0-9]+)?|AppHost\.Sdk' README.md docs src/Flowly.Templates/README.md samples --include="*.md" .claude/skills
+```
+
+8. Check Aspire release notes for breaking changes (the `microsoft_docs_search` / Aspire "what's new" pages) and fix any API changes in the AppHost `Program.cs` files, the `Flowly.AzureServiceBus.Aspire` integration, and template content.
+
+### 3g — Re-verify after the updates
+
+Repeat the checks after applying 3e and 3f:
+
+```bash
+dotnet list Flowly.sln package --outdated
+dotnet restore Flowly.sln --force 2>&1 | grep -E 'NU190[123]' || echo "No vulnerability warnings."
+dotnet build Flowly.sln -c Release
+dotnet test Flowly.sln -c Release
+```
+
+Also restore and build the Aspire sample solutions/projects, which may not be part of `Flowly.sln`'s default build, then re-run the OpenTelemetry sync command from 3d. Whatever `--outdated` still lists must be explained in the report: held back by floor policy, held back because of a breaking major, or a prerelease-only newer version. Do not commit the updates as part of this skill unless the user asks. Leave them in the working tree and summarise them as a table of package, old version, new version, and location.
 
 ---
 
@@ -142,8 +218,14 @@ Create a temporary test root, then for each variant in the table below:
 find . -name "*.csproj" | xargs sed -i '' 's/\(Include="Flowly[^"]*"\) Version="[^"]*"/\1 Version="10.0.0.0"/g'
 ```
 
-5. Run `dotnet restore && dotnet build`
-6. Record **PASS** or **FAIL** (with error summary on failure)
+5. Run restore and build, keeping the output, then check it for vulnerability warnings:
+
+```bash
+dotnet restore 2>&1 | tee restore.log && dotnet build --no-restore 2>&1 | tee build.log
+grep -hE "NU190[123]" restore.log build.log | sort -u
+```
+
+6. Record **PASS** or **FAIL** (with error summary on failure). Any `NU1901`/`NU1902`/`NU1903` line is a **FAIL** for that variant even when the build succeeds: a scaffolded project must restore without known-vulnerable packages. The usual fix is a direct `PackageReference` override of the flagged transitive package in the template `.csproj` (like the `MessagePack` and `System.Security.Cryptography.Pkcs` overrides in the Aspire AppHost template), at the lowest stable version that is not flagged.
 
 | Test name | Command |
 |---|---|
@@ -152,11 +234,27 @@ find . -name "*.csproj" | xargs sed -i '' 's/\(Include="Flowly[^"]*"\) Version="
 | TestInMemory | `dotnet new flowlyapp --transport inmemory -n TestInMemory` |
 | TestAspireRabbitMq | `dotnet new flowlyaspireapp --transport rabbitmq -n TestAspireRabbitMq` |
 | TestAspireAsb | `dotnet new flowlyaspireapp --transport azureservicebus -n TestAspireAsb` |
+| TestAspireSqlServer | `dotnet new flowlyaspireapp --transport rabbitmq --jobs --db sqlserver -n TestAspireSqlServer` |
 | TestStream | `dotnet new flowlyapp --transport rabbitmq --stream -n TestStream` |
 | TestStreamPartitioned | `dotnet new flowlyapp --transport inmemory --stream --partitions 4 -n TestStreamPartitioned` |
 | TestJobs | `dotnet new flowlyapp --transport rabbitmq --jobs --db sqlite -n TestJobs` |
 | TestDeadLetters | `dotnet new flowlyapp --transport rabbitmq --deadletter --db sqlite -n TestDeadLetters` |
 | TestFull | `dotnet new flowlyapp --transport rabbitmq --jobs --deadletter --db sqlite --dashboard -n TestFull` |
+| TestEventHubs | `dotnet new flowlyapp --transport eventhubs -n TestEventHubs` |
+| TestEventHubsPartitioned | `dotnet new flowlyapp --transport eventhubs --partitions 4 --stream-checkpoint sqlite -n TestEventHubsPartitioned` |
+| TestEventHubsSqlServer | `dotnet new flowlyapp --transport eventhubs --stream-checkpoint sqlserver -n TestEventHubsSqlServer` |
+| TestEventHubsDashboard | `dotnet new flowlyapp --transport eventhubs --dashboard --otel-export jaeger -n TestEventHubsDashboard` |
+| TestAspireEventHubs | `dotnet new flowlyaspireapp --transport eventhubs -n TestAspireEventHubs` |
+| TestAspireEventHubsPartitioned | `dotnet new flowlyaspireapp --transport eventhubs --partitions 4 --stream-checkpoint sqlite -n TestAspireEventHubsPartitioned` |
+| TestAspireEventHubsSqlServer | `dotnet new flowlyaspireapp --transport eventhubs --stream-checkpoint sqlserver -n TestAspireEventHubsSqlServer` |
+
+Azure Event Hubs hosts streams only, so `--call`, `--jobs` and `--deadletter` must be **rejected** at scaffold time for both templates. Run each of these and record PASS when `dotnet new` fails with `Missing mandatory option(s) ... '--eventhubs-streams-only-remove-call-jobs-deadletter'` and creates nothing:
+
+| Test name | Command (expected to fail) |
+|---|---|
+| RejectEventHubsCall | `dotnet new flowlyapp --transport eventhubs --call -n RejectEventHubsCall` |
+| RejectEventHubsJobs | `dotnet new flowlyapp --transport eventhubs --jobs --db sqlite -n RejectEventHubsJobs` |
+| RejectEventHubsDeadLetter | `dotnet new flowlyaspireapp --transport eventhubs --deadletter --db sqlite -n RejectEventHubsDeadLetter` |
 
 ### 4e — Clean up
 
@@ -185,8 +283,10 @@ Report the status of every item:
 - [ ] No critical outdated third-party dependencies in `Flowly.sln` (or updates applied)
 - [ ] No `NU1903`/`NU1902`/`NU1901` vulnerability warnings on `dotnet restore Flowly.sln --force`
 - [ ] `src/*.csproj` dependency floors are the lowest version that is both compiling and vulnerability-clean, not just the latest patch
+- [ ] Third-party dependencies in `tests/`, `samples/`, template content, the Dashboard `package.json`, and `dotnet-tools.json` are updated to the latest stable (anything held back is listed with a reason)
+- [ ] Aspire is on the latest stable release everywhere (`Aspire.AppHost.Sdk` and all `Aspire.*` packages on one version in the template AppHost and every sample), ServiceDefaults boilerplate is re-synced, and docs state the right version
 - [ ] Template-only third-party packages (Aspire.Hosting.*, Microsoft.Extensions.Http.Resilience/ServiceDiscovery, OpenTelemetry.*) are current
 - [ ] Template OpenTelemetry package versions match `Flowly.OpenTelemetry.csproj` per `.claude/rules/template-otel-versions.md`
-- [ ] All 8 template variants scaffold and build successfully
+- [ ] All 18 template variants scaffold and build successfully with no `NU1901`/`NU1902`/`NU1903` in their restore or build output, and the Azure Event Hubs rejection cases fail at scaffold time
 - [ ] `dotnet build Flowly.sln` passes
 - [ ] `dotnet test Flowly.sln` passes

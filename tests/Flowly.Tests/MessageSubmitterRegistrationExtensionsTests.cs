@@ -1,31 +1,74 @@
 using Flowly.MessageInfrastructure;
-using Flowly.MessageInfrastructure.Receivers;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessageInfrastructure.SendSteps;
 using Flowly.MessageInfrastructure.Senders;
+using Flowly.MessageInfrastructure.Telemetry;
+using Flowly.Tests.Fakes;
 using Flowly.Transport;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Flowly.Tests;
 
 public class MessageSubmitterRegistrationExtensionsTests
 {
-    private static IFlowlyBuilder CreateBuilder(string primary, string? secondary = null)
+    private static IFlowlyBuilder CreateBuilder(
+        string primary,
+        string? secondary = null,
+        FakeMessageBusClient? primaryClient = null,
+        FakeMessageBusClient? secondaryClient = null)
     {
         var services = new ServiceCollection();
         var registry = new MessageBusClientRegistry();
-        registry.Register(primary, new StubMessageBusClient(), null);
+        registry.Register(primary, primaryClient ?? new FakeMessageBusClient(new FakeMessageBusSender()), null);
 
         if (secondary is not null)
-            registry.Register(secondary, new StubMessageBusClient(), null);
+            registry.Register(secondary, secondaryClient ?? new FakeMessageBusClient(new FakeMessageBusSender()), null);
 
         services.AddSingleton<IMessageBusClientRegistry>(registry);
 
         return new StubFlowlyBuilder(services);
     }
 
+    private static IMessageSubmitter<TMessage> ResolveSubmitter<TMessage>(IFlowlyBuilder flowlyBuilder)
+    {
+        flowlyBuilder.Services.AddSingleton<ISubmitterInstrumentation, NullSubmitterInstrumentation>();
+        flowlyBuilder.Services.TryAddSingleton<ISendStepRunner>(SendStepRunner.None);
+
+        return flowlyBuilder.Services.BuildServiceProvider().GetRequiredService<IMessageSubmitter<TMessage>>();
+    }
+
     public class AddMessageSubmitter
     {
+        [Fact]
+        public void WithStreamOnlyProvider_ThrowsDescriptiveError()
+        {
+            var services = new ServiceCollection();
+            var registry = new MessageBusClientRegistry();
+            registry.Register("streams", new FakeStreamOnlyClient(), null);
+            services.AddSingleton<IMessageBusClientRegistry>(registry);
+            var flowlyBuilder = new StubFlowlyBuilder(services);
+
+            var exception = Assert.Throws<InvalidOperationException>(() => flowlyBuilder.AddMessageSubmitter<OrderPlaced>());
+
+            Assert.Contains("requires a provider that supports queue-based messaging", exception.Message);
+            Assert.Contains("streams (message streaming)", exception.Message);
+        }
+
+        [Fact]
+        public async Task RegisteredSubmitterRunsSendStepsFromTheContainer()
+        {
+            var flowlyBuilder = CreateBuilder("primary");
+            var sendStepRunner = new CountingSendStepRunner();
+            flowlyBuilder.Services.AddSingleton<ISendStepRunner>(sendStepRunner);
+            flowlyBuilder.AddMessageSubmitter<OrderPlaced>();
+
+            await ResolveSubmitter<OrderPlaced>(flowlyBuilder).Submit(new OrderPlaced());
+
+            Assert.Equal(1, sendStepRunner.Runs);
+        }
+
         [Fact]
         public void RegistersMessageSubmitterForMessageType()
         {
@@ -37,23 +80,20 @@ public class MessageSubmitterRegistrationExtensionsTests
                 .FirstOrDefault(s => s.ServiceType == typeof(IMessageSubmitter<OrderPlaced>));
 
             Assert.NotNull(descriptor);
-            Assert.Equal(typeof(MessageSubmitter<OrderPlaced>), descriptor.ImplementationType);
+            Assert.Equal(ServiceLifetime.Singleton, descriptor.Lifetime);
+            Assert.IsType<MessageSubmitter<OrderPlaced>>(ResolveSubmitter<OrderPlaced>(flowlyBuilder));
         }
 
         [Fact]
-        public void RegistersQueueSettingsWithResolvedQueueName()
+        public async Task RegisteredSubmitterSendsToResolvedQueueNameThroughQueueSender()
         {
-            var flowlyBuilder = CreateBuilder("primary");
+            var primaryClient = new FakeMessageBusClient(new FakeMessageBusSender());
+            var flowlyBuilder = CreateBuilder("primary", primaryClient: primaryClient);
 
             flowlyBuilder.AddMessageSubmitter<OrderPlaced>();
 
-            var queueSettings = flowlyBuilder.Services
-                .Where(s => s.ServiceType == typeof(MessageSubmitter<OrderPlaced>.QueueSettings))
-                .Select(s => (MessageSubmitter<OrderPlaced>.QueueSettings)s.ImplementationInstance!)
-                .Single();
-
-            Assert.Equal("order-placed", queueSettings.QueueName);
-            Assert.Equal("primary", queueSettings.ProviderName);
+            await ResolveSubmitter<OrderPlaced>(flowlyBuilder).Submit(new OrderPlaced());
+            Assert.Equal("order-placed", primaryClient.CreatedSenderForQueue);
         }
 
         [Fact]
@@ -82,18 +122,17 @@ public class MessageSubmitterRegistrationExtensionsTests
         }
 
         [Fact]
-        public void WithProviderAffinity_UsesAttributeProvider()
+        public async Task WithProviderAffinity_UsesAttributeProvider()
         {
-            var flowlyBuilder = CreateBuilder("primary", "secondary");
+            var primaryClient = new FakeMessageBusClient(new FakeMessageBusSender());
+            var secondaryClient = new FakeMessageBusClient(new FakeMessageBusSender());
+            var flowlyBuilder = CreateBuilder("primary", "secondary", primaryClient, secondaryClient);
 
             flowlyBuilder.AddMessageSubmitter<AffinityMessage>();
 
-            var queueSettings = flowlyBuilder.Services
-                .Where(s => s.ServiceType == typeof(MessageSubmitter<AffinityMessage>.QueueSettings))
-                .Select(s => (MessageSubmitter<AffinityMessage>.QueueSettings)s.ImplementationInstance!)
-                .Single();
-
-            Assert.Equal("secondary", queueSettings.ProviderName);
+            await ResolveSubmitter<AffinityMessage>(flowlyBuilder).Submit(new AffinityMessage());
+            Assert.Equal("affinity", secondaryClient.CreatedSenderForQueue);
+            Assert.Null(primaryClient.CreatedSenderForQueue);
         }
 
         [Fact]
@@ -104,6 +143,18 @@ public class MessageSubmitterRegistrationExtensionsTests
             var returned = flowlyBuilder.AddMessageSubmitter<OrderPlaced>();
 
             Assert.Same(flowlyBuilder, returned);
+        }
+    }
+
+    private sealed class CountingSendStepRunner : ISendStepRunner
+    {
+        public int Runs { get; private set; }
+
+        public Task Run(object message, CancellationToken cancellationToken, SendStepDelegate send)
+        {
+            Runs++;
+
+            return Task.CompletedTask;
         }
     }
 
@@ -118,39 +169,4 @@ public class MessageSubmitterRegistrationExtensionsTests
 
     [ProviderAffinity("secondary")]
     private record AffinityMessage;
-
-    private sealed class StubMessageBusClient : IMessageBusClient
-    {
-        public string MessagingSystem => "Stub";
-
-        public Task<IMessageBusReceiver> CreateReceiver(string queueName)
-        {
-            throw new NotImplementedException();
-        }
-
-        public Task<IMessageBusProcessor<TMessage>> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options)
-        {
-            throw new NotImplementedException();
-        }
-
-        public Task<IExecutionLaneProcessor> CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options)
-        {
-            throw new NotImplementedException();
-        }
-
-        public Task<IMessageBusSender> CreateMessageBusSender(string queueName)
-        {
-            throw new NotImplementedException();
-        }
-
-        public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName)
-        {
-            throw new NotImplementedException();
-        }
-
-        public Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default)
-        {
-            throw new NotImplementedException();
-        }
-    }
 }

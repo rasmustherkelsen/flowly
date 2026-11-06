@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using Flowly.MessageInfrastructure.Telemetry;
+using Flowly.Transport;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Flowly.MessageInfrastructure.BackgroundServices;
 
@@ -37,8 +39,11 @@ internal static class MessageStreamCheckpointHelper
         string handlerName,
         string queueName,
         IHandlerInstrumentation handlerInstrumentation,
+        ILogger logger,
         CancellationToken cancellationToken,
-        bool initializeCheckpoint = true)
+        bool initializeCheckpoint = true,
+        IStreamStartOffsetResolver? startOffsetResolver = null,
+        Action? checkpointInitialized = null)
     {
         await using var scope = serviceScopeFactory.CreateAsyncScope();
         var checkpoint = scope.ServiceProvider.GetService<MessageStreamCheckpoint<TMessage>>();
@@ -47,13 +52,26 @@ internal static class MessageStreamCheckpointHelper
         var context = new MessageStreamCheckpointContext(consumerName, partition);
 
         if (initializeCheckpoint)
+        {
             await checkpoint.InitializeCheckpoint(context, cancellationToken);
+            checkpointInitialized?.Invoke();
+        }
 
         var storedPosition = await checkpoint.GetStreamPosition(context, cancellationToken);
 
-        handlerInstrumentation.RecordCheckpointResolved(handlerName, queueName, storedPosition.HasValue);
+        if (storedPosition.HasValue)
+        {
+            handlerInstrumentation.RecordCheckpointResolved(handlerName, queueName, CheckpointResolution.Resumed);
+            return StartPosition.Offset(storedPosition.Value + 1);
+        }
 
-        return storedPosition.HasValue ? StartPosition.Offset(storedPosition.Value + 1) : fallback;
+        if (startOffsetResolver is null || !MovesWhileProcessIsDown(fallback))
+        {
+            handlerInstrumentation.RecordCheckpointResolved(handlerName, queueName, CheckpointResolution.Fresh);
+            return fallback;
+        }
+
+        return await SeedStartPosition(checkpoint, startOffsetResolver, context, fallback, handlerName, queueName, handlerInstrumentation, logger, cancellationToken);
     }
 
     public static async Task SaveStreamPositionIfPresent<TMessage>(
@@ -83,4 +101,50 @@ internal static class MessageStreamCheckpointHelper
             throw;
         }
     }
+
+    private static async Task<StartPosition> SeedStartPosition<TMessage>(
+        MessageStreamCheckpoint<TMessage> checkpoint,
+        IStreamStartOffsetResolver startOffsetResolver,
+        MessageStreamCheckpointContext context,
+        StartPosition fallback,
+        string handlerName,
+        string queueName,
+        IHandlerInstrumentation handlerInstrumentation,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var startOffset = await startOffsetResolver.ResolveStartOffset(queueName, context.Partition, fallback, cancellationToken);
+
+            if (startOffset is null)
+            {
+                logger.LogWarning(
+                    "{HandlerName} could not resolve the start position of stream queue '{QueueName}' partition {Partition} to an offset. " +
+                    "The configured start position is used and the position is stored after the first processed batch instead.",
+                    handlerName, queueName, context.Partition);
+                handlerInstrumentation.RecordCheckpointResolved(handlerName, queueName, CheckpointResolution.SeedFailed);
+                return fallback;
+            }
+
+            await checkpoint.SaveStreamPosition(
+                new MessageStreamCheckpointSaveContext(context.ConsumerName, context.Partition, startOffset.Value - 1) { IsBootstrapSeed = true },
+                cancellationToken);
+
+            handlerInstrumentation.RecordCheckpointResolved(handlerName, queueName, CheckpointResolution.Seeded);
+            return StartPosition.Offset(startOffset.Value);
+        }
+        catch (Exception e) when (e is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning(e,
+                "{HandlerName} could not fix the start position of stream queue '{QueueName}' partition {Partition} in the checkpoint store. " +
+                "The configured start position is used and the position is stored after the first processed batch instead.",
+                handlerName, queueName, context.Partition);
+            handlerInstrumentation.RecordCheckpointResolved(handlerName, queueName, CheckpointResolution.SeedFailed);
+            return fallback;
+        }
+    }
+
+    private static bool MovesWhileProcessIsDown(StartPosition startPosition)
+        => startPosition.Match(first: () => false, last: () => true, offset: _ => false, timestamp: _ => true);
 }

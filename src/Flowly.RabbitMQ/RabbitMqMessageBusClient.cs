@@ -7,10 +7,11 @@ using RabbitMQ.Client;
 namespace Flowly.RabbitMQ;
 
 internal class RabbitMqMessageBusClient(IRabbitMqConnectionPool connectionPool, long? maxMessageSizeBytes = null, StreamQueueManifest? streamQueueManifest = null)
-    : IMessageBusClient, IEventCapableMessageBusClient, IStreamCapableMessageBusClient, IPartitionedStreamCapableMessageBusClient, IAsyncDisposable
+    : IMessageBusClient, IEventCapableMessageBusClient, IStreamCapableMessageBusClient, IPartitionedStreamCapableMessageBusClient, IStreamStartOffsetResolver, IAsyncDisposable
 {
     private readonly SemaphoreSlim _senderLock = new(1, 1);
     private readonly ConcurrentDictionary<string, IMessageBusSender> _senders = new();
+    private readonly IStreamStartOffsetResolver _startOffsetResolver = new RabbitMqStreamStartOffsetResolver(new RabbitMqStreamOffsetProbe(connectionPool));
 
     public async Task<IMessageBusSender> CreateEventPublisher(string topicName)
     {
@@ -120,23 +121,14 @@ internal class RabbitMqMessageBusClient(IRabbitMqConnectionPool connectionPool, 
 
         var consumeArguments = new Dictionary<string, object?>
         {
-            ["x-stream-offset"] = startPosition.Match<object>(
+            [StreamOffsetHeader.Name] = startPosition.Match<object>(
                 () => "first",
-                () => "last",
+                () => "next",
                 offset => offset,
-                timestamp => ToAmqpTimestamp(timestamp))
+                timestamp => AmqpStreamOffset.Timestamp(timestamp))
         };
 
         return new RabbitMqMessageBusProcessor<TMessage>(channel, queueName, options, consumeArguments);
-    }
-
-    private static AmqpTimestamp ToAmqpTimestamp(DateTime timestamp)
-    {
-        var utcTimestamp = timestamp.Kind == DateTimeKind.Unspecified
-            ? DateTime.SpecifyKind(timestamp, DateTimeKind.Utc)
-            : timestamp.ToUniversalTime();
-
-        return new AmqpTimestamp(new DateTimeOffset(utcTimestamp).ToUnixTimeSeconds());
     }
 
     public async Task<IPartitionedStreamConsumer<TMessage>> CreatePartitionedStreamConsumer<TMessage>(
@@ -147,8 +139,16 @@ internal class RabbitMqMessageBusClient(IRabbitMqConnectionPool connectionPool, 
         ILogger logger)
     {
         var streamSystem = await connectionPool.GetStreamSystem();
-        return new RabbitMqPartitionedStreamConsumer<TMessage>(streamSystem, queueName, resolveStartPosition, logger);
+        return new RabbitMqPartitionedStreamConsumer<TMessage>(
+            new RabbitMqSuperStreamConsumerFactory(streamSystem, queueName),
+            queueName,
+            options.ConsumerName ?? queueName,
+            resolveStartPosition,
+            logger);
     }
+
+    public Task<long?> ResolveStartOffset(string queueName, int? partition, StartPosition startPosition, CancellationToken cancellationToken)
+        => _startOffsetResolver.ResolveStartOffset(queueName, partition, startPosition, cancellationToken);
 
     public async Task<IExecutionLaneProcessor> CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options)
     {

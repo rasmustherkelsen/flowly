@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Flowly.MessageInfrastructure.Events.Telemetry;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessageInfrastructure.SendSteps;
 using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.Transport;
 
@@ -8,39 +9,39 @@ namespace Flowly.MessageInfrastructure.Events;
 
 internal class EventSubmitter<TEvent>(
     IMessageBusClientRegistry clientRegistry,
-    EventSubmitter<TEvent>.TopicSettings topicSettings,
-    IEventPublisherInstrumentation publisherInstrumentation) : IEventSubmitter<TEvent>
+    string topicName,
+    string providerName,
+    IEventPublisherInstrumentation publisherInstrumentation,
+    ISendStepRunner sendStepRunner) : IEventSubmitter<TEvent>
 {
-    public async Task Raise(TEvent @event, CancellationToken cancellationToken = default)
+    public Task Raise(TEvent @event, CancellationToken cancellationToken = default, IReadOnlyDictionary<string, string>? customProperties = null)
+    {
+        CustomMessageProperties.Validate(customProperties, nameof(customProperties));
+
+        return sendStepRunner.Run(@event!, cancellationToken, () => RaiseCore(@event, cancellationToken, customProperties));
+    }
+
+    private async Task RaiseCore(TEvent @event, CancellationToken cancellationToken, IReadOnlyDictionary<string, string>? customProperties)
     {
         var sw = Stopwatch.StartNew();
-        var client = clientRegistry.GetClient(topicSettings.ProviderName);
-
-        if (client is not IEventCapableMessageBusClient eventCapableClient)
-            throw new InvalidOperationException(
-                $"The message bus client for provider '{topicSettings.ProviderName}' does not support event publishing. " +
-                $"The client must implement {nameof(IEventCapableMessageBusClient)}.");
+        var client = clientRegistry.GetTransportClient(providerName);
+        var eventCapableClient = client.Require<IEventCapableMessageBusClient>(providerName);
 
         var messageId = Guid.NewGuid().ToString();
-        using var activity = publisherInstrumentation.StartRaising(topicSettings.TopicName, client.MessagingSystem, messageId);
+        using var activity = publisherInstrumentation.StartRaising(topicName, client.MessagingSystem, messageId);
         activity.ApplyTagsFrom(@event);
 
         try
         {
-            var publisher = await eventCapableClient.CreateEventPublisher(topicSettings.TopicName);
-            await publisher.SendMessage(@event, new MessageProperties(messageId, string.Empty), cancellationToken);
-            publisherInstrumentation.RecordRaised(topicSettings.TopicName, sw.Elapsed.TotalMilliseconds);
+            var publisher = await eventCapableClient.CreateEventPublisher(topicName);
+            await publisher.SendMessage(@event, new MessageProperties(messageId, string.Empty) { CustomProperties = customProperties ?? CustomMessageProperties.Empty },
+                cancellationToken);
+            publisherInstrumentation.RecordRaised(topicName, sw.Elapsed.TotalMilliseconds);
         }
         catch
         {
-            publisherInstrumentation.RecordFailed(topicSettings.TopicName);
+            publisherInstrumentation.RecordFailed(topicName);
             throw;
         }
-    }
-
-    internal class TopicSettings(string topicName, string providerName)
-    {
-        public string TopicName { get; } = topicName;
-        public string ProviderName { get; } = providerName;
     }
 }

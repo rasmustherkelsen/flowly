@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Flowly.MessageInfrastructure.StreamPartitions;
 
 namespace Flowly.MessageInfrastructure.Telemetry;
 
@@ -106,6 +107,19 @@ internal interface IHandlerInstrumentation
     void RecordHalted(string handlerName, string queueName, string reason);
 
     /// <summary>
+    ///     Increments the <c>flowly.message.stream.partition.transitions</c> counter, tagged with the state the partition
+    ///     entered (<c>state=running|waiting|halted</c>). Called once when a stream partition owned by this process enters
+    ///     a state it was not in before, never per message and not when a partition is revoked. The current state of every
+    ///     owned partition is reported separately by the <c>flowly.message.stream.partition.state</c> gauge.
+    /// </summary>
+    /// <param name="handlerName">The name of the stream handler class.</param>
+    /// <param name="queueName">The stream queue the partition belongs to.</param>
+    /// <param name="consumerName">The consumer name of the stream handler.</param>
+    /// <param name="partition">The partition index, or <see langword="null" /> for a non-partitioned stream.</param>
+    /// <param name="state">The state the partition entered.</param>
+    void RecordStreamPartitionTransition(string handlerName, string queueName, string consumerName, int? partition, StreamPartitionState state);
+
+    /// <summary>
     ///     Increments the <c>flowly.message.checkpoint.saved</c> counter and records the save duration. Called after a
     ///     <see cref="MessageStreamCheckpoint{TMessage}" /> successfully persists a stream's position.
     /// </summary>
@@ -123,15 +137,18 @@ internal interface IHandlerInstrumentation
     void RecordCheckpointSaveFailed(string handlerName, string queueName);
 
     /// <summary>
-    ///     Increments the <c>flowly.message.checkpoint.resolved</c> counter, tagged <c>outcome=resumed</c> when a
-    ///     stored position was found or <c>outcome=fresh</c> when the handler's configured
-    ///     <see cref="MessageStreamHandlerOptions.StartPosition" /> was used instead. Called once per reader (or, for a
-    ///     partitioned stream, once per newly-assigned partition) when the start position is resolved.
+    ///     Increments the <c>flowly.message.checkpoint.resolved</c> counter, tagged with the
+    ///     <paramref name="resolution" />: <c>outcome=resumed</c> when a stored position was found, <c>outcome=seeded</c>
+    ///     when none was stored and the configured <see cref="MessageStreamHandlerOptions.StartPosition" /> was resolved to
+    ///     an offset and persisted, <c>outcome=seed_failed</c> when that resolution or persistence failed (or the transport
+    ///     could not resolve the position) and the handler fell back to the configured start position, or
+    ///     <c>outcome=fresh</c> when the configured start position was used without being persisted. Called once per
+    ///     reader (or, for a partitioned stream, once per newly-assigned partition) when the start position is resolved.
     /// </summary>
     /// <param name="handlerName">The name of the stream handler class.</param>
     /// <param name="queueName">The stream queue being resolved.</param>
-    /// <param name="resumed"><see langword="true" /> when a stored position was found; otherwise <see langword="false" />.</param>
-    void RecordCheckpointResolved(string handlerName, string queueName, bool resumed);
+    /// <param name="resolution">How the start position was determined.</param>
+    void RecordCheckpointResolved(string handlerName, string queueName, CheckpointResolution resolution);
 
     /// <summary>
     ///     Starts a <see cref="ActivityKind.Producer" /> span named <c>flowly.call.reply {callQueueName}</c> for the

@@ -3,14 +3,16 @@
     <PropertyGroup>
         <TargetFramework>net10.0</TargetFramework>
         <PackageId>Flowly.ManagementApi</PackageId>
-        <Description>Opt-in operational HTTP surface for Flowly — a minimal, machine-oriented management API (no UI), independent of Flowly.Dashboard. Ships message stream checkpoint list/reset as its first capability; new features register additional IFlowlyManagementAction implementations.</Description>
+        <Description>Opt-in operational HTTP surface for Flowly — a minimal, machine-oriented management API (no UI), independent of Flowly.Dashboard. Ships message stream checkpoint list/reset, message stream partition list/resume (halted partitions) and dead letter list/requeue/discard; new features register additional IFlowlyManagementAction implementations.</Description>
         <PackageReadmeFile>README.md</PackageReadmeFile>
     </PropertyGroup>
 
     <ItemGroup>
         <ProjectReference Include="..\Flowly\Flowly.csproj" />
-        <!-- Referenced only for its checkpoint list/reset actions, feature-detected at UseFlowlyManagementApi() time — not a hard dependency for callers who never configure message stream persistence. -->
+        <!-- Referenced for the checkpoint list/reset actions and restored with Flowly.ManagementApi as a package dependency; the actions are mapped only when the host registers a checkpoint persistence store. -->
         <ProjectReference Include="..\Flowly.MessageStreams\Flowly.MessageStreams.csproj" />
+        <!-- Referenced for the dead letter list/requeue/discard actions and restored with Flowly.ManagementApi as a package dependency; the actions are mapped only when the host registers IDeadLetterService. -->
+        <ProjectReference Include="..\Flowly.DeadLetters\Flowly.DeadLetters.csproj" />
     </ItemGroup>
 
     <ItemGroup>

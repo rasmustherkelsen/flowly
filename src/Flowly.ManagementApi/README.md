@@ -1,6 +1,6 @@
 # Flowly.ManagementApi
 
-An opt-in, machine-oriented HTTP surface for operational actions against a running [Flowly](https://rasmustherkelsen.github.io/flowly/) host — no UI, independent of `Flowly.Dashboard`. This is the start of a general Flowly management surface: message stream checkpoint list/reset is its first capability, and future features register additional `IFlowlyManagementAction` implementations into the same API.
+An opt-in, machine-oriented HTTP surface for operational actions against a running [Flowly](https://rasmustherkelsen.github.io/flowly/) host — no UI, independent of `Flowly.Dashboard`. This is the start of a general Flowly management surface: message stream checkpoint list/reset, message stream partition list/resume and dead letter list/requeue/discard are its capabilities, and future features register additional `IFlowlyManagementAction` implementations into the same API.
 
 ## Quick start
 
@@ -15,14 +15,45 @@ builder.Services.AddFlowlyManagementApi(options =>
 app.UseFlowlyManagementApi();
 ```
 
-Call `UseFlowlyManagementApi()` after every `Add<Provider>MessageStreamPersistence()` call — it feature-detects registered checkpoint persistence stores at that point and only maps the message stream actions when one exists.
+Call `UseFlowlyManagementApi()` after every `Add<Provider>MessageStreamPersistence()` call — it feature-detects registered checkpoint persistence stores at that point and only maps the message stream checkpoint actions when one exists. The stream partition actions are mapped when the host registered Flowly's stream partition state and resume services, which `AddFlowly` does (an instance without stream handlers simply lists nothing). The dead letter actions are mapped when the host registered dead letter tracking (`Add<Provider>DeadLetterTracking` or `Add<Provider>DeadLetterTrackingClient`, which register `IDeadLetterService`); without it the dead letter routes do not exist.
+
+## Message stream actions
+
+| Action | Route | Authorization | PowerShell cmdlet |
+|---|---|---|---|
+| List checkpoint positions | `GET {BasePath}/message-streams/checkpoints?queue=&consumer=&store=` | Read | `Get-FlowlyMessageStreamCheckpoint` |
+| Reset a checkpoint position | `POST {BasePath}/message-streams/checkpoints/reset` | Write | `Reset-FlowlyMessageStreamCheckpoint` |
+| List the stream partitions of this instance | `GET {BasePath}/message-streams/partitions?queue=&consumer=&partition=&state=` | Read | `Get-FlowlyMessageStreamPartition` |
+| Resume a halted stream partition | `POST {BasePath}/message-streams/partitions/resume` | Write | `Resume-FlowlyMessageStreamPartition` |
+
+### Stream partitions
+
+The partition actions are runtime controls on the live consumers of the instance that answers, not checkpoint store actions: each instance lists and resumes only the partitions it owns, nothing is signalled between instances, and a partition is never handed to another instance on purpose. With several instances, address the one that owns the partition.
+
+`GET .../partitions` returns an array of `{ handlerName, queueName, consumerName, partition, state, stateChangedAtUtc, lastError }`, where `state` is `Running`, `Waiting` (start position unresolved, no processing loop yet) or `Halted` (in-process retries exhausted), `partition` is `null` for a non-partitioned stream and `lastError` is `{ message, type, occurredAtUtc }` or `null`. The optional filters `queue`, `consumer`, `partition` and `state` (case-insensitive; `400` for an unknown value) narrow it down.
+
+`POST .../partitions/resume` takes `{ "queueName": "...", "consumerName": "...", "partition": 0 }` (omit `partition` or send `null` for a non-partitioned stream). It re-runs the batch the halted partition is holding with a fresh set of in-process retries and lets the partition continue from it. Nothing is skipped: when the batch fails again the partition halts again and can be resumed again. Responses, with problem details bodies for the errors: `204` resumed, `400` blank queue or consumer, `404` this instance does not own the partition, `409` the partition is not `Halted` (a `Waiting` partition is retried automatically, there is nothing to resume).
+
+## Dead letter actions
+
+| Action | Route | Authorization | PowerShell cmdlet |
+|---|---|---|---|
+| List dead letters | `GET {BasePath}/dead-letters?queue=&subscription=&status=&messageId=&skip=&take=` | Read | `Get-FlowlyDeadLetter` |
+| Requeue a dead letter | `POST {BasePath}/dead-letters/requeue` | Write | `Submit-FlowlyDeadLetter` |
+| Discard a dead letter | `POST {BasePath}/dead-letters/discard` | Write | `Remove-FlowlyDeadLetter` |
+
+The actions call the same `IDeadLetterService` the Dashboard uses, so they list, requeue and discard the records of the dead letter tracking database, and any instance of the host can answer. Add the `Flowly.DeadLetters` backend to the host as usual (`AddSqlServerDeadLetterTracking`, `AddPostgresDeadLetterTracking`, `AddSQLiteDeadLetterTracking`, or the read-only `Add<Provider>DeadLetterTrackingClient` for a process that only operates on dead letters).
+
+`GET .../dead-letters` returns an array of `{ messageId, queueName, subscriptionName, messageBody, messageProperties, deadLetteredAtUtc, deadLetterReason, deadLetterErrorDescription, status, requeuedAtUtc, requeuedBy, bodyReplaced, replacementMessageBody }`, newest first (`messageId` breaks ties), where `status` is `Pending` or `Requeued` and `subscriptionName` is `null` for a queue dead letter (for an event subscription dead letter `queueName` holds the topic name). The optional filters `queue`, `subscription`, `status` (case-insensitive) and `messageId` narrow it down, and `skip` (zero or greater) with `take` (1 to 1000) page through it; without `take` everything after `skip` is returned. An unknown `status` or an out-of-range `skip` or `take` is `400`. The filters, the ordering and the paging run in the dead letter database (`IDeadLetterService.QueryDeadLetters`), so only the requested page is loaded.
+
+`POST .../dead-letters/requeue` takes `{ "messageId": "...", "requeuedBy": "...", "messageBody": "..." }`. `requeuedBy` is optional and stored as the audit trail of the dead letter. When the request leaves it out or blank, the API records the identity of the authenticated caller instead, taken from the authenticated principal and never from a request header or the body: with host authorization policies the principal's name (`Identity.Name`); with OAuth2 the principal's name (the claim the JWT handler maps to the name claim type, such as `unique_name`), then the `sub` claim, then the `azp` claim (the client application id of a client credentials token); with an API key nothing, since a key carries no identity, so the field stays empty. An identity is cut to 200 characters, the size of the audit field. An explicit `requeuedBy` always overrides the default. The message is sent back to its original queue, or, for an event subscription dead letter, to the topic addressed to the originating subscriber only, with the Flowly retry count cleared, and the dead letter becomes `Requeued`. The optional `messageBody` corrects a faulty payload before the message is processed again: the message is republished with that body instead of the stored one, while its content type and application properties stay those of the stored message. The stored body is never changed; once the republish has succeeded the replacement is recorded next to it, and the list then reports `bodyReplaced: true` and the `replacementMessageBody` that was sent (`false` and `null` for a message requeued as it was, or not requeued yet). Leave `messageBody` out (or `null`) to requeue the stored body; an empty string is a replacement and is rejected. A replacement must not be empty or whitespace, must not exceed 256 KiB as UTF-8 and, when the stored body is valid JSON, must be valid JSON too (a stored body that is not JSON only has the empty and size checks applied). A rejected replacement is `400` and nothing is published. `POST .../dead-letters/discard` takes `{ "messageId": "..." }` and permanently deletes the record without sending the message anywhere. The message id travels in the body because broker-assigned ids are free-form strings. Responses, with problem details bodies for the errors: `204` done, `400` blank message id or a rejected `messageBody`, `404` no dead letter has the id, `409` the dead letter is not `Pending` (a requeued dead letter can be neither requeued nor discarded again). A broker failure while requeuing surfaces as the host's standard `500` and leaves the dead letter `Pending` without a recorded replacement.
 
 ## Authorization
 
 Exactly one authorization mode must be configured, or `UseFlowlyManagementApi()` throws at startup:
 
 - **API key** — `options.RequireApiKey(apiKey)` (single key, both read and write) or `options.RequireApiKey(readApiKey, writeApiKey)` (read/write split). Presented via the `X-Flowly-Api-Key` request header.
-- **OAuth2** — `options.UseOAuth2(oauth => { oauth.Authority = "..."; oauth.Audience = "..."; })`, for protecting the API with an Entra ID (or any OIDC) app registration, including the client-credentials flow. The `ReadRequirement`/`WriteRequirement` claim values are checked against both the `roles` claim (Entra App Roles — what an app-only, client-credentials token carries) and the `scp` claim (delegated OAuth scopes — what an interactive sign-in token carries).
+- **OAuth2** — `options.UseOAuth2(oauth => { oauth.Authority = "..."; oauth.Audience = "..."; })`, for protecting the API with an Entra ID (or any OIDC) app registration, including the client-credentials flow. The `ReadRequirement`/`WriteRequirement` claim values are checked against both the `roles` claim (Entra App Roles — what an app-only, client-credentials token carries) and the `scp` claim (delegated OAuth scopes — what an interactive sign-in token carries; a space-separated list, matched per scope). The JWT bearer handler maps an incoming `scp` claim to the type `http://schemas.microsoft.com/identity/claims/scope` by default, and both claim types are matched. Values are compared case-sensitively.
 - **Existing policies** — `options.RequireAuthorizationPolicies(readPolicyName, writePolicyName)` defers entirely to authorization policies the host already configured.
 
 ## Discovery

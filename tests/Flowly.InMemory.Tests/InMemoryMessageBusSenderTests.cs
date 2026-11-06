@@ -196,6 +196,30 @@ public class InMemoryMessageBusSenderTests
         }
 
         [Fact]
+        public async Task SetsNonEmptyMessageId()
+        {
+            var (broker, sender) = CreateQueueSender();
+
+            await sender.SendRawMessage("{}", new Dictionary<string, object>());
+
+            broker.GetQueue("test-queue").Reader.TryRead(out var envelope);
+            Assert.True(Guid.TryParse(envelope!.MessageId, out _));
+        }
+
+        [Fact]
+        public async Task SendingTheSameMessageTwice_UsesDifferentMessageIds()
+        {
+            var (broker, sender) = CreateQueueSender();
+
+            await sender.SendRawMessage("{}", new Dictionary<string, object>());
+            await sender.SendRawMessage("{}", new Dictionary<string, object>());
+
+            broker.GetQueue("test-queue").Reader.TryRead(out var firstEnvelope);
+            broker.GetQueue("test-queue").Reader.TryRead(out var secondEnvelope);
+            Assert.NotEqual(firstEnvelope!.MessageId, secondEnvelope!.MessageId);
+        }
+
+        [Fact]
         public async Task WhenMessageExceedsLimit_ThrowsMessageTooLargeException()
         {
             var (_, sender) = CreateQueueSender(maxMessageSizeBytes: 1);
@@ -285,7 +309,7 @@ public class InMemoryMessageBusSenderTests
             await sender.SendMessage(new TestMessage("x"), props);
 
             broker.GetQueue("test-queue").Reader.TryRead(out var envelope);
-            Assert.Equal("reply-queue", envelope!.ApplicationProperties["replyTo"]);
+            Assert.Equal("reply-queue", envelope!.ApplicationProperties["flowly-reply-to"]);
         }
 
         [Fact]
@@ -296,7 +320,36 @@ public class InMemoryMessageBusSenderTests
             await sender.SendMessage(new TestMessage("x"), MessageProperties.Empty);
 
             broker.GetQueue("test-queue").Reader.TryRead(out var envelope);
-            Assert.False(envelope!.ApplicationProperties.ContainsKey("replyTo"));
+            Assert.False(envelope!.ApplicationProperties.ContainsKey("flowly-reply-to"));
+        }
+    }
+
+    public class CustomProperties
+    {
+        [Fact]
+        public async Task StoresThemInApplicationProperties()
+        {
+            var (broker, sender) = CreateQueueSender();
+            var props = MessageProperties.Empty with { CustomProperties = new Dictionary<string, string> { ["tenant"] = "contoso" } };
+
+            await sender.SendMessage(new TestMessage("x"), props);
+
+            broker.GetQueue("test-queue").Reader.TryRead(out var envelope);
+            Assert.Equal("contoso", envelope!.ApplicationProperties["tenant"]);
+        }
+
+        [Fact]
+        public async Task KeyNamedLikeFormerInternalKeys_DoesNotCollideWithCorrelationId()
+        {
+            var (broker, sender) = CreateQueueSender();
+            var props = new MessageProperties("m", "real-correlation") { CustomProperties = new Dictionary<string, string> { ["correlationId"] = "custom" } };
+
+            await sender.SendMessage(new TestMessage("x"), props);
+
+            broker.GetQueue("test-queue").Reader.TryRead(out var envelope);
+            var received = InMemoryReceivedMessage<TestMessage>.BuildProperties(envelope!, null);
+            Assert.Equal("real-correlation", received.CorrelationId);
+            Assert.Equal("custom", received.CustomProperties["correlationId"]);
         }
     }
 

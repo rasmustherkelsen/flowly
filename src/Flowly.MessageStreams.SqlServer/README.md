@@ -3,7 +3,7 @@
 SQL Server backend for [Flowly.MessageStreams](https://rasmustherkelsen.github.io/flowly/) message stream checkpoint persistence.
 
 ```csharp
-builder.UseRabbitMq(connection: "RabbitMQ");
+builder.UseRabbitMq("RabbitMQ");
 builder.AddSqlServerMessageStreamPersistence("MsgStreamDb");
 
 builder.AddMessageStreamHandler<MyMessage, MyMessageHandler>();

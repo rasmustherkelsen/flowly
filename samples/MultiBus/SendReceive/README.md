@@ -14,7 +14,7 @@ Minimal Flowly sample using two transports simultaneously: Azure Service Bus and
 
 - Registering multiple transports (`UseAzureServiceBus` + `UseRabbitMq`) in a single `AddFlowly` call
 - Pinning a message contract to a specific transport using `[ProviderAffinity("RabbitMQ")]`
-- Messages without `[ProviderAffinity]` default to the first registered transport (Azure Service Bus)
+- Messages without `[ProviderAffinity]` default to the first registered transport that supports them (Azure Service Bus)
 - Sending and handling messages across two brokers with a single `IMessageSender`
 
 ## Prerequisites

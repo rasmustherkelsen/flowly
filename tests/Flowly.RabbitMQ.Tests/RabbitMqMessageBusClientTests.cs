@@ -16,6 +16,31 @@ public class RabbitMqMessageBusClientTests
         return (pool, new RabbitMqMessageBusClient(pool));
     }
 
+    public class ImplementsIStreamStartOffsetResolver
+    {
+        [Fact]
+        public void ClientIsAStartOffsetResolver()
+        {
+            var (_, client) = Build();
+
+            Assert.IsAssignableFrom<IStreamStartOffsetResolver>(client);
+        }
+    }
+
+    public class ResolveStartOffset
+    {
+        [Fact]
+        public async Task WithOffset_ReturnsItWithoutOpeningAChannel()
+        {
+            var (pool, client) = Build();
+
+            var startOffset = await client.ResolveStartOffset("orders", null, StartPosition.Offset(9), CancellationToken.None);
+
+            Assert.Equal(9, startOffset);
+            Assert.Equal(0, pool.ConsumerConnection.CreateChannelCallCount);
+        }
+    }
+
     public class CreateReceiver
     {
         [Fact]
@@ -93,14 +118,14 @@ public class RabbitMqMessageBusClientTests
         }
 
         [Fact]
-        public async Task WithLast_ConsumesWithLastOffset()
+        public async Task WithLast_ConsumesWithNextOffset()
         {
             var (channel, client, _) = BuildWithCapturingChannel();
 
             var processor = await client.CreateStreamProcessor<TestMessage>("test-stream", StartPosition.Last(), new MessageBusProcessorOptions(1, MessageBusReceiveMode.PeekLock));
             await processor.StartProcessingMessages();
 
-            Assert.Equal("last", channel.ReceivedArguments?["x-stream-offset"]);
+            Assert.Equal("next", channel.ReceivedArguments?["x-stream-offset"]);
         }
 
         [Fact]

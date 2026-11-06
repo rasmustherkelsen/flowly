@@ -10,7 +10,11 @@ public record MyReturnMessage(string Reply);
 public record MyMessage(string Text) : IReturns<MyReturnMessage>;
 #else
 #if (UseStream)
+#if (UseAzureEventHubs)
+[StreamRetention(maxAgeSeconds: 604800)]
+#else
 [StreamRetention(maxAgeSeconds: 604800, maxLengthBytes: 500_000_000)]
+#endif
 #if (UseStreamPartitions)
 [StreamPartitions(424242)]
 #endif

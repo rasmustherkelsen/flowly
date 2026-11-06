@@ -17,6 +17,11 @@ internal class MyMessageHandler(ILogger<MyMessageHandler> logger) : CallHandler<
 [StreamStartPosition(StreamStartPositionKind.First)]
 internal class MyMessageHandler(ILogger<MyMessageHandler> logger) : MessageStreamHandler<MyMessage>
 {
+#if (UseAzureEventHubs)
+    public override void Configure(MessageStreamHandlerOptions options)
+        => options.ConsumerName = "MyMessageHandler";
+
+#endif
     public override Task Handle(IMessageStreamContext<MyMessage> messageContext)
     {
         foreach (var message in messageContext.Messages)

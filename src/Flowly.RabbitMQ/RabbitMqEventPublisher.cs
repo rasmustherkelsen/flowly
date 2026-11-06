@@ -66,6 +66,11 @@ internal class RabbitMqEventPublisher(string exchangeName, IChannel channel, lon
             Headers = new Dictionary<string, object?>()
         };
 
+        foreach (var (key, value) in messageProperties.CustomProperties)
+        {
+            props.Headers[key] = value;
+        }
+
         props.MessageId = !string.IsNullOrEmpty(messageProperties.MessageId)
             ? messageProperties.MessageId
             : Guid.NewGuid().ToString();

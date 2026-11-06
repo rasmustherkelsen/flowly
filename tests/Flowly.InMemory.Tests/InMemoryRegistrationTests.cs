@@ -27,6 +27,17 @@ public class InMemoryRegistrationTests
     public class UseInMemory
     {
         [Fact]
+        public void RegistersTopologyCreatorForTheProvider()
+        {
+            var (builder, _) = CreateBuilder();
+
+            builder.UseInMemory();
+
+            var topologyRegistry = builder.Services.Select(service => service.ImplementationInstance).OfType<FakeMessagingTopologyCreatorRegistry>().Single();
+            Assert.NotNull(topologyRegistry.Creators["in-memory"]);
+        }
+
+        [Fact]
         public void RegistersProviderAsPrimary()
         {
             var (builder, registry) = CreateBuilder();
@@ -186,9 +197,14 @@ public class InMemoryRegistrationTests
 
     private sealed class FakeMessagingTopologyCreatorRegistry : IMessagingTopologyCreatorRegistry
     {
-        public void Register(string providerName, IMessagingTopologyCreator creator) { }
+        public Dictionary<string, IMessagingTopologyCreator> Creators { get; } = [];
 
-        public IMessagingTopologyCreator GetCreator(string providerName) => throw new NotImplementedException();
+        public void Register(string providerName, IMessagingTopologyCreator creator)
+        {
+            Creators[providerName] = creator;
+        }
+
+        public IMessagingTopologyCreator? TryGetCreator(string providerName) => Creators.GetValueOrDefault(providerName);
     }
 
     private sealed class FakeEventTopologyCreatorRegistry : IEventTopologyCreatorRegistry

@@ -1,8 +1,8 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
-  Alert, Box, Button, Card, CircularProgress, Dialog, DialogActions, DialogContent,
+  Alert, Box, Button, Card, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
   DialogContentText, DialogTitle, IconButton, Pagination, Snackbar, Table, TableBody,
-  TableCell, TableContainer, TableHead, TableRow, Tooltip, Typography,
+  TableCell, TableContainer, TableHead, TableRow, TextField, Tooltip, Typography,
 } from '@mui/material';
 import ReplayIcon from '@mui/icons-material/Replay';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined';
@@ -15,41 +15,82 @@ import { formatDate, tryPrettyPrint } from '../lib/formatters';
 import type { DeadLetter } from '../types';
 
 const PAGE_SIZE = 20;
-const STATUSES = ['', 'Pending', 'Requeued', 'Discarded'];
+const STATUSES = ['', 'Pending', 'Requeued'];
 
-interface Confirm { action: 'requeue' | 'discard'; messageId: string; queueName: string; }
+interface DeadLetterPage { items: DeadLetter[]; total: number; }
+
+interface Confirm { action: 'requeue' | 'discard'; messageId: string; queueName: string; messageBody: string; }
+
+function isJson(value: string): boolean {
+  try {
+    JSON.parse(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const bodyBoxSx = { fontFamily: 'monospace', fontSize: '0.8rem', whiteSpace: 'pre-wrap', wordBreak: 'break-all', bgcolor: 'action.hover', borderRadius: 1, p: 1.5, mb: 3, maxHeight: 300, overflow: 'auto' } as const;
 
 export default function DeadLettersPage() {
   const canSubmit = useCanSubmit();
   const [filter, setFilter] = useState('');
   const [page, setPage] = useState(1);
   const [confirm, setConfirm] = useState<Confirm | null>(null);
+  const [editedBody, setEditedBody] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
   const [toast, setToast] = useState<{ message: string; severity: 'success' | 'error' } | null>(null);
   const [inspecting, setInspecting] = useState<DeadLetter | null>(null);
 
-  const fetchFn = useCallback(async () => {
-    const res = await fetch('api/dead-letters');
+  const fetchFn = useCallback(async (): Promise<DeadLetterPage | null> => {
+    const params = new URLSearchParams({ skip: String((page - 1) * PAGE_SIZE), take: String(PAGE_SIZE) });
+    if (filter) params.set('status', filter);
+    const res = await fetch(`api/dead-letters?${params}`);
     if (!res.ok) {
-      if (res.status === 404) return [] as DeadLetter[];
+      if (res.status === 404) return null;
       throw new Error(`HTTP ${res.status}`);
     }
-    return res.json() as Promise<DeadLetter[]>;
-  }, []);
+    const items = await res.json() as DeadLetter[];
+    const total = Number(res.headers.get('X-Total-Count') ?? items.length);
+    return { items, total };
+  }, [filter, page]);
 
   const { data, loading, error, refresh } = useAutoRefresh(fetchFn, 10000);
 
-  const filtered = (data ?? []).filter((dl) => !filter || dl.status === filter);
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
-  const items = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const items = data?.items ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+
+  useEffect(() => {
+    if (data && totalPages > 0 && page > totalPages) setPage(totalPages);
+  }, [data, totalPages, page]);
+
+  const openConfirm = (action: 'requeue' | 'discard', dl: DeadLetter) => {
+    setEditedBody(tryPrettyPrint(dl.messageBody));
+    setConfirm({ action, messageId: dl.messageId, queueName: dl.queueName, messageBody: dl.messageBody });
+  };
+
+  const originalBody = confirm ? tryPrettyPrint(confirm.messageBody) : '';
+  const bodyChanged = editedBody !== originalBody;
+  const bodyError = !bodyChanged || confirm?.action !== 'requeue' ? null
+    : editedBody.trim() === '' ? 'The message body must not be empty.'
+    : isJson(confirm.messageBody) && !isJson(editedBody) ? 'The stored body is JSON, so the corrected body must be valid JSON.'
+    : null;
 
   const handleConfirm = async () => {
     if (!confirm) return;
     setActionLoading(true);
     try {
       const method = confirm.action === 'discard' ? 'DELETE' : 'POST';
-      const res = await fetch(`api/dead-letters/${encodeURIComponent(confirm.messageId)}/${confirm.action}`, { method });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const sendsBody = confirm.action === 'requeue' && bodyChanged;
+      const res = await fetch(`api/dead-letters/${encodeURIComponent(confirm.messageId)}/${confirm.action}`, {
+        method,
+        ...(sendsBody ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messageBody: editedBody }) } : {}),
+      });
+      if (!res.ok) {
+        const detail = res.status === 400 ? (await res.text()).trim() : '';
+        throw new Error(detail || `HTTP ${res.status}`);
+      }
       setToast({ message: `Message ${confirm.action === 'requeue' ? 'requeued' : 'discarded'} successfully`, severity: 'success' });
       setConfirm(null);
       await refresh();
@@ -69,7 +110,7 @@ export default function DeadLettersPage() {
         onFilterChange={(f) => { setFilter(f); setPage(1); }}
         loading={loading}
         onRefresh={refresh}
-        totalCount={filtered.length}
+        totalCount={total}
       />
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
@@ -116,7 +157,12 @@ export default function DeadLettersPage() {
                         </Tooltip>
                       ) : <Typography variant="body2" color="text.disabled">—</Typography>}
                     </TableCell>
-                    <TableCell><DeadLetterStatusChip status={dl.status} /></TableCell>
+                    <TableCell>
+                      <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+                        <DeadLetterStatusChip status={dl.status} />
+                        {dl.replacementMessageBody != null && <Chip size="small" variant="outlined" label="Body replaced" />}
+                      </Box>
+                    </TableCell>
                     <TableCell><Typography variant="body2" sx={{ whiteSpace: 'nowrap' }}>{formatDate(dl.deadLetteredAt)}</Typography></TableCell>
                     <TableCell>
                       {dl.requeuedAt ? (
@@ -138,14 +184,14 @@ export default function DeadLettersPage() {
                           <>
                             <Tooltip title={canSubmit ? 'Requeue' : 'You do not have permission to requeue messages'}>
                               <span>
-                                <IconButton size="small" color="primary" disabled={!canSubmit} onClick={() => setConfirm({ action: 'requeue', messageId: dl.messageId, queueName: dl.queueName })}>
+                                <IconButton size="small" color="primary" disabled={!canSubmit} onClick={() => openConfirm('requeue', dl)}>
                                   <ReplayIcon fontSize="small" />
                                 </IconButton>
                               </span>
                             </Tooltip>
                             <Tooltip title={canSubmit ? 'Discard' : 'You do not have permission to discard messages'}>
                               <span>
-                                <IconButton size="small" color="error" disabled={!canSubmit} onClick={() => setConfirm({ action: 'discard', messageId: dl.messageId, queueName: dl.queueName })}>
+                                <IconButton size="small" color="error" disabled={!canSubmit} onClick={() => openConfirm('discard', dl)}>
                                   <DeleteOutlineIcon fontSize="small" />
                                 </IconButton>
                               </span>
@@ -168,7 +214,7 @@ export default function DeadLettersPage() {
         </Box>
       )}
 
-      <Dialog open={!!confirm} onClose={() => !actionLoading && setConfirm(null)}>
+      <Dialog open={!!confirm} onClose={() => !actionLoading && setConfirm(null)} maxWidth={confirm?.action === 'requeue' ? 'md' : 'sm'} fullWidth={confirm?.action === 'requeue'}>
         <DialogTitle>{confirm?.action === 'requeue' ? 'Requeue message?' : 'Discard message?'}</DialogTitle>
         <DialogContent>
           <DialogContentText>
@@ -176,6 +222,24 @@ export default function DeadLettersPage() {
               ? `The message will be sent back to "${confirm?.queueName}" for processing.`
               : `The message from "${confirm?.queueName}" will be permanently deleted.`}
           </DialogContentText>
+          {confirm?.action === 'requeue' && (
+            <TextField
+              label="Message body"
+              helperText={bodyError ?? (bodyChanged
+                ? 'The corrected body is sent instead of the stored one; the stored body is kept in the dead letter record.'
+                : 'Edit the body to correct it before it is requeued, or leave it unchanged to requeue the stored body.')}
+              error={!!bodyError}
+              value={editedBody}
+              onChange={(e) => setEditedBody(e.target.value)}
+              disabled={actionLoading}
+              multiline
+              minRows={6}
+              maxRows={18}
+              fullWidth
+              margin="normal"
+              slotProps={{ htmlInput: { style: { fontFamily: 'monospace', fontSize: '0.8rem' } } }}
+            />
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setConfirm(null)} disabled={actionLoading}>Cancel</Button>
@@ -183,7 +247,7 @@ export default function DeadLettersPage() {
             onClick={handleConfirm}
             color={confirm?.action === 'discard' ? 'error' : 'primary'}
             variant="contained"
-            disabled={actionLoading}
+            disabled={actionLoading || !!bodyError}
             startIcon={actionLoading ? <CircularProgress size={16} color="inherit" /> : undefined}
           >
             {confirm?.action === 'requeue' ? 'Requeue' : 'Discard'}
@@ -198,6 +262,14 @@ export default function DeadLettersPage() {
           <Box component="pre" sx={{ fontFamily: 'monospace', fontSize: '0.8rem', whiteSpace: 'pre-wrap', wordBreak: 'break-all', bgcolor: 'action.hover', borderRadius: 1, p: 1.5, mb: 3, maxHeight: 300, overflow: 'auto' }}>
             {inspecting ? tryPrettyPrint(inspecting.messageBody) : ''}
           </Box>
+          {inspecting?.replacementMessageBody != null && (
+            <>
+              <Typography variant="overline" color="text.secondary" sx={{ display: 'block' }} gutterBottom>Replacement Body (requeued instead of the message body)</Typography>
+              <Box component="pre" sx={bodyBoxSx}>
+                {tryPrettyPrint(inspecting.replacementMessageBody)}
+              </Box>
+            </>
+          )}
           <Typography variant="overline" color="text.secondary" sx={{ display: 'block' }} gutterBottom>Message Properties</Typography>
           <Box component="pre" sx={{ fontFamily: 'monospace', fontSize: '0.8rem', whiteSpace: 'pre-wrap', wordBreak: 'break-all', bgcolor: 'action.hover', borderRadius: 1, p: 1.5, maxHeight: 200, overflow: 'auto' }}>
             {inspecting ? tryPrettyPrint(inspecting.messageProperties) : ''}

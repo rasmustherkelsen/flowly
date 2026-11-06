@@ -32,6 +32,7 @@ internal class RabbitMqMessageBusSender(string queueName, IChannel channel, long
         var props = new BasicProperties
         {
             DeliveryMode = DeliveryModes.Persistent,
+            MessageId = Guid.NewGuid().ToString(),
             Headers = applicationProperties.ToDictionary(k => k.Key, v => (object?)v.Value)
         };
 
@@ -67,6 +68,11 @@ internal class RabbitMqMessageBusSender(string queueName, IChannel channel, long
             DeliveryMode = DeliveryModes.Persistent,
             Headers = new Dictionary<string, object?>()
         };
+
+        foreach (var (key, value) in messageProperties.CustomProperties)
+        {
+            props.Headers[key] = value;
+        }
 
         props.MessageId = !string.IsNullOrEmpty(messageProperties.MessageId)
             ? messageProperties.MessageId

@@ -52,6 +52,7 @@ public class OrderService(IMessageSender sender)
 | **Dead letter tracking** | Persistent dead letter store with requeue support (`Flowly.DeadLetters.*`) |
 | **Job tracking** | Long-running work with status tracking in SQL Server or PostgreSQL (`Flowly.Jobs.*`) |
 | **Recurring jobs** | CRON-based scheduling with single-execution guarantee |
+| **Handler steps and send steps** | `HandlerStep<T>` wraps handlers and `SendStep<T>` runs before a send, for audit, logging scope, idempotency or authorization; selected by message type |
 | **Events (fan-out)** | Publish to multiple independent subscribers via `EventHandlerBase<T>` |
 | **OpenTelemetry** | Metrics and traces via `Flowly.OpenTelemetry` |
 
@@ -61,6 +62,7 @@ public class OrderService(IMessageSender sender)
 |---|---|
 | `Flowly.AzureServiceBus` | Azure Service Bus transport |
 | `Flowly.RabbitMQ` | RabbitMQ transport |
+| `Flowly.AzureEventHubs` | Azure Event Hubs stream-only transport (message streams, no queues) |
 | `Flowly.Jobs` + `Flowly.Jobs.SqlServer` / `.Postgres` | Job state tracking |
 | `Flowly.DeadLetters` + `Flowly.DeadLetters.SqlServer` / `.Postgres` | Dead letter tracking |
 | `Flowly.OpenTelemetry` | OpenTelemetry instrumentation |

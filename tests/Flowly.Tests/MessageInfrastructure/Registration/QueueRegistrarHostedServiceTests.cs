@@ -1,3 +1,4 @@
+using Flowly.MessageInfrastructure.Events.Registration;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.Transport;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -219,13 +220,132 @@ public class QueueRegistrarHostedServiceTests
             Assert.Equal(cts.Token, topologyValidator.ReceivedCancellationToken);
         }
 
+        [Fact]
+        public async Task TopologyCreationEnabledAndProviderHasNoQueueCreator_DoesNotThrow()
+        {
+            var manifest = ManifestWith("streams", "Streams", "telemetry-reading");
+            var service = Build(
+                [manifest],
+                providersWithoutQueueCreator: ["streams"],
+                createTopology: true);
+
+            await service.StartAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task TopologyCreationEnabledAndProviderHasNoQueueCreator_StillCreatesQueueTopologyForOtherProviders()
+        {
+            var topologyCreator = new SpyTopologyCreator();
+            var manifests = new[]
+            {
+                ManifestWith("streams", "Streams", "telemetry-reading"),
+                ManifestWith("asb", "AzureServiceBus", "order-placed")
+            };
+            var service = Build(
+                manifests,
+                [("asb", topologyCreator)],
+                providersWithoutQueueCreator: ["streams"],
+                createTopology: true);
+
+            await service.StartAsync(CancellationToken.None);
+
+            Assert.Equal("order-placed", Assert.Single(topologyCreator.ReceivedDescriptions).Name);
+        }
+
+        [Fact]
+        public async Task TopologyCreationEnabledAndProviderHasNoQueueCreator_StillCreatesEventTopology()
+        {
+            var eventTopologyCreator = new SpyEventTopologyCreator();
+            var manifest = ManifestWith("hybrid", "Hybrid");
+            manifest.AddEvent(new DeferredEventRegistration("order-events", null));
+            var service = Build(
+                [manifest],
+                providersWithoutQueueCreator: ["hybrid"],
+                eventTopologyCreators: [("hybrid", eventTopologyCreator)],
+                createTopology: true);
+
+            await service.StartAsync(CancellationToken.None);
+
+            Assert.Equal("order-events", Assert.Single(eventTopologyCreator.ReceivedDescriptions).TopicName);
+        }
+
+        [Fact]
+        public async Task TopologyCreationEnabledAndProviderHasQueueCreator_CreatesQueueAndEventTopology()
+        {
+            var topologyCreator = new SpyTopologyCreator();
+            var eventTopologyCreator = new SpyEventTopologyCreator();
+            var manifest = ManifestWith("asb", "AzureServiceBus", "order-placed");
+            manifest.AddEvent(new DeferredEventRegistration("order-events", null));
+            var service = Build(
+                [manifest],
+                [("asb", topologyCreator)],
+                eventTopologyCreators: [("asb", eventTopologyCreator)],
+                createTopology: true);
+
+            await service.StartAsync(CancellationToken.None);
+
+            Assert.True(topologyCreator.WasCalled);
+            Assert.Equal("order-events", Assert.Single(eventTopologyCreator.ReceivedDescriptions).TopicName);
+        }
+
+        [Fact]
+        public async Task TopologyCreationDisabledAndProviderHasNoQueueCreator_CallsValidators()
+        {
+            var topologyValidator = new SpyTopologyValidator("streams");
+            var manifest = ManifestWith("streams", "Streams", "telemetry-reading");
+            var service = Build(
+                [manifest],
+                providersWithoutQueueCreator: ["streams"],
+                topologyValidators: [topologyValidator],
+                createTopology: false);
+
+            await service.StartAsync(CancellationToken.None);
+
+            Assert.True(topologyValidator.WasCalled);
+        }
+
+        [Fact]
+        public async Task TransportOverrideDisabledAndProviderHasNoQueueCreator_StillCallsValidatorsWhenTopologyCreationIsRequested()
+        {
+            var topologyValidator = new SpyTopologyValidator("streams");
+            var manifest = ManifestWith("streams", "Streams", "telemetry-reading");
+            var service = Build(
+                [manifest],
+                providersWithoutQueueCreator: ["streams"],
+                transportOverrides: [("streams", false)],
+                topologyValidators: [topologyValidator],
+                createTopology: true);
+
+            await service.StartAsync(CancellationToken.None);
+
+            Assert.True(topologyValidator.WasCalled);
+        }
+
+        [Fact]
+        public async Task TopologyCreationEnabledAndProviderHasNoQueueCreator_DoesNotCallValidators()
+        {
+            var topologyValidator = new SpyTopologyValidator("streams");
+            var manifest = ManifestWith("streams", "Streams", "telemetry-reading");
+            var service = Build(
+                [manifest],
+                providersWithoutQueueCreator: ["streams"],
+                topologyValidators: [topologyValidator],
+                createTopology: true);
+
+            await service.StartAsync(CancellationToken.None);
+
+            Assert.False(topologyValidator.WasCalled);
+        }
+
         private static QueueRegistrarHostedService Build(
             IEnumerable<ProviderQueueManifest>? manifests = null,
             IEnumerable<(string ProviderName, SpyTopologyCreator Creator)>? topologyCreators = null,
             ICrossProviderConflictValidator? validator = null,
             bool createTopology = true,
             IEnumerable<(string ProviderName, bool Override)>? transportOverrides = null,
-            IEnumerable<IMessagingTopologyValidator>? topologyValidators = null)
+            IEnumerable<IMessagingTopologyValidator>? topologyValidators = null,
+            IEnumerable<string>? providersWithoutQueueCreator = null,
+            IEnumerable<(string ProviderName, SpyEventTopologyCreator Creator)>? eventTopologyCreators = null)
         {
             manifests ??= [];
             topologyCreators ??= [];
@@ -233,6 +353,7 @@ public class QueueRegistrarHostedServiceTests
 
             var clientRegistry = new MessageBusClientRegistry();
             var topologyRegistry = new MessagingTopologyCreatorRegistry();
+            var eventTopologyRegistry = new EventTopologyCreatorRegistry();
 
             var overrides = (transportOverrides ?? []).ToDictionary(x => x.ProviderName, x => (bool?)x.Override);
 
@@ -243,11 +364,22 @@ public class QueueRegistrarHostedServiceTests
                 topologyRegistry.Register(providerName, creator);
             }
 
+            foreach (var providerName in providersWithoutQueueCreator ?? [])
+            {
+                var topologyOverride = overrides.TryGetValue(providerName, out var value) ? value : null;
+                clientRegistry.Register(providerName, new StubMessageBusClient(), topologyOverride);
+            }
+
+            foreach (var (providerName, creator) in eventTopologyCreators ?? [])
+            {
+                eventTopologyRegistry.Register(providerName, creator);
+            }
+
             return new QueueRegistrarHostedService(
                 manifests,
                 clientRegistry,
                 topologyRegistry,
-                new EventTopologyCreatorRegistry(),
+                eventTopologyRegistry,
                 topologyValidators ?? [],
                 validator,
                 new FlowlyOptions { CreateTopology = createTopology },
@@ -293,6 +425,17 @@ public class QueueRegistrarHostedServiceTests
                 WasCalled = true;
                 ReceivedDescriptions.AddRange(queueDescriptions);
                 ReceivedCancellationToken = cancellationToken;
+                return Task.CompletedTask;
+            }
+        }
+
+        private sealed class SpyEventTopologyCreator : IEventTopologyCreator
+        {
+            public List<IEventDescription> ReceivedDescriptions { get; } = [];
+
+            public Task CreateEventTopology(IReadOnlyCollection<IEventDescription> eventDescriptions, CancellationToken cancellationToken)
+            {
+                ReceivedDescriptions.AddRange(eventDescriptions);
                 return Task.CompletedTask;
             }
         }

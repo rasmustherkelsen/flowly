@@ -17,7 +17,7 @@ namespace Flowly.DeadLetters.SqlServer.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.5")
+                .HasAnnotation("ProductVersion", "10.0.11")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
@@ -51,6 +51,9 @@ namespace Flowly.DeadLetters.SqlServer.Migrations
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("ReplacementMessageBody")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTimeOffset?>("RequeuedAt")
                         .HasColumnType("datetimeoffset");

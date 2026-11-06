@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Flowly.MessageInfrastructure.Events.Telemetry;
+using Flowly.MessageInfrastructure.HandlerSteps;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.Transport;
@@ -14,7 +15,9 @@ internal class EventHandlerBackgroundService<TEvent, THandler>(
     IServiceScopeFactory serviceScopeFactory,
     EventHandlerSettings<TEvent, THandler> settings,
     ILogger<EventHandlerBackgroundService<TEvent, THandler>> logger,
-    IEventHandlerInstrumentation instrumentation)
+    IEventHandlerInstrumentation instrumentation,
+    IHandlerStepRunner handlerStepRunner,
+    NonRetryableExceptionClassifier nonRetryableExceptionClassifier)
     : BackgroundService
     where TEvent : class
     where THandler : EventHandlerBase<TEvent>
@@ -24,12 +27,8 @@ internal class EventHandlerBackgroundService<TEvent, THandler>(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var client = clientRegistry.GetClient(settings.ProviderName);
-
-        if (client is not IEventCapableMessageBusClient eventCapableClient)
-            throw new InvalidOperationException(
-                $"The message bus client for provider '{settings.ProviderName}' does not support events. " +
-                $"The client must implement {nameof(IEventCapableMessageBusClient)}.");
+        var client = clientRegistry.GetTransportClient(settings.ProviderName);
+        var eventCapableClient = client.Require<IEventCapableMessageBusClient>(settings.ProviderName);
 
         _messagingSystem = client.MessagingSystem;
 
@@ -75,9 +74,16 @@ internal class EventHandlerBackgroundService<TEvent, THandler>(
                 receivedMessage.Body,
                 receivedMessage.Properties.MessageId,
                 receivedMessage.Properties.CorrelationId,
-                DateTimeOffset.UtcNow);
+                DateTimeOffset.UtcNow,
+                receivedMessage.Properties);
 
-            await handler.Handle(context, cancellationToken);
+            await handlerStepRunner.Run(
+                receivedMessage.Body,
+                receivedMessage.Properties,
+                typeof(THandler),
+                scope.ServiceProvider,
+                cancellationToken,
+                () => handler.Handle(context, cancellationToken));
         }
         catch (Exception ex)
         {
@@ -89,6 +95,14 @@ internal class EventHandlerBackgroundService<TEvent, THandler>(
             instrumentation.RecordSucceeded(settings.HandlerName, settings.TopicName, sw.Elapsed.TotalMilliseconds);
             logger.LogInformation("{HandlerName} handled event", settings.HandlerName);
             await receivedMessage.Complete(cancellationToken);
+            return;
+        }
+
+        if (nonRetryableExceptionClassifier.IsNonRetryable(handlingException))
+        {
+            instrumentation.RecordFailed(settings.HandlerName, settings.TopicName);
+            await receivedMessage.DeadLetter(handlingException.Message, cancellationToken);
+            logger.LogError(handlingException, "{HandlerName} event was rejected and not retried, dead-lettered", settings.HandlerName);
             return;
         }
 
@@ -109,8 +123,7 @@ internal class EventHandlerBackgroundService<TEvent, THandler>(
 
     private async Task RepublishForRetry(IReceivedMessage<TEvent> receivedMessage, int retryCount, CancellationToken cancellationToken)
     {
-        var client = clientRegistry.GetClient(settings.ProviderName);
-        var eventCapableClient = (IEventCapableMessageBusClient)client;
+        var eventCapableClient = clientRegistry.GetClient<IEventCapableMessageBusClient>(settings.ProviderName);
         var scheduledTime = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(settings.RetryDelaySeconds);
         var props = receivedMessage.Properties with { RetryCount = retryCount, ScheduledEnqueueTime = scheduledTime };
         var sender = await eventCapableClient.CreateEventRetrySender(settings.TopicName, settings.SubscriptionName);

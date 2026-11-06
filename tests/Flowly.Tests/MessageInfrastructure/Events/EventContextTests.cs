@@ -21,6 +21,24 @@ public class EventContextTests
         }
 
         [Fact]
+        public void AssignsProperties()
+        {
+            var properties = new MessageProperties("m", "c") { CustomProperties = new Dictionary<string, string> { ["tenant"] = "contoso" } };
+
+            var eventContext = new EventContext<OrderPlaced>(new OrderPlaced("x"), "m", "c", DateTimeOffset.UtcNow, properties);
+
+            Assert.Same(properties, eventContext.Properties);
+        }
+
+        [Fact]
+        public void WithoutProperties_UsesEmptyProperties()
+        {
+            var eventContext = new EventContext<OrderPlaced>(new OrderPlaced("x"), "m", "c", DateTimeOffset.UtcNow);
+
+            Assert.Same(MessageProperties.Empty, eventContext.Properties);
+        }
+
+        [Fact]
         public void WithNullCorrelationId_AllowsNull()
         {
             var eventContext = new EventContext<OrderPlaced>(new OrderPlaced("x"), "msg-1", null, DateTimeOffset.UtcNow);

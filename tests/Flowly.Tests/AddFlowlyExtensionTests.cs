@@ -1,5 +1,8 @@
+using Flowly.MessageInfrastructure.StreamPartitions;
 using Flowly.MessageInfrastructure;
 using Flowly.MessageInfrastructure.Events.Telemetry;
+using Flowly.MessageInfrastructure.HandlerSteps;
+using Flowly.MessageInfrastructure.SendSteps;
 using Flowly.MessageInfrastructure.Model;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.MessageInfrastructure.Telemetry;
@@ -47,6 +50,30 @@ public class AddFlowlyExtensionTests
             hostApplicationBuilder.AddFlowly<RecordingFlowlyConfiguration>();
 
             Assert.Contains(hostApplicationBuilder.Services, s => s.ServiceType == typeof(IEventTopologyCreatorRegistry));
+        }
+
+        [Fact]
+        public void RegistersHandlerStepRunnerAsSingleton()
+        {
+            var hostApplicationBuilder = new StubHostApplicationBuilder();
+
+            hostApplicationBuilder.AddFlowly<RecordingFlowlyConfiguration>();
+
+            var descriptor = hostApplicationBuilder.Services.Single(s => s.ServiceType == typeof(IHandlerStepRunner));
+            Assert.Equal(ServiceLifetime.Singleton, descriptor.Lifetime);
+            Assert.Equal(typeof(HandlerStepRunner), descriptor.ImplementationType);
+        }
+
+        [Fact]
+        public void RegistersSendStepRunnerAsSingleton()
+        {
+            var hostApplicationBuilder = new StubHostApplicationBuilder();
+
+            hostApplicationBuilder.AddFlowly<RecordingFlowlyConfiguration>();
+
+            var descriptor = hostApplicationBuilder.Services.Single(s => s.ServiceType == typeof(ISendStepRunner));
+            Assert.Equal(ServiceLifetime.Singleton, descriptor.Lifetime);
+            Assert.Equal(typeof(SendStepRunner), descriptor.ImplementationType);
         }
 
         [Fact]
@@ -135,6 +162,18 @@ public class AddFlowlyExtensionTests
             var handlerInstrumentation = serviceProvider.GetRequiredService<IHandlerInstrumentation>();
 
             Assert.IsType<HandlerInstrumentation>(handlerInstrumentation);
+        }
+
+        [Fact]
+        public void RegistersTheStreamPartitionStateRegistryOnceAsWriterAndReader()
+        {
+            var hostApplicationBuilder = new StubHostApplicationBuilder();
+
+            hostApplicationBuilder.AddFlowly<RecordingFlowlyConfiguration>();
+
+            using var serviceProvider = hostApplicationBuilder.Services.BuildServiceProvider();
+            Assert.Same(serviceProvider.GetRequiredService<IStreamPartitionStateRegistry>(), serviceProvider.GetRequiredService<IStreamPartitionStateReader>());
+            Assert.Single(hostApplicationBuilder.Services, descriptor => descriptor.ServiceType == typeof(IStreamPartitionStateRegistry));
         }
 
         [Fact]
@@ -250,6 +289,18 @@ public class AddFlowlyExtensionTests
             Assert.Contains(hostApplicationBuilder.Services, s =>
                 s.ServiceType == typeof(IHostedService) &&
                 s.ImplementationType == typeof(QueueRegistrarHostedService));
+        }
+
+        [Fact]
+        public void RegistersHandlerStepConfigurationValidatorHostedService()
+        {
+            var hostApplicationBuilder = new StubHostApplicationBuilder();
+
+            hostApplicationBuilder.AddFlowly<RecordingFlowlyConfiguration>();
+
+            Assert.Contains(hostApplicationBuilder.Services, s =>
+                s.ServiceType == typeof(IHostedService) &&
+                s.ImplementationType == typeof(HandlerStepConfigurationValidator));
         }
 
         [Fact]

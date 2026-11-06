@@ -1,3 +1,4 @@
+using Flowly.MessageInfrastructure.StreamPartitions;
 using System.Diagnostics;
 using Flowly.MessageInfrastructure.BackgroundServices;
 using Flowly.MessageInfrastructure.Model;
@@ -323,11 +324,13 @@ public class BatchProcessingBackgroundServiceTests
 
         public void RecordHalted(string handlerName, string queueName, string reason) { }
 
+        public void RecordStreamPartitionTransition(string handlerName, string queueName, string consumerName, int? partition, StreamPartitionState state) { }
+
         public void RecordCheckpointSaved(string handlerName, string queueName, double durationMs) { }
 
         public void RecordCheckpointSaveFailed(string handlerName, string queueName) { }
 
-        public void RecordCheckpointResolved(string handlerName, string queueName, bool resumed) { }
+        public void RecordCheckpointResolved(string handlerName, string queueName, CheckpointResolution resolution) { }
         public Activity? StartSendingResponse(string callQueueName, string replyQueueName, string messagingSystem, string messageId, string correlationId) => null;
         public void RecordResponseSent(string callQueueName, double durationMs) { }
         public void RecordResponseFailed(string callQueueName) { }

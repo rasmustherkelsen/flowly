@@ -1,8 +1,10 @@
 using System.Diagnostics;
 using Flowly.MessageInfrastructure.Callers;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessageInfrastructure.SendSteps;
 using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.Transport;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Flowly.Tests.MessageInfrastructure.Callers;
 
@@ -65,8 +67,7 @@ public class CallSubmitterTests
 
             var pendingCallRegistry = new PendingCallRegistry<PongMessage>();
             var clientRegistry = new FakeClientRegistry(new FakeMessageBusClient(new CapturingSender()));
-            var settings = new CallSubmitter<PingMessage, PongMessage>.Settings("ping", "ping-reply-sender", "stub", TimeSpan.FromSeconds(5));
-            var callSubmitter = new CallSubmitter<PingMessage, PongMessage>(clientRegistry, settings, pendingCallRegistry, instrumentation);
+            var callSubmitter = new CallSubmitter<PingMessage, PongMessage>(clientRegistry, "ping", "ping-reply-sender", "stub", TimeSpan.FromSeconds(5), pendingCallRegistry, instrumentation, SendStepRunner.None);
 
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => callSubmitter.Submit(new PingMessage("hi"), cts.Token));
 
@@ -78,9 +79,8 @@ public class CallSubmitterTests
         {
             var instrumentation = new ActivityCapturingCallerInstrumentation();
             var registry = new ImmediateResolvingTaggedRegistry();
-            var settings = new CallSubmitter<TaggedPingMessage, PongMessage>.Settings("ping", "ping-reply-sender", "stub", TimeSpan.FromSeconds(5));
             var clientRegistry = new FakeClientRegistry(new FakeMessageBusClient(new CapturingSender()));
-            var callSubmitter = new CallSubmitter<TaggedPingMessage, PongMessage>(clientRegistry, settings, registry, instrumentation);
+            var callSubmitter = new CallSubmitter<TaggedPingMessage, PongMessage>(clientRegistry, "ping", "ping-reply-sender", "stub", TimeSpan.FromSeconds(5), registry, instrumentation, SendStepRunner.None);
 
             await callSubmitter.Submit(new TaggedPingMessage("order-42"), CancellationToken.None);
 
@@ -113,6 +113,31 @@ public class CallSubmitterTests
         }
 
         [Fact]
+        public async Task SendsMessageWithCustomProperties()
+        {
+            var capturingSender = new CapturingSender();
+            var callSubmitter = CreateSubmitter(new CapturingCallerInstrumentation(), sender: capturingSender);
+
+            await callSubmitter.Submit(new PingMessage("hi"), CancellationToken.None, new Dictionary<string, string> { ["tenant"] = "contoso" });
+
+            Assert.Equal("contoso", capturingSender.LastProperties?.CustomProperties["tenant"]);
+        }
+
+        [Fact]
+        public async Task WithReservedCustomPropertyKey_ThrowsArgumentExceptionWithoutSending()
+        {
+            var capturingSender = new CapturingSender();
+            var callSubmitter = CreateSubmitter(new CapturingCallerInstrumentation(), sender: capturingSender);
+
+            await Assert.ThrowsAsync<ArgumentException>(() => callSubmitter.Submit(
+                new PingMessage("hi"),
+                CancellationToken.None,
+                new Dictionary<string, string> { ["traceparent"] = "x" }));
+
+            Assert.Null(capturingSender.LastProperties);
+        }
+
+        [Fact]
         public async Task SendsMessageWithReplyToQueue()
         {
             var capturingSender = new CapturingSender();
@@ -124,6 +149,187 @@ public class CallSubmitterTests
         }
     }
 
+    public class WithSendSteps
+    {
+        [Fact]
+        public async Task StepRunsBeforeAnythingIsSentOrRegistered()
+        {
+            var observations = new List<string>();
+            var sender = new CapturingSender();
+            var registry = new RecordingRegistry();
+            var instrumentation = new CapturingCallerInstrumentation();
+            var services = new ServiceCollection();
+            services.AddSingleton(observations);
+            services.AddSingleton<Func<string>>(() => $"sent:{sender.Sent},registered:{registry.Registered.Count},started:{instrumentation.Started.Count}");
+            services.AddScoped<ObservingStep>();
+            using var serviceProvider = services.BuildServiceProvider();
+            var callSubmitter = CreateSubmitter(serviceProvider, instrumentation, sender, registry, typeof(ObservingStep));
+
+            await callSubmitter.Submit(new PingMessage("hi"), CancellationToken.None);
+
+            Assert.Equal(["before:sent:0,registered:0,started:0", "after:sent:1,registered:1,started:1"], observations);
+        }
+
+        [Fact]
+        public async Task StepThatThrows_SendsNothingRegistersNoPendingCallAndRecordsNoMetrics()
+        {
+            var sender = new CapturingSender();
+            var registry = new RecordingRegistry();
+            var instrumentation = new CapturingCallerInstrumentation();
+            using var serviceProvider = CreateServiceProvider(typeof(RejectingStep));
+            var callSubmitter = CreateSubmitter(serviceProvider, instrumentation, sender, registry, typeof(RejectingStep));
+
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() => callSubmitter.Submit(new PingMessage("hi"), CancellationToken.None));
+
+            Assert.Equal(0, sender.Sent);
+            Assert.Empty(registry.Registered);
+            Assert.Empty(instrumentation.Started);
+            Assert.Empty(instrumentation.Succeeded);
+            Assert.Empty(instrumentation.Failed);
+        }
+
+        [Fact]
+        public async Task StepThatThrows_ExceptionReachesCallerUnchanged()
+        {
+            using var serviceProvider = CreateServiceProvider(typeof(RejectingStep));
+            var callSubmitter = CreateSubmitter(serviceProvider, new CapturingCallerInstrumentation(), new CapturingSender(), new RecordingRegistry(), typeof(RejectingStep));
+
+            var exception = await Assert.ThrowsAsync<UnauthorizedAccessException>(() => callSubmitter.Submit(new PingMessage("hi"), CancellationToken.None));
+
+            Assert.Equal("rejected", exception.Message);
+        }
+
+        [Fact]
+        public async Task StepThatSkipsNext_ThrowsInvalidOperationExceptionAndSendsNothing()
+        {
+            var sender = new CapturingSender();
+            var registry = new RecordingRegistry();
+            var instrumentation = new CapturingCallerInstrumentation();
+            using var serviceProvider = CreateServiceProvider(typeof(SkippingStep));
+            var callSubmitter = CreateSubmitter(serviceProvider, instrumentation, sender, registry, typeof(SkippingStep));
+
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => callSubmitter.Submit(new PingMessage("hi"), CancellationToken.None));
+
+            Assert.Contains("send step", exception.Message);
+            Assert.Contains(nameof(PingMessage), exception.Message);
+            Assert.Equal(0, sender.Sent);
+            Assert.Empty(registry.Registered);
+            Assert.Empty(instrumentation.Failed);
+        }
+
+        [Fact]
+        public async Task StepPassingThrough_ReturnsReplyUnchangedAndRecordsSucceeded()
+        {
+            var registry = new RecordingRegistry();
+            var instrumentation = new CapturingCallerInstrumentation();
+            using var serviceProvider = CreateServiceProvider(typeof(PassThroughStep));
+            var callSubmitter = CreateSubmitter(serviceProvider, instrumentation, new CapturingSender(), registry, typeof(PassThroughStep));
+
+            var response = await callSubmitter.Submit(new PingMessage("hi"), CancellationToken.None);
+
+            Assert.Same(registry.Reply, response);
+            Assert.Single(instrumentation.Succeeded);
+            Assert.Empty(instrumentation.Failed);
+        }
+
+        [Fact]
+        public async Task StepPassingThrough_WhenSenderThrows_RecordsFailed()
+        {
+            var instrumentation = new CapturingCallerInstrumentation();
+            using var serviceProvider = CreateServiceProvider(typeof(PassThroughStep));
+            var callSubmitter = CreateSubmitter(serviceProvider, instrumentation, new ThrowingSender(new InvalidOperationException("boom")), new RecordingRegistry(), typeof(PassThroughStep));
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => callSubmitter.Submit(new PingMessage("hi"), CancellationToken.None));
+
+            Assert.Single(instrumentation.Failed);
+        }
+
+        [Fact]
+        public async Task PassesMessageAndCancellationTokenToTheStep()
+        {
+            var contexts = new List<SendStepContext<PingMessage>>();
+            var services = new ServiceCollection();
+            services.AddSingleton(contexts);
+            services.AddScoped<ContextCapturingStep>();
+            using var serviceProvider = services.BuildServiceProvider();
+            var callSubmitter = CreateSubmitter(serviceProvider, new CapturingCallerInstrumentation(), new CapturingSender(), new RecordingRegistry(), typeof(ContextCapturingStep));
+            var message = new PingMessage("hi");
+            using var cancellationTokenSource = new CancellationTokenSource();
+
+            await callSubmitter.Submit(message, cancellationTokenSource.Token);
+
+            var sendStepContext = Assert.Single(contexts);
+            Assert.Same(message, sendStepContext.Message);
+            Assert.Equal(cancellationTokenSource.Token, sendStepContext.CancellationToken);
+        }
+
+        [Fact]
+        public async Task StepForAnotherMessageType_DoesNotRun()
+        {
+            var sender = new CapturingSender();
+            using var serviceProvider = CreateServiceProvider(typeof(OtherMessageStep));
+            var callSubmitter = CreateSubmitter(serviceProvider, new CapturingCallerInstrumentation(), sender, new RecordingRegistry(), typeof(OtherMessageStep));
+
+            await callSubmitter.Submit(new PingMessage("hi"), CancellationToken.None);
+
+            Assert.Equal(1, sender.Sent);
+        }
+
+        [Fact]
+        public async Task WithoutRegisteredSteps_CreatesNoScope()
+        {
+            var sender = new CapturingSender();
+            var clientRegistry = new FakeClientRegistry(new FakeMessageBusClient(sender));
+            var callSubmitter = new CallSubmitter<PingMessage, PongMessage>(
+                clientRegistry,
+                "ping",
+                "ping-reply-sender",
+                "stub",
+                TimeSpan.FromSeconds(5),
+                new RecordingRegistry(),
+                new CapturingCallerInstrumentation(),
+                new SendStepRunner([], new ThrowingServiceScopeFactory()));
+
+            await callSubmitter.Submit(new PingMessage("hi"), CancellationToken.None);
+
+            Assert.Equal(1, sender.Sent);
+        }
+
+        private static ServiceProvider CreateServiceProvider(params Type[] stepTypes)
+        {
+            var services = new ServiceCollection();
+
+            foreach (var stepType in stepTypes)
+            {
+                services.AddScoped(stepType);
+            }
+
+            return services.BuildServiceProvider();
+        }
+
+        private static CallSubmitter<PingMessage, PongMessage> CreateSubmitter(
+            IServiceProvider serviceProvider,
+            ICallerInstrumentation instrumentation,
+            IMessageBusSender sender,
+            RecordingRegistry registry,
+            params Type[] stepTypes)
+        {
+            var sendStepRunner = new SendStepRunner(
+                stepTypes.Select(stepType => new SendStepRegistration(stepType, SendStepRegistration.ResolveFilterType(stepType))),
+                serviceProvider.GetRequiredService<IServiceScopeFactory>());
+
+            return new CallSubmitter<PingMessage, PongMessage>(
+                new FakeClientRegistry(new FakeMessageBusClient(sender)),
+                "ping",
+                "ping-reply-sender",
+                "stub",
+                TimeSpan.FromSeconds(5),
+                registry,
+                instrumentation,
+                sendStepRunner);
+        }
+    }
+
     private static CallSubmitter<PingMessage, PongMessage> CreateSubmitter(
         ICallerInstrumentation instrumentation,
         IMessageBusSender? sender = null,
@@ -132,9 +338,7 @@ public class CallSubmitterTests
         var actualSender = sender ?? new CapturingSender();
         var actualRegistry = registry ?? new ImmediateResolvingRegistry();
         var clientRegistry = new FakeClientRegistry(new FakeMessageBusClient(actualSender));
-        var settings = new CallSubmitter<PingMessage, PongMessage>.Settings("ping", "ping-reply-sender", "stub", TimeSpan.FromSeconds(5));
-
-        return new CallSubmitter<PingMessage, PongMessage>(clientRegistry, settings, actualRegistry, instrumentation);
+        return new CallSubmitter<PingMessage, PongMessage>(clientRegistry, "ping", "ping-reply-sender", "stub", TimeSpan.FromSeconds(5), actualRegistry, instrumentation, SendStepRunner.None);
     }
 
     private record PingMessage(string Payload) : IReturns<PongMessage>;
@@ -146,6 +350,63 @@ public class CallSubmitterTests
     }
 
     private record PongMessage(string Echo);
+
+    private sealed class RecordingRegistry : IPendingCallRegistry<PongMessage>
+    {
+        public PongMessage Reply { get; } = new("pong");
+        public List<string> Registered { get; } = [];
+
+        public Task<PongMessage> Register(string correlationId, CancellationToken cancellationToken)
+        {
+            Registered.Add(correlationId);
+            return Task.FromResult(Reply);
+        }
+
+        public bool TryResolve(string correlationId, PongMessage response) => true;
+    }
+
+    private sealed class ThrowingServiceScopeFactory : IServiceScopeFactory
+    {
+        public IServiceScope CreateScope() => throw new InvalidOperationException("no scope expected");
+    }
+
+    private sealed class ObservingStep(List<string> observations, Func<string> probe) : SendStep
+    {
+        public override async Task Handle(SendStepContext<object> context, SendStepDelegate next)
+        {
+            observations.Add($"before:{probe()}");
+            await next();
+            observations.Add($"after:{probe()}");
+        }
+    }
+
+    private sealed class RejectingStep : SendStep
+    {
+        public override Task Handle(SendStepContext<object> context, SendStepDelegate next)
+            => throw new UnauthorizedAccessException("rejected");
+    }
+
+    private sealed class SkippingStep : SendStep
+    {
+        public override Task Handle(SendStepContext<object> context, SendStepDelegate next) => Task.CompletedTask;
+    }
+
+    private sealed class PassThroughStep : SendStep;
+
+    private sealed class OtherMessageStep : SendStep<PongMessage>
+    {
+        public override Task Handle(SendStepContext<PongMessage> context, SendStepDelegate next) => throw new UnauthorizedAccessException("rejected");
+    }
+
+    private sealed class ContextCapturingStep(List<SendStepContext<PingMessage>> contexts) : SendStep<PingMessage>
+    {
+        public override Task Handle(SendStepContext<PingMessage> context, SendStepDelegate next)
+        {
+            contexts.Add(context);
+
+            return next();
+        }
+    }
 
     private sealed class ImmediateResolvingRegistry : IPendingCallRegistry<PongMessage>
     {
@@ -208,10 +469,12 @@ public class CallSubmitterTests
     private sealed class CapturingSender : IMessageBusSender
     {
         public MessageProperties? LastProperties { get; private set; }
+        public int Sent { get; private set; }
 
         public Task SendMessage<TMessage>(TMessage message, MessageProperties messageProperties, CancellationToken cancellationToken = default)
         {
             LastProperties = messageProperties;
+            Sent++;
             return Task.CompletedTask;
         }
 

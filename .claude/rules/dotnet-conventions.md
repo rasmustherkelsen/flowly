@@ -1,3 +1,8 @@
+---
+paths:
+  - "**/*.cs"
+---
+
 # .NET Coding Conventions
 
 - **No `Async` suffix on method names.** Do not append `Async` to method names, even when the method is asynchronous. This applies to interface definitions, implementations, and test method names.

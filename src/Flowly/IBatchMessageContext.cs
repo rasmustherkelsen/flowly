@@ -17,4 +17,11 @@ public interface IBatchMessageContext<T>
     ///     processing should be aborted.
     /// </summary>
     CancellationToken CancellationToken { get; }
+
+    /// <summary>
+    ///     The transport-level properties of each message in <see cref="Messages" />, one entry per message in the same
+    ///     order, including the application-defined <see cref="MessageProperties.CustomProperties" /> the sender attached.
+    ///     The custom properties are not authenticated and must not be treated as proof of identity.
+    /// </summary>
+    IReadOnlyList<MessageProperties> Properties { get; }
 }

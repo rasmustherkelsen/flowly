@@ -3,6 +3,7 @@ using Flowly.MessageInfrastructure.Events;
 using Flowly.MessageInfrastructure.Events.BackgroundServices;
 using Flowly.MessageInfrastructure.Receivers;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.Tests.Fakes;
 using Flowly.Transport;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -11,11 +12,11 @@ namespace Flowly.Tests;
 
 public class EventHandlerRegistrationExtensionsTests
 {
-    private static (IFlowlyBuilder Builder, ProviderQueueManifest Manifest) CreateBuilder(string providerName)
+    private static (IFlowlyBuilder Builder, ProviderQueueManifest Manifest) CreateBuilder(string providerName, ITransportClient? client = null)
     {
         var services = new ServiceCollection();
         var registry = new MessageBusClientRegistry();
-        registry.Register(providerName, new StubMessageBusClient(), null);
+        registry.Register(providerName, client ?? new FakeEventCapableClient(), null);
         services.AddSingleton<IMessageBusClientRegistry>(registry);
 
         var manifest = new ProviderQueueManifest(providerName, true, "AzureServiceBus");
@@ -27,6 +28,28 @@ public class EventHandlerRegistrationExtensionsTests
 
     public class AddEventHandler
     {
+        [Fact]
+        public void WithStreamOnlyProvider_ThrowsDescriptiveError()
+        {
+            var (builder, _) = CreateBuilder("streams", new FakeStreamOnlyClient());
+
+            var exception = Assert.Throws<InvalidOperationException>(() => builder.AddEventHandler<OrderPlaced, OrderNotificationHandler>());
+
+            Assert.Contains("requires a provider that supports events", exception.Message);
+            Assert.Contains("streams (message streaming)", exception.Message);
+        }
+
+        [Fact]
+        public void WithQueueOnlyProvider_ThrowsDescriptiveError()
+        {
+            var (builder, _) = CreateBuilder("queues", new FakeMessageBusClient());
+
+            var exception = Assert.Throws<InvalidOperationException>(() => builder.AddEventHandler<OrderPlaced, OrderNotificationHandler>());
+
+            Assert.Contains("requires a provider that supports events", exception.Message);
+            Assert.Contains("queues (queue-based messaging)", exception.Message);
+        }
+
         [Fact]
         public void RegistersHandlerAsScoped()
         {
@@ -160,41 +183,6 @@ public class EventHandlerRegistrationExtensionsTests
         public IServiceCollection Services => services;
         public IConfiguration Configuration => new ConfigurationBuilder().Build();
         public ITopologyNameResolver TopologyNameResolver => new KebabCaseTopologyNameResolver();
-    }
-
-    private sealed class StubMessageBusClient : IMessageBusClient
-    {
-        public string MessagingSystem => "Stub";
-
-        public Task<IMessageBusReceiver> CreateReceiver(string queueName)
-        {
-            throw new NotImplementedException();
-        }
-
-        public Task<IMessageBusProcessor<TMessage>> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options)
-        {
-            throw new NotImplementedException();
-        }
-
-        public Task<IExecutionLaneProcessor> CreateExecutionLaneProcessor(string queueName, string laneFilter, MessageBusProcessorOptions options)
-        {
-            throw new NotImplementedException();
-        }
-
-        public Task<IMessageBusSender> CreateMessageBusSender(string queueName)
-        {
-            throw new NotImplementedException();
-        }
-
-        public Task<IDeadLetterReceiver> CreateDeadLetterReceiver(string queueName)
-        {
-            throw new NotImplementedException();
-        }
-
-        public Task<long> GetDeadLetterMessageCount(string queueName, CancellationToken cancellationToken = default)
-        {
-            throw new NotImplementedException();
-        }
     }
 
     private record OrderPlaced;

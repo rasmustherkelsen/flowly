@@ -12,6 +12,10 @@ using OpenTelemetry;
 
 var builder = Host.CreateApplicationBuilder(args);
 
+#if (UseAzureEventHubs)
+await FlowlyConfiguration.CreatePartitionOwnershipContainerClient(builder.Configuration).CreateIfNotExistsAsync();
+
+#endif
 #if (UseRabbitMQ && UseOpenTelemetry)
 builder.AddFlowly<FlowlyConfiguration>(options => { options.CreateTopology = true; options.WithTopologyNameResolver<DotCaseTopologyNameResolver>(); options.EnableTelemetry = true; });
 #elif (UseRabbitMQ)

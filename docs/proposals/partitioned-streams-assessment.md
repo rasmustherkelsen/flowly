@@ -1,6 +1,6 @@
 # Partitioned Streams — Design Assessment
 
-**Status:** Phases 0–2 implemented (checkpointing, core partitioning abstraction, InMemory, and RabbitMQ Super Streams). The RabbitMQ partitioned consumer (`RabbitMqPartitionedStreamConsumer`, built against the `RabbitMQ.Stream.Client` package) is implemented against the package's documented/reflected API surface but has not been verified against a live broker — see `.claude/rules/message-streaming-conventions.md` § "Partitioned streams" for exactly which parts are unverified. Phase 3 (Event Hub, Kafka) remains out of scope.
+**Scope:** Covers checkpointing, the core partitioning abstraction, InMemory, and RabbitMQ Super Streams (`RabbitMqPartitionedStreamConsumer`, built on the `RabbitMQ.Stream.Client` package and verified against a live RabbitMQ 4.3.2 broker with client 1.12.0; see `.claude/rules/message-streaming-conventions.md` § "RabbitMQ Super Streams" for what was verified and what was not). Event Hub and Kafka are out of scope here.
 **Origin:** This investigation started as a feasibility assessment of adding Azure Event Hub as a stream-only Flowly transport. That investigation surfaced the real blocker before any Event Hub-specific work began: Event Hub's native model is partitioned, and Flowly's stream abstraction (`IStreamCapableMessageBusClient`, `StartPosition`, one cursor per `MessageStreamHandler` registration) assumes a single, unpartitioned log — true of both existing stream backends today (RabbitMQ plain streams, `InMemoryStreamLog`). RabbitMQ itself has a native partitioning feature ("Super Streams") that Flowly's RabbitMQ provider doesn't use today.
 
 This document reframes the ask accordingly: instead of shipping Event Hub support directly, it assesses **partitioned streams as a first-class Flowly capability**, built and proven first against RabbitMQ (Super Streams) and InMemory (a partitioned in-process log), with an abstraction deliberately shaped so Event Hub and, later, Kafka can plug in as additional transport implementations without another redesign.
@@ -44,7 +44,13 @@ Recommended sequencing: checkpointing first (small, immediately valuable, de-ris
 
 **Direction decided: adopt `RabbitMQ.Stream.Client` for partitioned streams only** (Option A) — this follows directly from the ownership-delegation model in §2: Flowly has no distributed-coordination infrastructure of its own, so leaning on the broker's native hash-based routing and rebalancing is the right tradeoff, at the cost of a second RabbitMQ client library/connection model coexisting with the existing AMQP-based transport, scoped only to partitioned streams. The rejected alternative (Option B, hand-rolling partition-key hashing and a Flowly-owned ownership/leader-election mechanism on AMQP alone) would mean building and operating a distributed coordination primitive from scratch — significant, open-ended scope duplicating what the Stream client already solves.
 
-What remains open is **technical validation, not the choice between options**: a short spike is still needed to confirm `RabbitMQ.Stream.Client`'s .NET API actually covers what Flowly requires end to end (topology interop with the AMQP-declared partition streams, rebalancing callbacks, connection lifecycle alongside the existing AMQP connection) before implementation starts.
+The technical validation this direction depended on was done against a live broker (RabbitMQ 4.3.2, `RabbitMQ.Stream.Client` 1.12.0). The Stream client covers what Flowly requires end to end:
+
+- **Topology interop.** The exchange, `{queue}-{n}` partition streams and bindings declared over AMQP are the Super Stream the Stream client consumes, and a Super Stream created with the broker's own `rabbitmq-streams add_super_stream` tool is consumed and published to unchanged when the host uses `createTopology: false` (Flowly's own declaration is not compatible with a Super Stream created outside Flowly, so `createTopology: true` is not supported for it).
+- **Rebalancing callbacks.** `ConsumerUpdateListener` reports `isActive: true` and `isActive: false` as instances join, leave and crash, and the offset returned for `isActive: true` (a stored checkpoint position plus one) is honoured. The offset returned for `isActive: false` is ignored.
+- **Connection lifecycle.** The stream connection is separate from the AMQP connections (one stream connection per partition, on the Stream protocol port). The client recovers its subscriptions after a broker restart on its own, reporting `isActive: true` again without a preceding `isActive: false`, which the consumer adapter handles by revoking a still-running partition loop before assigning it again.
+
+Not covered by that validation: multi-node clusters, TLS on the stream port, other broker and client versions.
 
 ## 4. InMemory implementation path
 
@@ -65,7 +71,7 @@ This resolves the "no offset persistence across restarts" limitation of today's 
 
 **Shape:** a new abstract class `MessageStreamCheckpoint<TMessage>` with three members:
 
-- `InitializeCheckpoint(query context)` — called once per (stream, partition) pair before that partition's processing loop starts. Flowly resolves the configured `StartPosition` to a concrete numeric offset and passes it in, so the implementation can seed a row on first-ever run; this keeps the hot path (`SaveStreamPosition`, called on every batch) a plain update with no existence check.
+- `InitializeCheckpoint(query context)` — called once per (stream, partition) pair before that partition's processing loop starts, so the implementation can ensure a row exists; this keeps the hot path (`SaveStreamPosition`, called on every batch) a plain update with no existence check. The first run's start position is not passed in here: Flowly fixes it by resolving `Last`/`Timestamp` to a concrete offset through the transport and saving it (minus one, flagged as a bootstrap seed) through `SaveStreamPosition`, so the existing members cover it and no checkpoint has to change.
 - `GetStreamPosition(query context)` — returns the currently stored position; always well-defined once `InitializeCheckpoint` has run.
 - `SaveStreamPosition(save context)` — called after each successfully processed batch (after `Handle()` returns), persisting the position of the last-processed entry.
 
@@ -95,14 +101,14 @@ Yes. Both map cleanly onto the delegation model in §2: `EventProcessorClient` a
 Event Hub-specific quirks identified in the original investigation still apply *when that provider is eventually built*, unchanged by this pivot:
 
 - Partition count is fixed/immutable at hub creation (Standard tier) → still needs a Bicep-first provisioning story.
-- Consumer-group-per-registration quota (5 on Standard tier) → still a real constraint to document.
+- Consumer-group-per-registration quota (1 on Basic, 20 on Standard, 100 on Premium, 1000 on Dedicated per event hub; the figure 5 is the limit on non-exclusive receivers per partition and group, not on groups) → still a real constraint to document.
 - `MaxLengthBytes` retention has no Event Hub equivalent → still needs to be rejected or ignored explicitly at registration.
 
 None of these are blocked or contradicted by the generic architecture — they remain transport-adapter concerns, which is the point of designing the abstraction this way.
 
 The checkpoint abstraction (§5) also sidesteps the earlier concern about `EventProcessorClient`'s mandatory Blob Storage checkpoint store — Flowly wouldn't need Event Hub's built-in checkpointing at all, since `MessageStreamCheckpoint<TMessage>` already gives users a bring-your-own-store option that works the same way across every transport. Event Hub's own checkpoint store only becomes relevant if a future Event Hub provider chooses `EventProcessorClient` specifically for its ownership/rebalancing behavior — at that point it's an ownership concern, not a persistence one.
 
-## 7. Effort & sequencing recommendation
+## 7. Phasing rationale
 
 | Phase | Scope | Notes |
 |---|---|---|
@@ -123,10 +129,8 @@ Resolved through discussion — settled, not pending further input:
 - **Checkpoint design (§5)**: confirmed as specified — context shapes, `ConsumerName` identity, DI-based feature-detection, `InitializeCheckpoint` seeding, same-process duplicate-registration check (throws), documented-not-enforced cross-process constraint.
 - **`[StreamRetention]` means "per partition"** once partitioning is in play (§2) — the only interpretation consistent with how every backend investigated physically implements retention.
 - **Partition key on `Record` is optional, with a round-robin/random fallback when omitted** (§2) — matches Kafka/Event Hub producer defaults; the ordering-guarantee trade-off must be documented prominently.
-- **RabbitMQ: adopt `RabbitMQ.Stream.Client`** for partitioned streams (§3) — the direction is decided; what remains is technical validation via a spike, not a choice between options.
+- **RabbitMQ: adopt `RabbitMQ.Stream.Client`** for partitioned streams (§3) — decided, and validated against a live broker.
 - **InMemory + `MessageStreamCheckpoint<TMessage>` throws eagerly at registration** (§5) — rather than a silent no-op, mirroring the existing `ThrowIfNotStreamCapable` pattern.
 
-Still open — need a technical spike or an implementation-time decision, not further design discussion:
+Naming of the new interface and attribute (`IPartitionedStreamCapableMessageBusClient` and `[StreamPartitions]`) was settled at implementation time.
 
-1. **RabbitMQ `Stream.Client` technical spike** (§3): confirm the .NET API actually covers topology interop with the AMQP-declared partition streams, rebalancing callbacks, and connection lifecycle alongside the existing AMQP connection.
-2. **Naming** for the new interface/attribute (`IPartitionedStreamCapableMessageBusClient` / `[StreamPartitions]` are working names only) — low-stakes, best settled at implementation time.

@@ -1,5 +1,7 @@
 using Flowly.MessageInfrastructure.Events.Registration;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.Tests.Fakes;
+using Flowly.Transport;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Flowly.Tests;
@@ -47,6 +49,43 @@ public class FlowlyDesignTimeFactoryTests
             Assert.Equal(2, manifest.Queues.Count);
             Assert.Contains(manifest.Queues, q => q.QueueName == "orders");
             Assert.Contains(manifest.Queues, q => q.QueueName == "payments");
+        }
+
+        [Theory]
+        [InlineData(typeof(ServiceBusThenEventHubsConfig))]
+        [InlineData(typeof(EventHubsThenServiceBusConfig))]
+        public void WithQueueProviderAndStreamOnlyProviderInEitherOrder_RoutesQueuesAndEventsToQueueProviderAndStreamsToStreamProvider(Type configType)
+        {
+            var manifests = FlowlyDesignTimeFactory.DiscoverQueues(configType);
+
+            var serviceBus = manifests.Single(m => m.ProviderName == "service-bus");
+            var eventHubs = manifests.Single(m => m.ProviderName == "event-hubs");
+            Assert.Equal(["order"], serviceBus.Queues.Select(q => q.QueueName));
+            Assert.Equal(["order-placed"], serviceBus.Events.Select(e => e.TopicName));
+            Assert.Equal(["telemetry-reading"], eventHubs.Queues.Select(q => q.QueueName));
+            Assert.Empty(eventHubs.Events);
+        }
+
+        [Theory]
+        [InlineData(typeof(ServiceBusThenEventHubsConfig))]
+        [InlineData(typeof(EventHubsThenServiceBusConfig))]
+        public void WithQueueProviderAndStreamOnlyProviderInEitherOrder_MarksOnlyTheQueueProviderPrimary(Type configType)
+        {
+            var manifests = FlowlyDesignTimeFactory.DiscoverQueues(configType);
+
+            Assert.Equal(["service-bus"], manifests.Where(m => m.IsPrimary).Select(m => m.ProviderName));
+        }
+
+        [Fact]
+        public void WithQueueProviderAndQueueAndStreamProvider_RoutesStreamToSecondProviderAndKeepsQueuesOnFirst()
+        {
+            var manifests = FlowlyDesignTimeFactory.DiscoverQueues(typeof(ServiceBusThenRabbitConfig));
+
+            var serviceBus = manifests.Single(m => m.ProviderName == "service-bus");
+            var rabbit = manifests.Single(m => m.ProviderName == "rabbit");
+            Assert.Equal(["order"], serviceBus.Queues.Select(q => q.QueueName));
+            Assert.Equal(["telemetry-reading"], rabbit.Queues.Select(q => q.QueueName));
+            Assert.Equal(["service-bus"], manifests.Where(m => m.IsPrimary).Select(m => m.ProviderName));
         }
 
         [Fact]
@@ -137,6 +176,60 @@ public class FlowlyDesignTimeFactoryTests
             builder.Services.AddDeferredEventRegistration("test-provider", new DeferredEventRegistration("invoice-created", "audit-subscriber"));
         }
     }
+
+    private sealed class ServiceBusThenEventHubsConfig : FlowlyDesignTimeFactory, IFlowlyConfiguration
+    {
+        public void Configure(IFlowlyBuilder builder)
+        {
+            UseProvider(builder, "service-bus", new FakeEventCapableClient());
+            UseProvider(builder, "event-hubs", new FakeStreamOnlyClient());
+            RegisterContracts(builder);
+        }
+    }
+
+    private sealed class EventHubsThenServiceBusConfig : FlowlyDesignTimeFactory, IFlowlyConfiguration
+    {
+        public void Configure(IFlowlyBuilder builder)
+        {
+            UseProvider(builder, "event-hubs", new FakeStreamOnlyClient());
+            UseProvider(builder, "service-bus", new FakeEventCapableClient());
+            RegisterContracts(builder);
+        }
+    }
+
+    private sealed class ServiceBusThenRabbitConfig : FlowlyDesignTimeFactory, IFlowlyConfiguration
+    {
+        public void Configure(IFlowlyBuilder builder)
+        {
+            UseProvider(builder, "service-bus", new FakeEventCapableClient());
+            UseProvider(builder, "rabbit", new FakeQueueAndStreamClient());
+            RegisterContracts(builder);
+        }
+    }
+
+    private static void UseProvider(IFlowlyBuilder builder, string name, ITransportClient client)
+    {
+        var clientRegistry = ProviderNameResolver.GetRegistry(builder.Services);
+        clientRegistry.Register(name, client, null);
+        TransportRegistrationHelper.RegisterProviderManifest(builder.Services, clientRegistry, name, "Stub");
+    }
+
+    private static void RegisterContracts(IFlowlyBuilder builder)
+        => builder
+            .AddMessageHandler<OrderMessage, OrderHandler>()
+            .AddEventSubmitter<OrderPlaced>()
+            .AddMessageRecorder<TelemetryReading>();
+
+    private sealed class OrderHandler : MessageHandler<OrderMessage>
+    {
+        public override Task Handle(IMessageContext<OrderMessage> messageContext) => Task.CompletedTask;
+    }
+
+    private sealed record OrderMessage;
+
+    private sealed record OrderPlaced;
+
+    private sealed record TelemetryReading;
 
     private sealed class EmptyConfig : FlowlyDesignTimeFactory, IFlowlyConfiguration
     {

@@ -74,6 +74,49 @@ public class FlowlyOptionsTests
         }
     }
 
+    public class NonRetryable
+    {
+        [Fact]
+        public void RegistersExceptionType()
+        {
+            var flowlyOptions = new FlowlyOptions();
+
+            flowlyOptions.NonRetryable<InvalidOperationException>();
+
+            Assert.Equal([typeof(InvalidOperationException)], flowlyOptions.NonRetryableExceptionTypes);
+        }
+
+        [Fact]
+        public void CalledForSeveralTypes_RegistersAll()
+        {
+            var flowlyOptions = new FlowlyOptions();
+
+            flowlyOptions.NonRetryable<InvalidOperationException>();
+            flowlyOptions.NonRetryable<UnauthorizedAccessException>();
+
+            Assert.Equal([typeof(InvalidOperationException), typeof(UnauthorizedAccessException)], flowlyOptions.NonRetryableExceptionTypes);
+        }
+
+        [Fact]
+        public void CalledTwiceForSameType_RegistersItOnce()
+        {
+            var flowlyOptions = new FlowlyOptions();
+
+            flowlyOptions.NonRetryable<InvalidOperationException>();
+            flowlyOptions.NonRetryable<InvalidOperationException>();
+
+            Assert.Single(flowlyOptions.NonRetryableExceptionTypes);
+        }
+
+        [Fact]
+        public void DefaultsToNoRegisteredTypes()
+        {
+            var flowlyOptions = new FlowlyOptions();
+
+            Assert.Empty(flowlyOptions.NonRetryableExceptionTypes);
+        }
+    }
+
     private sealed class TestTopologyNameResolver : ITopologyNameResolver
     {
         public string ResolveQueueName<TMessage>() => "test-queue";

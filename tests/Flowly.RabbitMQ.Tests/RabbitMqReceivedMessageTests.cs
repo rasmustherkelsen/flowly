@@ -117,6 +117,52 @@ public class RabbitMqReceivedMessageTests
         }
 
         [Fact]
+        public void WithNoHeaders_CustomPropertiesAreEmpty()
+        {
+            var message = new RabbitMqReceivedMessage<TestMessage>(new ChannelStub(), BuildArgs(new TestMessage("x"), new BasicProperties()));
+
+            Assert.Empty(message.Properties.CustomProperties);
+        }
+
+        [Fact]
+        public void WithApplicationHeaders_ExtractsCustomPropertiesFromBytesAndStrings()
+        {
+            var props = new BasicProperties
+            {
+                Headers = new Dictionary<string, object?>
+                {
+                    ["tenant"] = Encoding.UTF8.GetBytes("contoso"),
+                    ["user"] = "alice"
+                }
+            };
+            var message = new RabbitMqReceivedMessage<TestMessage>(new ChannelStub(), BuildArgs(new TestMessage("x"), props));
+
+            Assert.Equal("contoso", message.Properties.CustomProperties["tenant"]);
+            Assert.Equal("alice", message.Properties.CustomProperties["user"]);
+        }
+
+        [Fact]
+        public void WithFlowlyBrokerAndTraceHeaders_ExcludesThemFromCustomProperties()
+        {
+            var props = new BasicProperties
+            {
+                Headers = new Dictionary<string, object?>
+                {
+                    [FlowlyMessageProperties.RetryCount] = 2,
+                    [FlowlyMessageProperties.TargetSubscription] = Encoding.UTF8.GetBytes("sub"),
+                    ["traceparent"] = Encoding.UTF8.GetBytes("00-trace-span-01"),
+                    ["x-stream-offset"] = 5L,
+                    ["x-first-death-reason"] = Encoding.UTF8.GetBytes("rejected"),
+                    ["x-last-death-queue"] = Encoding.UTF8.GetBytes("q"),
+                    ["tenant"] = Encoding.UTF8.GetBytes("contoso")
+                }
+            };
+            var message = new RabbitMqReceivedMessage<TestMessage>(new ChannelStub(), BuildArgs(new TestMessage("x"), props));
+
+            Assert.Equal(["tenant"], message.Properties.CustomProperties.Keys);
+        }
+
+        [Fact]
         public void WithTracestateHeader_ExtractsTracestate()
         {
             var props = new BasicProperties
@@ -158,6 +204,21 @@ public class RabbitMqReceivedMessageTests
             var message = new RabbitMqReceivedMessage<TestMessage>(new ChannelStub(), BuildArgs(new TestMessage("x"), props));
 
             Assert.Equal(99L, message.Properties.StreamOffset);
+        }
+    }
+
+    public class UntypedProperties
+    {
+        [Fact]
+        public void WithApplicationHeader_ExtractsCustomProperties()
+        {
+            var props = new BasicProperties
+            {
+                Headers = new Dictionary<string, object?> { ["tenant"] = Encoding.UTF8.GetBytes("contoso") }
+            };
+            var message = new RabbitMqUntypedReceivedMessage(BuildArgs(new TestMessage("x"), props));
+
+            Assert.Equal("contoso", message.Properties.CustomProperties["tenant"]);
         }
     }
 

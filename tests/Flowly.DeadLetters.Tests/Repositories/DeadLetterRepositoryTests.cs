@@ -12,6 +12,35 @@ public class DeadLetterRepositoryTests
     private static DateTimeOffset TruncateToMillisecond(DateTimeOffset value)
         => new(value.Ticks / TimeSpan.TicksPerMillisecond * TimeSpan.TicksPerMillisecond, value.Offset);
 
+    private static readonly DateTimeOffset Baseline = new(2026, 11, 1, 10, 0, 0, TimeSpan.Zero);
+
+    private static async Task Seed(SqliteDbContextFactory factory, params DeadLetter[] deadLetters)
+    {
+        await using var context = await factory.CreateDbContextAsync();
+        context.DeadLetters.AddRange(deadLetters);
+        await context.SaveChangesAsync();
+    }
+
+    private static DeadLetter Build(
+        string messageId,
+        int minutes = 0,
+        string queueName = "orders",
+        string? subscriptionName = null,
+        DeadLetterStatus status = DeadLetterStatus.Pending)
+        => new()
+        {
+            MessageId = messageId,
+            QueueName = queueName,
+            SubscriptionName = subscriptionName,
+            MessageBody = "{}",
+            MessageProperties = "{}",
+            DeadLetteredAt = Baseline.AddMinutes(minutes),
+            Status = status
+        };
+
+    private static DeadLetter[] BuildMany(int count)
+        => Enumerable.Range(0, count).Select(index => Build($"msg-{index:D4}", index)).ToArray();
+
     public class SaveBatch
     {
         [Fact]
@@ -239,6 +268,294 @@ public class DeadLetterRepositoryTests
         }
     }
 
+    public class Query
+    {
+        [Fact]
+        public async Task WithNoMessages_ReturnsEmptyPage()
+        {
+            using var factory = new SqliteDbContextFactory();
+            var repository = new DeadLetterRepository(factory);
+
+            var result = await repository.Query(new DeadLetterQuery { IncludeTotalCount = true });
+
+            Assert.Empty(result.Items);
+            Assert.Equal(0, result.TotalCount);
+        }
+
+        [Fact]
+        public async Task WithoutIncludeTotalCount_LeavesTotalCountNull()
+        {
+            using var factory = new SqliteDbContextFactory();
+            var repository = new DeadLetterRepository(factory);
+            await Seed(factory, Build("a"));
+
+            var result = await repository.Query(new DeadLetterQuery());
+
+            Assert.Null(result.TotalCount);
+        }
+
+        [Fact]
+        public async Task ReturnsNewestFirstWithMessageIdAsTieBreaker()
+        {
+            using var factory = new SqliteDbContextFactory();
+            var repository = new DeadLetterRepository(factory);
+            await Seed(factory, Build("b", 0), Build("c", 5), Build("a", 0), Build("d", -5));
+
+            var result = await repository.Query(new DeadLetterQuery());
+
+            Assert.Equal(["c", "a", "b", "d"], result.Items.Select(d => d.MessageId));
+        }
+
+        [Fact]
+        public async Task FiltersByQueueName()
+        {
+            using var factory = new SqliteDbContextFactory();
+            var repository = new DeadLetterRepository(factory);
+            await Seed(factory, Build("a", queueName: "orders"), Build("b", queueName: "invoices"));
+
+            var result = await repository.Query(new DeadLetterQuery { QueueName = "invoices" });
+
+            Assert.Equal("b", Assert.Single(result.Items).MessageId);
+        }
+
+        [Fact]
+        public async Task FiltersBySubscriptionName()
+        {
+            using var factory = new SqliteDbContextFactory();
+            var repository = new DeadLetterRepository(factory);
+            await Seed(factory, Build("a", queueName: "topic", subscriptionName: "billing"), Build("b", queueName: "topic", subscriptionName: "shipping"), Build("c"));
+
+            var result = await repository.Query(new DeadLetterQuery { SubscriptionName = "shipping" });
+
+            Assert.Equal("b", Assert.Single(result.Items).MessageId);
+        }
+
+        [Fact]
+        public async Task FiltersByStatus()
+        {
+            using var factory = new SqliteDbContextFactory();
+            var repository = new DeadLetterRepository(factory);
+            await Seed(factory, Build("a"), Build("b", status: DeadLetterStatus.Requeued));
+
+            var result = await repository.Query(new DeadLetterQuery { Status = DeadLetterStatus.Requeued });
+
+            Assert.Equal("b", Assert.Single(result.Items).MessageId);
+        }
+
+        [Fact]
+        public async Task FiltersByMessageId()
+        {
+            using var factory = new SqliteDbContextFactory();
+            var repository = new DeadLetterRepository(factory);
+            await Seed(factory, Build("a"), Build("ab"));
+
+            var result = await repository.Query(new DeadLetterQuery { MessageId = "a" });
+
+            Assert.Equal("a", Assert.Single(result.Items).MessageId);
+        }
+
+        [Fact]
+        public async Task CombinesFilters()
+        {
+            using var factory = new SqliteDbContextFactory();
+            var repository = new DeadLetterRepository(factory);
+            await Seed(
+                factory,
+                Build("a", queueName: "orders"),
+                Build("b", queueName: "orders", status: DeadLetterStatus.Requeued),
+                Build("c", queueName: "invoices"),
+                Build("d", queueName: "orders", subscriptionName: "billing"));
+
+            var result = await repository.Query(new DeadLetterQuery { QueueName = "orders", Status = DeadLetterStatus.Pending, SubscriptionName = "billing", IncludeTotalCount = true });
+
+            Assert.Equal("d", Assert.Single(result.Items).MessageId);
+            Assert.Equal(1, result.TotalCount);
+        }
+
+        [Fact]
+        public async Task WithFiltersMatchingNothing_ReturnsEmptyPageWithZeroTotal()
+        {
+            using var factory = new SqliteDbContextFactory();
+            var repository = new DeadLetterRepository(factory);
+            await Seed(factory, Build("a"));
+
+            var result = await repository.Query(new DeadLetterQuery { QueueName = "missing", IncludeTotalCount = true });
+
+            Assert.Empty(result.Items);
+            Assert.Equal(0, result.TotalCount);
+        }
+
+        [Fact]
+        public async Task PagesWithSkipAndTake()
+        {
+            using var factory = new SqliteDbContextFactory();
+            var repository = new DeadLetterRepository(factory);
+            await Seed(factory, Build("a", 4), Build("b", 3), Build("c", 2), Build("d", 1));
+
+            var result = await repository.Query(new DeadLetterQuery { Skip = 1, Take = 2 });
+
+            Assert.Equal(["b", "c"], result.Items.Select(d => d.MessageId));
+        }
+
+        [Fact]
+        public async Task WithSkipAndWithoutTake_ReturnsTheRest()
+        {
+            using var factory = new SqliteDbContextFactory();
+            var repository = new DeadLetterRepository(factory);
+            await Seed(factory, Build("a", 2), Build("b", 1), Build("c", 0));
+
+            var result = await repository.Query(new DeadLetterQuery { Skip = 1 });
+
+            Assert.Equal(["b", "c"], result.Items.Select(d => d.MessageId));
+        }
+
+        [Fact]
+        public async Task WithSkipBeyondTheEnd_ReturnsEmptyPageButFullTotal()
+        {
+            using var factory = new SqliteDbContextFactory();
+            var repository = new DeadLetterRepository(factory);
+            await Seed(factory, Build("a"), Build("b"));
+
+            var result = await repository.Query(new DeadLetterQuery { Skip = 10, Take = 5, IncludeTotalCount = true });
+
+            Assert.Empty(result.Items);
+            Assert.Equal(2, result.TotalCount);
+        }
+
+        [Fact]
+        public async Task WithTakeOne_ReturnsTheNewest()
+        {
+            using var factory = new SqliteDbContextFactory();
+            var repository = new DeadLetterRepository(factory);
+            await Seed(factory, Build("a", 1), Build("b", 2));
+
+            var result = await repository.Query(new DeadLetterQuery { Take = 1 });
+
+            Assert.Equal("b", Assert.Single(result.Items).MessageId);
+        }
+
+        [Fact]
+        public async Task WithTakeZeroAndTotalCount_ReturnsOnlyTheCount()
+        {
+            using var factory = new SqliteDbContextFactory();
+            var repository = new DeadLetterRepository(factory);
+            await Seed(factory, Build("a"), Build("b"));
+
+            var result = await repository.Query(new DeadLetterQuery { Take = 0, IncludeTotalCount = true });
+
+            Assert.Empty(result.Items);
+            Assert.Equal(2, result.TotalCount);
+        }
+
+        [Fact]
+        public async Task WithTakeLargerThanTheData_ReturnsEverything()
+        {
+            using var factory = new SqliteDbContextFactory();
+            var repository = new DeadLetterRepository(factory);
+            await Seed(factory, Build("a"), Build("b"));
+
+            var result = await repository.Query(new DeadLetterQuery { Take = 1000 });
+
+            Assert.Equal(2, result.Items.Count);
+        }
+
+        [Fact]
+        public async Task TotalCountIgnoresSkipAndTake()
+        {
+            using var factory = new SqliteDbContextFactory();
+            var repository = new DeadLetterRepository(factory);
+            await Seed(factory, BuildMany(30));
+
+            var result = await repository.Query(new DeadLetterQuery { Skip = 5, Take = 10, IncludeTotalCount = true });
+
+            Assert.Equal(10, result.Items.Count);
+            Assert.Equal(30, result.TotalCount);
+        }
+
+        [Fact]
+        public async Task MapsEveryColumn()
+        {
+            using var factory = new SqliteDbContextFactory();
+            var repository = new DeadLetterRepository(factory);
+            var requeuedAt = Baseline.AddHours(1);
+            await Seed(
+                factory,
+                new DeadLetter
+                {
+                    MessageId = "m1",
+                    QueueName = "topic",
+                    SubscriptionName = "billing",
+                    MessageBody = "body",
+                    MessageProperties = "{\"k\":1}",
+                    DeadLetteredAt = Baseline,
+                    DeadLetterReason = "reason",
+                    DeadLetterErrorDescription = "description",
+                    Status = DeadLetterStatus.Requeued,
+                    RequeuedAt = requeuedAt,
+                    RequeuedBy = "ops"
+                });
+
+            var deadLetter = Assert.Single((await repository.Query(new DeadLetterQuery())).Items);
+
+            Assert.Equal("m1", deadLetter.MessageId);
+            Assert.Equal("topic", deadLetter.QueueName);
+            Assert.Equal("billing", deadLetter.SubscriptionName);
+            Assert.Equal("body", deadLetter.MessageBody);
+            Assert.Equal("{\"k\":1}", deadLetter.MessageProperties);
+            Assert.Equal(Baseline, deadLetter.DeadLetteredAt);
+            Assert.Equal("reason", deadLetter.DeadLetterReason);
+            Assert.Equal("description", deadLetter.DeadLetterErrorDescription);
+            Assert.Equal(DeadLetterStatus.Requeued, deadLetter.Status);
+            Assert.Equal(requeuedAt, deadLetter.RequeuedAt);
+            Assert.Equal("ops", deadLetter.RequeuedBy);
+        }
+
+        [Fact]
+        public async Task FiltersOrdersAndPagesInTheDatabase()
+        {
+            var recordingCommandInterceptor = new RecordingCommandInterceptor();
+            using var factory = new SqliteDbContextFactory(recordingCommandInterceptor);
+            var repository = new DeadLetterRepository(factory);
+            await Seed(factory, BuildMany(300));
+
+            var result = await repository.Query(new DeadLetterQuery { QueueName = "orders", Status = DeadLetterStatus.Pending, Skip = 20, Take = 5 });
+
+            var commandText = Assert.Single(recordingCommandInterceptor.SelectCommandTexts);
+            Assert.Equal(5, result.Items.Count);
+            Assert.Contains("WHERE", commandText);
+            Assert.Contains("ORDER BY", commandText);
+            Assert.Contains("LIMIT", commandText);
+            Assert.Contains("OFFSET", commandText);
+        }
+
+        [Fact]
+        public async Task WithoutIncludeTotalCount_RunsASingleStatement()
+        {
+            var recordingCommandInterceptor = new RecordingCommandInterceptor();
+            using var factory = new SqliteDbContextFactory(recordingCommandInterceptor);
+            var repository = new DeadLetterRepository(factory);
+            await Seed(factory, BuildMany(10));
+
+            await repository.Query(new DeadLetterQuery { Take = 3 });
+
+            Assert.Single(recordingCommandInterceptor.SelectCommandTexts);
+        }
+
+        [Fact]
+        public async Task WithIncludeTotalCount_CountsInTheDatabase()
+        {
+            var recordingCommandInterceptor = new RecordingCommandInterceptor();
+            using var factory = new SqliteDbContextFactory(recordingCommandInterceptor);
+            var repository = new DeadLetterRepository(factory);
+            await Seed(factory, BuildMany(300));
+
+            await repository.Query(new DeadLetterQuery { Take = 5, IncludeTotalCount = true });
+
+            Assert.Equal(2, recordingCommandInterceptor.SelectCommandTexts.Count);
+            Assert.Single(recordingCommandInterceptor.SelectCommandTexts, commandText => commandText.Contains("COUNT(*)"));
+        }
+    }
+
     public class Get
     {
         [Fact]
@@ -296,6 +613,34 @@ public class DeadLetterRepositoryTests
             await using var context = await factory.CreateDbContextAsync();
             var deadLetter = await context.DeadLetters.SingleAsync(d => d.MessageId == "msg-1");
             Assert.Null(deadLetter.RequeuedBy);
+        }
+
+        [Fact]
+        public async Task WithReplacementMessageBody_StoresItAndKeepsTheOriginalBody()
+        {
+            using var factory = new SqliteDbContextFactory();
+            var repository = new DeadLetterRepository(factory);
+            await repository.SaveBatch([new FakeDeadLetterMessage { MessageId = "msg-1", RawBody = "original" }], "orders");
+
+            await repository.MarkAsRequeued("msg-1", "admin", "corrected");
+
+            await using var context = await factory.CreateDbContextAsync();
+            var deadLetter = await context.DeadLetters.SingleAsync(d => d.MessageId == "msg-1");
+            Assert.Equal("original", deadLetter.MessageBody);
+            Assert.Equal("corrected", deadLetter.ReplacementMessageBody);
+        }
+
+        [Fact]
+        public async Task WithoutReplacementMessageBody_LeavesItNull()
+        {
+            using var factory = new SqliteDbContextFactory();
+            var repository = new DeadLetterRepository(factory);
+            await repository.SaveBatch([new FakeDeadLetterMessage { MessageId = "msg-1" }], "orders");
+
+            await repository.MarkAsRequeued("msg-1", "admin");
+
+            await using var context = await factory.CreateDbContextAsync();
+            Assert.Null((await context.DeadLetters.SingleAsync(d => d.MessageId == "msg-1")).ReplacementMessageBody);
         }
     }
 

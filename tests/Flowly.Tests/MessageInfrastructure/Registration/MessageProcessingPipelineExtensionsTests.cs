@@ -1,3 +1,5 @@
+using Flowly.MessageInfrastructure;
+using Flowly.MessageInfrastructure.HandlerSteps;
 using Flowly.MessageInfrastructure.BackgroundServices;
 using Flowly.MessageInfrastructure.MessageHandlingStrategies;
 using Flowly.MessageInfrastructure.Model;
@@ -20,7 +22,7 @@ public class MessageProcessingPipelineExtensionsTests
         {
             var serviceCollection = CreateServiceCollection();
             var handlerSettings = CreateHandlerSettings();
-            Func<IServiceProvider, IMessageHandlingStrategy<TestMessage>> strategyFactory = _ => new StandardMessageHandlingStrategy<TestMessage>();
+            Func<IServiceProvider, IMessageHandlingStrategy<TestMessage>> strategyFactory = _ => new StandardMessageHandlingStrategy<TestMessage>(HandlerStepRunner.None);
 
             serviceCollection.AddMessageProcessingPipeline(handlerSettings, strategyFactory);
 
@@ -32,7 +34,7 @@ public class MessageProcessingPipelineExtensionsTests
         {
             var serviceCollection = CreateServiceCollection();
             var handlerSettings = CreateHandlerSettings();
-            Func<IServiceProvider, IMessageHandlingStrategy<TestMessage>> strategyFactory = _ => new StandardMessageHandlingStrategy<TestMessage>();
+            Func<IServiceProvider, IMessageHandlingStrategy<TestMessage>> strategyFactory = _ => new StandardMessageHandlingStrategy<TestMessage>(HandlerStepRunner.None);
 
             serviceCollection.AddMessageProcessingPipeline(handlerSettings, strategyFactory);
 
@@ -51,7 +53,7 @@ public class MessageProcessingPipelineExtensionsTests
             Func<IServiceProvider, IMessageHandlingStrategy<TestMessage>> strategyFactory = _ =>
             {
                 factoryInvoked = true;
-                return new StandardMessageHandlingStrategy<TestMessage>();
+                return new StandardMessageHandlingStrategy<TestMessage>(HandlerStepRunner.None);
             };
 
             serviceCollection.AddMessageProcessingPipeline(handlerSettings, strategyFactory);
@@ -67,7 +69,7 @@ public class MessageProcessingPipelineExtensionsTests
         {
             var serviceCollection = CreateServiceCollection();
             var handlerSettings = CreateHandlerSettings();
-            Func<IServiceProvider, IMessageHandlingStrategy<TestMessage>> strategyFactory = _ => new StandardMessageHandlingStrategy<TestMessage>();
+            Func<IServiceProvider, IMessageHandlingStrategy<TestMessage>> strategyFactory = _ => new StandardMessageHandlingStrategy<TestMessage>(HandlerStepRunner.None);
 
             var returned = serviceCollection.AddMessageProcessingPipeline(handlerSettings, strategyFactory);
 
@@ -79,7 +81,7 @@ public class MessageProcessingPipelineExtensionsTests
         {
             var serviceCollection = CreateServiceCollection();
             var handlerSettings = new HandlerSettings<TestMessage>("specific-queue", "stub", "TestHandler", false, 1, 0, 0, 0, TimeSpan.Zero);
-            Func<IServiceProvider, IMessageHandlingStrategy<TestMessage>> strategyFactory = _ => new StandardMessageHandlingStrategy<TestMessage>();
+            Func<IServiceProvider, IMessageHandlingStrategy<TestMessage>> strategyFactory = _ => new StandardMessageHandlingStrategy<TestMessage>(HandlerStepRunner.None);
 
             serviceCollection.AddMessageProcessingPipeline(handlerSettings, strategyFactory);
 
@@ -96,6 +98,7 @@ public class MessageProcessingPipelineExtensionsTests
         serviceCollection.AddSingleton<IMessageBusClientRegistry>(new StubClientRegistry());
         serviceCollection.AddSingleton<IServiceScopeFactory>(new StubServiceScopeFactory());
         serviceCollection.AddSingleton<IHandlerInstrumentation, NullHandlerInstrumentation>();
+        serviceCollection.AddSingleton(new NonRetryableExceptionClassifier(new FlowlyOptions()));
         serviceCollection.AddSingleton<ILogger<MessageProcessingBackgroundService<TestMessage>>>(NullLogger<MessageProcessingBackgroundService<TestMessage>>.Instance);
         return serviceCollection;
     }

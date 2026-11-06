@@ -1,3 +1,8 @@
+---
+paths:
+  - "**/*.cs"
+---
+
 # Inline Single-Use Variables
 
 Do not declare a variable solely to pass it to a method once. If a value is used only in a single method call, inline it directly in that call.

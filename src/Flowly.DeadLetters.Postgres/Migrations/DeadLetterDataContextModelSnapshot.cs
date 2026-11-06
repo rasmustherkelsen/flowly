@@ -17,7 +17,7 @@ namespace Flowly.DeadLetters.Postgres.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.5")
+                .HasAnnotation("ProductVersion", "10.0.11")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -51,6 +51,9 @@ namespace Flowly.DeadLetters.Postgres.Migrations
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
+
+                    b.Property<string>("ReplacementMessageBody")
+                        .HasColumnType("text");
 
                     b.Property<DateTimeOffset?>("RequeuedAt")
                         .HasColumnType("timestamp with time zone");

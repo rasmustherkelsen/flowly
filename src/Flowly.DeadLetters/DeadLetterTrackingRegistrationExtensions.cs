@@ -6,6 +6,7 @@ using Flowly.DeadLetters.Services;
 using Flowly.DeadLetters.Telemetry;
 using Flowly.MessageInfrastructure.Model;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.Transport;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -136,7 +137,7 @@ public static class DeadLetterTrackingRegistrationExtensions
 
     /// <summary>
     ///     Registers dead letter ingestion for the queue derived from <typeparamref name="TMessage"/> without registering
-    ///     a consumer on the main queue. Use this in a standalone <c>DeadletterTracker</c> project that is responsible
+    ///     a consumer on the main queue. Use this in a standalone <c>DeadLetterTracker</c> project that is responsible
     ///     solely for reading dead-lettered messages from the broker and persisting them to the tracking store, while the
     ///     Receiver continues to process the main queue independently.
     ///     Requires <c>AddSqlServerDeadLetterTracking</c> or <c>AddPostgresDeadLetterTracking</c> to have been called first.
@@ -154,7 +155,7 @@ public static class DeadLetterTrackingRegistrationExtensions
             throw new InvalidOperationException("Dead letter tracking is not configured. Call AddSqlServerDeadLetterTracking() or AddPostgresDeadLetterTracking() before using AddDeadLetterSource().");
 
         var queueName = flowlyBuilder.TopologyNameResolver.ResolveQueueName<TMessage>();
-        var providerName = ProviderNameResolver.Resolve(flowlyBuilder.Services, typeof(TMessage));
+        var providerName = ProviderNameResolver.Resolve<IMessageBusClient>(flowlyBuilder.Services, typeof(TMessage));
 
         if (flowlyBuilder.Services.Any(s => s.ServiceType == typeof(DeadLetterIngestionSettings) && s.ImplementationInstance is DeadLetterIngestionSettings ds && ds.QueueName == queueName))
             return flowlyBuilder;

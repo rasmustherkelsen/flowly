@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Reflection;
+using System.Text.Json;
 using Flowly.Dashboard.Auth;
 using Flowly.DeadLetters;
 using Flowly.Jobs;
@@ -14,6 +16,9 @@ namespace Flowly.Dashboard;
 
 internal static class DashboardEndpoints
 {
+    internal const string TotalCountHeader = "X-Total-Count";
+    internal const int MaxDeadLetterPageSize = 1000;
+
     internal static void Map(IEndpointRouteBuilder endpoints, FlowlyDashboardOptions options)
     {
         var authEnabled = options.Authentication is not null;
@@ -194,14 +199,42 @@ internal static class DashboardEndpoints
         return Results.Ok();
     }
 
-    private static async Task<IResult> GetDeadLetters(HttpContext ctx, CancellationToken ct)
+    private static async Task<IResult> GetDeadLetters(HttpContext ctx, string? status, int? skip, int? take, CancellationToken ct)
     {
         var service = ctx.RequestServices.GetService<IDeadLetterService>();
         if (service is null)
             return Results.NotFound("Dead letter tracking is not configured in this application.");
 
-        var letters = await service.GetDeadLetters(ct);
-        return Results.Ok(letters);
+        DeadLetterStatus? statusFilter = null;
+
+        if (!string.IsNullOrEmpty(status))
+        {
+            if (!Enum.TryParse<DeadLetterStatus>(status, true, out var parsed) || !Enum.IsDefined(parsed))
+                return Results.BadRequest($"'{status}' is not a dead letter status. Use one of: {string.Join(", ", Enum.GetNames<DeadLetterStatus>())}.");
+
+            statusFilter = parsed;
+        }
+
+        if (skip is < 0)
+            return Results.BadRequest("skip must be zero or greater.");
+
+        if (take is < 1 or > MaxDeadLetterPageSize)
+            return Results.BadRequest($"take must be between 1 and {MaxDeadLetterPageSize}.");
+
+        var page = await service.QueryDeadLetters(
+            new DeadLetterQuery
+            {
+                Status = statusFilter,
+                Skip = skip ?? 0,
+                Take = take,
+                IncludeTotalCount = take is not null
+            },
+            ct);
+
+        if (page.TotalCount is { } totalCount)
+            ctx.Response.Headers[TotalCountHeader] = totalCount.ToString(CultureInfo.InvariantCulture);
+
+        return Results.Ok(page.Items);
     }
 
     private static async Task<IResult> RequeueDeadLetter(string messageId, HttpContext ctx, CancellationToken ct)
@@ -210,14 +243,29 @@ internal static class DashboardEndpoints
         if (service is null)
             return Results.NotFound("Dead letter tracking is not configured in this application.");
 
+        RequeueDeadLetterRequest? request;
+
         try
         {
-            await service.Requeue(messageId, cancellationToken: ct);
+            request = ctx.Request.HasJsonContentType() ? await ctx.Request.ReadFromJsonAsync<RequeueDeadLetterRequest>(ct) : null;
+        }
+        catch (JsonException)
+        {
+            return Results.BadRequest("The request body is not valid JSON.");
+        }
+
+        try
+        {
+            await service.Requeue(messageId, null, request?.MessageBody, ct);
             return Results.Ok();
         }
         catch (KeyNotFoundException)
         {
             return Results.NotFound($"Dead letter message '{messageId}' not found.");
+        }
+        catch (InvalidReplacementMessageBodyException ex)
+        {
+            return Results.BadRequest(ex.Message);
         }
         catch (InvalidOperationException ex)
         {

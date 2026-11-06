@@ -8,16 +8,61 @@ This page covers how provider routing works, how to configure multiple providers
 
 ## How routing works
 
-Every message type resolves to exactly one provider. The resolution order is:
+Every message type resolves to exactly one provider **per capability** (queue message, event, stream). The resolution order is:
 
-1. If the message type has a `[ProviderAffinity("name")]` attribute, it routes to the named provider.
-2. Otherwise, it routes to the **primary provider** — the first one registered via `UseAzureServiceBus` or `UseRabbitMq`.
+1. If the message type has a `[ProviderAffinity("name")]` attribute, it routes to the named provider. The named provider must be registered and must support the capability the contract is registered for.
+2. Otherwise, it routes to the **first registered provider that supports that capability**. Registration order is the tie-breaker.
+
+So with Azure Service Bus registered first and RabbitMQ second, a message or event without an attribute goes to Azure Service Bus, and a stream contract without an attribute goes to RabbitMQ, because Azure Service Bus has no stream support. With only providers that support the same things (two Azure Service Bus namespaces, say) this is the same as "the first registered provider".
+
+A provider that supports several capabilities and is registered first still wins every capability it supports. Put `[ProviderAffinity]` on a contract to send it elsewhere.
 
 This resolution happens at **registration time** (inside `Configure`), not at send time. The resolved provider name is baked into the handler background service and the message submitter. There is no runtime dispatch decision.
 
 ---
 
+## Provider capabilities
+
+A transport client is an `ITransportClient` that implements one or more capability interfaces. What a provider can host depends on which ones it implements:
+
+| Capability | Interface | Hosts | Azure Service Bus | RabbitMQ | InMemory | Azure Event Hubs |
+|---|---|---|---|---|---|---|
+| Queues | `IMessageBusClient` | `MessageHandler<T>`, `BatchMessageHandler<T>`, `JobHandler<T>`, `RecurringJobHandler`, `CallHandler<T, TReturn>`, their submitters and dead letter sources | yes | yes | yes | no |
+| Events | `IEventCapableMessageBusClient` | `EventHandlerBase<TEvent>` and event submitters | yes | yes | yes | no |
+| Streams | `IStreamCapableMessageBusClient` | `MessageStreamHandler<T>` and `IMessageRecorder` | no | yes | yes | yes |
+| Partitioned streams | `IPartitionedStreamCapableMessageBusClient` | contracts annotated with `[StreamPartitions]` | no | yes | yes | yes |
+
+A transport does not have to support queues. A **stream-only** transport implements `IStreamCapableMessageBusClient` without `IMessageBusClient`; it can host stream handlers and recorders but nothing queue-based. `Flowly.AzureEventHubs` is the stream-only transport that ships with Flowly. Its client implements both stream capabilities, so it hosts `MessageStreamHandler<T>`, `IMessageRecorder` and `[StreamPartitions]`; see the [Azure Event Hubs section of the README](../README.md#azure-event-hubs-transport).
+
+Flowly checks the capability when a handler or submitter is registered, so a mismatch fails at startup rather than on first use. Both failures name the contract, the capability and the registered providers with what each supports:
+
+```
+Message type 'TelemetryReading' requires a provider that supports message streaming, but no registered provider does.
+A provider supports it when its client implements IStreamCapableMessageBusClient.
+Registered providers: service-bus (queue-based messaging, events).
+Register a transport that supports message streaming before registering 'TelemetryReading'.
+```
+
+```
+Message type 'OrderCreated' has [ProviderAffinity("streams")] but provider 'streams' does not support queue-based messaging.
+The client must implement IMessageBusClient. Registered providers: service-bus (queue-based messaging, events); streams (message streaming).
+```
+
+### The primary provider
+
+The **primary provider** is the first registered provider that supports queue-based messaging. It is the provider Flowly uses where a registration has no contract of its own to route by: the recurring job execution lane, dead letter requeueing when no ingestion setting names the queue, and the queue discovery that the Aspire integration and the `flowly` CLI do for the primary provider. A stream-only provider is never primary, whatever its position in the registration order. When every registered provider supports queues, the primary provider is simply the first one registered.
+
+### Mixing a queue transport with a stream-only transport
+
+Because routing is per capability, the order of the `Use*` calls does not matter for a queue provider and a stream-only provider. A provider registered after another one needs an explicit `name`, so the stream-only provider is usually the named one. With Azure Service Bus and Azure Event Hubs registered in either order, queue messages and events go to Azure Service Bus and stream contracts go to the stream-only provider, with no `[ProviderAffinity]` anywhere. A stream contract that carries `[StreamPartitions]` still needs a provider that implements `IPartitionedStreamCapableMessageBusClient`; if the provider it resolves to does not, registration fails with a message naming the contract and the providers. Flowly deliberately does not search on for a partition-capable provider: the provider is chosen by the stream capability alone, and when that is not the one you want for a partitioned contract, put `[ProviderAffinity]` on it, so the provider a contract ends up on is never a side effect of which other transports happen to be registered.
+
+---
+
 ## Registering multiple providers
+
+The first provider registered may be left unnamed: it gets its transport's default name (`azure-service-bus`, `rabbitmq`, `in-memory` or `azure-event-hubs`). **Every later provider, of any transport, needs an explicit `name`**. Flowly counts the providers already registered regardless of transport, so a second provider without a name throws `InvalidOperationException` (for example "Secondary RabbitMQ providers must have an explicit name. Pass name: \"...\" to UseRabbitMq().") even when its transport differs from the first. The name is also what `[ProviderAffinity]` refers to.
+
+`name` is a separate argument from the connection. In `UseAzureServiceBus`, `UseRabbitMq` and `UseAzureEventHubs` the first positional argument is the connection (a connection string or the name of a connection string in configuration), so `UseAzureServiceBus("Rabbit")` sets the connection and leaves the provider unnamed. Always pass the name as `name:`. `UseInMemory(name)` is the exception: it has no connection, so the name is its first argument. A lone positional string in `UseRabbitMq`, as in `UseRabbitMq("RabbitMQ")`, is therefore the connection and the provider keeps its default name.
 
 ```csharp
 public class MyServiceConfiguration : Configuration
@@ -25,27 +70,27 @@ public class MyServiceConfiguration : Configuration
     public override void Configure(IFlowlyBuilder builder)
     {
         builder
-            // Primary provider — receives all messages with no explicit affinity
+            // First registered provider — receives all messages with no explicit affinity
             .UseAzureServiceBus("AzureServiceBus")
             .AddMessageHandler<OrderCreated, OrderCreatedHandler>()
             .AddMessageSubmitter<OrderCreated>()
 
             // Secondary provider — only receives messages tagged with [ProviderAffinity("Rabbit")]
-            .UseRabbitMq("Rabbit")
+            .UseRabbitMq("RabbitMQ", name: "Rabbit")
             .AddMessageHandler<AnalyticsEvent, AnalyticsEventHandler>()
             .AddMessageSubmitter<AnalyticsEvent>();
     }
 }
 ```
 
-`OrderCreated` has no attribute, so it resolves to the primary (`AzureServiceBus`). `AnalyticsEvent` is decorated:
+`OrderCreated` has no attribute, so it resolves to the first registered provider that supports queues (`AzureServiceBus`). `AnalyticsEvent` is decorated:
 
 ```csharp
 [ProviderAffinity("Rabbit")]
 public record AnalyticsEvent(Guid UserId, string EventName);
 ```
 
-The `"Rabbit"` string in the attribute must exactly match the name passed to `UseRabbitMq`.
+The `"Rabbit"` string in the attribute must exactly match the `name` passed to `UseRabbitMq`; the connection argument (`"RabbitMQ"`) plays no part in routing.
 
 ---
 
@@ -58,11 +103,14 @@ public record MyMessage(...);
 
 - Apply to the **message type**, not the handler.
 - The provider name is case-insensitive at validation but the convention is to match the registration exactly.
+- Without the attribute, a contract is routed per capability to the first registered provider that supports it (see [How routing works](#how-routing-works)). The attribute overrides that choice.
+- If the named provider does not support the capability the contract is registered for (for example a queue-based handler pinned to a stream-only provider), Flowly throws at startup naming the contract, the capability and the registered providers.
 - If the named provider is not registered, Flowly throws at startup:
 
   ```
   Message type 'MyMessage' has [ProviderAffinity("Rabbit")] but no provider named
-  'Rabbit' has been registered. Call UseRabbitMq() with name: "Rabbit" first.
+  'Rabbit' has been registered. Call UseAzureServiceBus() or UseRabbitMq() with name: "Rabbit" first.
+  Registered providers: AzureServiceBus (queue-based messaging, events).
   ```
 
 ---
@@ -126,7 +174,7 @@ builder
     .UseAzureServiceBus("AzureServiceBus")
     .AddMessageHandler<OrderCreated, OrderCreatedHandler>()
 
-    .UseRabbitMq("Rabbit")
+    .UseRabbitMq("RabbitMQ", name: "Rabbit")
     .AddMessageHandler<PageViewed, PageViewedHandler>();
 ```
 
@@ -136,10 +184,10 @@ During a migration from RabbitMQ to Azure Service Bus, both providers consume fr
 
 ```csharp
 builder
-    .UseAzureServiceBus("ASB")
+    .UseAzureServiceBus("AzureServiceBus")
     .AddMessageHandler<OrderCreated, OrderCreatedHandler>()  // will consume from "order-created"
 
-    .UseRabbitMq("OldBroker")
+    .UseRabbitMq("RabbitMQ", name: "OldBroker")
     .AddMessageHandler<OrderCreated, OldOrderCreatedHandler>(); // same queue name, different transport
 ```
 
@@ -152,10 +200,10 @@ Use distinct queue names, or ensure topology settings are identical across both:
 ```csharp
 // Fine — same settings, same transport type, same queue name (e.g., mirrored regions)
 builder
-    .UseAzureServiceBus("ASB-EastUS")
+    .UseAzureServiceBus("ServiceBusEastUS", name: "ASB-EastUS")
     .AddMessageHandler<OrderCreated, OrderCreatedHandler>()
 
-    .UseAzureServiceBus("ASB-WestUS")
+    .UseAzureServiceBus("ServiceBusWestUS", name: "ASB-WestUS")
     .AddMessageHandler<OrderCreated, OrderCreatedHandler>();  // identical settings: no conflict
 ```
 
@@ -180,19 +228,19 @@ This is intentional: the name is a logical identity. What broker backs it is a d
 
 ## appsettings.json connection string keys
 
-Each `Use*` call takes a connection string name, not the raw connection string itself:
+The first positional argument of `UseAzureServiceBus`, `UseRabbitMq` and `UseAzureEventHubs` is the connection: either the connection string itself or the name of an entry under `ConnectionStrings` (a name that is not found in configuration is used as the connection string). It is independent of the provider `name`, which every provider after the first must set:
 
 ```csharp
 builder
-    .UseAzureServiceBus("AzureServiceBus")   // reads ConnectionStrings:AzureServiceBus
-    .UseRabbitMq("Rabbit")                   // reads ConnectionStrings:Rabbit
+    .UseAzureServiceBus("AzureServiceBus")            // reads ConnectionStrings:AzureServiceBus; provider name "azure-service-bus"
+    .UseRabbitMq("RabbitMQ", name: "Rabbit")          // reads ConnectionStrings:RabbitMQ; provider name "Rabbit"
 ```
 
 ```json
 {
   "ConnectionStrings": {
     "AzureServiceBus": "Endpoint=sb://...",
-    "Rabbit": "amqp://guest:guest@localhost:5672"
+    "RabbitMQ": "amqp://guest:guest@localhost:5672"
   }
 }
 ```

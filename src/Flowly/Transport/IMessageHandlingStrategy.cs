@@ -26,11 +26,13 @@ public interface IMessageHandlingStrategy<TMessage> where TMessage : class
     Task HandleMessage(IReceivedMessage<TMessage> receivedMessage, IServiceProvider serviceProvider, CancellationToken cancellationToken);
 
     /// <summary>
-    ///     Called by the background service after all retry attempts have been exhausted. Implementations should perform
+    ///     Called by the background service after all retry attempts have been exhausted, or immediately when the failure
+    ///     is non-retryable (a <see cref="MessageRejectedException" /> or an exception type registered with
+    ///     <see cref="FlowlyOptions.NonRetryable{TException}" />). Implementations should perform
     ///     any final cleanup (e.g. mark a job as failed, write a telemetry event) and then dead-letter or complete the
     ///     message.
     /// </summary>
-    /// <param name="receivedMessage">The message that could not be processed after all retries.</param>
+    /// <param name="receivedMessage">The message that could not be processed after all retries, or that was rejected.</param>
     /// <param name="exception">The last exception thrown during message handling.</param>
     /// <param name="serviceProvider">A scoped <see cref="IServiceProvider" /> for this message's processing scope.</param>
     /// <param name="cancellationToken">A cancellation token that can be used to abort the operation.</param>

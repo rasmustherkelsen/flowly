@@ -37,4 +37,6 @@ internal class DeadLetter : IDeadLetter
 
     [MaxLength(200)]
     public string? RequeuedBy { get; set; }
+
+    public string? ReplacementMessageBody { get; set; }
 }

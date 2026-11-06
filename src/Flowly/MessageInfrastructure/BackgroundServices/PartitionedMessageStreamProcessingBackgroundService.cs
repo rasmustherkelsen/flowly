@@ -1,5 +1,6 @@
 using Flowly.MessageInfrastructure.Model;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessageInfrastructure.StreamPartitions;
 using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.Transport;
 using Microsoft.Extensions.DependencyInjection;
@@ -10,19 +11,30 @@ namespace Flowly.MessageInfrastructure.BackgroundServices;
 /// <summary>
 ///     Supervises one <see cref="StreamPartitionRunner{TMessage,THandler}" /> per partition currently owned by this
 ///     process, starting and stopping them as <see cref="IPartitionedStreamConsumer{TMessage}" /> reports ownership
-///     changes. A halted partition (retries exhausted) only stops that partition — the others, and the service
-///     itself, keep running, since partitions are independent logs.
+///     changes. A halted partition (retries exhausted) only holds that partition — its runner keeps the failed batch and
+///     applies backpressure until it is resumed or revoked, while the others, and the service itself, keep running, since
+///     partitions are independent logs. A runner is always cancelled before its processor is stopped, so a runner held by
+///     backpressure cannot keep the transport from stopping. Records the state of every partition this process
+///     owns (running, waiting for an unresolved start position, halted) into the <see cref="IStreamPartitionStateRegistry" />;
+///     the transport only reports assignment and revocation. A revocation of a partition without a loop (it never became assigned) removes only the waiting entry this service
+///     recorded for it, so a late revoke cannot delete the entry of a newer assignment.
 /// </summary>
 internal sealed class PartitionedMessageStreamProcessingBackgroundService<TMessage, THandler>(
     IMessageBusClientRegistry clientRegistry,
     PartitionedMessageStreamHandlerSettings<TMessage, THandler> handlerSettings,
     IServiceScopeFactory serviceScopeFactory,
     ILogger<PartitionedMessageStreamProcessingBackgroundService<TMessage, THandler>> logger,
-    IHandlerInstrumentation handlerInstrumentation) : MessageProcessingBackgroundServiceBase<TMessage>
+    IHandlerInstrumentation handlerInstrumentation,
+    IStreamPartitionStateRegistry stateRegistry,
+    IStreamPartitionResumeRegistry resumeRegistry) : MessageProcessingBackgroundServiceBase<TMessage>
     where TMessage : class
     where THandler : MessageStreamHandler<TMessage>
 {
+    private readonly StreamPartitionStateReporter _stateReporter = new(
+        stateRegistry, handlerInstrumentation, handlerSettings.HandlerName, handlerSettings.QueueName, handlerSettings.ConsumerName);
+
     private readonly Dictionary<int, ActiveRunner> _activeRunners = new();
+    private readonly Dictionary<int, long> _waitingVersions = new();
     private readonly HashSet<int> _initializedPartitions = new();
     private readonly Lock _lock = new();
     private IPartitionedStreamConsumer<TMessage>? _consumer;
@@ -31,24 +43,21 @@ internal sealed class PartitionedMessageStreamProcessingBackgroundService<TMessa
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _stoppingToken = stoppingToken;
-        var client = clientRegistry.GetClient(handlerSettings.ProviderName);
+        var partitionedClient = clientRegistry.GetClient<IPartitionedStreamCapableMessageBusClient>(handlerSettings.ProviderName);
 
-        if (client is not IPartitionedStreamCapableMessageBusClient partitionedClient)
-            throw new InvalidOperationException(
-                $"The message bus client for provider '{handlerSettings.ProviderName}' does not support partitioned message streaming. " +
-                $"The client must implement {nameof(IPartitionedStreamCapableMessageBusClient)}.");
-
-        var messagingSystem = client.MessagingSystem;
+        var transportClient = clientRegistry.GetTransportClient(handlerSettings.ProviderName);
+        var messagingSystem = transportClient.MessagingSystem;
+        var startOffsetResolver = transportClient as IStreamStartOffsetResolver;
         MessageStreamCheckpointHelper.ThrowIfCheckpointRegisteredForInMemory<TMessage>(serviceScopeFactory, messagingSystem);
 
         _consumer = await partitionedClient.CreatePartitionedStreamConsumer<TMessage>(
             handlerSettings.QueueName,
             handlerSettings.PartitionCount,
-            (partition, ct) => MessageStreamCheckpointHelper.ResolveStartPosition<TMessage>(
-                serviceScopeFactory, handlerSettings.ConsumerName, partition, handlerSettings.StartPosition,
-                handlerSettings.HandlerName, handlerSettings.QueueName, handlerInstrumentation, ct,
-                initializeCheckpoint: IsFirstAssignment(partition)),
-            new MessageBusProcessorOptions(handlerSettings.MaxMessagesBeforeProcessing, MessageBusReceiveMode.PeekLock),
+            (partition, ct) => ResolveStartPosition(partition, startOffsetResolver, ct),
+            new MessageBusProcessorOptions(handlerSettings.MaxMessagesBeforeProcessing, MessageBusReceiveMode.PeekLock)
+            {
+                ConsumerName = handlerSettings.ConsumerName
+            },
             logger);
 
         _consumer.PartitionAssigned += (partition, processor) =>
@@ -58,6 +67,9 @@ internal sealed class PartitionedMessageStreamProcessingBackgroundService<TMessa
         };
 
         _consumer.PartitionRevoked += StopPartitionLoop;
+
+        if (_consumer is IStartPositionRetryingConsumer retryingConsumer)
+            retryingConsumer.StartPositionResolutionExhausted += RecordWaiting;
 
         await _consumer.StartProcessingMessages(stoppingToken);
         logger.LogInformation("{HandlerName} waiting for partitioned stream messages on queue '{QueueName}' ({PartitionCount} partitions)",
@@ -72,11 +84,49 @@ internal sealed class PartitionedMessageStreamProcessingBackgroundService<TMessa
         }
     }
 
-    private bool IsFirstAssignment(int partition)
+    private async Task<StartPosition> ResolveStartPosition(int partition, IStreamStartOffsetResolver? startOffsetResolver, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await MessageStreamCheckpointHelper.ResolveStartPosition<TMessage>(
+                serviceScopeFactory, handlerSettings.ConsumerName, partition, handlerSettings.StartPosition,
+                handlerSettings.HandlerName, handlerSettings.QueueName, handlerInstrumentation, logger, cancellationToken,
+                initializeCheckpoint: !IsCheckpointInitialized(partition), startOffsetResolver: startOffsetResolver,
+                checkpointInitialized: () => MarkCheckpointInitialized(partition));
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            if (_consumer is not IStartPositionRetryingConsumer)
+                RecordWaiting(partition, exception);
+
+            throw;
+        }
+    }
+
+    private void RecordWaiting(int partition, Exception exception)
     {
         lock (_lock)
         {
-            return _initializedPartitions.Add(partition);
+            if (_activeRunners.ContainsKey(partition))
+                return;
+
+            _waitingVersions[partition] = _stateReporter.Waiting(partition, exception).Version;
+        }
+    }
+
+    private bool IsCheckpointInitialized(int partition)
+    {
+        lock (_lock)
+        {
+            return _initializedPartitions.Contains(partition);
+        }
+    }
+
+    private void MarkCheckpointInitialized(int partition)
+    {
+        lock (_lock)
+        {
+            _initializedPartitions.Add(partition);
         }
     }
 
@@ -95,7 +145,9 @@ internal sealed class PartitionedMessageStreamProcessingBackgroundService<TMessa
             messagingSystem,
             serviceScopeFactory,
             logger,
-            handlerInstrumentation);
+            handlerInstrumentation,
+            _stateReporter.Running(partition),
+            resumeRegistry);
 
         var cts = CancellationTokenSource.CreateLinkedTokenSource(_stoppingToken);
         var runTask = runner.Run(cts.Token);
@@ -104,6 +156,7 @@ internal sealed class PartitionedMessageStreamProcessingBackgroundService<TMessa
         lock (_lock)
         {
             _activeRunners[partition] = activeRunner;
+            _waitingVersions.Remove(partition);
         }
 
         _ = runTask.ContinueWith(_ =>
@@ -129,10 +182,16 @@ internal sealed class PartitionedMessageStreamProcessingBackgroundService<TMessa
     private async Task StopPartitionLoop(int partition)
     {
         ActiveRunner? entry;
+        long? waitingVersion = null;
         lock (_lock)
         {
             _activeRunners.Remove(partition, out entry);
+
+            if (_waitingVersions.Remove(partition, out var recordedVersion))
+                waitingVersion = recordedVersion;
         }
+
+        _stateReporter.Revoked(partition, entry is null ? waitingVersion : null);
 
         if (entry is null) return;
 
@@ -156,6 +215,19 @@ internal sealed class PartitionedMessageStreamProcessingBackgroundService<TMessa
 
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
+        try
+        {
+            await StopRunnersAndConsumer(cancellationToken);
+            await base.StopAsync(cancellationToken);
+        }
+        finally
+        {
+            _stateReporter.Stopped();
+        }
+    }
+
+    private async Task StopRunnersAndConsumer(CancellationToken cancellationToken)
+    {
         List<ActiveRunner> entries;
         lock (_lock)
         {
@@ -165,7 +237,6 @@ internal sealed class PartitionedMessageStreamProcessingBackgroundService<TMessa
 
         foreach (var entry in entries)
         {
-            await entry.Runner.StopProcessing(cancellationToken);
             await entry.Cts.CancelAsync();
 
             try
@@ -176,6 +247,7 @@ internal sealed class PartitionedMessageStreamProcessingBackgroundService<TMessa
             {
             }
 
+            await entry.Runner.StopProcessing(cancellationToken);
             await DisposeEntry(entry);
         }
 
@@ -184,8 +256,6 @@ internal sealed class PartitionedMessageStreamProcessingBackgroundService<TMessa
             await _consumer.StopProcessing(cancellationToken);
             await _consumer.DisposeAsync();
         }
-
-        await base.StopAsync(cancellationToken);
     }
 
     private sealed record ActiveRunner(StreamPartitionRunner<TMessage, THandler> Runner, Task RunTask, CancellationTokenSource Cts);

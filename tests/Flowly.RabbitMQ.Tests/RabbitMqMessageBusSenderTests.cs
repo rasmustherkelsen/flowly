@@ -37,6 +37,40 @@ public class RabbitMqMessageBusSenderTests
             Assert.Equal(1, exception.MaxSizeBytes);
             Assert.True(exception.ActualSizeBytes > 1);
         }
+
+        [Fact]
+        public async Task WhenMessageIdIsProvided_PublishesItUnchanged()
+        {
+            var recordingChannel = new RecordingChannel();
+            var sender = new RabbitMqMessageBusSender("test-queue", recordingChannel, null);
+
+            await sender.SendMessage(new TestMessage("hello"), new MessageProperties("original-id", "correlation"));
+
+            Assert.Equal("original-id", recordingChannel.LastBasicProperties!.MessageId);
+        }
+
+        [Fact]
+        public async Task WithCustomProperties_PublishesThemAsHeaders()
+        {
+            var recordingChannel = new RecordingChannel();
+            var sender = new RabbitMqMessageBusSender("test-queue", recordingChannel, null);
+            var messageProperties = new MessageProperties("m", "c") { CustomProperties = new Dictionary<string, string> { ["tenant"] = "contoso" } };
+
+            await sender.SendMessage(new TestMessage("hello"), messageProperties);
+
+            Assert.Equal("contoso", recordingChannel.LastBasicProperties!.Headers!["tenant"]);
+        }
+
+        [Fact]
+        public async Task WhenMessageIdIsMissing_GeneratesOne()
+        {
+            var recordingChannel = new RecordingChannel();
+            var sender = new RabbitMqMessageBusSender("test-queue", recordingChannel, null);
+
+            await sender.SendMessage(new TestMessage("hello"), MessageProperties.Empty);
+
+            Assert.False(string.IsNullOrEmpty(recordingChannel.LastBasicProperties!.MessageId));
+        }
     }
 
     public class SendRawMessage
@@ -67,6 +101,64 @@ public class RabbitMqMessageBusSenderTests
             Assert.Equal("test-queue", exception.QueueName);
             Assert.Equal(1, exception.MaxSizeBytes);
             Assert.True(exception.ActualSizeBytes > 1);
+        }
+
+        [Fact]
+        public async Task SetsNonEmptyMessageId()
+        {
+            var recordingChannel = new RecordingChannel();
+            var sender = new RabbitMqMessageBusSender("test-queue", recordingChannel, null);
+
+            await sender.SendRawMessage("hello", new Dictionary<string, object>());
+
+            Assert.False(string.IsNullOrEmpty(recordingChannel.LastBasicProperties!.MessageId));
+            Assert.True(Guid.TryParse(recordingChannel.LastBasicProperties.MessageId, out _));
+        }
+
+        [Fact]
+        public async Task SendingTheSameMessageTwice_UsesDifferentMessageIds()
+        {
+            var recordingChannel = new RecordingChannel();
+            var sender = new RabbitMqMessageBusSender("test-queue", recordingChannel, null);
+
+            await sender.SendRawMessage("hello", new Dictionary<string, object>());
+            var firstMessageId = recordingChannel.LastBasicProperties!.MessageId;
+            await sender.SendRawMessage("hello", new Dictionary<string, object>());
+            var secondMessageId = recordingChannel.LastBasicProperties!.MessageId;
+
+            Assert.NotEqual(firstMessageId, secondMessageId);
+        }
+
+        [Fact]
+        public async Task PreservesApplicationPropertiesAsHeaders()
+        {
+            var recordingChannel = new RecordingChannel();
+            var sender = new RabbitMqMessageBusSender("test-queue", recordingChannel, null);
+            var applicationProperties = new Dictionary<string, object>
+            {
+                [FlowlyMessageProperties.TargetSubscription] = "warehouse",
+                ["custom-header"] = "value"
+            };
+
+            await sender.SendRawMessage("hello", applicationProperties);
+
+            var headers = recordingChannel.LastBasicProperties!.Headers!;
+            Assert.Equal("warehouse", headers[FlowlyMessageProperties.TargetSubscription]);
+            Assert.Equal("value", headers["custom-header"]);
+            Assert.False(headers.ContainsKey(FlowlyMessageProperties.RetryCount));
+        }
+
+        [Fact]
+        public async Task PublishesPersistentMessageToTheQueueOnTheDefaultExchange()
+        {
+            var recordingChannel = new RecordingChannel();
+            var sender = new RabbitMqMessageBusSender("test-queue", recordingChannel, null);
+
+            await sender.SendRawMessage("hello", new Dictionary<string, object>());
+
+            Assert.Equal("", recordingChannel.LastExchange);
+            Assert.Equal("test-queue", recordingChannel.LastRoutingKey);
+            Assert.Equal(DeliveryModes.Persistent, recordingChannel.LastBasicProperties!.DeliveryMode);
         }
 
         [Fact]
@@ -196,10 +288,14 @@ public class RabbitMqMessageBusSenderTests
     private class RecordingChannel : SpyChannel
     {
         public IReadOnlyBasicProperties? LastBasicProperties { get; private set; }
+        public string? LastExchange { get; private set; }
+        public string? LastRoutingKey { get; private set; }
 
         public override ValueTask BasicPublishAsync<TProperties>(string exchange, string routingKey, bool mandatory, TProperties basicProperties, ReadOnlyMemory<byte> body, CancellationToken cancellationToken = default)
         {
             LastBasicProperties = basicProperties;
+            LastExchange = exchange;
+            LastRoutingKey = routingKey;
             return ValueTask.CompletedTask;
         }
     }

@@ -1,38 +1,53 @@
 using System.Diagnostics;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessageInfrastructure.SendSteps;
 using Flowly.MessageInfrastructure.Telemetry;
+using Flowly.Transport;
 
 namespace Flowly.MessageInfrastructure.Senders;
 
 internal class MessageSubmitter<TMessage>(
     IMessageBusClientRegistry clientRegistry,
-    MessageSubmitter<TMessage>.QueueSettings queueSettings,
-    ISubmitterInstrumentation submitterInstrumentation) : IMessageSubmitter<TMessage>
+    string queueName,
+    string providerName,
+    ISubmitterInstrumentation submitterInstrumentation,
+    ISendStepRunner sendStepRunner,
+    bool isStream = false) : IMessageSubmitter<TMessage>
 {
-    public class QueueSettings(string queueName, string providerName)
+    public Task Submit(
+        TMessage message,
+        CancellationToken cancellationToken = default,
+        string? partitionKey = null,
+        IReadOnlyDictionary<string, string>? customProperties = null)
     {
-        public string QueueName { get; } = queueName;
-        public string ProviderName { get; } = providerName;
+        CustomMessageProperties.Validate(customProperties, nameof(customProperties));
+
+        return sendStepRunner.Run(message!, cancellationToken, () => SubmitCore(message, cancellationToken, partitionKey, customProperties));
     }
 
-    public async Task Submit(TMessage message, CancellationToken cancellationToken = default, string? partitionKey = null)
+    private async Task SubmitCore(TMessage message, CancellationToken cancellationToken, string? partitionKey, IReadOnlyDictionary<string, string>? customProperties)
     {
         var sw = Stopwatch.StartNew();
-        var client = clientRegistry.GetClient(queueSettings.ProviderName);
+        var client = clientRegistry.GetTransportClient(providerName);
         var messageId = Guid.NewGuid().ToString();
-        using var activity = submitterInstrumentation.StartSending(queueSettings.QueueName, client.MessagingSystem, messageId);
+        using var activity = submitterInstrumentation.StartSending(queueName, client.MessagingSystem, messageId);
         activity.ApplyTagsFrom(message);
 
         try
         {
-            var sender = await client.CreateMessageBusSender(queueSettings.QueueName);
-            await sender.SendMessage(message, new MessageProperties(messageId, string.Empty, PartitionKey: partitionKey), cancellationToken);
-            submitterInstrumentation.RecordSent(queueSettings.QueueName, sw.Elapsed.TotalMilliseconds);
+            var sender = await CreateSender(client);
+            await sender.SendMessage(message, new MessageProperties(messageId, string.Empty, PartitionKey: partitionKey) { CustomProperties = customProperties ?? CustomMessageProperties.Empty },
+                cancellationToken);
+            submitterInstrumentation.RecordSent(queueName, sw.Elapsed.TotalMilliseconds);
         }
         catch
         {
-            submitterInstrumentation.RecordFailed(queueSettings.QueueName);
+            submitterInstrumentation.RecordFailed(queueName);
             throw;
         }
     }
+
+    private Task<IMessageBusSender> CreateSender(ITransportClient client) => isStream
+        ? client.Require<IStreamCapableMessageBusClient>(providerName).CreateStreamSender(queueName)
+        : client.Require<IMessageBusClient>(providerName).CreateMessageBusSender(queueName);
 }

@@ -4,6 +4,8 @@ namespace Flowly.RabbitMQ;
 
 internal sealed class RabbitMqConnectionLifetime(RabbitMqConnectionPool connectionPool, RabbitMqMessageBusClient messageBusClient) : IHostedService
 {
+    internal RabbitMqConnectionPool ConnectionPool => connectionPool;
+
     public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
     public async Task StopAsync(CancellationToken cancellationToken)

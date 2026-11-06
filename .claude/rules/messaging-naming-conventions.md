@@ -1,3 +1,8 @@
+---
+paths:
+  - "**/*.cs"
+---
+
 # Messaging Naming Conventions
 
 ## Topic vs Exchange

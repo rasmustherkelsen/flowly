@@ -20,6 +20,11 @@ public interface IMessageCaller
     /// </summary>
     /// <param name="message">The call message to send.</param>
     /// <param name="cancellationToken">Token that can cancel the wait before the timeout.</param>
+    /// <param name="customProperties">
+    ///     Optional application-defined string key/value pairs delivered with the request message and readable by the receiver in
+    ///     <see cref="MessageProperties.CustomProperties" />. Keys starting with <c>flowly-</c> and the keys
+    ///     <c>traceparent</c> and <c>tracestate</c> are reserved. The values are not authenticated.
+    /// </param>
     /// <typeparam name="TMessage">
     ///     The call message type. Both <typeparamref name="TMessage" /> and <typeparamref name="TReturn" /> are
     ///     typically inferred from the argument — no explicit type arguments needed.
@@ -32,7 +37,11 @@ public interface IMessageCaller
     /// <exception cref="OperationCanceledException">
     ///     Thrown when <paramref name="cancellationToken" /> is cancelled or the call times out.
     /// </exception>
-    Task<TReturn> Call<TMessage, TReturn>(TMessage message, CancellationToken cancellationToken = default)
+    /// <exception cref="ArgumentException"><paramref name="customProperties" /> contains an empty or reserved key or a null value.</exception>
+    Task<TReturn> Call<TMessage, TReturn>(
+        TMessage message,
+        CancellationToken cancellationToken = default,
+        IReadOnlyDictionary<string, string>? customProperties = null)
         where TMessage : class, IReturns<TReturn>
         where TReturn : class;
 }
