@@ -14,7 +14,7 @@ Flowly is a queue-based messaging abstraction for .NET — provider-agnostic han
 | [Job Tracking Quickstart](quickstart-job-tracking.md) | Extend any quickstart with job state tracking using SQL Server, PostgreSQL, or SQLite |
 | [Dead Letter Tracking Quickstart](quickstart-dead-letter-tracking.md) | Extend any quickstart with dead letter tracking using SQL Server, PostgreSQL, or SQLite |
 | [Dashboard Authentication](dashboard-authentication.md) | Secure the Flowly Dashboard with Azure Entra ID or Google — step-by-step OAuth2/OIDC setup with viewer/submitter tiers |
-| [User Guide](../README.md) | Full reference: handlers, events, jobs, retries, dead letters, recurring jobs, CLI, OpenTelemetry, templates |
+| [User Guide](../README.md) | Full reference: handlers, events, handler steps and send steps, jobs, retries, dead letters, recurring jobs, CLI, OpenTelemetry, templates |
 | [Multi-Provider Configuration](multi-provider.md) | Running multiple message brokers in the same service |
 | [Attributes Reference](attributes-reference.md) | Every handler and message/event contract attribute in one table |
 

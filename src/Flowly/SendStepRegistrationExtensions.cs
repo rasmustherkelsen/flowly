@@ -13,6 +13,12 @@ public static class SendStepRegistrationExtensions
     ///     registered as a scoped service and resolved from a fresh scope created for each send, so it does not share the caller's
     ///     scope. The first registered step is the outermost.
     /// </summary>
+    /// <remarks>
+    ///     A step runs for <see cref="IMessageSender" />, <see cref="IMessageRecorder" />, <see cref="IEventSender" />,
+    ///     <see cref="IMessageCaller" /> and <c>IJobMessageSender</c> sends of the configuration whose message type matches the
+    ///     filter. Flowly's internal messages never pass through send steps. See <see cref="SendStep{TMessageFilter}" /> for the
+    ///     exception, short-circuit and scope semantics.
+    /// </remarks>
     /// <param name="flowlyBuilder">A valid IFlowlyBuilder instance</param>
     /// <typeparam name="TSendStep">
     ///     The step type. Must derive from <see cref="SendStep{TMessageFilter}" /> or <see cref="SendStep" />.

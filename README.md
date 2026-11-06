@@ -49,6 +49,7 @@ See [`src/Flowly.ManagementApi/README.md`](src/Flowly.ManagementApi/README.md) f
 - [Sending Messages](#sending-messages)
 - [Message Streaming](#message-streaming)
 - [Events (Fan-Out)](#events-fan-out)
+- [Handler steps and send steps](#handler-steps-and-send-steps)
 - [Topology Name Resolution](#topology-name-resolution)
 - [Retry Policy](#retry-policy)
 - [Dead Letter Tracking](#dead-letter-tracking)
@@ -81,6 +82,7 @@ See [`src/Flowly.ManagementApi/README.md`](src/Flowly.ManagementApi/README.md) f
 - **Job tracking built-in** — first-class support for tracking long-running job state in SQL Server, PostgreSQL, or SQLite
 - **Retry and dead letter handling** — configurable retry with delay, and a persistent dead letter store
 - **Recurring jobs** — CRON-based scheduling with guaranteed single-execution semantics
+- **Handler steps and send steps** — cross-cutting behavior such as audit, logging scope, idempotency or authorization around handlers and before sends, selected by message type
 - **Local development first** — tooling for emulator configs, .NET Aspire integration, and Docker Compose
 
 ---
@@ -807,6 +809,238 @@ builder
 ```
 
 When a dead-lettered event is requeued, Flowly re-publishes it to the topic with a `flowly-target-subscription` header. Only the originating subscriber's filter accepts the message, so only that subscriber receives the requeued event.
+
+---
+
+## Handler steps and send steps
+
+Cross-cutting behavior such as a logging scope, an audit trail, validation, ambient context, a unit of work, idempotency or authorization ends up repeated in every handler and every call site. Flowly has two seams for it, both registered once per `Configuration` and selected by message type:
+
+- A **handler step** wraps the `Handle` call of a handler on the receiving side.
+- A **send step** runs in the caller's process before a message is handed to the transport on the sending side.
+
+Use a step when the same concern applies to many messages. Keep logic that belongs to one message in its handler.
+
+### Writing a handler step
+
+Derive from `HandlerStep<TFilter>`. The step runs only for messages whose runtime type is assignable to `TFilter`; the non-generic `HandlerStep` runs for every message. `Handle(context, next)` is the primitive: the default implementation awaits `OnBeforeHandlerExecution`, then `next()` (the inner steps and the handler), then `OnAfterHandlerExecution`. Override the hooks for simple cases and `Handle` when you need to wrap the handler.
+
+An audit step needs only the after hook:
+
+```csharp
+public interface IEnableAuditLog;
+
+public record OrderPlaced(Guid OrderId, decimal Total) : IEnableAuditLog;
+
+public class AuditStep(IAuditLog auditLog) : HandlerStep<IEnableAuditLog>
+{
+    protected override Task OnAfterHandlerExecution(HandlerStepContext<IEnableAuditLog> context)
+        => auditLog.Append(context.Message, context.Properties.MessageId, context.CancellationToken);
+}
+```
+
+A logging scope has to stay open around the handler, so it overrides `Handle`:
+
+```csharp
+public class LoggingScopeStep(ILogger<LoggingScopeStep> logger) : HandlerStep
+{
+    public override async Task Handle(HandlerStepContext<object> context, HandlerStepDelegate next)
+    {
+        using (logger.BeginScope(new Dictionary<string, object>
+               {
+                   ["MessageId"] = context.Properties.MessageId,
+                   ["CorrelationId"] = context.Properties.CorrelationId
+               }))
+        {
+            await next();
+        }
+    }
+}
+```
+
+An idempotency step skips the handler by not calling `next`:
+
+```csharp
+public class IdempotencyStep(IProcessedMessageStore store) : HandlerStep
+{
+    public override async Task Handle(HandlerStepContext<object> context, HandlerStepDelegate next)
+    {
+        if (await store.Contains(context.Properties.MessageId, context.CancellationToken))
+        {
+            return;
+        }
+
+        await next();
+        await store.Add(context.Properties.MessageId, context.CancellationToken);
+    }
+}
+```
+
+`IAuditLog` and `IProcessedMessageStore` are your own services. The context carries the typed `Message`, the transport-level `Properties` (`MessageId`, `CorrelationId`, `RetryCount`, `DeliveryCount`, ...), the `HandlerType` (the concrete handler class, so a step can inspect its attributes) and the `CancellationToken` of the delivery. The `HandlerStepContext<T>` constructor is public, so a step can be unit tested with a hand-built context.
+
+### Selecting messages with a marker interface
+
+The filter type is usually an interface the message contract implements, in the same way a contract owns `[QueueName]` or `IOpenTelemetryTagsProvider`. `AuditStep` above runs for `OrderPlaced` because it implements `IEnableAuditLog` and for no other message. A base class works as a filter too, and `HandlerStep` (equivalent to `HandlerStep<object>`) needs no marker. Matching uses the runtime type of the message and is cached per type.
+
+### Registering handler steps
+
+```csharp
+public class ReceiverConfig : Configuration
+{
+    public override void Configure(IFlowlyBuilder builder) =>
+        builder
+            .AddMessageHandler<OrderPlaced, OrderPlacedHandler>()
+            .AddHandlerStep<LoggingScopeStep>()   // outermost
+            .AddHandlerStep<IdempotencyStep>()
+            .AddHandlerStep<AuditStep>();         // innermost, closest to the handler
+}
+```
+
+- A step applies to every message, event, call and job handler registered in the same `Configuration` whose message type matches the filter. It does not matter whether the step is registered before or after the handler. There is no per-handler attachment or opt-out.
+- The first registered step is the outermost. Order matters: with the order above a duplicate message is skipped before the audit step runs.
+- Steps are scoped services resolved from the same per-message scope as the handler, so a step and the handler share scoped services such as one `DbContext`.
+- A step that matches the message type of no registered handler, and a step type registered twice, are reported as warnings at host start-up.
+
+### What a step wraps
+
+A step wraps exactly the user's `Handle` call. Corrupt-body dead lettering, retry republishing, completion, dead lettering, job state messages and call replies stay outside the steps, and the steps run inside the Flowly handling span, so `Activity.Current` is the Flowly span. Flowly emits no span or metric per step; a step can start its own `Activity`.
+
+- **Exceptions.** An exception from a step or the handler unwinds through the enclosing steps (their `finally` blocks run) and then takes Flowly's existing retry and dead letter path unchanged.
+- **Retries.** Steps run again on every attempt, because a retry is a new delivery. `Properties.RetryCount` tells a step which attempt it is.
+- **`OnAfterHandlerExecution`** runs only when the inner steps and the handler completed without an exception. A step that needs to react to a failure overrides `Handle` and uses `try`/`catch`/`finally`.
+- **Not calling `next` skips the handler and every inner step, and the delivery completes as a success.** This is how an idempotency step works, and it is the only short-circuit mechanism.
+- **A step that catches an exception and does not rethrow also makes the delivery succeed.** A message that "succeeds" without the handler having run is hard to diagnose, so use both capabilities deliberately.
+- **Cancellation.** `CancellationToken` is the token the handler receives, cancelled on shutdown. To stop, do not call `next` or throw.
+
+### Rejecting messages permanently
+
+Throw `MessageRejectedException(reason)` from a step to reject a message that retrying cannot fix, for example when it is invalid or the sender is not authorized:
+
+```csharp
+public class PositiveTotalStep : HandlerStep<OrderPlaced>
+{
+    protected override Task OnBeforeHandlerExecution(HandlerStepContext<OrderPlaced> context)
+        => context.Message.Total > 0
+            ? Task.CompletedTask
+            : throw new MessageRejectedException("Order total must be positive");
+}
+```
+
+Flowly dead-letters the message immediately with the reason, regardless of `[RetryPolicy]`; a job handler fails the job with the reason instead. A domain exception that must not depend on Flowly is registered with `options.NonRetryable<TException>()` and gets the same treatment, subclasses included:
+
+```csharp
+builder.AddFlowly<ReceiverConfig>(options => options.NonRetryable<NotAuthorizedException>());
+```
+
+See [Rejecting a message without retries](#rejecting-a-message-without-retries) for the handler kinds this covers.
+
+### Handler kinds covered
+
+| Handler | Steps | Notes |
+|---|---|---|
+| `MessageHandler<T>` | Yes | Reference case |
+| `EventHandlerBase<TEvent>` | Yes | Each subscriber has its own delivery, scope, retry and dead letter path; steps filter on the runtime type of the event |
+| `JobHandler<T>` | Yes | Steps run between the `Started` and `Completed` job state messages while the alive signal keeps running. A step that throws fails the job attempt like the handler; a step that does not call `next` completes the job without running the handler |
+| `CallHandler<T, TReturn>` | Request side | A step sees the request, never the response (see the limitations below) |
+| `BatchMessageHandler<T>` | No | |
+| `MessageStreamHandler<T>` | No | |
+| `RecurringJobHandler` | No | The handler receives no message, so a message filter has nothing to match |
+
+### Writing a send step
+
+Derive from `SendStep<TFilter>` (or the non-generic `SendStep` for every message) and override `Handle(context, next)`. `next()` performs the actual send. The context carries the `Message` and the `CancellationToken`. This example authorizes the current user before a command is published:
+
+```csharp
+public interface IRequiresPermission
+{
+    string Permission { get; }
+}
+
+public record ApproveInvoice(Guid InvoiceId) : IRequiresPermission
+{
+    public string Permission => "invoices.approve";
+}
+
+public class NotAuthorizedException(string permission) : Exception($"Missing permission '{permission}'");
+
+public class RequirePermissionSendStep(ICurrentUser user, IAuthorization authorization) : SendStep<IRequiresPermission>
+{
+    public override async Task Handle(SendStepContext<IRequiresPermission> context, SendStepDelegate next)
+    {
+        if (user.Principal is not { Identity.IsAuthenticated: true })
+        {
+            throw new NotAuthorizedException(context.Message.Permission);
+        }
+
+        if (!await authorization.IsAllowed(user.Principal, context.Message.Permission, context.CancellationToken))
+        {
+            throw new NotAuthorizedException(context.Message.Permission);
+        }
+
+        await next();
+    }
+}
+```
+
+Register it on the sending side's `Configuration`:
+
+```csharp
+public class SenderConfig : Configuration
+{
+    public override void Configure(IFlowlyBuilder builder) =>
+        builder
+            .AddMessageSubmitter<ApproveInvoice>()
+            .AddSendStep<RequirePermissionSendStep>();
+}
+```
+
+`ICurrentUser` and `IAuthorization` are your own services. Send steps are a separate type from handler steps because sender and receiver are separate deployables: a step that exists on the sending side does not pull its dependencies into the receiving process. Filtering and ordering follow the same rules as handler steps (the first registered step is the outermost).
+
+Send steps run for `IMessageSender.Send`, `IMessageRecorder.Record`, `IEventSender.RaiseEvent`, `IMessageCaller.Call` and `IJobMessageSender.QueueJob`:
+
+- An exception thrown by a step reaches the caller of the send unchanged. Nothing is published and there is no retry. Throwing a domain exception is the normal way to reject.
+- A step that does not call `next` silently drops a `Send`, `Record` or `RaiseEvent`.
+- A `Call` needs a reply and a `QueueJob` needs a `JobId` to return, so when a step does not call `next` they throw an `InvalidOperationException` stating that a send step prevented the call or job.
+- For `Call`, the steps run before the pending call is registered and before the call timeout starts, so a step that throws rejects the call immediately instead of ending in a timeout.
+- For `QueueJob`, the steps run before anything is sent, so a rejected job leaves no orphan job record.
+- Steps run outside the send span and metrics, so a rejected send is not counted as a failed send.
+- Flowly's own internal messages, such as job state and scheduling messages, and retry, reply, dead letter requeue and recurring-job scheduler sends never pass through send steps.
+
+### Send step scope and identity
+
+`IMessageSender`, `IMessageRecorder`, `IEventSender`, `IMessageCaller` and `IJobMessageSender` are singletons, so a send step cannot be resolved from the caller's request scope. Flowly creates a fresh dependency injection scope for each send, only when at least one step matches the message, and resolves the steps from it. With no matching step the send is a direct call.
+
+The consequence is that a scoped service the caller's own middleware populated is a different, unpopulated instance inside the step. Take identity from a source that is not bound to the DI scope. A good pattern is an `ICurrentUser` that is a thin reader of `IHttpContextAccessor` and is never populated per request, so it returns the same answer in a controller, in a handler of the request and in a send step:
+
+```csharp
+public interface ICurrentUser
+{
+    ClaimsPrincipal? Principal { get; }
+}
+
+public class CurrentUser(IHttpContextAccessor httpContextAccessor) : ICurrentUser
+{
+    public ClaimsPrincipal? Principal => httpContextAccessor.HttpContext?.User;
+}
+
+services.AddHttpContextAccessor();
+services.AddSingleton<ICurrentUser, CurrentUser>();
+```
+
+`IHttpContextAccessor.HttpContext` is visible in the step when the send is awaited within the request's async flow. Outside a request (a hosted service, or a handler sending follow-up messages) there is no principal, so a step must handle `Principal` being `null` explicitly, as `RequirePermissionSendStep` does.
+
+### Trace context
+
+`Activity.Current` is async-local, so it flows through the per-send scope unchanged: inside a step it is the caller's activity (for an ASP.NET Core request, the request activity), the `flowly.send` span is its child, and the trace continues into the receiver. A step that starts its own `Activity` propagates correctly as long as that activity is current while `next()` runs.
+
+### Limitations
+
+- **Handler kinds.** Steps cover message, event, job and call handlers (the call's request side). Batch, stream and recurring handlers are not covered.
+- **No replacing.** `next` takes no arguments: a step cannot replace the message, the cancellation token or, for a call, the response. A step never sees the response of a call handler.
+- **No per-message timeout step.** A timeout step would have to hand the handler a different cancellation token, which a step cannot do.
+- **Call handlers.** A call handler that is rejected or skipped by a step, or that fails, produces no reply, so the caller times out. "Audited" means the handler finished, not that the reply was delivered: if sending the reply fails, the delivery is retried and the handler and its steps run again, so an audit store should key on `MessageId` plus `RetryCount`.
+- **No transaction sharing on the sending side.** A send step cannot join the caller's `DbContext` or transaction, so send steps cannot implement a transactional outbox.
+- **Identity on the receiving side.** `MessageProperties` has no identity field, so the user has to travel in the message (for example an `IssuedBy` property on the command). A receiver step on the same marker is a useful second guard that catches a sender lacking its send step, but it cannot defend against someone publishing manually: whoever can publish can forge the identity. The broker's access control is the real boundary.
 
 ---
 

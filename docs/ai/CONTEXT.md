@@ -301,6 +301,8 @@ await messageSender.Send(new MyMessage { ... });
 
 Register the submitter so the queue is tracked: `.AddMessageSubmitter<MyMessage>()`
 
+Every sender (`Send`, `Record`, `RaiseEvent`, `Call`, `QueueJob`) runs the registered send steps for the message before it leaves the process; see "Handler Steps and Send Steps" under Retry Policy.
+
 #### Job submission (returns a trackable JobId)
 
 Inject `IJobMessageSender`:
@@ -418,6 +420,67 @@ Apply `[RetryPolicy(maxRetries, delaySeconds)]` to any `MessageHandler<T>`, `Job
 **Job retry state:** The `Job` DB row stays in `Started` during retries. The `RetryAttempt` column is updated on each attempt. On exhaustion, the job transitions to `Failed`.
 
 Retry logic lives in the Flowly core layer (`ServiceBusMessageHandlerBackgroundServiceBase`) and is transport-agnostic. The transport is responsible for honoring `ScheduledEnqueueTime` on send (ASB: `ServiceBusMessage.ScheduledEnqueueTime`).
+
+### Handler Steps and Send Steps
+
+Cross-cutting behavior around handlers (**handler steps**) and before sends (**send steps**), selected by message type. All types are in the `Flowly` namespace of the core package, so every transport gets them. User-facing guide: the "Handler steps and send steps" section of `README.md`.
+
+**Registration** (on `IFlowlyBuilder`, once per `Configuration`):
+
+| Method | Step base class | Lifetime |
+|---|---|---|
+| `AddHandlerStep<T>()` | `HandlerStep<TMessageFilter>` or non-generic `HandlerStep` (`HandlerStep<object>`) | Scoped, plus a singleton `HandlerStepRegistration(stepType, filterType)` |
+| `AddSendStep<T>()` | `SendStep<TMessageFilter>` or non-generic `SendStep` | Scoped, plus a singleton `SendStepRegistration(stepType, filterType)` |
+
+The filter type is read from the step's `HandlerStep<>` / `SendStep<>` base type at registration (`StepFilterTypeResolver`); a type not deriving from the base class throws `ArgumentException`. A step runs when the runtime type of the message is assignable to the filter (interface, base class or `object`). `HandlerStepRunner` and `SendStepRunner` cache the ordered matching step types per runtime message type; with no match the call site is a direct call. Registration order is execution order, the first registered step is the outermost, and a step applies to every handler (or sender) of the same `Configuration` whose message type matches, whether it is registered before or after the handler.
+
+**Handler step API.** `HandlerStep<T>.Handle(HandlerStepContext<T> context, HandlerStepDelegate next)` is the primitive; the default awaits `OnBeforeHandlerExecution`, `next()`, `OnAfterHandlerExecution` (both virtual, protected). `HandlerStepContext<T>` has `Message`, `Properties` (`MessageProperties`), `HandlerType` (concrete handler class) and `CancellationToken`, and a public constructor for unit tests. `HandlerStepDelegate` takes no arguments, so a step cannot replace the message or the token; the context has no response. The base class implements the internal `IHandlerStepInvoker`, which casts `object` to the filter type.
+
+**Handler step execution semantics:**
+- *Wrapped region:* exactly the user's `Handle` call. Corrupt-body dead lettering, retry republishing, completion, dead lettering, job state messages and call replies stay outside the steps. Steps run inside the existing handling `Activity`; no per-step span or metric.
+- *Exceptions:* from a step or the handler they unwind through the enclosing steps and then take the existing retry / dead letter / job-failed logic unchanged.
+- *Short-circuit:* returning without calling `next` skips the handler and the inner steps and the delivery completes as a success. A step that swallows an exception also makes the delivery succeed. There is no abort flag.
+- *`OnAfterHandlerExecution`* runs only when the inner steps and the handler completed without an exception.
+- *Retries:* steps run on every attempt (a retry is a new delivery); `Properties.RetryCount` identifies the attempt.
+- *Scope:* steps are resolved from the same per-message DI scope as the handler (`serviceProvider` / `scope.ServiceProvider` at the call site), so they share scoped services such as a `DbContext`.
+- *Ordering:* registration order, first registered outermost; the runner folds the chain from the innermost step outwards around the handler call.
+- *Cancellation:* the token is the delivery's processing token, cancelled on shutdown.
+
+**`IHandlerStepRunner.Run` call sites** (each wraps only the user's `Handle`):
+
+| Handler kind | Call site |
+|---|---|
+| `MessageHandler<T>` | `StandardMessageHandlingStrategy.HandleMessage` |
+| `CallHandler<T, TReturn>` | `CallMessageHandlingStrategy.HandleMessage`, around `handler.InvokeHandle`; the request side only. The reply is sent after the steps. When a step did not call `next`, no return message exists, a warning is logged, the delivery completes and the caller times out. A failed or dead-lettered call produces no reply either. If sending the reply fails the delivery is retried and the steps run again |
+| `JobHandler<T>` | `JobMessageHandlingStrategy.HandleMessage` in `Flowly.Jobs`, between the `Started` and `Completed` job state messages, with the alive signal running. A step exception is wrapped in `JobException` like a handler exception and fails the job attempt; a step that skips `next` completes the job without running the handler |
+| `EventHandlerBase<TEvent>` | `EventHandlerBackgroundService.OnProcessMessage`, inline (no strategy); each subscriber has its own delivery, scope, retry and dead letter path |
+| `BatchMessageHandler<T>`, `MessageStreamHandler<T>`, `RecurringJobHandler` | Not routed through the runner |
+
+**Startup diagnostics.** `HandlerStepConfigurationValidator` (hosted service, so registration order does not matter) logs a warning for a step type registered more than once and for a step whose filter matches the message type of no registered message, event, call or job handler (`RegisteredHandlerMessageTypes`). There is no equivalent validator for send steps.
+
+**Non-retryable failures.** `MessageRejectedException(reason)` (also `(reason, innerException)`; `Reason` equals `Message`), or any exception assignable to a type registered with `FlowlyOptions.NonRetryable<TException>()` (subclasses included, repeated registration ignored), skips `[RetryPolicy]`. `NonRetryableExceptionClassifier` (singleton built from `FlowlyOptions`) unwraps `IHandlerExceptionWrapper` (implemented by the Jobs `JobException`) and decides. `MessageProcessingBackgroundService` (message, call and job handlers) and `EventHandlerBackgroundService` consult it before republishing; a non-retryable failure calls `OnRetriesExhausted` immediately (dead letter with `exception.Message` as reason, or `FlowlysysJobFailedMessage` for a job) and records a failed metric. It has no effect on batch, stream and recurring handlers. A rejected call is dead-lettered and the caller times out.
+
+**Send step API.** `SendStep<T>.Handle(SendStepContext<T> context, SendStepDelegate next)` with default `next()`. `SendStepContext<T>` has `Message` and `CancellationToken` and a public constructor. `next()` performs the actual send. The base class implements the internal `ISendStepInvoker`.
+
+**Send step execution semantics:**
+- *Wrapped region:* the submitter's whole submit logic, so steps run outside the send span and metrics. A step that throws is not counted as a failed send, and a step's own `Activity` becomes the parent of the `flowly.send` span.
+- *Exceptions:* propagate to the caller unchanged; nothing is published; no retry.
+- *Short-circuit:* not calling `next` silently drops a `Send`, `Record` or `RaiseEvent`. `CallSubmitter` and `JobSubmitter` capture the result inside `next`; when it never ran they throw `InvalidOperationException` ("A send step prevented ...").
+- *Scope:* the senders are singletons holding the root provider, so `SendStepRunner` creates a fresh `AsyncScope` per send and only when at least one step matches. Scoped state the caller populated (for example a request-middleware-populated current user holder) is not visible; identity must come from a source not bound to the DI scope (`IHttpContextAccessor`). A send step cannot join the caller's transaction or `DbContext`.
+- *Async-local state:* `Activity.Current` and `HttpContext` (through `IHttpContextAccessor`, within the request's async flow) flow through the fresh scope.
+
+**`ISendStepRunner.Run` call sites:**
+
+| Sender | Call site |
+|---|---|
+| `IMessageSender.Send`, `IMessageRecorder.Record` | `MessageSubmitter` (same submitter; streams are flagged) |
+| `IEventSender.RaiseEvent` | `EventSubmitter` |
+| `IMessageCaller.Call` | `CallSubmitter`; steps run before the pending call is registered and before the timeout starts, so a throwing step rejects the call immediately |
+| `IJobMessageSender.QueueJob` | `JobSubmitter` in `Flowly.Jobs`; steps run before the create-job-state message, so a rejected job leaves no job record |
+
+**System-message exclusion.** Flowly's internal messages implement the internal marker `IFlowlySystemMessage` (all `Flowlysys*` messages in `Flowly.Jobs`, enforced by `FlowlysysMessageConventionTests`), and `SendStepRunner` sends them directly without steps. Retry republishing, call replies, dead letter requeue and the recurring-job scheduler use the transport clients directly and never reach the submitters.
+
+**Trade-offs to keep in mind.** The `next` delegates are parameterless on purpose, so there is no per-message timeout step. Identity does not travel in `MessageProperties` (no header bag), so a receiver-side authorization step has to rely on a field in the message and cannot defend against manual publishing. Design record: `docs/proposals/handler-pipeline-assessment.md`.
 
 ### Custom OpenTelemetry Tags on Message Spans
 
@@ -1154,6 +1217,11 @@ Rules:
 | Default topology name resolver | `Flowly/MessageInfrastructure/KebabCaseTopologyNameResolver.cs` |
 | Event topology interfaces | `Flowly/MessagingAbstractions/IEventTopologyCreator.cs`, `IEventCapableMessageBusClient.cs` |
 | Recurring job infra | `Flowly/MessageInfrastructure/RecurringJobs/` |
+| Handler step API | `Flowly/HandlerStep.cs`, `HandlerStepContext.cs`, `HandlerStepDelegate.cs`, `HandlerStepRegistrationExtensions.cs` |
+| Handler step runner, registry, start-up validator | `Flowly/MessageInfrastructure/HandlerSteps/` |
+| Send step API | `Flowly/SendStep.cs`, `SendStepContext.cs`, `SendStepDelegate.cs`, `SendStepRegistrationExtensions.cs` |
+| Send step runner, registry, system-message marker | `Flowly/MessageInfrastructure/SendSteps/` |
+| Non-retryable failures | `Flowly/MessageRejectedException.cs`, `Flowly/MessageInfrastructure/NonRetryableExceptionClassifier.cs`, `FlowlyOptions.NonRetryable<T>()` |
 | Handler attributes | `Flowly/MessageInfrastructure/Receivers/` (e.g. `RetryPolicyAttribute.cs`) |
 | Azure SB wiring | `Flowly.AzureServiceBus/AzureServiceBusRegistration.cs` |
 | Azure SB settlement | `Flowly.AzureServiceBus/ReceivedMessage.cs` |
