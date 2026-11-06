@@ -15,10 +15,14 @@ internal sealed class MessageStreamProcessingBackgroundService<TMessage, THandle
     ILogger<MessageStreamProcessingBackgroundService<TMessage, THandler>> logger,
     IHandlerInstrumentation handlerInstrumentation,
     IStreamPartitionStateRegistry stateRegistry,
-    IStreamPartitionResumeRegistry resumeRegistry) : MessageProcessingBackgroundServiceBase<TMessage>
+    IStreamPartitionResumeRegistry resumeRegistry,
+    TimeProvider? timeProvider = null) : MessageProcessingBackgroundServiceBase<TMessage>
     where TMessage : class
     where THandler : MessageStreamHandler<TMessage>
 {
+    private static readonly TimeSpan InitialStartPositionRetryDelay = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan MaxStartPositionRetryDelay = TimeSpan.FromSeconds(30);
+
     private readonly StreamPartitionStateReporter _stateReporter = new(
         stateRegistry, handlerInstrumentation, handlerSettings.HandlerName, handlerSettings.QueueName, handlerSettings.ConsumerName);
 
@@ -31,10 +35,12 @@ internal sealed class MessageStreamProcessingBackgroundService<TMessage, THandle
         var messagingSystem = streamCapableClient.MessagingSystem;
         MessageStreamCheckpointHelper.ThrowIfCheckpointRegisteredForInMemory<TMessage>(serviceScopeFactory, messagingSystem);
 
-        var startPosition = await MessageStreamCheckpointHelper.ResolveStartPosition<TMessage>(
-            serviceScopeFactory, handlerSettings.ConsumerName, null, handlerSettings.StartPosition,
-            handlerSettings.HandlerName, handlerSettings.QueueName, handlerInstrumentation, logger, stoppingToken,
-            startOffsetResolver: streamCapableClient as IStreamStartOffsetResolver);
+        var resolvedStartPosition = await ResolveStartPositionUntilAvailable(streamCapableClient as IStreamStartOffsetResolver, stoppingToken);
+
+        if (resolvedStartPosition is not { } startPosition)
+        {
+            return;
+        }
 
         var processor = await streamCapableClient.CreateStreamProcessor<TMessage>(
             handlerSettings.QueueName,
@@ -62,6 +68,39 @@ internal sealed class MessageStreamProcessingBackgroundService<TMessage, THandle
             resumeRegistry);
 
         await _runner.Run(stoppingToken);
+    }
+
+    private async Task<StartPosition?> ResolveStartPositionUntilAvailable(IStreamStartOffsetResolver? startOffsetResolver, CancellationToken stoppingToken)
+    {
+        var delay = InitialStartPositionRetryDelay;
+
+        try
+        {
+            while (true)
+            {
+                try
+                {
+                    return await MessageStreamCheckpointHelper.ResolveStartPosition<TMessage>(
+                        serviceScopeFactory, handlerSettings.ConsumerName, null, handlerSettings.StartPosition,
+                        handlerSettings.HandlerName, handlerSettings.QueueName, handlerInstrumentation, logger, stoppingToken,
+                        startOffsetResolver: startOffsetResolver);
+                }
+                catch (Exception exception) when (!stoppingToken.IsCancellationRequested)
+                {
+                    _stateReporter.Waiting(null, exception);
+                    logger.LogWarning(exception,
+                        "{HandlerName} could not resolve the start position of stream queue '{QueueName}', retrying in {RetryDelay}",
+                        handlerSettings.HandlerName, handlerSettings.QueueName, delay);
+                }
+
+                await Task.Delay(delay, timeProvider ?? TimeProvider.System, stoppingToken);
+                delay = TimeSpan.FromTicks(Math.Min(delay.Ticks * 2, MaxStartPositionRetryDelay.Ticks));
+            }
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            return null;
+        }
     }
 
     public override async Task StopAsync(CancellationToken cancellationToken)

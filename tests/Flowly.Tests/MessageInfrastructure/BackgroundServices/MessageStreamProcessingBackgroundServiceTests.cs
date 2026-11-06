@@ -25,7 +25,8 @@ public class MessageStreamProcessingBackgroundServiceTests
             IStreamStartOffsetResolver? startOffsetResolver = null,
             string? consumerName = null,
             StreamPartitionStateRegistry? stateRegistry = null,
-            StreamPartitionResumeRegistry? resumeRegistry = null)
+            StreamPartitionResumeRegistry? resumeRegistry = null,
+            TimeProvider? timeProvider = null)
     {
         var processor = new FakeStreamProcessor();
         FakeStreamClient client = startOffsetResolver is null ? new FakeStreamClient(processor) : new ResolverCapableStreamClient(processor, startOffsetResolver);
@@ -57,7 +58,8 @@ public class MessageStreamProcessingBackgroundServiceTests
             NullLogger<MessageStreamProcessingBackgroundService<TestMessage, SpyStreamHandler>>.Instance,
             instrumentation,
                 stateRegistry ?? new StreamPartitionStateRegistry(TimeProvider.System),
-                resumeRegistry ?? new StreamPartitionResumeRegistry());
+                resumeRegistry ?? new StreamPartitionResumeRegistry(),
+                timeProvider);
 
         return (backgroundService, processor, handler, instrumentation, checkpoint);
     }
@@ -633,17 +635,141 @@ public class MessageStreamProcessingBackgroundServiceTests
         }
 
         [Fact]
-        public async Task WhenStartPositionResolutionFails_TheServiceFaultsWithoutRecordingAState()
+        public async Task WhenStartPositionResolutionFails_RecordsWaitingWithTheErrorAndKeepsTheServiceAlive()
         {
             var registry = new StreamPartitionStateRegistry(TimeProvider.System);
+            var timeProvider = new ManualTimeProvider();
             var checkpoint = new FakeCheckpoint { OnInitialize = _ => throw new TimeoutException("store down") };
-            var (backgroundService, _, _, _, _) = CreateService(maxMessages: 1, maxRetries: 0, checkpoint: checkpoint, stateRegistry: registry);
+            var (backgroundService, _, _, instrumentation, _) = CreateService(
+                maxMessages: 1,
+                maxRetries: 0,
+                checkpoint: checkpoint,
+                stateRegistry: registry,
+                timeProvider: timeProvider);
 
             await backgroundService.StartAsync(CancellationToken.None);
+            await timeProvider.NextTimer();
 
-            await Assert.ThrowsAsync<TimeoutException>(() => backgroundService.ExecuteTask!.WaitAsync(TestTimeout));
+            var waiting = registry.Get(Key)!;
+            Assert.Equal(StreamPartitionState.Waiting, waiting.State);
+            Assert.Equal("store down", waiting.LastError!.Message);
+            Assert.Equal(typeof(TimeoutException).FullName, waiting.LastError.Type);
+            Assert.Equal([(null, StreamPartitionState.Waiting)], instrumentation.Transitions);
+            Assert.False(backgroundService.ExecuteTask!.IsCompleted);
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task WhenStartPositionResolutionFailsOnceThenSucceeds_TransitionsFromWaitingToRunning()
+        {
+            var registry = new StreamPartitionStateRegistry(TimeProvider.System);
+            var timeProvider = new ManualTimeProvider();
+            var attempts = 0;
+            var checkpoint = new FakeCheckpoint { OnInitialize = _ => ++attempts == 1 ? throw new TimeoutException("store down") : Task.CompletedTask };
+            var (backgroundService, processor, _, instrumentation, _) = CreateService(
+                maxMessages: 1,
+                maxRetries: 0,
+                checkpoint: checkpoint,
+                stateRegistry: registry,
+                timeProvider: timeProvider);
+            await backgroundService.StartAsync(CancellationToken.None);
+
+            (await timeProvider.NextTimer()).Fire();
+            await processor.Started.Task.WaitAsync(TestTimeout);
+
+            Assert.Equal(StreamPartitionState.Running, registry.Get(Key)!.State);
+            Assert.Equal([(null, StreamPartitionState.Waiting), (null, StreamPartitionState.Running)], instrumentation.Transitions);
+            Assert.Equal(StartPosition.First(), processor.Client!.ReceivedStartPosition);
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task WhenStartPositionResolutionKeepsFailing_RetriesWithADoublingDelayCappedAtThirtySeconds()
+        {
+            var timeProvider = new ManualTimeProvider();
+            var checkpoint = new FakeCheckpoint { OnInitialize = _ => throw new TimeoutException("store down") };
+            var (backgroundService, _, _, _, _) = CreateService(maxMessages: 1, maxRetries: 0, checkpoint: checkpoint, timeProvider: timeProvider);
+            await backgroundService.StartAsync(CancellationToken.None);
+            var delays = new List<TimeSpan>();
+
+            for (var attempt = 0; attempt < 7; attempt++)
+            {
+                var timer = await timeProvider.NextTimer();
+                delays.Add(timer.DueTime);
+                timer.Fire();
+            }
+
+            await timeProvider.NextTimer();
+            Assert.Equal([1, 2, 4, 8, 16, 30, 30], delays.Select(delay => delay.TotalSeconds));
+            Assert.Equal(8, checkpoint.InitializeCalls.Count);
+            Assert.False(backgroundService.ExecuteTask!.IsCompleted);
+
+            await backgroundService.StopAsync(CancellationToken.None);
+        }
+
+        [Fact]
+        public async Task WhenStoppedDuringTheRetryWait_CompletesWithoutFaultingAndRemovesTheEntry()
+        {
+            var registry = new StreamPartitionStateRegistry(TimeProvider.System);
+            var timeProvider = new ManualTimeProvider();
+            var checkpoint = new FakeCheckpoint { OnInitialize = _ => throw new TimeoutException("store down") };
+            var (backgroundService, processor, _, _, _) = CreateService(
+                maxMessages: 1,
+                maxRetries: 0,
+                checkpoint: checkpoint,
+                stateRegistry: registry,
+                timeProvider: timeProvider);
+            await backgroundService.StartAsync(CancellationToken.None);
+            await timeProvider.NextTimer();
+
+            await backgroundService.StopAsync(CancellationToken.None);
+
+            Assert.True(backgroundService.ExecuteTask!.IsCompletedSuccessfully);
+            Assert.False(processor.Started.Task.IsCompleted);
             Assert.Empty(registry.GetAll());
         }
+    }
+
+    private sealed class ManualTimeProvider : TimeProvider
+    {
+        private readonly Channel<ManualTimer> _scheduled = Channel.CreateUnbounded<ManualTimer>();
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            var timer = new ManualTimer(callback, state, _scheduled.Writer);
+            timer.Change(dueTime, period);
+
+            return timer;
+        }
+
+        public async Task<ManualTimer> NextTimer() => await _scheduled.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    private sealed class ManualTimer(TimerCallback callback, object? state, ChannelWriter<ManualTimer> scheduled) : ITimer
+    {
+        public TimeSpan DueTime { get; private set; } = Timeout.InfiniteTimeSpan;
+
+        public bool Change(TimeSpan dueTime, TimeSpan period)
+        {
+            DueTime = dueTime;
+
+            if (dueTime != Timeout.InfiniteTimeSpan)
+            {
+                scheduled.TryWrite(this);
+            }
+
+            return true;
+        }
+
+        public void Fire() => callback(state);
+
+        public void Dispose()
+        {
+        }
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
     private record TestMessage(string Payload);
