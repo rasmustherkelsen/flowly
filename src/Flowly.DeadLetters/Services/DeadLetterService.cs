@@ -32,7 +32,7 @@ internal class DeadLetterService(
                          ?? throw new KeyNotFoundException($"Dead letter with ID '{messageId}' was not found.");
 
         if (deadLetter.Status != DeadLetterStatus.Pending)
-            throw new InvalidOperationException(
+            throw new DeadLetterStatusConflictException(
                 $"Dead letter '{messageId}' has status '{deadLetter.Status}' and cannot be requeued.");
 
         if (replacementMessageBody is not null)
@@ -54,7 +54,7 @@ internal class DeadLetterService(
         if (!await repository.MarkAsRequeued(messageId, requeuedBy, replacementMessageBody, cancellationToken))
         {
             activity?.SetStatus(ActivityStatusCode.Error);
-            throw new InvalidOperationException($"Dead letter '{messageId}' is no longer pending and cannot be requeued.");
+            throw new DeadLetterStatusConflictException($"Dead letter '{messageId}' is no longer pending and cannot be requeued.");
         }
 
         try
@@ -80,7 +80,7 @@ internal class DeadLetterService(
                          ?? throw new KeyNotFoundException($"Dead letter with ID '{messageId}' was not found.");
 
         if (deadLetter.Status == DeadLetterStatus.Requeued)
-            throw new InvalidOperationException(
+            throw new DeadLetterStatusConflictException(
                 $"Dead letter '{messageId}' has already been requeued and cannot be discarded.");
 
         var originalContext = DeadLetterPropertiesConverter.ParseActivityContext(deadLetter.MessageProperties);
@@ -89,7 +89,7 @@ internal class DeadLetterService(
         try
         {
             if (!await repository.DeletePending(messageId, cancellationToken))
-                throw new InvalidOperationException($"Dead letter '{messageId}' is no longer pending and cannot be discarded.");
+                throw new DeadLetterStatusConflictException($"Dead letter '{messageId}' is no longer pending and cannot be discarded.");
 
             instrumentation.RecordDiscarded(deadLetter.QueueName, DeadLetterDiscardReason.UserInitiated);
         }

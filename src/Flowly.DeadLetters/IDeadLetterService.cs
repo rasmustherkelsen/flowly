@@ -40,7 +40,7 @@ public interface IDeadLetterService
     ///     Requeues a dead letter message back to its original queue or topic subscription for reprocessing.
     ///     The message must have <see cref="DeadLetterStatus.Pending"/> status to be requeued.
     ///     Throws <see cref="KeyNotFoundException"/> if no message with <paramref name="messageId"/> exists,
-    ///     or <see cref="InvalidOperationException"/> if the message is not in a pending state, including when a concurrent
+    ///     or <see cref="DeadLetterStatusConflictException"/> if the message is not in a pending state, including when a concurrent
     ///     requeue or discard of the same message won the race: only one caller publishes.
     /// </summary>
     /// <param name="messageId">The unique identifier of the dead letter message to requeue.</param>
@@ -81,7 +81,8 @@ public interface IDeadLetterService
     /// </param>
     /// <param name="cancellationToken">A <see cref="CancellationToken"/> that can be used to cancel the operation.</param>
     /// <exception cref="KeyNotFoundException">No message with <paramref name="messageId"/> exists.</exception>
-    /// <exception cref="InvalidOperationException">The message is not in a pending state.</exception>
+    /// <exception cref="DeadLetterStatusConflictException">The message is not in a pending state.</exception>
+    /// <exception cref="InvalidOperationException">The requeue could not be carried out for another reason, such as no registered transport provider for the queue or a client that cannot address event subscriptions.</exception>
     /// <exception cref="InvalidReplacementMessageBodyException"><paramref name="replacementMessageBody"/> is not an acceptable replacement.</exception>
     /// <exception cref="NotSupportedException">The default implementation was called with a replacement body.</exception>
     Task Requeue(string messageId, string? requeuedBy, string? replacementMessageBody, CancellationToken cancellationToken = default)
@@ -93,7 +94,7 @@ public interface IDeadLetterService
     ///     Discards a dead letter message, permanently deleting it from the tracking store.
     ///     The message must have <see cref="DeadLetterStatus.Pending"/> status to be discarded.
     ///     Throws <see cref="KeyNotFoundException"/> if no message with <paramref name="messageId"/> exists,
-    ///     or <see cref="InvalidOperationException"/> if the message has already been requeued, including when a concurrent requeue won the race.
+    ///     or <see cref="DeadLetterStatusConflictException"/> if the message has already been requeued, including when a concurrent requeue won the race.
     /// </summary>
     /// <param name="messageId">The unique identifier of the dead letter message to discard.</param>
     /// <param name="cancellationToken">A <see cref="CancellationToken"/> that can be used to cancel the operation.</param>

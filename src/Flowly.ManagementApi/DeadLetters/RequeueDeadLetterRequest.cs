@@ -3,8 +3,9 @@ namespace Flowly.ManagementApi.DeadLetters;
 /// <summary>The request body for requeuing a dead letter.</summary>
 /// <param name="MessageId">The message id of the dead letter to requeue.</param>
 /// <param name="RequeuedBy">
-///     An optional identifier of the person or process requesting the requeue, stored as the audit trail of the dead letter. When it is <see langword="null" /> or blank the
-///     identity of the authenticated caller is stored instead (none for an API key, which carries no identity), never a value taken from a request header.
+///     An optional identifier of the person or process requesting the requeue, stored as the audit trail of the dead letter only when the caller has no authenticated identity of its
+///     own (an API key carries none). The identity of an authenticated caller always wins over this value, so a caller cannot record the requeue under another name, and no value is
+///     ever taken from a request header.
 /// </param>
 /// <param name="MessageBody">
 ///     An optional replacement for the stored message body: the message is republished with this body instead, and the stored body is kept in the dead letter record next to it.

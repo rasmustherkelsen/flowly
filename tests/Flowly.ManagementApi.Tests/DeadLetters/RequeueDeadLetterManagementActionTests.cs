@@ -93,13 +93,25 @@ public class RequeueDeadLetterManagementActionTests
         }
 
         [Fact]
-        public async Task WithAnExplicitRequester_StoresItInsteadOfThePrincipalIdentity()
+        public async Task WithAnExplicitRequesterAndAPrincipalIdentity_StoresThePrincipalIdentity()
         {
             var deadLetterService = new FakeDeadLetterService();
             var deadLetter = deadLetterService.Add("m1");
             var requeueDeadLetterManagementAction = new RequeueDeadLetterManagementAction();
 
             await requeueDeadLetterManagementAction.Requeue(deadLetterService, new RequeueDeadLetterRequest("m1", "ops"), AuthenticatedUser(new Claim(ClaimTypes.Name, "alice")), ManagementApiAuthMode.OAuth2, CancellationToken.None);
+
+            Assert.Equal("alice", deadLetter.RequeuedBy);
+        }
+
+        [Fact]
+        public async Task WithAnExplicitRequesterAndAnApiKeyPrincipal_StoresTheExplicitRequester()
+        {
+            var deadLetterService = new FakeDeadLetterService();
+            var deadLetter = deadLetterService.Add("m1");
+            var requeueDeadLetterManagementAction = new RequeueDeadLetterManagementAction();
+
+            await requeueDeadLetterManagementAction.Requeue(deadLetterService, new RequeueDeadLetterRequest("m1", "ops"), AuthenticatedUser(new Claim(ClaimTypes.Role, "Flowly.Management.Write")), ManagementApiAuthMode.ApiKey, CancellationToken.None);
 
             Assert.Equal("ops", deadLetter.RequeuedBy);
         }
@@ -154,6 +166,16 @@ public class RequeueDeadLetterManagementActionTests
 
             Assert.Equal(StatusCodes.Status409Conflict, result.StatusCode);
             Assert.Contains("cannot be requeued", result.ProblemDetails.Detail);
+        }
+
+        [Fact]
+        public async Task WhenTheServiceFailsForAReasonOtherThanTheStatus_PropagatesTheExceptionInsteadOfReturning409()
+        {
+            var deadLetterService = new FakeDeadLetterService { RequeueFailure = new InvalidOperationException("The message bus client does not support events.") };
+            deadLetterService.Add("m1");
+            var requeueDeadLetterManagementAction = new RequeueDeadLetterManagementAction();
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => requeueDeadLetterManagementAction.Requeue(deadLetterService, new RequeueDeadLetterRequest("m1", null), new ClaimsPrincipal(), ManagementApiAuthMode.ApiKey, CancellationToken.None));
         }
 
         [Theory]

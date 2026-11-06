@@ -38,6 +38,14 @@ internal sealed class RecordingDeadLetterService : IDeadLetterService
         return RequeueFailure is null ? Task.CompletedTask : Task.FromException(RequeueFailure);
     }
 
+    public List<string> DiscardCalls { get; } = [];
+
+    public Exception? DiscardFailure { get; set; }
+
     public Task Discard(string messageId, CancellationToken cancellationToken = default)
-        => throw new NotSupportedException();
+    {
+        DiscardCalls.Add(messageId);
+
+        return DiscardFailure is null ? Task.CompletedTask : Task.FromException(DiscardFailure);
+    }
 }

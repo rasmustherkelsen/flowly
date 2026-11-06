@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Reflection;
+using System.Security.Claims;
 using System.Text.Json;
 using Flowly.Dashboard.Auth;
 using Flowly.DeadLetters;
@@ -11,6 +12,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Net.Http.Headers;
 
 namespace Flowly.Dashboard;
 
@@ -18,6 +20,7 @@ internal static class DashboardEndpoints
 {
     internal const string TotalCountHeader = "X-Total-Count";
     internal const int MaxDeadLetterPageSize = 1000;
+    private const int MaxRequesterLength = 200;
 
     internal static void Map(IEndpointRouteBuilder endpoints, FlowlyDashboardOptions options)
     {
@@ -243,6 +246,12 @@ internal static class DashboardEndpoints
         if (service is null)
             return Results.NotFound("Dead letter tracking is not configured in this application.");
 
+        if (!ctx.Request.HasJsonContentType() && HasRequestBody(ctx.Request))
+            return Results.Problem(
+                title: "Unsupported media type",
+                detail: "The requeue request body must be sent as application/json.",
+                statusCode: StatusCodes.Status415UnsupportedMediaType);
+
         RequeueDeadLetterRequest? request;
 
         try
@@ -256,7 +265,7 @@ internal static class DashboardEndpoints
 
         try
         {
-            await service.Requeue(messageId, null, request?.MessageBody, ct);
+            await service.Requeue(messageId, ResolveRequester(ctx.User), request?.MessageBody, ct);
             return Results.Ok();
         }
         catch (KeyNotFoundException)
@@ -267,10 +276,28 @@ internal static class DashboardEndpoints
         {
             return Results.BadRequest(ex.Message);
         }
+        catch (DeadLetterStatusConflictException ex)
+        {
+            return Results.Conflict(ex.Message);
+        }
         catch (InvalidOperationException ex)
         {
             return Results.BadRequest(ex.Message);
         }
+    }
+
+    private static bool HasRequestBody(HttpRequest request)
+        => request.ContentLength > 0 || request.Headers.ContainsKey(HeaderNames.TransferEncoding);
+
+    private static string? ResolveRequester(ClaimsPrincipal user)
+    {
+        if (user.Identity?.IsAuthenticated != true)
+            return null;
+
+        var requester = new[] { user.Identity.Name, user.FindFirst("sub")?.Value, user.FindFirst(ClaimTypes.NameIdentifier)?.Value }
+            .FirstOrDefault(candidate => !string.IsNullOrWhiteSpace(candidate));
+
+        return requester is { Length: > MaxRequesterLength } ? requester[..MaxRequesterLength] : requester;
     }
 
     private static async Task<IResult> DiscardDeadLetter(string messageId, HttpContext ctx, CancellationToken ct)
@@ -287,6 +314,10 @@ internal static class DashboardEndpoints
         catch (KeyNotFoundException)
         {
             return Results.NotFound($"Dead letter message '{messageId}' not found.");
+        }
+        catch (DeadLetterStatusConflictException ex)
+        {
+            return Results.Conflict(ex.Message);
         }
         catch (InvalidOperationException ex)
         {

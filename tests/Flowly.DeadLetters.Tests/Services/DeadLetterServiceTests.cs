@@ -69,13 +69,13 @@ public class DeadLetterServiceTests
         }
 
         [Fact]
-        public async Task ThrowsInvalidOperation_WhenStatusIsAlreadyRequeued()
+        public async Task ThrowsStatusConflict_WhenStatusIsAlreadyRequeued()
         {
             var repository = new FakeDeadLetterRepository();
             repository.Add(BuildDeadLetter("msg-1", DeadLetterStatus.Requeued));
             var deadLetterService = BuildService(repository, new FakeMessageBusClient());
 
-            await Assert.ThrowsAsync<InvalidOperationException>(() => deadLetterService.Requeue("msg-1"));
+            await Assert.ThrowsAsync<DeadLetterStatusConflictException>(() => deadLetterService.Requeue("msg-1"));
         }
 
         [Fact]
@@ -167,14 +167,14 @@ public class DeadLetterServiceTests
         }
 
         [Fact]
-        public async Task WhenTheClaimIsLost_ThrowsInvalidOperationAndPublishesNothing()
+        public async Task WhenTheClaimIsLost_ThrowsStatusConflictAndPublishesNothing()
         {
             var repository = new FakeDeadLetterRepository { MarkAsRequeuedResult = false };
             repository.Add(BuildDeadLetter("msg-1"));
             var messageBusClient = new FakeMessageBusClient();
             var deadLetterService = BuildService(repository, messageBusClient);
 
-            await Assert.ThrowsAsync<InvalidOperationException>(() => deadLetterService.Requeue("msg-1"));
+            await Assert.ThrowsAsync<DeadLetterStatusConflictException>(() => deadLetterService.Requeue("msg-1"));
 
             Assert.Empty(messageBusClient.CreatedSenders);
             Assert.Null(repository.RevertedMessageId);
@@ -214,7 +214,7 @@ public class DeadLetterServiceTests
             var deadLetterService = BuildService(new DeadLetterRepository(factory), messageBusClient);
 
             await deadLetterService.Requeue("msg-1", "first");
-            await Assert.ThrowsAsync<InvalidOperationException>(() => deadLetterService.Requeue("msg-1", "second"));
+            await Assert.ThrowsAsync<DeadLetterStatusConflictException>(() => deadLetterService.Requeue("msg-1", "second"));
 
             Assert.Single(messageBusClient.GetSender("test-queue").SentRawMessages);
         }
@@ -232,13 +232,13 @@ public class DeadLetterServiceTests
         }
 
         [Fact]
-        public async Task ThrowsInvalidOperation_WhenStatusIsAlreadyRequeued()
+        public async Task ThrowsStatusConflict_WhenStatusIsAlreadyRequeued()
         {
             var repository = new FakeDeadLetterRepository();
             repository.Add(BuildDeadLetter("msg-1", DeadLetterStatus.Requeued));
             var deadLetterService = BuildService(repository, new FakeMessageBusClient());
 
-            await Assert.ThrowsAsync<InvalidOperationException>(() => deadLetterService.Discard("msg-1"));
+            await Assert.ThrowsAsync<DeadLetterStatusConflictException>(() => deadLetterService.Discard("msg-1"));
         }
 
         [Fact]
@@ -267,13 +267,13 @@ public class DeadLetterServiceTests
         }
 
         [Fact]
-        public async Task WhenTheRecordIsNoLongerPending_ThrowsInvalidOperation()
+        public async Task WhenTheRecordIsNoLongerPending_ThrowsStatusConflict()
         {
             var repository = new FakeDeadLetterRepository { DeletePendingResult = false };
             repository.Add(BuildDeadLetter("msg-1"));
             var deadLetterService = BuildService(repository, new FakeMessageBusClient());
 
-            await Assert.ThrowsAsync<InvalidOperationException>(() => deadLetterService.Discard("msg-1"));
+            await Assert.ThrowsAsync<DeadLetterStatusConflictException>(() => deadLetterService.Discard("msg-1"));
         }
 
         [Fact]
@@ -506,13 +506,13 @@ public class DeadLetterServiceTests
         }
 
         [Fact]
-        public async Task WithAlreadyRequeuedMessage_ThrowsInvalidOperationBeforeValidating()
+        public async Task WithAlreadyRequeuedMessage_ThrowsStatusConflictBeforeValidating()
         {
             using var factory = new SqliteDbContextFactory();
             await Seed(factory, BuildDeadLetter("msg-1", DeadLetterStatus.Requeued));
             var deadLetterService = BuildService(new DeadLetterRepository(factory), new FakeMessageBusClient());
 
-            await Assert.ThrowsAsync<InvalidOperationException>(() => deadLetterService.Requeue("msg-1", null, ""));
+            await Assert.ThrowsAsync<DeadLetterStatusConflictException>(() => deadLetterService.Requeue("msg-1", null, ""));
         }
 
         [Fact]

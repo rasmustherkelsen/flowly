@@ -23,10 +23,10 @@ internal sealed class RequeueDeadLetterManagementAction : IFlowlyManagementActio
             .WithSummary("Requeue a dead letter")
             .WithDescription(
                 "Sends the dead letter back to its original queue (or, for an event subscription dead letter, to the topic addressed to the originating subscriber only) " +
-                "and marks it Requeued, with the requester stored as the audit trail: the request's optional requeuedBy, or when it is absent or blank the authenticated caller's identity. That identity is the principal's name for host authorization policies, the principal's name, then its sub or azp claim, for OAuth2, and nothing for an API key, which carries no identity, so the field stays empty. The Flowly retry count is cleared, so the message gets a fresh set of retries. " +
+                "and marks it Requeued, with the requester stored as the audit trail: the authenticated caller's identity, which always wins over the request, and only when the caller has none (an API key carries no identity) the request's optional requeuedBy. That identity is the principal's name for host authorization policies and the principal's name, then its sub or azp claim, for OAuth2. The Flowly retry count is cleared, so the message gets a fresh set of retries. " +
                 "The optional messageBody republishes a corrected body instead of the stored one: the stored body stays in the record, which then reports bodyReplaced and the replacement, and nothing is recorded when the publish fails. " +
                 "A replacement must not be empty or whitespace, must not exceed 256 KiB as UTF-8 and must be valid JSON when the stored body is JSON (400 otherwise). " +
-                "Only a Pending dead letter can be requeued (409 otherwise, 404 when no dead letter has the id).")
+                "Only a Pending dead letter can be requeued (409 otherwise, 404 when no dead letter has the id). Any other failure, such as a missing transport provider, is a server error.")
             .WithTags(FeatureArea)
             .WithName("RequeueDeadLetter")
             .Produces(StatusCodes.Status204NoContent)
@@ -47,7 +47,7 @@ internal sealed class RequeueDeadLetterManagementAction : IFlowlyManagementActio
             return Results.Problem(title: "Missing message id", detail: "MessageId is required.", statusCode: StatusCodes.Status400BadRequest);
         }
 
-        var requeuedBy = string.IsNullOrWhiteSpace(request.RequeuedBy) ? CallerIdentityResolver.Resolve(user, authMode) : request.RequeuedBy;
+        var requeuedBy = CallerIdentityResolver.Resolve(user, authMode) ?? (string.IsNullOrWhiteSpace(request.RequeuedBy) ? null : request.RequeuedBy);
 
         try
         {
@@ -63,7 +63,7 @@ internal sealed class RequeueDeadLetterManagementAction : IFlowlyManagementActio
         {
             return Results.Problem(title: "Invalid replacement message body", detail: exception.Message, statusCode: StatusCodes.Status400BadRequest);
         }
-        catch (InvalidOperationException exception)
+        catch (DeadLetterStatusConflictException exception)
         {
             return Results.Problem(title: "Dead letter cannot be requeued", detail: exception.Message, statusCode: StatusCodes.Status409Conflict);
         }
