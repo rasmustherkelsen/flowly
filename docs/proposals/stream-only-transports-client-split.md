@@ -183,7 +183,7 @@ public interface IStreamCapableMessageBusClient : ITransportClient
 
 - `IEventCapableMessageBusClient` stays an add-on to `IMessageBusClient`. "Messages and events" is one side, streams the other.
 - `IStreamCapableMessageBusClient` keeps its name (decided): renaming would be churn and would itself be a break.
-- `IPartitionedStreamCapableMessageBusClient` is **not** changed to extend `IStreamCapableMessageBusClient` in this PR. Doing so would make a class implementing the partitioned interface without the plain stream interface stop compiling, which contradicts the source-compatible goal. Registration already checks stream capability before partitioned capability, so the invariant holds in practice. It can be revisited at the next major version.
+- `IPartitionedStreamCapableMessageBusClient` extends `IStreamCapableMessageBusClient`, so the relationship (a partitioned-capable client can always host plain streams) is expressed in the type system. The client split first kept the two separate to stay source-compatible, because a class implementing only the partitioned interface would stop compiling; the interfaces are young enough that the break was accepted without a major version, and the three shipped transports already implemented both.
 - Because of the default implementation, RabbitMQ and InMemory need no change to keep working: queue-and-stream clients get the delegating behaviour for free, and `RabbitMqMessageBusSender` already performs partition routing. They may still override it explicitly for clarity. A stream-only transport such as Event Hubs must override it.
 - `MessageSubmitter<TMessage>` takes an optional `isStream` constructor argument. `AddMessageRecorder` sets it, and the submitter then creates its sender through `CreateStreamSender` instead of `CreateMessageBusSender`. A queue message on a stream-only provider fails with the registry's capability error and is recorded as a failed send.
 
@@ -252,7 +252,7 @@ Per the "Ask, don't assume" rule for the streaming area:
 - The topology-interface split (a separate stream topology creator and stream description) is not part of the abstractions. `IMessagingTopologyCreator` and `IEventTopologyCreator` are untouched; the event creator is optional through an additive overload on `TransportRegistrationHelper`, and the queue creator is optional because a stream-only provider may register none and the registrar skips queue topology creation for it ([§5](#5-topology)). That helper stays public because core `Flowly` has no `InternalsVisibleTo` for the transport assemblies, and transport-facing types live in `Flowly.Transport`.
 - Eager registration guards cover **all** queue-style registrations in the split PR (message, batch, job, recurring, call, and the submitters), via one shared helper.
 
-- `IPartitionedStreamCapableMessageBusClient` does not extend `IStreamCapableMessageBusClient` in this PR, because that would be a source break for a hypothetical implementer of only the partitioned interface. Revisit at the next major.
+- `IPartitionedStreamCapableMessageBusClient` extends `IStreamCapableMessageBusClient` (a source break only for an implementer of the partitioned interface alone, accepted without a major version).
 
 **Decided for an Event Hubs transport** (the mapping in [§1](#1-how-event-hubs-maps-onto-the-stream-abstractions) is the evidence):
 

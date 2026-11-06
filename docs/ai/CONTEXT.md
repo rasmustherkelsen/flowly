@@ -751,7 +751,7 @@ IStreamCapableMessageBusClient : ITransportClient   // optional; RabbitMQ + InMe
   CreateStreamProcessor<T>(queue, startPosition, options) → IMessageBusProcessor<T>
   CreateStreamSender(queue)          → IMessageBusSender   // default: delegates to IMessageBusClient.CreateMessageBusSender; stream-only transports must override
 
-IPartitionedStreamCapableMessageBusClient           // optional; RabbitMQ + InMemory + Azure Event Hubs; does not extend IStreamCapableMessageBusClient
+IPartitionedStreamCapableMessageBusClient : IStreamCapableMessageBusClient   // optional; RabbitMQ + InMemory + Azure Event Hubs
   CreatePartitionedStreamConsumer<T>(queue, partitionCount, resolveStartPosition, options, logger) → IPartitionedStreamConsumer<T>
 
 IMessageBusClientRegistry              // holds one ITransportClient per provider name, in registration order

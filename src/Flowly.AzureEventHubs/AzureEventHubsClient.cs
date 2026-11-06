@@ -11,7 +11,7 @@ internal sealed class AzureEventHubsClient(
     long? maxMessageSizeBytes,
     StreamQueueManifest streamQueueManifest,
     bool sharesPartitionOwnership,
-    TimeProvider timeProvider) : IStreamCapableMessageBusClient, IPartitionedStreamCapableMessageBusClient, IStreamStartOffsetResolver, IAsyncDisposable
+    TimeProvider timeProvider) : IPartitionedStreamCapableMessageBusClient, IStreamStartOffsetResolver, IAsyncDisposable
 {
     private readonly ConcurrentDictionary<string, IMessageBusSender> _senders = new(StringComparer.Ordinal);
     private readonly EventHubsStartOffsetResolver _startOffsetResolver = new(clientFactory);

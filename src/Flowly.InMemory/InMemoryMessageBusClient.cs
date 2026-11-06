@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 namespace Flowly.InMemory;
 
 internal class InMemoryMessageBusClient(InMemoryBroker broker, InMemoryOptions options)
-    : IMessageBusClient, IEventCapableMessageBusClient, IStreamCapableMessageBusClient, IPartitionedStreamCapableMessageBusClient, IStreamStartOffsetResolver
+    : IMessageBusClient, IEventCapableMessageBusClient, IPartitionedStreamCapableMessageBusClient, IStreamStartOffsetResolver
 {
     private readonly SemaphoreSlim _senderLock = new(1, 1);
     private readonly ConcurrentDictionary<string, IMessageBusSender> _senders = new();
