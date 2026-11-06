@@ -4,6 +4,7 @@ using Flowly.MessageInfrastructure.BackgroundServices;
 using Flowly.MessageInfrastructure.Callers;
 using Flowly.MessageInfrastructure.MessageHandlingStrategies;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessageInfrastructure.SendSteps;
 using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.Registration;
 using Flowly.Transport;
@@ -156,7 +157,8 @@ public static class CallHandlerRegistrationExtensions
             providerName,
             timeout,
             serviceProvider.GetRequiredService<IPendingCallRegistry<TReturn>>(),
-            serviceProvider.GetRequiredService<ICallerInstrumentation>()));
+            serviceProvider.GetRequiredService<ICallerInstrumentation>(),
+            serviceProvider.GetRequiredService<ISendStepRunner>()));
     }
 
     private static Type GetReturnType(Type messageType)

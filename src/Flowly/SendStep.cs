@@ -24,6 +24,14 @@ namespace Flowly;
 ///         the send. Allowed, but throwing is the normal way to reject a message.
 ///     </para>
 ///     <para>
+///         <b>Calls.</b> For <see cref="IMessageCaller.Call{TMessage,TReturn}" /> the steps run before the pending call is
+///         registered and before the call timeout starts, so a step that throws rejects the call to the caller immediately instead
+///         of ending in a timeout. A call needs a reply to return, so a step that returns without calling <c>next</c> makes the
+///         call throw an <see cref="InvalidOperationException" /> stating that a send step prevented the call from being sent;
+///         it does not silently return. Steps run outside the call's span and metrics, so the caller's failed metric records only
+///         failures after the steps, the same as for the other senders. A step that throws is not counted as a failed call.
+///     </para>
+///     <para>
 ///         The senders are singletons, so a step cannot use the caller's dependency injection scope. Flowly creates a fresh scope
 ///         for each send, only when at least one step matches the message, and resolves the steps from it. Consequences:
 ///     </para>

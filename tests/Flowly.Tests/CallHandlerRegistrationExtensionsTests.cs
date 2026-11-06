@@ -3,12 +3,14 @@ using Flowly.MessageInfrastructure.Callers;
 using Flowly.MessageInfrastructure.BackgroundServices;
 using Flowly.MessageInfrastructure.Model;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessageInfrastructure.SendSteps;
 using Flowly.MessageInfrastructure.Telemetry;
 using Flowly.Registration;
 using Flowly.Tests.Fakes;
 using Flowly.Transport;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 
 namespace Flowly.Tests;
@@ -115,9 +117,26 @@ public class CallHandlerRegistrationExtensionsTests
             Assert.Equal("ping-reply-sender", Assert.Single(sender.SentMessages).Properties.ReplyTo);
         }
 
+        [Fact]
+        public async Task RegisteredSubmitterRunsSendStepsFromTheContainer()
+        {
+            var (flowlyBuilder, _) = CreateBuilder("primary", instanceName: "sender", client: new FakeMessageBusClient(new FakeMessageBusSender()));
+            var sendStepRunner = new CountingSendStepRunner();
+            flowlyBuilder.Services.AddSingleton<ISendStepRunner>(sendStepRunner);
+            flowlyBuilder.Services.AddSingleton<ICallerInstrumentation, NullCallerInstrumentation>();
+            flowlyBuilder.AddCallSubmitter<PingMessage>();
+            using var serviceProvider = flowlyBuilder.Services.BuildServiceProvider();
+            var callSubmitter = serviceProvider.GetRequiredService<ICallSubmitter<PingMessage, PongMessage>>();
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => callSubmitter.Submit(new PingMessage("hi"), CancellationToken.None));
+
+            Assert.Equal(1, sendStepRunner.Runs);
+        }
+
         private static async Task AssertCallTimesOutBeforeGuard(IFlowlyBuilder flowlyBuilder)
         {
             flowlyBuilder.Services.AddSingleton<ICallerInstrumentation, NullCallerInstrumentation>();
+            flowlyBuilder.Services.TryAddSingleton<ISendStepRunner>(SendStepRunner.None);
             using var serviceProvider = flowlyBuilder.Services.BuildServiceProvider();
             using var guard = new CancellationTokenSource(TimeSpan.FromMinutes(1));
             var callSubmitter = serviceProvider.GetRequiredService<ICallSubmitter<PingMessage, PongMessage>>();
@@ -206,6 +225,18 @@ public class CallHandlerRegistrationExtensionsTests
     private sealed class PlainCallHandler : MessageHandler<PlainMessage>
     {
         public override Task Handle(IMessageContext<PlainMessage> messageContext) => Task.CompletedTask;
+    }
+
+    private sealed class CountingSendStepRunner : ISendStepRunner
+    {
+        public int Runs { get; private set; }
+
+        public Task Run(object message, CancellationToken cancellationToken, SendStepDelegate send)
+        {
+            Runs++;
+
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class StubFlowlyBuilder(IServiceCollection services) : IFlowlyBuilder

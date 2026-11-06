@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessageInfrastructure.SendSteps;
 using Flowly.MessageInfrastructure.Telemetry;
 
 namespace Flowly.MessageInfrastructure.Callers;
@@ -11,11 +12,23 @@ internal class CallSubmitter<TMessage, TReturn>(
     string providerName,
     TimeSpan timeout,
     IPendingCallRegistry<TReturn> pendingCallRegistry,
-    ICallerInstrumentation callerInstrumentation) : ICallSubmitter<TMessage, TReturn>
+    ICallerInstrumentation callerInstrumentation,
+    ISendStepRunner sendStepRunner) : ICallSubmitter<TMessage, TReturn>
     where TMessage : class, IReturns<TReturn>
     where TReturn : class
 {
     public async Task<TReturn> Submit(TMessage message, CancellationToken cancellationToken)
+    {
+        TReturn? response = null;
+
+        await sendStepRunner.Run(message, cancellationToken, async () => response = await SubmitCore(message, cancellationToken));
+
+        return response ?? throw new InvalidOperationException(
+            $"A send step prevented the call of '{typeof(TMessage).Name}' from being sent, so there is no '{typeof(TReturn).Name}' reply to return. " +
+            "Throw from the send step to reject the call instead of returning without calling next.");
+    }
+
+    private async Task<TReturn> SubmitCore(TMessage message, CancellationToken cancellationToken)
     {
         var client = clientRegistry.GetClient(providerName);
         var correlationId = Guid.NewGuid().ToString();
