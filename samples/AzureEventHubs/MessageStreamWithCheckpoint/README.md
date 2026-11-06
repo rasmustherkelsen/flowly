@@ -23,13 +23,12 @@ A partitioned, append-only message stream on Azure Event Hubs, run against the l
 
 - .NET 10 SDK
 - Docker (for the Event Hubs emulator and Azurite, the storage emulator the Event Hubs emulator depends on)
-- Accept the [license terms of the Event Hubs emulator](https://github.com/Azure/azure-event-hubs-emulator-installer/blob/main/EMULATOR_EULA.md) by setting `ACCEPT_EULA=Y` when you start it
 
 ## How to run
 
-1. Start the emulator and Azurite, accepting the emulator license terms:
+1. Start the emulator and Azurite (the compose file sets `ACCEPT_EULA=Y`, which accepts the [emulator license terms](https://github.com/Azure/azure-event-hubs-emulator-installer/blob/main/EMULATOR_EULA.md) on your behalf):
    ```bash
-   ACCEPT_EULA=Y docker compose up -d
+   docker compose up -d
    ```
    The emulator listens on AMQP port `5672` and Azurite on blob port `10000`. The event hub, its four partitions and the consumer group come from `Config.json`; the emulator reads that file at start and has no management API, so changing it requires recreating the container.
 
