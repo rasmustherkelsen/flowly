@@ -58,7 +58,7 @@ Exactly one authorization mode must be configured, or `UseFlowlyManagementApi()`
 
 ## Discovery
 
-`UseFlowlyManagementApi()` maps a standard OpenAPI document at `{BasePath}/openapi.json` (protected by the Read policy by default — set `options.ProtectDiscoveryDocument = false` to make it public). Set `options.EnableDocsUi = true` to also serve a minimal interactive explorer at `{BasePath}/docs`.
+`UseFlowlyManagementApi()` maps a standard OpenAPI document at `{BasePath}/openapi.json` (protected by the Read policy by default — set `options.ProtectDiscoveryDocument = false` to make it public). Set `options.EnableDocsUi = true` to also serve a minimal interactive explorer at `{BasePath}/docs`. The page loads the Scalar API reference script from a CDN, pinned to an exact version and verified with a Subresource Integrity hash, so the browser needs internet access to render it.
 
 ## Extensibility
 

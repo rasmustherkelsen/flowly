@@ -1,3 +1,4 @@
+using System.Text.Encodings.Web;
 using Flowly.DeadLetters;
 using Flowly.ManagementApi.DeadLetters;
 using Flowly.ManagementApi.MessageStreams;
@@ -108,8 +109,14 @@ public static class ManagementApiEndpointRouteBuilderExtensions
             builder.RequireAuthorization(readPolicyName);
     }
 
-    private static string BuildDocsHtml(string basePath) =>
-        $"""
+    internal const string DocsScriptUrl = "https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.77.0/dist/browser/standalone.js";
+
+    internal const string DocsScriptIntegrity = "sha384-+7ESN8b9Ljg46TCYKedZUlhF/wfZbOt78aV/DtoU3anEElh8Q2eXsyhQ9W5lAZD4";
+
+    internal static string BuildDocsHtml(string basePath)
+    {
+        var specUrl = HtmlEncoder.Default.Encode($"{basePath}/openapi.json");
+        return $"""
          <!doctype html>
          <html>
            <head>
@@ -117,9 +124,10 @@ public static class ManagementApiEndpointRouteBuilderExtensions
              <meta charset="utf-8" />
            </head>
            <body>
-             <script id="api-reference" data-url="{basePath}/openapi.json"></script>
-             <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+             <script id="api-reference" data-url="{specUrl}"></script>
+             <script src="{DocsScriptUrl}" integrity="{DocsScriptIntegrity}" crossorigin="anonymous"></script>
            </body>
          </html>
          """;
+    }
 }
