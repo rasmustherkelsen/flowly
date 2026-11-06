@@ -1,6 +1,7 @@
 using Flowly.Jobs.Messages;
 using Flowly.Jobs.Senders;
 using Flowly.MessageInfrastructure.Registration;
+using Flowly.MessageInfrastructure.SendSteps;
 using Flowly.Transport;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -50,7 +51,8 @@ public static class SubmitterRegistrationExtensions
                     serviceProvider.GetRequiredService<IMessageBusClientRegistry>(),
                     queueName,
                     providerName,
-                    serviceProvider.GetRequiredService<IMessageSender>()))
+                    serviceProvider.GetRequiredService<IMessageSender>(),
+                    serviceProvider.GetRequiredService<ISendStepRunner>()))
                 .AddSingleton<IJobMessageSender, JobMessageSender>();
 
             FlowlySubmitterManifest.GetOrCreate(flowlyBuilder.Services)

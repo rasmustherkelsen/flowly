@@ -3,6 +3,7 @@ using Flowly.Jobs.Tests.Fakes;
 using Flowly.MessageInfrastructure;
 using Flowly.MessageInfrastructure.Registration;
 using Flowly.MessageInfrastructure.Senders;
+using Flowly.MessageInfrastructure.SendSteps;
 using Flowly.Transport;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -29,12 +30,30 @@ public class SubmitterRegistrationExtensionsTests
             var client = new FakeMessageBusClient();
             var builder = CreateBuilder(client);
             builder.Services.AddSingleton<IMessageSender>(new FakeMessageSender());
+            builder.Services.AddSingleton<ISendStepRunner>(SendStepRunner.None);
 
             builder.AddJobSubmitter<SomeJobMessage>();
 
             using var serviceProvider = builder.Services.BuildServiceProvider();
             await serviceProvider.GetRequiredService<IJobSubmitter<SomeJobMessage>>().SubmitJob(new SomeJobMessage());
             Assert.Equal(["some-job"], client.CreatedSenders);
+        }
+
+        [Fact]
+        public async Task RegisteredJobSubmitterRunsStepsFromTheContainer()
+        {
+            var client = new FakeMessageBusClient();
+            var builder = CreateBuilder(client);
+            builder.Services.AddSingleton<IMessageSender>(new FakeMessageSender());
+            builder.Services.AddSingleton<ISendStepRunner>(new SendStepRunner(
+                [new SendStepRegistration(typeof(RejectingStep), SendStepRegistration.ResolveFilterType(typeof(RejectingStep)))],
+                builder.Services.AddScoped<RejectingStep>().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>()));
+
+            builder.AddJobSubmitter<SomeJobMessage>();
+
+            using var serviceProvider = builder.Services.BuildServiceProvider();
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() => serviceProvider.GetRequiredService<IJobSubmitter<SomeJobMessage>>().SubmitJob(new SomeJobMessage()));
+            Assert.Empty(client.CreatedSenders);
         }
 
         [Fact]
@@ -64,6 +83,12 @@ public class SubmitterRegistrationExtensionsTests
         public IServiceCollection Services => services;
         public IConfiguration Configuration => new ConfigurationBuilder().Build();
         public ITopologyNameResolver TopologyNameResolver => new KebabCaseTopologyNameResolver();
+    }
+
+    private sealed class RejectingStep : SendStep
+    {
+        public override Task Handle(SendStepContext<object> context, SendStepDelegate next)
+            => throw new UnauthorizedAccessException("rejected");
     }
 
     private record SomeJobMessage : IJobMessage

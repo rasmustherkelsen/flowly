@@ -32,6 +32,13 @@ namespace Flowly;
 ///         failures after the steps, the same as for the other senders. A step that throws is not counted as a failed call.
 ///     </para>
 ///     <para>
+///         <b>Jobs.</b> For <c>IJobMessageSender.QueueJob</c> the steps run before anything is sent: neither Flowly's internal
+///         create-job-state message nor the job message is sent when a step throws, so a rejected job leaves no orphan job record.
+///         A job needs a job id to return, so a step that returns without calling <c>next</c> makes <c>QueueJob</c> throw an
+///         <see cref="InvalidOperationException" /> stating that a send step prevented the job from being queued. Recurring jobs
+///         started by the scheduler are not covered.
+///     </para>
+///     <para>
 ///         The senders are singletons, so a step cannot use the caller's dependency injection scope. Flowly creates a fresh scope
 ///         for each send, only when at least one step matches the message, and resolves the steps from it. Consequences:
 ///     </para>
