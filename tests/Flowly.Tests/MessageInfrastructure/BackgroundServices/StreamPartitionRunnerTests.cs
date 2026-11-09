@@ -16,14 +16,15 @@ public class StreamPartitionRunnerTests
         int maxRetries = 0,
         int? partition = null,
         Func<IMessageStreamContext<TestMessage>, int, Task>? onHandle = null,
-        bool withCheckpoint = false)
+        bool withCheckpoint = false,
+        int failingSaves = 0)
     {
         var processor = new FakeProcessor();
         var stateRegistry = new StreamPartitionStateRegistry(TimeProvider.System);
         var resumeRegistry = new StreamPartitionResumeRegistry();
         var instrumentation = new RecordingHandlerInstrumentation();
         var handler = new SpyHandler(onHandle);
-        var checkpoint = new FakeCheckpoint();
+        var checkpoint = new FakeCheckpoint(failingSaves);
         var services = new ServiceCollection();
         services.AddScoped<SpyHandler>(_ => handler);
         if (withCheckpoint)
@@ -110,6 +111,153 @@ public class StreamPartitionRunnerTests
             await harness.Instrumentation.NextHalt();
 
             Assert.Empty(harness.Checkpoint.SaveCalls);
+
+            await harness.Stop(runTask);
+        }
+
+        [Fact]
+        public async Task WhenTheCheckpointSaveFailsOnce_RetriesOnlyTheSaveAndNotTheHandler()
+        {
+            var harness = Create(maxRetries: 1, withCheckpoint: true, failingSaves: 1);
+            var runTask = harness.Start();
+            var message = new FakeReceivedMessage("a", streamOffset: 7);
+
+            await harness.Processor.Deliver(message);
+            await harness.Checkpoint.WaitForSaves(2);
+
+            Assert.Single(harness.Handler.Invocations);
+            Assert.Equal(StreamPartitionState.Running, harness.StateRegistry.Get(harness.Key)!.State);
+            Assert.Equal(0, harness.Instrumentation.HaltCount);
+
+            await harness.Stop(runTask);
+        }
+
+        [Fact]
+        public async Task WhenTheCheckpointSaveKeepsFailing_HaltsWithoutRunningTheHandlerAgain()
+        {
+            var harness = Create(maxRetries: 2, withCheckpoint: true, failingSaves: int.MaxValue);
+            var runTask = harness.Start();
+
+            await harness.Processor.Deliver(new FakeReceivedMessage("a", streamOffset: 7));
+            await harness.Instrumentation.NextHalt();
+
+            var status = harness.StateRegistry.Get(harness.Key)!;
+            Assert.Single(harness.Handler.Invocations);
+            Assert.Equal(3, harness.Checkpoint.SaveCalls.Count);
+            Assert.Equal(StreamPartitionState.Halted, status.State);
+            Assert.Contains("checkpoint save", status.LastError!.Message);
+            Assert.Contains("handler succeeded", status.LastError.Message);
+
+            await harness.Stop(runTask);
+        }
+
+        [Fact]
+        public async Task WhenResumedAfterTheCheckpointSaveKeptFailing_SavesTheCheckpointWithoutRunningTheHandlerAgain()
+        {
+            var harness = Create(withCheckpoint: true, failingSaves: 1);
+            var runTask = harness.Start();
+            await harness.Processor.Deliver(new FakeReceivedMessage("a", streamOffset: 7));
+            await harness.Instrumentation.NextHalt();
+
+            harness.ResumeRegistry.Resume(harness.Key);
+            await harness.Checkpoint.WaitForSaves(2);
+            await harness.Instrumentation.NextSuccess();
+
+            Assert.Single(harness.Handler.Invocations);
+            Assert.Equal(7, harness.Checkpoint.SaveCalls[^1].Position);
+            Assert.Equal(StreamPartitionState.Running, harness.StateRegistry.Get(harness.Key)!.State);
+
+            await harness.Stop(runTask);
+        }
+
+        [Fact]
+        public async Task WhenCompletingTheMessageFailsOnce_RetriesOnlyTheCompletionAndNotTheHandler()
+        {
+            var harness = Create(maxRetries: 1, withCheckpoint: true);
+            var runTask = harness.Start();
+            var message = new FakeReceivedMessage("a", streamOffset: 7, failingCompletes: 1);
+
+            await harness.Processor.Deliver(message);
+            await message.Completed.Task.WaitAsync(TestTimeout);
+            await harness.Checkpoint.WaitForSaves(1);
+
+            Assert.Single(harness.Handler.Invocations);
+            Assert.Equal(2, message.CompleteCalls);
+
+            await harness.Stop(runTask);
+        }
+
+        [Fact]
+        public async Task WhenCompletingTheMessageKeepsFailing_HaltsWithoutSavingTheCheckpointOrRunningTheHandlerAgain()
+        {
+            var harness = Create(withCheckpoint: true);
+            var runTask = harness.Start();
+
+            await harness.Processor.Deliver(new FakeReceivedMessage("a", streamOffset: 7, failingCompletes: int.MaxValue));
+            await harness.Instrumentation.NextHalt();
+
+            var status = harness.StateRegistry.Get(harness.Key)!;
+            Assert.Single(harness.Handler.Invocations);
+            Assert.Empty(harness.Checkpoint.SaveCalls);
+            Assert.Equal(StreamPartitionState.Halted, status.State);
+            Assert.Contains("completion", status.LastError!.Message);
+
+            await harness.Stop(runTask);
+        }
+
+        [Fact]
+        public async Task WhenResumedAfterCompletionKeptFailing_CompletesOnlyTheMessagesNotCompletedYet()
+        {
+            var harness = Create(maxMessages: 2, withCheckpoint: true);
+            var runTask = harness.Start();
+            var first = new FakeReceivedMessage("a", streamOffset: 1);
+            var second = new FakeReceivedMessage("b", streamOffset: 2, failingCompletes: 1);
+            await harness.Processor.Deliver(first);
+            await harness.Processor.Deliver(second);
+            await harness.Instrumentation.NextHalt();
+
+            harness.ResumeRegistry.Resume(harness.Key);
+            await harness.Checkpoint.WaitForSaves(1);
+
+            Assert.Single(harness.Handler.Invocations);
+            Assert.Equal(1, first.CompleteCalls);
+            Assert.Equal(2, second.CompleteCalls);
+            Assert.Equal(2, harness.Checkpoint.SaveCalls[0].Position);
+
+            await harness.Stop(runTask);
+        }
+
+        [Fact]
+        public async Task WhenHaltedAfterTheHandlerSucceeded_BlocksFurtherMessagesFromBeingHandled()
+        {
+            var harness = Create(withCheckpoint: true, failingSaves: int.MaxValue);
+            var runTask = harness.Start();
+            await harness.Processor.Deliver(new FakeReceivedMessage("a", streamOffset: 1));
+            await harness.Instrumentation.NextHalt();
+
+            await harness.Processor.Deliver(new FakeReceivedMessage("b", streamOffset: 2));
+            var blocked = harness.Processor.Deliver(new FakeReceivedMessage("c", streamOffset: 3));
+
+            Assert.False(blocked.IsCompleted);
+            Assert.Single(harness.Handler.Invocations);
+
+            await harness.Stop(runTask);
+            await blocked.WaitAsync(TestTimeout);
+        }
+
+        [Fact]
+        public async Task WhenResumedAfterTheCheckpointSaveKeptFailing_HandlesTheBufferedBatchAfterTheHeldOne()
+        {
+            var harness = Create(withCheckpoint: true, failingSaves: 1);
+            var runTask = harness.Start();
+            await harness.Processor.Deliver(new FakeReceivedMessage("a", streamOffset: 1));
+            await harness.Instrumentation.NextHalt();
+            await harness.Processor.Deliver(new FakeReceivedMessage("b", streamOffset: 2));
+
+            harness.ResumeRegistry.Resume(harness.Key);
+            await harness.Handler.WaitForInvocations(2);
+
+            Assert.Equal(["a", "b"], harness.Handler.Invocations.SelectMany(invocation => invocation).Select(message => message.Payload));
 
             await harness.Stop(runTask);
         }
@@ -531,7 +679,7 @@ public class StreamPartitionRunnerTests
         }
     }
 
-    private sealed class FakeCheckpoint : MessageStreamCheckpoint<TestMessage>
+    private sealed class FakeCheckpoint(int failingSaves) : MessageStreamCheckpoint<TestMessage>
     {
         private readonly Lock _lock = new();
         private readonly List<TaskCompletionSource> _waiters = [];
@@ -583,12 +731,14 @@ public class StreamPartitionRunnerTests
                 waiter.TrySetResult();
             }
 
-            return Task.CompletedTask;
+            return _saveCalls.Count <= failingSaves ? Task.FromException(new InvalidOperationException("checkpoint store unavailable")) : Task.CompletedTask;
         }
     }
 
-    private sealed class FakeReceivedMessage(string payload, long? streamOffset = null) : IReceivedMessage<TestMessage>
+    private sealed class FakeReceivedMessage(string payload, long? streamOffset = null, int failingCompletes = 0) : IReceivedMessage<TestMessage>
     {
+        public int CompleteCalls { get; private set; }
+
         public TaskCompletionSource Completed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public TestMessage Body { get; } = new(payload);
@@ -596,6 +746,10 @@ public class StreamPartitionRunnerTests
 
         public Task Complete(CancellationToken cancellationToken = default)
         {
+            CompleteCalls++;
+            if (CompleteCalls <= failingCompletes)
+                return Task.FromException(new InvalidOperationException("broker unavailable"));
+
             Completed.TrySetResult();
             return Task.CompletedTask;
         }

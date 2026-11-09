@@ -106,6 +106,17 @@ internal class $0Checkpoint : MessageStreamCheckpoint<$0>
         // call has no processed batch behind it, context.Position can be -1 (start
         // at offset 0), and the row may not exist yet — so store negative values
         // as they are and make this an upsert (insert when no row exists).
+        //
+        // A bootstrap seed must NEVER overwrite a stored position: when
+        // context.IsBootstrapSeed is true, write only if no position is stored
+        // yet for (context.ConsumerName, context.Partition) — a row created by
+        // InitializeCheckpoint without a position counts as none — and do
+        // nothing otherwise. Make the check and the write one atomic operation
+        // (a conditional insert, or an update that requires an empty position),
+        // not a read followed by a write: a seed can complete late, after the
+        // reader has started and saved a higher position, and an unconditional
+        // write would move the position backwards. A save without the flag
+        // always overwrites.
         throw new NotImplementedException();
     }
 }

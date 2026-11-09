@@ -9,7 +9,7 @@ Guide the user through a complete Flowly + Azure Event Hubs setup. Work through 
 > - **Event Hubs is stream-only.** It hosts `MessageStreamHandler<T>` and `IMessageRecorder` (including `[StreamPartitions]`, start positions and checkpoints). It does **not** host `MessageHandler<T>`, `BatchMessageHandler<T>`, `JobHandler<T>`, `RecurringJobHandler`, `CallHandler<T, TReturn>`, events or dead letter tracking; registering any of those against it fails at startup. A service that needs both queues and streams registers a queue transport (Azure Service Bus or RabbitMQ) as well, see Step 9.
 > - **Flowly never creates event hubs or consumer groups.** The event hub (named after the message contract's stream queue name, for example `MyMessage` becomes `my`) and the consumer group the handler reads through must already exist, and startup fails with a descriptive error when they do not. The event hub must have exactly one partition for a contract without `[StreamPartitions]`, and exactly the partitions `0` to `n-1` for `[StreamPartitions(n)]`.
 > - **The connection string is namespace level.** It must not contain an `EntityPath`, because the event hub name comes from the message contract.
-> - **The local Event Hubs emulator has no management plane.** Event hubs and consumer groups are declared up front in its `Config.json`. Running it requires accepting its license terms: the user must set `ACCEPT_EULA=Y` themselves, do not set it for them.
+> - **The local Event Hubs emulator has no management plane.** Event hubs and consumer groups are declared up front in its `Config.json`. The compose file sets `ACCEPT_EULA=Y` on the emulator, which accepts its license terms on the user's behalf.
 
 ## Step 0 — New project or existing?
 
@@ -77,10 +77,10 @@ The AppHost declares the event hub `my` with `AddHub("my")`, its partition count
 
 The event hub name comes from the message contract (`MyMessage` becomes `my`) and the consumer group is the handler's `ConsumerName`, which the scaffolded `MyMessageHandler` sets explicitly in its `Configure` method (`options.ConsumerName = "MyMessageHandler"`). The value must match the consumer group declared in `ehconfig.json` (or the AppHost's `AddConsumerGroup`) exactly; if the user renames the message or changes the `ConsumerName`, change the declaration to match.
 
-After scaffolding, start the infrastructure and run. The user must accept the emulator's license terms themselves by setting `ACCEPT_EULA=Y`; the emulator needs a minute or two to become ready:
+After scaffolding, start the infrastructure and run. The emulator needs a minute or two to become ready:
 
 ```bash
-ACCEPT_EULA=Y docker compose up -d
+docker compose up -d
 dotnet run --project Receiver &
 dotnet run --project Sender
 ```
@@ -286,7 +286,7 @@ services:
     environment:
       BLOB_SERVER: azurite
       METADATA_SERVER: azurite
-      ACCEPT_EULA: ${ACCEPT_EULA:?Set ACCEPT_EULA=Y to accept the Azure Event Hubs emulator license terms}
+      ACCEPT_EULA: "Y"
     volumes:
       - ./ehconfig.json:/Eventhubs_Emulator/ConfigFiles/Config.json
     depends_on:
@@ -298,7 +298,7 @@ services:
       - "10000:10000"
 ```
 
-Tell the user to accept the [emulator license terms](https://github.com/Azure/azure-event-hubs-emulator-installer/blob/main/EMULATOR_EULA.md) and start it with `ACCEPT_EULA=Y docker compose up -d`. The emulator reads `ehconfig.json` at start, so changing it requires recreating the container, and it needs a minute or two before it accepts connections.
+Tell the user that `ACCEPT_EULA: "Y"` accepts the [emulator license terms](https://github.com/Azure/azure-event-hubs-emulator-installer/blob/main/EMULATOR_EULA.md) on their behalf, and to start it with `docker compose up -d`. The emulator reads `ehconfig.json` at start, so changing it requires recreating the container, and it needs a minute or two before it accepts connections.
 
 ### Step 8a — Optional: Aspire AppHost integration
 
@@ -367,7 +367,7 @@ Fix any errors before reporting the task as complete.
 
 **Template path:**
 - [ ] Template scaffolded (`dotnet new flowlyapp/flowlyaspireapp --transport eventhubs`)
-- [ ] User accepted the emulator license terms and started the emulator (`ACCEPT_EULA=Y docker compose up -d`, or via Aspire)
+- [ ] Emulator started (`docker compose up -d`, or via Aspire)
 - [ ] Project runs without errors
 
 **Manual wiring path:**

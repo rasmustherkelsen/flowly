@@ -1,6 +1,7 @@
 using Flowly.MessageStreams.DatabaseModel;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 
 namespace Flowly.MessageStreams.Tests;
@@ -147,6 +148,110 @@ public class EfCoreMessageStreamCheckpointTests
         }
 
         [Fact]
+        public async Task OverAnExistingBatchPosition_DoesNotOverwriteIt()
+        {
+            using var fixture = new SqliteFixture();
+            var checkpoint = fixture.CreateCheckpoint();
+            var context = new MessageStreamCheckpointContext("my-consumer", null);
+            await checkpoint.PublicSaveStreamPosition(new MessageStreamCheckpointSaveContext("my-consumer", null, 500), CancellationToken.None);
+
+            await checkpoint.PublicSaveStreamPosition(new MessageStreamCheckpointSaveContext("my-consumer", null, 119) { IsBootstrapSeed = true }, CancellationToken.None);
+
+            Assert.Equal(500, await checkpoint.PublicGetStreamPosition(context, CancellationToken.None));
+        }
+
+        [Fact]
+        public async Task OverAnExistingSeed_DoesNotOverwriteIt()
+        {
+            using var fixture = new SqliteFixture();
+            var checkpoint = fixture.CreateCheckpoint();
+            var context = new MessageStreamCheckpointContext("my-consumer", null);
+            await checkpoint.PublicSaveStreamPosition(new MessageStreamCheckpointSaveContext("my-consumer", null, -1) { IsBootstrapSeed = true }, CancellationToken.None);
+
+            await checkpoint.PublicSaveStreamPosition(new MessageStreamCheckpointSaveContext("my-consumer", null, 119) { IsBootstrapSeed = true }, CancellationToken.None);
+
+            Assert.Equal(-1, await checkpoint.PublicGetStreamPosition(context, CancellationToken.None));
+        }
+
+        [Fact]
+        public async Task OverAnExistingPositionOfZero_DoesNotOverwriteIt()
+        {
+            using var fixture = new SqliteFixture();
+            var checkpoint = fixture.CreateCheckpoint();
+            var context = new MessageStreamCheckpointContext("my-consumer", null);
+            await checkpoint.PublicInitializeCheckpoint(context, CancellationToken.None);
+            await checkpoint.PublicSaveStreamPosition(new MessageStreamCheckpointSaveContext("my-consumer", null, 0), CancellationToken.None);
+
+            await checkpoint.PublicSaveStreamPosition(new MessageStreamCheckpointSaveContext("my-consumer", null, 119) { IsBootstrapSeed = true }, CancellationToken.None);
+
+            Assert.Equal(0, await checkpoint.PublicGetStreamPosition(context, CancellationToken.None));
+        }
+
+        [Fact]
+        public async Task WhenAnotherWriterInsertsAPositionBeforeTheSeedInserts_KeepsThatPosition()
+        {
+            using var fixture = new SqliteFixture();
+            var competing = fixture.CreateCheckpoint();
+            var checkpoint = fixture.CreateCheckpoint(beforeFirstSave: cancellationToken => competing.PublicSaveStreamPosition(
+                new MessageStreamCheckpointSaveContext("my-consumer", null, 500), cancellationToken));
+
+            await checkpoint.PublicSaveStreamPosition(new MessageStreamCheckpointSaveContext("my-consumer", null, 119) { IsBootstrapSeed = true }, CancellationToken.None);
+
+            Assert.Equal(500, await checkpoint.PublicGetStreamPosition(new MessageStreamCheckpointContext("my-consumer", null), CancellationToken.None));
+        }
+
+        [Fact]
+        public async Task WhenAnotherWriterInitializesTheRowBeforeTheSeedInserts_StoresTheSeed()
+        {
+            using var fixture = new SqliteFixture();
+            var competing = fixture.CreateCheckpoint();
+            var checkpoint = fixture.CreateCheckpoint(beforeFirstSave: cancellationToken => competing.PublicInitializeCheckpoint(
+                new MessageStreamCheckpointContext("my-consumer", null), cancellationToken));
+
+            await checkpoint.PublicSaveStreamPosition(new MessageStreamCheckpointSaveContext("my-consumer", null, 119) { IsBootstrapSeed = true }, CancellationToken.None);
+
+            Assert.Equal(119, await checkpoint.PublicGetStreamPosition(new MessageStreamCheckpointContext("my-consumer", null), CancellationToken.None));
+        }
+
+        [Fact]
+        public async Task WhenInsertingFailsAndNoRowExists_Rethrows()
+        {
+            using var fixture = new SqliteFixture();
+            var checkpoint = fixture.CreateCheckpoint(beforeFirstSave: _ => throw new DbUpdateException("store unavailable"));
+
+            await Assert.ThrowsAsync<DbUpdateException>(() =>
+                checkpoint.PublicSaveStreamPosition(new MessageStreamCheckpointSaveContext("my-consumer", null, 119) { IsBootstrapSeed = true }, CancellationToken.None));
+        }
+
+        [Fact]
+        public async Task ForAnotherQueueWithTheSameConsumer_StoresItsOwnSeed()
+        {
+            using var fixture = new SqliteFixture();
+            var otherQueue = fixture.CreateCheckpoint("other-queue");
+            var checkpoint = fixture.CreateCheckpoint();
+            await otherQueue.PublicSaveStreamPosition(new MessageStreamCheckpointSaveContext("my-consumer", null, 500), CancellationToken.None);
+
+            await checkpoint.PublicSaveStreamPosition(new MessageStreamCheckpointSaveContext("my-consumer", null, 119) { IsBootstrapSeed = true }, CancellationToken.None);
+
+            Assert.Equal(119, await checkpoint.PublicGetStreamPosition(new MessageStreamCheckpointContext("my-consumer", null), CancellationToken.None));
+            Assert.Equal(500, await otherQueue.PublicGetStreamPosition(new MessageStreamCheckpointContext("my-consumer", null), CancellationToken.None));
+        }
+
+        [Fact]
+        public async Task ABatchSaveAfterAnIgnoredSeed_StillOverwrites()
+        {
+            using var fixture = new SqliteFixture();
+            var checkpoint = fixture.CreateCheckpoint();
+            var context = new MessageStreamCheckpointContext("my-consumer", null);
+            await checkpoint.PublicSaveStreamPosition(new MessageStreamCheckpointSaveContext("my-consumer", null, 500), CancellationToken.None);
+            await checkpoint.PublicSaveStreamPosition(new MessageStreamCheckpointSaveContext("my-consumer", null, 119) { IsBootstrapSeed = true }, CancellationToken.None);
+
+            await checkpoint.PublicSaveStreamPosition(new MessageStreamCheckpointSaveContext("my-consumer", null, 3), CancellationToken.None);
+
+            Assert.Equal(3, await checkpoint.PublicGetStreamPosition(context, CancellationToken.None));
+        }
+
+        [Fact]
         public async Task OnOnePartition_DoesNotAffectAnotherPartitionsRow()
         {
             using var fixture = new SqliteFixture();
@@ -174,27 +279,58 @@ public class EfCoreMessageStreamCheckpointTests
             SaveStreamPosition(context, cancellationToken);
     }
 
+    private sealed class RunBeforeFirstSaveInterceptor(Func<CancellationToken, Task> beforeFirstSave) : SaveChangesInterceptor
+    {
+        private bool _ran;
+
+        public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (_ran) return result;
+
+            _ran = true;
+            await beforeFirstSave(cancellationToken);
+
+            return result;
+        }
+    }
+
     private sealed class SqliteFixture : IDisposable
     {
+        private readonly string _connectionString;
         private readonly SqliteConnection _keepAliveConnection;
         private readonly IDbContextFactory<MessageStreamCheckpointDataContext> _dbContextFactory;
 
         public SqliteFixture()
         {
-            var connectionString = $"Data Source={Guid.NewGuid()};Mode=Memory;Cache=Shared";
-            _keepAliveConnection = new SqliteConnection(connectionString);
+            _connectionString = $"Data Source={Guid.NewGuid()};Mode=Memory;Cache=Shared";
+            _keepAliveConnection = new SqliteConnection(_connectionString);
             _keepAliveConnection.Open();
 
-            var builder = new DbContextOptionsBuilder<MessageStreamCheckpointDataContext>();
-            builder.UseSqlite(connectionString);
-            _dbContextFactory = new PooledDbContextFactory<MessageStreamCheckpointDataContext>(builder.Options);
+            _dbContextFactory = CreateFactory();
 
             using var context = _dbContextFactory.CreateDbContext();
             context.Database.EnsureCreated();
         }
 
-        public TestCheckpoint CreateCheckpoint(string queueName = "my-queue") => new(_dbContextFactory, queueName);
+        public TestCheckpoint CreateCheckpoint(string queueName = "my-queue", Func<CancellationToken, Task>? beforeFirstSave = null)
+            => new(beforeFirstSave is null ? _dbContextFactory : CreateFactory(new RunBeforeFirstSaveInterceptor(beforeFirstSave)), queueName);
 
         public void Dispose() => _keepAliveConnection.Dispose();
+
+        private IDbContextFactory<MessageStreamCheckpointDataContext> CreateFactory(IInterceptor? interceptor = null)
+        {
+            var builder = new DbContextOptionsBuilder<MessageStreamCheckpointDataContext>();
+            builder.UseSqlite(_connectionString);
+
+            if (interceptor is not null)
+            {
+                builder.AddInterceptors(interceptor);
+            }
+
+            return new PooledDbContextFactory<MessageStreamCheckpointDataContext>(builder.Options);
+        }
     }
 }

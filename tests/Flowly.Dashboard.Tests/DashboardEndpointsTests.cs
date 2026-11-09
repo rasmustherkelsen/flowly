@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Security.Claims;
 using System.Text.Json;
 using Flowly.Dashboard.Tests.Fakes;
 using Flowly.DeadLetters;
@@ -26,7 +27,7 @@ public class DashboardEndpointsTests
         }
 
         [Fact]
-        public async Task WithoutParameters_QueriesEverythingWithoutAnExtraCount()
+        public async Task WithoutParameters_QueriesTheDefaultPageWithoutAnExtraCount()
         {
             var deadLetterService = new RecordingDeadLetterService();
             using var client = CreateClient(deadLetterService);
@@ -210,7 +211,64 @@ public class DashboardEndpointsTests
         }
 
         [Fact]
-        public async Task ForAMessageThatIsNotPending_Returns400()
+        public async Task WithAnAuthenticatedUser_RecordsTheUserNameAsTheRequester()
+        {
+            var deadLetterService = new RecordingDeadLetterService();
+            using var client = CreateClient(deadLetterService, AuthenticatedUser(new Claim(ClaimTypes.Name, "alice"), new Claim("sub", "subject-1")));
+
+            await client.PostAsJsonAsync("/flowly/api/dead-letters/m1/requeue", new { });
+
+            Assert.Equal(("m1", "alice", null), Assert.Single(deadLetterService.RequeueCalls));
+        }
+
+        [Fact]
+        public async Task WithAnAuthenticatedUserWithoutAName_RecordsTheSubjectAsTheRequester()
+        {
+            var deadLetterService = new RecordingDeadLetterService();
+            using var client = CreateClient(deadLetterService, AuthenticatedUser(new Claim("sub", "subject-1")));
+
+            await client.PostAsJsonAsync("/flowly/api/dead-letters/m1/requeue", new { });
+
+            Assert.Equal(("m1", "subject-1", null), Assert.Single(deadLetterService.RequeueCalls));
+        }
+
+        [Fact]
+        public async Task WithALongUserName_CutsTheRequesterTo200Characters()
+        {
+            var deadLetterService = new RecordingDeadLetterService();
+            using var client = CreateClient(deadLetterService, AuthenticatedUser(new Claim(ClaimTypes.Name, new string('a', 250))));
+
+            await client.PostAsJsonAsync("/flowly/api/dead-letters/m1/requeue", new { });
+
+            Assert.Equal(new string('a', 200), Assert.Single(deadLetterService.RequeueCalls).RequeuedBy);
+        }
+
+        [Fact]
+        public async Task WithAReplacementBodyAndANonJsonContentType_Returns415WithoutRequeuing()
+        {
+            var deadLetterService = new RecordingDeadLetterService();
+            using var client = CreateClient(deadLetterService);
+
+            var response = await client.PostAsync("/flowly/api/dead-letters/m1/requeue", new StringContent("""{"messageBody":"{}"}""", System.Text.Encoding.UTF8, "text/plain"));
+
+            Assert.Equal(HttpStatusCode.UnsupportedMediaType, response.StatusCode);
+            Assert.Empty(deadLetterService.RequeueCalls);
+        }
+
+        [Fact]
+        public async Task ForAMessageThatIsNotPending_Returns409()
+        {
+            var deadLetterService = new RecordingDeadLetterService { RequeueFailure = new DeadLetterStatusConflictException("cannot be requeued") };
+            using var client = CreateClient(deadLetterService);
+
+            var response = await client.PostAsJsonAsync("/flowly/api/dead-letters/m1/requeue", new { messageBody = "{}" });
+
+            Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+            Assert.Contains("cannot be requeued", await response.Content.ReadAsStringAsync());
+        }
+
+        [Fact]
+        public async Task ForAnInvalidOperationThatIsNotAStatusConflict_Returns400()
         {
             var deadLetterService = new RecordingDeadLetterService { RequeueFailure = new InvalidOperationException("cannot be requeued") };
             using var client = CreateClient(deadLetterService);
@@ -219,6 +277,66 @@ public class DashboardEndpointsTests
 
             Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
             Assert.Contains("cannot be requeued", await response.Content.ReadAsStringAsync());
+        }
+    }
+
+    public class DiscardDeadLetter
+    {
+        [Fact]
+        public async Task WithoutDeadLetterTracking_Returns404()
+        {
+            using var client = CreateClient(null);
+
+            var response = await client.DeleteAsync("/flowly/api/dead-letters/m1/discard");
+
+            Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        }
+
+        [Fact]
+        public async Task ForAPendingMessage_DiscardsItAndReturns200()
+        {
+            var deadLetterService = new RecordingDeadLetterService();
+            using var client = CreateClient(deadLetterService);
+
+            var response = await client.DeleteAsync("/flowly/api/dead-letters/m1/discard");
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Equal("m1", Assert.Single(deadLetterService.DiscardCalls));
+        }
+
+        [Fact]
+        public async Task ForAnUnknownMessageId_Returns404()
+        {
+            var deadLetterService = new RecordingDeadLetterService { DiscardFailure = new KeyNotFoundException() };
+            using var client = CreateClient(deadLetterService);
+
+            var response = await client.DeleteAsync("/flowly/api/dead-letters/m1/discard");
+
+            Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        }
+
+        [Fact]
+        public async Task ForAMessageThatWasAlreadyRequeued_Returns409()
+        {
+            var deadLetterService = new RecordingDeadLetterService { DiscardFailure = new DeadLetterStatusConflictException("already requeued") };
+            using var client = CreateClient(deadLetterService);
+
+            var response = await client.DeleteAsync("/flowly/api/dead-letters/m1/discard");
+
+            Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+            Assert.Contains("already requeued", await response.Content.ReadAsStringAsync());
+        }
+
+        [Fact]
+        public async Task ForAnInvalidOperationThatIsNotAStatusConflict_Returns400()
+        {
+            var deadLetterService = new RecordingDeadLetterService { DiscardFailure = new InvalidOperationException("storage unavailable") };
+            using var client = CreateClient(deadLetterService);
+
+            var response = await client.DeleteAsync("/flowly/api/dead-letters/m1/discard");
+
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            Assert.Contains("storage unavailable", await response.Content.ReadAsStringAsync());
         }
     }
 
@@ -254,7 +372,9 @@ public class DashboardEndpointsTests
         }
     }
 
-    private static HttpClient CreateClient(RecordingDeadLetterService? deadLetterService)
+    private static ClaimsPrincipal AuthenticatedUser(params Claim[] claims) => new(new ClaimsIdentity(claims, "test"));
+
+    private static HttpClient CreateClient(RecordingDeadLetterService? deadLetterService, ClaimsPrincipal? user = null)
     {
         var host = new HostBuilder()
             .ConfigureWebHost(webHost =>
@@ -271,7 +391,20 @@ public class DashboardEndpointsTests
                         services.AddSingleton<IDeadLetterService>(deadLetterService);
                     }
                 });
-                webHost.Configure(app => app.UseFlowlyDashboard());
+                webHost.Configure(app =>
+                {
+                    if (user is not null)
+                    {
+                        app.Use((httpContext, next) =>
+                        {
+                            httpContext.User = user;
+
+                            return next(httpContext);
+                        });
+                    }
+
+                    app.UseFlowlyDashboard();
+                });
             })
             .Start();
 

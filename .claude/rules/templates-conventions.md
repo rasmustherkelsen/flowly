@@ -24,7 +24,7 @@ The task is **not done** until all four are consistent.
 | `flowlyapp` | `dotnet new flowlyapp --transport <value> [options]` | Complete solution (Messages + Sender + Receiver) |
 | `flowlyaspireapp` | `dotnet new flowlyaspireapp --transport <value> [options]` | Complete .NET Aspire solution |
 | `flowlymessagelib` | `dotnet new flowlymessagelib [--jobs] [options]` | Message contracts class library |
-| `flowlyskills` | `dotnet new flowlyskills` | Install Flowly Claude Code skills into `.claude/skills/` |
+| `flowlyskills` | `dotnet new flowlyskills [--agent claude\|copilot]` | Install Flowly AI skills into `.claude/skills/` (Claude Code, default) or `.github/skills/` (GitHub Copilot CLI) |
 
 ## `--transport` (required)
 
@@ -42,7 +42,7 @@ Optional feature flags: `--jobtracking`/`--jobs`, `--deadlettertracking`/`--dead
 
 ## SyncSkills MSBuild target
 
-`SyncSkills` in `Flowly.Templates.csproj` copies `.claude/skills/**` into `content/flowly-skills/.claude/skills/` at build time. Those files are generated: never edit them; edit the source under `.claude/skills/`.
+`SyncSkills` in `Flowly.Templates.csproj` copies `.claude/skills/**` into `content/flowly-skills/.claude/skills/` at build time. Those files are generated: never edit them; edit the source under `.claude/skills/`. The `flowlyskills` template's `--agent copilot` choice relocates that folder to `.github/skills/` with a conditional `rename` in `content/flowly-skills/.template.config/template.json`; keep the generated folder name and the rename key in sync if the `SyncSkills` destination ever changes.
 
 ## Template parity: flowlyapp ↔ flowlyaspireapp
 

@@ -39,6 +39,7 @@ See [`src/Flowly.ManagementApi/README.md`](src/Flowly.ManagementApi/README.md) f
 - [RabbitMQ Quickstart](docs/quickstart-rabbitmq.md)
 - [Azure Service Bus Quickstart](docs/quickstart-azure-service-bus.md)
 - [InMemory Quickstart](docs/quickstart-inmemory.md)
+- [Azure Event Hubs Quickstart](docs/quickstart-azure-event-hubs.md)
 - [Management API](#management-api)
 - [Why Flowly?](#why-flowly)
 - [Packages](#packages)
@@ -49,7 +50,7 @@ See [`src/Flowly.ManagementApi/README.md`](src/Flowly.ManagementApi/README.md) f
 - [Sending Messages](#sending-messages)
 - [Message Streaming](#message-streaming)
 - [Events (Fan-Out)](#events-fan-out)
-- [Handler steps and send steps](#handler-steps-and-send-steps)
+- [Handler steps and send steps](#handler-steps-and-send-steps) ([guide](docs/handler-steps-and-send-steps.md))
 - [Topology Name Resolution](#topology-name-resolution)
 - [Retry Policy](#retry-policy)
 - [Dead Letter Tracking](#dead-letter-tracking)
@@ -553,6 +554,8 @@ Omitting both parameters means the stream retains every message forever — a br
 
 `[RetryPolicy(maxRetries, delaySeconds)]` on the handler class enables retry, but the mechanism is different from every other handler type: retries run **in-process**, re-invoking the handler on the same in-memory batch — messages are never re-published to the stream, which would permanently write retry noise into an immutable, replayable log.
 
+Retries cover the whole processing of a batch, but only the failed step is repeated: once the handler has returned, a failure while acknowledging the messages or saving the [checkpoint](#position-persistence) is retried in-process with the same `[RetryPolicy]` count and delay without running the handler again, so a checkpoint store outage never causes a duplicate side effect inside a running process. When those retries are exhausted the partition halts like a handler failure, with a last error saying that the handler succeeded and the acknowledgement or checkpoint save failed, and a resume repeats only that step. Without `[RetryPolicy]` a single failing save halts the partition.
+
 When retries are exhausted, the handler **halts consumption of that queue (or partition)** rather than skipping the failed batch: the stream offset never advances past it, a critical log entry and a `flowly.message.handler.halted` metric are emitted, and no further messages are processed. Flowly keeps the failed batch and applies backpressure instead of dropping anything: the transport stops receiving, the broker keeps the rest of the stream, and memory stays bounded (the held batch plus one further batch of buffered messages). The partition stays halted until it is revoked, which moves it to another instance that replays the failed batch from the stored position, or the process stops and the next start replays it; a halted batch can also be run again in place, which is an operator action and is never done automatically (a batch that fails again halts again), see [Operating halted partitions](#operating-halted-partitions-management-api-and-powershell). The partition is reported as `Halted` with its last error by the [partition state](#partition-state-and-health) metrics and health check. Dead letter tracking is not supported for stream handlers.
 
 `MessageStreamHandlerOptions` does not inherit the queue options used by other handlers — `LockDuration`, `DeadLetterOnMessageExpiration`, and `Configure`-based retry settings don't apply to streams (there's no per-message peek-lock, and retention replaces TTL).
@@ -564,7 +567,7 @@ Every stream partition this process owns (a non-partitioned stream counts as one
 | State | Meaning |
 |---|---|
 | `Running` | A processing loop exists for the partition and is consuming. |
-| `Waiting` | The partition's start position could not be resolved (for example the checkpoint store is unavailable), so no processing loop exists for it yet. Messages the transport still delivers for it are dropped and counted, and are redelivered from the stored position once the partition starts. On RabbitMQ the partition is retried without a restart, see [Recovery of a waiting partition on RabbitMQ](#recovery-of-a-waiting-partition-on-rabbitmq). On Azure Event Hubs the SDK retries it in every load balancing cycle, and with a `partitionOwnershipContainer` the entry is removed within about one cycle once another instance owns the partition. Only partitioned streams report this state. |
+| `Waiting` | The partition's start position could not be resolved (for example the checkpoint store is unavailable), so no processing loop exists for it yet. Messages the transport still delivers for it are dropped and counted, and are redelivered from the stored position once the partition starts. On RabbitMQ the partition is retried without a restart, see [Recovery of a waiting partition on RabbitMQ](#recovery-of-a-waiting-partition-on-rabbitmq). On Azure Event Hubs the SDK retries it in every load balancing cycle, and with a `partitionOwnershipContainer` the entry is removed within about one cycle once another instance owns the partition. A non-partitioned stream reports it too while its start position cannot be resolved at startup: the service retries after 1 second, doubling up to 30 seconds, until it succeeds (the host keeps running); this retry interval is fixed. |
 | `Halted` | The partition exhausted its in-process retries and stopped consuming; the stream offset does not advance past the failed batch. |
 
 For each partition Flowly also keeps the last error (message and exception type) and when it happened, and when the partition entered its current state. A revoked partition is no longer reported. A halted partition is `Halted` for as long as it holds its batch and is `Running` again once the held batch is run again. Two metrics report them (see [OpenTelemetry](#metrics)): `flowly.message.stream.partition.state`, a gauge with the current state of each owned partition (`0` running, `1` waiting, `2` halted), and `flowly.message.stream.partition.transitions`, a counter of state changes tagged `state=running|waiting|halted`.
@@ -589,7 +592,7 @@ It is unhealthy while any owned partition is `Halted` or `Waiting` and healthy o
 The list returns, per partition, the handler name, queue, consumer name, partition, state, when the state was entered and the last error (message, exception type, time). A resume re-runs the batch the partition is holding with a fresh set of in-process retries and lets the partition continue from it; it answers `204`. Nothing is skipped: when the batch fails again the partition halts again (and can be resumed again). It answers `404` when the instance does not own the partition and `409` when the partition is not `Halted` (a `Waiting` partition has no processing loop yet and is retried automatically, see [Recovery of a waiting partition on RabbitMQ](#recovery-of-a-waiting-partition-on-rabbitmq); there is no action that retries it sooner). Fix the cause first (the handler, a downstream dependency), then resume:
 
 ```powershell
-Connect-Flowly -BaseUri https://myapp.example.com/flowly/management -ApiKey $env:FLOWLY_API_KEY
+Connect-Flowly -BaseUri https://myapp.example.com/flowly/management -ApiKey (ConvertTo-SecureString $env:FLOWLY_API_KEY -AsPlainText -Force)
 Get-FlowlyMessageStreamPartition -State Halted
 Get-FlowlyMessageStreamPartition -State Halted | Resume-FlowlyMessageStreamPartition
 ```
@@ -680,10 +683,10 @@ builder.AddMessageStreamCheckpoint<TelemetryReadingCheckpoint>();
 
 Flowly feature-detects the registration — no separate builder call is needed beyond the sugar above (or the plain `AddSingleton` it wraps). Once registered:
 
-- `InitializeCheckpoint` runs before the processing loop starts (per reader, so per partition on a partitioned stream) and is called again the next time the reader starts if it threw, until it has completed once, so `SaveStreamPosition` — called after every successfully processed batch — can be a plain update with no existence check on the hot path.
+- `InitializeCheckpoint` runs before the processing loop starts (per reader, so per partition on a partitioned stream) and is called again the next time the reader starts if it threw, until it has completed once, so `SaveStreamPosition` — called after every successfully processed batch, and retried on its own without re-running the handler when it throws — can be a plain update with no existence check on the hot path.
 - `GetStreamPosition` returning `null` means nothing has been saved for this reader yet — neither a processed batch nor a bootstrap seed. Flowly then resolves the `StartPosition` configured in `Configure`, which is only a bootstrap value, and (see below) stores it before consuming.
 - **The first run's position is fixed up front.** For `StartPosition.Last()` and `StartPosition.Timestamp(...)`, when the transport can resolve the start to a concrete offset without consuming (RabbitMQ with a short AMQP probe consumer; Azure Event Hubs from the partition properties, which resolve `Last()` and a `Timestamp(...)` later than the last enqueued event; InMemory is not applicable because it rejects checkpoints), Flowly calls `SaveStreamPosition` once before the handler starts consuming, with `IsBootstrapSeed = true` and `Position` set to the first offset it will read minus one. A restart before the first batch therefore does not move the position, and messages published while the process was down are delivered — for example `Last()` on an empty stream, stopped before anything arrived. `First()` and `Offset(n)` do not change meaning between restarts and are not stored up front. A `Timestamp` is stored as a lower bound at the broker's chunk resolution, so a restart can redeliver messages from before the time but never skips one.
-- **`SaveStreamPosition` can therefore be called without a processed batch, and `Position` can be `-1`** (the reader will start at offset `0`, as on an empty stream). Store negative values as they are, return a stored `-1` from `GetStreamPosition` as `-1` (not `null`), and do not treat every save as proof that a batch was handled; use `context.IsBootstrapSeed` to tell the two apart. The row may not exist yet when the seed is saved, so make `SaveStreamPosition` an upsert (the built-in stores already are).
+- **`SaveStreamPosition` can therefore be called without a processed batch, and `Position` can be `-1`** (the reader will start at offset `0`, as on an empty stream). Store negative values as they are, return a stored `-1` from `GetStreamPosition` as `-1` (not `null`), and do not treat every save as proof that a batch was handled; use `context.IsBootstrapSeed` to tell the two apart. The row may not exist yet when the seed is saved, so make `SaveStreamPosition` an upsert (the built-in stores already are). **A seed must never overwrite a stored position:** when `context.IsBootstrapSeed` is `true`, write only if no position is stored yet for the reader (a row created by `InitializeCheckpoint` without a position counts as none) and do nothing otherwise, as one atomic operation (a conditional insert or an update that requires an empty position) rather than a read followed by a write. A seed can complete late, after the reader has started and saved a higher position (for example when resolving the start position was abandoned), and an unconditional write would move the position backwards so that the next restart replays everything in between. Flowly also re-reads the position with `GetStreamPosition` just before it saves a seed and skips the seed when one now exists (the reader then resumes after that position), which narrows the window for a store that does not follow the rule yet but does not close it. A save without the flag always overwrites; the built-in stores follow the rule.
 - If the transport cannot resolve the position (the broker did not answer in time, or the stream reports messages but delivered none), or the store or resolver fails, Flowly logs a warning, counts it (`outcome=seed_failed`) and starts with the configured `StartPosition`; the position is then stored after the first processed batch as before.
 - The position saved is never for a batch still retrying or that failed — a crash mid-batch replays at most the last unsaved batch on restart, consistent with the in-process retry model above.
 
@@ -706,7 +709,7 @@ flowly message-stream reset-checkpoint --provider sqlite --connection "Data Sour
 
 ```powershell
 # Flowly.PowerShell — talks to a running Flowly.ManagementApi instance over HTTPS instead
-Connect-Flowly -BaseUri https://myapp.example.com/flowly/management -ApiKey $env:FLOWLY_API_KEY
+Connect-Flowly -BaseUri https://myapp.example.com/flowly/management -ApiKey (ConvertTo-SecureString $env:FLOWLY_API_KEY -AsPlainText -Force)
 Get-FlowlyMessageStreamCheckpoint
 Reset-FlowlyMessageStreamCheckpoint -QueueName my-queue -ConsumerName MyHandler -Offset 42
 ```
@@ -1229,7 +1232,7 @@ builder.AddDeadLetterTrackingClient("DeadLetters");     // or the Postgres / SQL
 
 `AddDeadLetterTrackingClient` registers only the data context, repository and `IDeadLetterService` — no ingestion, cleanup or metrics background services and no migrations — so it never participates in ingesting dead letters. It is provided by each backend package (`Flowly.DeadLetters.SqlServer`, `.Postgres`, `.SQLite`).
 
-**Querying:** `IDeadLetterService.QueryDeadLetters(new DeadLetterQuery { QueueName = "orders", Status = DeadLetterStatus.Pending, Skip = 0, Take = 50, IncludeTotalCount = true })` returns a `DeadLetterPage` (`Items`, newest first, and `TotalCount` when requested). The database filters (`QueueName`, `SubscriptionName`, `Status`, `MessageId`), orders and pages, so only the requested page is loaded; `GetDeadLetters()` loads every tracked record.
+**Querying:** `IDeadLetterService.QueryDeadLetters(new DeadLetterQuery { QueueName = "orders", Status = DeadLetterStatus.Pending, Skip = 0, Take = 50, IncludeTotalCount = true })` returns a `DeadLetterPage` (`Items`, newest first, and `TotalCount` when requested). The database filters (`QueueName`, `SubscriptionName`, `Status`, `MessageId`), orders and pages, so only the requested page is loaded (without `Take`, a page of `DeadLetterQuery.DefaultTake`, 100, dead letters; the Dashboard's list endpoint behaves the same way); `GetDeadLetters()` loads every tracked record.
 
 ### What gets stored
 
@@ -1281,7 +1284,7 @@ Submit-FlowlyDeadLetter -MessageId $id -MessageBody '{"orderId":42,"amount":12.5
 Get-FlowlyDeadLetter -Status Pending -First 20 | Remove-FlowlyDeadLetter
 ```
 
-The list is newest first and filtered by `queue` (the topic name for an event subscription dead letter), `subscription`, `status` (`Pending` or `Requeued`) and `messageId`; `skip` and `take` (1 to 1000) page through it, and without `take` everything after `skip` is returned. Requeue stores `requeuedBy` as the audit trail; when it is omitted or blank the API records the authenticated caller's identity instead, never a value taken from a request header: the principal's name for host authorization policies, the principal's name, then the `sub` or `azp` claim, for OAuth2 (an Entra client credentials token has no name, so its `sub` or `azp` is stored), and nothing for an API key, which carries no identity. An explicit `requeuedBy` overrides the default. Requeue and discard answer `204`, `404` for an unknown message id, `409` when the dead letter is not `Pending` (a requeued dead letter can be neither requeued nor discarded again), `400` for a blank message id or a rejected `messageBody`. Discarding permanently deletes the record. The optional `messageBody` (`-MessageBody`) republishes a corrected body instead of the stored one; see [Fix and requeue](#fix-and-requeue-a-dead-letter). The Write cmdlets ask for confirmation (`-WhatIf` and `-Confirm` are supported). See [`src/Flowly.ManagementApi/README.md`](src/Flowly.ManagementApi/README.md) for the full contract.
+The list is newest first and filtered by `queue` (the topic name for an event subscription dead letter), `subscription`, `status` (`Pending` or `Requeued`) and `messageId`; `skip` and `take` (1 to 1000) page through it, and without `take` a page of 100 is returned, so a longer list is read with `skip`. `Get-FlowlyDeadLetter` without `-First` pages through the whole list itself (pages of 1000) and returns every dead letter after `-Skip`; with `-First` it returns at most that many. Requeue stores the authenticated caller's identity as the audit trail, which always wins over a `requeuedBy` in the request and is never a value taken from a request header; the request's `requeuedBy` is stored only when the caller has no identity of its own (an API key): the principal's name for host authorization policies, the principal's name, then the `sub` or `azp` claim, for OAuth2 (an Entra client credentials token has no name, so its `sub` or `azp` is stored), and nothing for an API key, which carries no identity (the supplied `requeuedBy` is stored then). The Dashboard records the signed-in user (name, else `sub`) the same way, answers `415` to a requeue request with a body that is not `application/json`, and answers `409` (like the Management API) from its requeue and discard endpoints when the dead letter is not in a state that allows the operation. Requeue and discard answer `204`, `404` for an unknown message id, `409` when the dead letter is not `Pending` (a requeued dead letter can be neither requeued nor discarded again), `400` for a blank message id or a rejected `messageBody`. Discarding permanently deletes the record. The optional `messageBody` (`-MessageBody`) republishes a corrected body instead of the stored one; see [Fix and requeue](#fix-and-requeue-a-dead-letter). The Write cmdlets ask for confirmation (`-WhatIf` and `-Confirm` are supported). See [`src/Flowly.ManagementApi/README.md`](src/Flowly.ManagementApi/README.md) for the full contract.
 
 ---
 
@@ -1674,7 +1677,7 @@ MyApp/
 └── sbconfig.json        ← ASB only
 ```
 
-**Azure Event Hubs** generates the same `Messages`/`Sender`/`Receiver` solution as a RabbitMQ stream, plus a `docker-compose.yml` with the Event Hubs emulator and Azurite and an `ehconfig.json` that declares the event hub `my`, its partition count and the consumer group `MyMessageHandler` (the emulator has no management plane and Flowly never creates event hubs). The Receiver is registered with a blob container on Azurite for partition ownership, so a second Receiver instance shares the partitions. The emulator needs its license terms accepted: start it with `ACCEPT_EULA=Y docker compose up -d`.
+**Azure Event Hubs** generates the same `Messages`/`Sender`/`Receiver` solution as a RabbitMQ stream, plus a `docker-compose.yml` with the Event Hubs emulator and Azurite and an `ehconfig.json` that declares the event hub `my`, its partition count and the consumer group `MyMessageHandler` (the emulator has no management plane and Flowly never creates event hubs). The Receiver is registered with a blob container on Azurite for partition ownership, so a second Receiver instance shares the partitions. The compose file sets `ACCEPT_EULA=Y` on the emulator, which accepts its license terms on your behalf, so `docker compose up -d` works as is.
 
 **InMemory** generates a single-project solution (`App/`) with sender, receiver, and optionally job/dead-letter tracking in the same process. With `--dashboard`, the management UI is embedded in `App/`.
 
@@ -1744,15 +1747,20 @@ dotnet new flowlymessagelib -o <ProjectName>
 |------|-------|-------------|
 | `--jobtracking` | `--jobs` | Add a `Flowly.Jobs` dependency and a `MyJobMessage.cs` starter file. |
 
-### `flowlyskills` — Install Flowly Claude Code skills
+### `flowlyskills` — Install Flowly AI agent skills
 
-Drops Flowly AI skills for [Claude Code](https://claude.ai/code) into `.claude/skills/` in the current directory. Run this from your repository root so skills are available across all projects in the repo.
+Drops Flowly AI skills for [Claude Code](https://claude.ai/code) or [GitHub Copilot CLI](https://docs.github.com/en/copilot/concepts/agents/about-agent-skills) into the current directory. Run this from your repository root so skills are available across all projects in the repo. No project name required.
 
 ```bash
-dotnet new flowlyskills
+dotnet new flowlyskills                      # Claude Code (default) -> .claude/skills/
+dotnet new flowlyskills --agent copilot      # GitHub Copilot CLI    -> .github/skills/
 ```
 
-No options or project name required. The skills teach Claude Code how to scaffold message handlers, recurring jobs, contracts assemblies, and configure Flowly transports.
+| Option | Values | Default | Description |
+|---|---|---|---|
+| `--agent` | `claude`, `copilot` | `claude` | The AI coding agent to install the skills for. `claude` writes `.claude/skills/` (Claude Code); `copilot` writes `.github/skills/` (GitHub Copilot CLI's own project skills folder). |
+
+The skills are identical for both agents; only the target folder differs. GitHub Copilot CLI also discovers project skills in `.claude/skills/`, so the default install works with both tools; use `--agent copilot` to keep skills under `.github/` instead. Install into `.claude/skills/` and `.github/skills/` at the same time only if you want both folders, since a skill present in both is a duplicate. The skills teach the agent how to scaffold message handlers, handler steps and send steps, recurring jobs, contracts assemblies, and configure Flowly transports. A few skills use Claude Code specifics (the `arguments` frontmatter field and the `AskUserQuestion` tool); GitHub Copilot CLI ignores the field and asks in chat instead.
 
 ## Full Configuration Example
 

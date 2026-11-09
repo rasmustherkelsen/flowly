@@ -185,6 +185,32 @@ public class ListDeadLettersManagementActionTests
         }
 
         [Fact]
+        public async Task WithoutTake_ReturnsOnlyTheDefaultPageSize()
+        {
+            var deadLetterService = new FakeDeadLetterService();
+            for (var i = 0; i < DeadLetterQuery.DefaultTake + 1; i++)
+                deadLetterService.Add($"m{i:D3}", deadLetteredAt: Now.AddMinutes(i));
+            var listDeadLettersManagementAction = new ListDeadLettersManagementAction();
+
+            var result = Assert.IsType<Ok<List<DeadLetterResponse>>>(await listDeadLettersManagementAction.List(deadLetterService, null, null, null, null, null, null, CancellationToken.None));
+
+            Assert.Equal(DeadLetterQuery.DefaultTake, result.Value!.Count);
+        }
+
+        [Fact]
+        public async Task WithTheMaximumTake_ReturnsMoreThanTheDefaultPageSize()
+        {
+            var deadLetterService = new FakeDeadLetterService();
+            for (var i = 0; i < DeadLetterQuery.DefaultTake + 5; i++)
+                deadLetterService.Add($"m{i:D3}", deadLetteredAt: Now.AddMinutes(i));
+            var listDeadLettersManagementAction = new ListDeadLettersManagementAction();
+
+            var result = Assert.IsType<Ok<List<DeadLetterResponse>>>(await listDeadLettersManagementAction.List(deadLetterService, null, null, null, null, null, ListDeadLettersManagementAction.MaxPageSize, CancellationToken.None));
+
+            Assert.Equal(DeadLetterQuery.DefaultTake + 5, result.Value!.Count);
+        }
+
+        [Fact]
         public async Task WithSkipAndWithoutTake_ReturnsTheRest()
         {
             var deadLetterService = new FakeDeadLetterService();

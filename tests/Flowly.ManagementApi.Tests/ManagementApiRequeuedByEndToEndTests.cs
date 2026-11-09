@@ -124,10 +124,21 @@ public class ManagementApiRequeuedByEndToEndTests
         }
 
         [Fact]
-        public async Task WithAnExplicitRequester_StoresItInsteadOfTheTokenIdentity()
+        public async Task WithAnExplicitRequester_StoresTheTokenIdentityInstead()
         {
             using var hostFixture = new HostFixture(HostMode.OAuth2);
             hostFixture.UseToken(new Claim("roles", "Flowly.Management.Write"), new Claim("sub", "service-principal-1"));
+
+            await hostFixture.Client.PostAsJsonAsync(RequeuePath, new { MessageId = "m1", RequeuedBy = "ops" });
+
+            Assert.Equal(("m1", "service-principal-1"), Assert.Single(hostFixture.DeadLetters.RequeueCalls));
+        }
+
+        [Fact]
+        public async Task WithAnExplicitRequesterAndATokenWithoutIdentityClaims_StoresTheExplicitRequester()
+        {
+            using var hostFixture = new HostFixture(HostMode.OAuth2);
+            hostFixture.UseToken(new Claim("roles", "Flowly.Management.Write"));
 
             await hostFixture.Client.PostAsJsonAsync(RequeuePath, new { MessageId = "m1", RequeuedBy = "ops" });
 
@@ -182,13 +193,13 @@ public class ManagementApiRequeuedByEndToEndTests
         }
 
         [Fact]
-        public async Task WithAnExplicitRequester_StoresIt()
+        public async Task WithAnExplicitRequester_StoresThePrincipalNameInstead()
         {
             using var hostFixture = new HostFixture(HostMode.ExistingPolicies);
 
             await hostFixture.Client.PostAsJsonAsync(RequeuePath, new { MessageId = "m1", RequeuedBy = "ops" });
 
-            Assert.Equal(("m1", "ops"), Assert.Single(hostFixture.DeadLetters.RequeueCalls));
+            Assert.Equal(("m1", PolicyAuthenticationHandler.UserName), Assert.Single(hostFixture.DeadLetters.RequeueCalls));
         }
 
         [Fact]
@@ -307,7 +318,7 @@ public class ManagementApiRequeuedByEndToEndTests
                         oauth.Authority = Issuer;
                         oauth.Audience = Audience;
                     }));
-                    services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
+                    services.PostConfigure<JwtBearerOptions>(ManagementApiRegistrationExtensions.OAuthSchemeName, options =>
                     {
                         var configuration = new OpenIdConnectConfiguration { Issuer = Issuer };
                         configuration.SigningKeys.Add(_signingKey);

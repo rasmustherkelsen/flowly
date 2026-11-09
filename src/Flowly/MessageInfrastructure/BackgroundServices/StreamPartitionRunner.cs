@@ -77,7 +77,8 @@ internal sealed class StreamPartitionRunner<TMessage, THandler>(
 
                 handlerInstrumentation.RecordReceived(handlerName, queueName, batch.Count);
 
-                while (await ProcessBatch(batch, stoppingToken) is { } resumed)
+                var progress = new BatchProgress();
+                while (await ProcessBatch(batch, progress, stoppingToken) is { } resumed)
                 {
                     await HoldUntilResumed(resumed, stoppingToken);
                 }
@@ -180,7 +181,7 @@ internal sealed class StreamPartitionRunner<TMessage, THandler>(
         return batch;
     }
 
-    private async Task<Task?> ProcessBatch(IReadOnlyList<IReceivedMessage<TMessage>> batch, CancellationToken stoppingToken)
+    private async Task<Task?> ProcessBatch(IReadOnlyList<IReceivedMessage<TMessage>> batch, BatchProgress progress, CancellationToken stoppingToken)
     {
         var links = batch
             .Select(m => ActivityContextParser.Parse(m.Properties))
@@ -191,22 +192,49 @@ internal sealed class StreamPartitionRunner<TMessage, THandler>(
         var sw = Stopwatch.StartNew();
         using var activity = handlerInstrumentation.StartHandling(handlerName, queueName, messagingSystem, batch[0].Properties, links);
 
+        if (!progress.Handled)
+        {
+            var handlerHalted = await RunWithRetries(() => HandleBatch(batch, stoppingToken), handlerFailed: true, "handling", batch.Count, stoppingToken);
+            if (handlerHalted is not null) return handlerHalted;
+
+            progress.Handled = true;
+        }
+
+        var completionHalted = await RunWithRetries(() => CompleteBatch(batch, progress, stoppingToken), handlerFailed: false, "completion", batch.Count, stoppingToken);
+        if (completionHalted is not null) return completionHalted;
+
+        var checkpointHalted = await RunWithRetries(() => SaveCheckpointIfPresent(batch, stoppingToken), handlerFailed: false, "checkpoint save", batch.Count, stoppingToken);
+        if (checkpointHalted is not null) return checkpointHalted;
+
+        handlerInstrumentation.RecordSucceeded(handlerName, queueName, sw.Elapsed.TotalMilliseconds, batch.Count);
+        logger.LogInformation("{HandlerName} completed {Count} stream messages (partition {Partition})", handlerName, batch.Count, partition);
+        return null;
+    }
+
+    private async Task HandleBatch(IReadOnlyList<IReceivedMessage<TMessage>> batch, CancellationToken stoppingToken)
+    {
+        await using var scope = serviceScopeFactory.CreateAsyncScope();
+        var messageHandler = scope.ServiceProvider.GetRequiredService<THandler>();
+
+        await messageHandler.Handle(new MessageStreamContext<TMessage>(batch.Select(m => m.Body).ToList(), stoppingToken, partition, batch.Select(m => m.Properties).ToList()));
+    }
+
+    private async Task CompleteBatch(IReadOnlyList<IReceivedMessage<TMessage>> batch, BatchProgress progress, CancellationToken stoppingToken)
+    {
+        while (progress.Completed < batch.Count)
+        {
+            await batch[progress.Completed].Complete(stoppingToken);
+            progress.Completed++;
+        }
+    }
+
+    private async Task<Task?> RunWithRetries(Func<Task> step, bool handlerFailed, string stepDescription, int batchCount, CancellationToken stoppingToken)
+    {
         for (var attempt = 0;; attempt++)
         {
-            await using var scope = serviceScopeFactory.CreateAsyncScope();
-            var messageHandler = scope.ServiceProvider.GetRequiredService<THandler>();
-
             try
             {
-                await messageHandler.Handle(new MessageStreamContext<TMessage>(batch.Select(m => m.Body).ToList(), stoppingToken, partition, batch.Select(m => m.Properties).ToList()));
-
-                foreach (var receivedMessage in batch)
-                    await receivedMessage.Complete(stoppingToken);
-
-                await SaveCheckpointIfPresent(batch, stoppingToken);
-
-                handlerInstrumentation.RecordSucceeded(handlerName, queueName, sw.Elapsed.TotalMilliseconds, batch.Count);
-                logger.LogInformation("{HandlerName} completed {Count} stream messages (partition {Partition})", handlerName, batch.Count, partition);
+                await step();
                 return null;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -217,9 +245,9 @@ internal sealed class StreamPartitionRunner<TMessage, THandler>(
             {
                 if (attempt < maxRetries)
                 {
-                    handlerInstrumentation.RecordRetried(handlerName, queueName, batch.Count);
-                    logger.LogWarning(e, "{HandlerName} stream batch handling failed, retrying in-process (attempt {Next}/{Max}) — messages are not re-published",
-                        handlerName, attempt + 1, maxRetries);
+                    handlerInstrumentation.RecordRetried(handlerName, queueName, batchCount);
+                    logger.LogWarning(e, "{HandlerName} stream batch {Step} failed, retrying in-process (attempt {Next}/{Max}) — messages are not re-published",
+                        handlerName, stepDescription, attempt + 1, maxRetries);
 
                     if (retryDelaySeconds > 0)
                         await Task.Delay(TimeSpan.FromSeconds(retryDelaySeconds), stoppingToken);
@@ -227,14 +255,33 @@ internal sealed class StreamPartitionRunner<TMessage, THandler>(
                     continue;
                 }
 
-                var resumed = MarkHalted(e);
-                handlerInstrumentation.RecordHalted(handlerName, queueName, e.Message);
-                logger.LogCritical(e,
-                    "{HandlerName} exhausted {MaxRetries} in-process retries on stream queue '{QueueName}' partition {Partition} — halting consumption. " +
-                    "The failed batch is held and not acknowledged, the stream offset will not advance past it, and no further messages will be processed " +
-                    "or dropped: the transport stops receiving and the broker keeps the rest of the stream. The partition stays halted until it is " +
-                    "resumed (the held batch is then run again) or revoked, or the process stops (the batch is then replayed from the stored position).",
-                    handlerName, maxRetries, queueName, partition);
+                var failure = handlerFailed
+                    ? e
+                    : new StreamBatchAcknowledgementException($"The handler succeeded but the batch {stepDescription} failed: {e.Message}", e);
+
+                var resumed = MarkHalted(failure);
+                handlerInstrumentation.RecordHalted(handlerName, queueName, failure.Message);
+
+                if (handlerFailed)
+                {
+                    logger.LogCritical(e,
+                        "{HandlerName} exhausted {MaxRetries} in-process retries on stream queue '{QueueName}' partition {Partition} — halting consumption. " +
+                        "The failed batch is held and not acknowledged, the stream offset will not advance past it, and no further messages will be processed " +
+                        "or dropped: the transport stops receiving and the broker keeps the rest of the stream. The partition stays halted until it is " +
+                        "resumed (the held batch is then run again) or revoked, or the process stops (the batch is then replayed from the stored position).",
+                        handlerName, maxRetries, queueName, partition);
+                }
+                else
+                {
+                    logger.LogCritical(e,
+                        "{HandlerName} handled a batch on stream queue '{QueueName}' partition {Partition} but its {Step} still failed after {MaxRetries} in-process retries — halting consumption. " +
+                        "The handler is not run again for this batch on a resume, only the acknowledgement and the checkpoint save are repeated. The stream offset " +
+                        "does not advance past the batch and no further messages are processed or dropped: the transport stops receiving and the broker keeps " +
+                        "the rest of the stream. The partition stays halted until it is resumed or revoked, or the process stops (the batch is then replayed " +
+                        "from the stored position, so the handler sees it again).",
+                        handlerName, queueName, partition, stepDescription, maxRetries);
+                }
+
                 return resumed;
             }
         }
@@ -247,5 +294,11 @@ internal sealed class StreamPartitionRunner<TMessage, THandler>(
 
         await MessageStreamCheckpointHelper.SaveStreamPositionIfPresent<TMessage>(
             serviceScopeFactory, consumerName, partition, lastOffset.Value, handlerName, queueName, handlerInstrumentation, cancellationToken);
+    }
+
+    private sealed class BatchProgress
+    {
+        public bool Handled { get; set; }
+        public int Completed { get; set; }
     }
 }

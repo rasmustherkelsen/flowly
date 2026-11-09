@@ -15,6 +15,7 @@ internal class DeadLetterCleanupBackgroundService(
     IDeadLetterOperationInstrumentation operationInstrumentation,
     ILogger<DeadLetterCleanupBackgroundService> logger) : BackgroundService
 {
+    private const int PurgeBatchSize = 500;
     private static readonly TimeSpan CleanupInterval = TimeSpan.FromMinutes(1);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -62,12 +63,23 @@ internal class DeadLetterCleanupBackgroundService(
         }
 
         if (opts.DeleteDeadLetteredMessagesAfter.HasValue)
-        {
-            var pendingPurged = await repository.DeletePendingOlderThan(opts.DeleteDeadLetteredMessagesAfter.Value, cancellationToken);
+            await PurgeExpiredPending(repository, opts.DeleteDeadLetteredMessagesAfter.Value, cancellationToken);
+    }
 
-            if (pendingPurged.Count > 0)
+    private async Task PurgeExpiredPending(IDeadLetterRepository repository, TimeSpan age, CancellationToken cancellationToken)
+    {
+        var totalPurged = 0;
+
+        try
+        {
+            while (true)
             {
-                cleanupInstrumentation.RecordPendingPurged(pendingPurged.Count);
+                var pendingPurged = await repository.DeletePendingOlderThan(age, PurgeBatchSize, cancellationToken);
+
+                if (pendingPurged.Count == 0)
+                    break;
+
+                totalPurged += pendingPurged.Count;
 
                 foreach (var deadLetter in pendingPurged)
                 {
@@ -81,6 +93,11 @@ internal class DeadLetterCleanupBackgroundService(
                     }
                 }
             }
+        }
+        finally
+        {
+            if (totalPurged > 0)
+                cleanupInstrumentation.RecordPendingPurged(totalPurged);
         }
     }
 

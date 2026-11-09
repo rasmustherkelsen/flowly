@@ -41,7 +41,7 @@ builder.AddMessageStreamHandler<MyMessage, MyMessageHandler>();
 builder.AddMessageStreamCheckpoint<MyMessageCheckpoint>();
 ```
 
-`AddMessageStreamCheckpoint<TCheckpoint>()` is sugar over `services.AddSingleton<MessageStreamCheckpoint<TMessage>, TCheckpoint>()` — it infers the message type from `TCheckpoint`'s base class. A hand-rolled checkpoint must accept a `SaveStreamPosition` call without a processed batch (`MessageStreamCheckpointSaveContext.IsBootstrapSeed` is `true`) and a negative position (`-1`), and must return a stored `-1` as `-1` rather than `null`.
+`AddMessageStreamCheckpoint<TCheckpoint>()` is sugar over `services.AddSingleton<MessageStreamCheckpoint<TMessage>, TCheckpoint>()` — it infers the message type from `TCheckpoint`'s base class. A hand-rolled checkpoint must accept a `SaveStreamPosition` call without a processed batch (`MessageStreamCheckpointSaveContext.IsBootstrapSeed` is `true`) and a negative position (`-1`), and must return a stored `-1` as `-1` rather than `null`. A save with `IsBootstrapSeed = true` must write only when no position is stored yet for the reader and never overwrite one, as one atomic conditional operation; a save without the flag always overwrites. The built-in EF Core store does this with an update that requires an empty position and an insert whose unique key conflict means a position is already stored.
 
 ## Migrations
 

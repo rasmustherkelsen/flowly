@@ -28,9 +28,16 @@ public sealed record MessageStreamCheckpointSaveContext(string ConsumerName, int
     /// <summary>
     ///     <see langword="true" /> when Flowly saves <see cref="MessageStreamCheckpointSaveContext.Position" /> to fix the start position of a reader that has
     ///     no stored position yet (a bootstrap seed), without any batch having been processed;
-    ///     <see langword="false" /> (the default) when it records the last message of a successfully processed batch. A store
-    ///     that has no use for the difference can ignore this flag and store the position either way; one that, for example,
-    ///     keeps an audit trail of processed batches can use it to tell the two apart.
+    ///     <see langword="false" /> (the default) when it records the last message of a successfully processed batch.
+    ///     <para>
+    ///         <strong>A store must honor the flag:</strong> a save with <see langword="true" /> must write only when no position is
+    ///         stored yet for the (<see cref="MessageStreamCheckpointContext.ConsumerName" />, <see cref="MessageStreamCheckpointContext.Partition" />)
+    ///         pair, and must never overwrite a position that is already stored. A seed can complete late, after the reader has
+    ///         started and saved a higher position (for example when its start position resolution was abandoned), and an unconditional
+    ///         write would move the position backwards so that the next restart replays everything in between. The check and the write
+    ///         have to be one atomic operation (a conditional insert or update), not a read followed by a write. A save with
+    ///         <see langword="false" /> always overwrites.
+    ///     </para>
     /// </summary>
     public bool IsBootstrapSeed { get; init; }
 }

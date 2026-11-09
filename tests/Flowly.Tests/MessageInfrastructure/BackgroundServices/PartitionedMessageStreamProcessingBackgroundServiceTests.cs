@@ -1258,6 +1258,9 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
             return Task.FromResult((IPartitionedStreamConsumer<TMessage>)(object)consumer);
         }
 
+        public Task<IMessageBusProcessor<TMessage>> CreateStreamProcessor<TMessage>(string queueName, StartPosition startPosition, MessageBusProcessorOptions options)
+            => throw new NotImplementedException();
+
         public Task<IMessageBusReceiver> CreateReceiver(string queueName) => throw new NotImplementedException();
 
         public Task<IMessageBusProcessor<TMessage>> CreateProcessor<TMessage>(string queueName, MessageBusProcessorOptions options) => throw new NotImplementedException();
@@ -1278,7 +1281,7 @@ public class PartitionedMessageStreamProcessingBackgroundServiceTests
             => startOffsetResolver.ResolveStartOffset(queueName, partition, startPosition, cancellationToken);
     }
 
-    private sealed class StreamOnlyPartitionedClient(FakePartitionedStreamConsumer consumer) : IStreamCapableMessageBusClient, IPartitionedStreamCapableMessageBusClient
+    private sealed class StreamOnlyPartitionedClient(FakePartitionedStreamConsumer consumer) : IPartitionedStreamCapableMessageBusClient
     {
         public string MessagingSystem => "fake-stream-only-partitioned";
 

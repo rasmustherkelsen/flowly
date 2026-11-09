@@ -77,6 +77,22 @@ public class FlowlyApiClientTests
             await Assert.ThrowsAsync<HttpRequestException>(() =>
                 FlowlyApiClient.ListCheckpoints(connection, null, null, CancellationToken.None));
         }
+
+        [Fact]
+        public async Task OnProblemResponse_ThrowsWithTheProblemDetailAndStatusCode()
+        {
+            var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.BadRequest)
+            {
+                Content = new StringContent("{\"detail\":\"No checkpoint store is configured.\"}", System.Text.Encoding.UTF8, "application/problem+json")
+            });
+            var connection = ApiKeyConnection.Create(handler);
+
+            var exception = await Assert.ThrowsAsync<HttpRequestException>(() =>
+                FlowlyApiClient.ListCheckpoints(connection, null, null, CancellationToken.None));
+
+            Assert.Equal(HttpStatusCode.BadRequest, exception.StatusCode);
+            Assert.Contains("No checkpoint store is configured.", exception.Message);
+        }
     }
 
     public class ResetCheckpoint
@@ -108,6 +124,140 @@ public class FlowlyApiClientTests
             await Assert.ThrowsAsync<HttpRequestException>(() =>
                 FlowlyApiClient.ResetCheckpoint(connection, "q", "c", null, 1, CancellationToken.None));
         }
+
+        [Fact]
+        public async Task OnProblemResponse_ThrowsWithTheProblemDetailAndStatusCode()
+        {
+            var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.Conflict)
+            {
+                Content = new StringContent("{\"detail\":\"The checkpoint cannot be reset while the handler runs.\"}", System.Text.Encoding.UTF8, "application/problem+json")
+            });
+            var connection = ApiKeyConnection.Create(handler);
+
+            var exception = await Assert.ThrowsAsync<HttpRequestException>(() =>
+                FlowlyApiClient.ResetCheckpoint(connection, "q", "c", null, 1, CancellationToken.None));
+
+            Assert.Equal(HttpStatusCode.Conflict, exception.StatusCode);
+            Assert.Contains("cannot be reset", exception.Message);
+        }
+    }
+
+    public class TokenAcquisition
+    {
+        [Fact]
+        public async Task WithDefaultAuthority_RequestsTheMicrosoftTokenEndpoint()
+        {
+            var tokenHandler = new RecordingHandler(_ => TokenResponse());
+            var connection = OAuth2Connection(tokenHandler, new RecordingHandler(_ => EmptyCheckpoints()));
+
+            await FlowlyApiClient.ListCheckpoints(connection, null, null, CancellationToken.None);
+
+            Assert.Equal("https://login.microsoftonline.com/the-tenant/oauth2/v2.0/token", tokenHandler.LastRequest!.RequestUri!.ToString());
+        }
+
+        [Fact]
+        public async Task WithCustomAuthority_RequestsTheTokenEndpointUnderIt()
+        {
+            var tokenHandler = new RecordingHandler(_ => TokenResponse());
+            var connection = OAuth2Connection(tokenHandler, new RecordingHandler(_ => EmptyCheckpoints()), "https://login.microsoftonline.us/");
+
+            await FlowlyApiClient.ListCheckpoints(connection, null, null, CancellationToken.None);
+
+            Assert.Equal("https://login.microsoftonline.us/the-tenant/oauth2/v2.0/token", tokenHandler.LastRequest!.RequestUri!.ToString());
+        }
+
+        [Fact]
+        public async Task OnTokenErrorResponse_ThrowsWithTheErrorDescriptionAndStatusCode()
+        {
+            var tokenHandler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized)
+            {
+                Content = new StringContent("{\"error\":\"invalid_client\",\"error_description\":\"The client secret is wrong.\"}", System.Text.Encoding.UTF8, "application/json")
+            });
+            var connection = OAuth2Connection(tokenHandler, new RecordingHandler(_ => EmptyCheckpoints()));
+
+            var exception = await Assert.ThrowsAsync<HttpRequestException>(() =>
+                FlowlyApiClient.ListCheckpoints(connection, null, null, CancellationToken.None));
+
+            Assert.Equal(HttpStatusCode.Unauthorized, exception.StatusCode);
+            Assert.Contains("invalid_client: The client secret is wrong.", exception.Message);
+        }
+
+        [Fact]
+        public async Task OnTokenErrorResponseWithoutBody_ThrowsWithTheStatusCode()
+        {
+            var tokenHandler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.BadGateway));
+            var connection = OAuth2Connection(tokenHandler, new RecordingHandler(_ => EmptyCheckpoints()));
+
+            var exception = await Assert.ThrowsAsync<HttpRequestException>(() =>
+                FlowlyApiClient.ListCheckpoints(connection, null, null, CancellationToken.None));
+
+            Assert.Equal(HttpStatusCode.BadGateway, exception.StatusCode);
+            Assert.Contains("502", exception.Message);
+        }
+
+        [Fact]
+        public async Task WithTokenEndpoint_RequestsItInsteadOfTheAuthorityAndTenantUrl()
+        {
+            var tokenHandler = new RecordingHandler(_ => TokenResponse());
+            var connection = OAuth2Connection(tokenHandler, new RecordingHandler(_ => EmptyCheckpoints()), tokenEndpoint: "https://idp.example.test/connect/token", tenantId: null);
+
+            await FlowlyApiClient.ListCheckpoints(connection, null, null, CancellationToken.None);
+
+            Assert.Equal("https://idp.example.test/connect/token", tokenHandler.LastRequest!.RequestUri!.ToString());
+        }
+
+        [Fact]
+        public async Task SendsTheRevealedClientSecretInTheForm()
+        {
+            var tokenHandler = new RecordingHandler(_ => TokenResponse());
+            var connection = OAuth2Connection(tokenHandler, new RecordingHandler(_ => EmptyCheckpoints()));
+
+            await FlowlyApiClient.ListCheckpoints(connection, null, null, CancellationToken.None);
+
+            var form = await tokenHandler.LastRequestContent!.ReadAsStringAsync();
+            Assert.Contains("client_secret=the-secret", form);
+        }
+
+        [Fact]
+        public async Task SendsTheAcquiredTokenAsBearerToTheApi()
+        {
+            var apiHandler = new RecordingHandler(_ => EmptyCheckpoints());
+            var connection = OAuth2Connection(new RecordingHandler(_ => TokenResponse()), apiHandler);
+
+            await FlowlyApiClient.ListCheckpoints(connection, null, null, CancellationToken.None);
+
+            Assert.Equal("Bearer the-token", apiHandler.LastRequest!.Headers.Authorization!.ToString());
+        }
+
+        private static FlowlyConnection OAuth2Connection(
+            HttpMessageHandler tokenHandler,
+            HttpMessageHandler apiHandler,
+            string? authority = null,
+            string? tokenEndpoint = null,
+            string? tenantId = "the-tenant")
+        {
+            var baseUri = new Uri("https://example.test/flowly/management/");
+
+            return new FlowlyConnection
+            {
+                BaseUri = baseUri,
+                HttpClient = new HttpClient(apiHandler) { BaseAddress = baseUri },
+                TenantId = tenantId,
+                ClientId = "the-client",
+                ClientSecret = new NetworkCredential(string.Empty, "the-secret").SecurePassword,
+                Scope = "api://flowly/.default",
+                Authority = authority ?? FlowlyConnection.DefaultAuthority,
+                TokenEndpoint = tokenEndpoint,
+                TokenMessageHandler = tokenHandler,
+            };
+        }
+
+        private static HttpResponseMessage TokenResponse() => new(HttpStatusCode.OK)
+        {
+            Content = new StringContent("{\"access_token\":\"the-token\",\"expires_in\":3600}", System.Text.Encoding.UTF8, "application/json")
+        };
+
+        private static HttpResponseMessage EmptyCheckpoints() => new(HttpStatusCode.OK) { Content = JsonContent.Create(Array.Empty<CheckpointDto>()) };
     }
 
     public class ListStreamPartitions
@@ -238,6 +388,67 @@ public class FlowlyApiClientTests
                 FlowlyApiClient.ResumeStreamPartition(connection, "q", "c", 0, CancellationToken.None));
 
             Assert.Equal(HttpStatusCode.Forbidden, exception.StatusCode);
+        }
+    }
+
+    public class ListAllDeadLetters
+    {
+        private static readonly DateTimeOffset DeadLetteredAt = new(2026, 11, 1, 10, 30, 0, TimeSpan.Zero);
+
+        private static DeadLetterDto[] Page(int start, int count)
+            => Enumerable.Range(start, count)
+                .Select(i => new DeadLetterDto($"m{i}", "q", null, "{}", "{}", DeadLetteredAt, null, null, "Pending", null, null))
+                .ToArray();
+
+        [Fact]
+        public async Task WithAShortFirstPage_RequestsOnePageOfOneThousand()
+        {
+            var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(Page(0, 3)) });
+            var connection = ApiKeyConnection.Create(handler);
+
+            var result = await FlowlyApiClient.ListAllDeadLetters(connection, "orders", null, "Pending", null, null, CancellationToken.None);
+
+            Assert.Equal(3, result.Count);
+            Assert.Equal(1, handler.RequestCount);
+            var query = handler.LastRequest!.RequestUri!.Query;
+            Assert.Contains("take=1000", query);
+            Assert.Contains("skip=0", query);
+            Assert.Contains("queue=orders", query);
+            Assert.Contains("status=Pending", query);
+        }
+
+        [Fact]
+        public async Task WithFullPages_KeepsRequestingUntilAShortPageAdvancingSkip()
+        {
+            var skips = new List<string>();
+            var handler = new RecordingHandler(request =>
+            {
+                var skip = int.Parse(System.Web.HttpUtility.ParseQueryString(request.RequestUri!.Query)["skip"]!);
+                skips.Add(skip.ToString());
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(skip < 2005 ? Page(skip, 1000) : Page(skip, 7)) };
+            });
+            var connection = ApiKeyConnection.Create(handler);
+
+            var result = await FlowlyApiClient.ListAllDeadLetters(connection, null, null, null, null, 5, CancellationToken.None);
+
+            Assert.Equal(["5", "1005", "2005"], skips);
+            Assert.Equal(2007, result.Count);
+        }
+
+        [Fact]
+        public async Task WithAFullLastPage_RequestsOneMoreAndStopsOnTheEmptyPage()
+        {
+            var handler = new RecordingHandler(request =>
+            {
+                var skip = int.Parse(System.Web.HttpUtility.ParseQueryString(request.RequestUri!.Query)["skip"]!);
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(skip == 0 ? Page(0, 1000) : Array.Empty<DeadLetterDto>()) };
+            });
+            var connection = ApiKeyConnection.Create(handler);
+
+            var result = await FlowlyApiClient.ListAllDeadLetters(connection, null, null, null, null, null, CancellationToken.None);
+
+            Assert.Equal(1000, result.Count);
+            Assert.Equal(2, handler.RequestCount);
         }
     }
 

@@ -445,7 +445,9 @@ internal sealed class RabbitMqPartitionedStreamConsumer<TMessage> : IPartitioned
     // (for example an unreachable checkpoint store) leaves no processor and no processing loop behind for a subscription that
     // never received the resolved offset. A failed attempt is retried with a growing delay until the window ends, which keeps
     // the callback under the broker's 60 second limit; the partition's connection delivers nothing while it waits. When the
-    // window ends the last failure is logged and rethrown, because the Stream client swallows it.
+    // window ends the last failure is logged and rethrown, because the Stream client swallows it. The attempt receives the
+    // token that ends with the window (and with the generation), so an attempt still pending at the end of the window is
+    // cancelled instead of running on and, for example, writing a bootstrap seed after a later attempt has already resolved.
     private async Task<StartPosition> ResolveStartPositionForAssignment(int partition, Generation generation, CancellationToken windowToken)
     {
         var backoff = _timings.ResolveBackoffInitial;
@@ -455,7 +457,7 @@ internal sealed class RabbitMqPartitionedStreamConsumer<TMessage> : IPartitioned
         {
             try
             {
-                return await _resolveStartPosition(partition, generation.Token).WaitAsync(windowToken);
+                return await _resolveStartPosition(partition, windowToken).WaitAsync(windowToken);
             }
             catch (Exception exception)
             {

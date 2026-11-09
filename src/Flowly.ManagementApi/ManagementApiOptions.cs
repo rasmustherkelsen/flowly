@@ -1,3 +1,6 @@
+using System.Security.Cryptography;
+using System.Text;
+
 namespace Flowly.ManagementApi;
 
 internal enum ManagementApiAuthMode
@@ -33,7 +36,8 @@ public sealed class ManagementApiOptions
     /// <summary>
     ///     When <see langword="true" />, also serves a minimal interactive HTML explorer at <c>{BasePath}/docs</c>,
     ///     purely for humans browsing the API by hand. Off by default — the whole premise of this API is "no UI
-    ///     required."
+    ///     required." The page loads the Scalar API reference script from a CDN, pinned to an exact version and
+    ///     verified with a Subresource Integrity hash, so the browser needs internet access to render it.
     /// </summary>
     public bool EnableDocsUi { get; set; }
 
@@ -49,8 +53,11 @@ public sealed class ManagementApiOptions
     ///     Simplest option for a solo-operator scenario — grants both <see cref="ManagementCapability.Read" /> and
     ///     <see cref="ManagementCapability.Write" />.
     /// </summary>
+    /// <param name="apiKey">The key to accept. Must not be <see langword="null" />, empty or whitespace.</param>
+    /// <exception cref="ArgumentException"><paramref name="apiKey" /> is null, empty or whitespace.</exception>
     public void RequireApiKey(string apiKey)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(apiKey);
         ReadApiKey = apiKey;
         WriteApiKey = apiKey;
         AuthMode = ManagementApiAuthMode.ApiKey;
@@ -61,8 +68,16 @@ public sealed class ManagementApiOptions
     ///     <see cref="ManagementCapability.Read" />; <paramref name="writeApiKey" /> grants both. A lightweight
     ///     read/write split without needing full OAuth2.
     /// </summary>
+    /// <param name="readApiKey">The key granting only read access. Must not be <see langword="null" />, empty or whitespace.</param>
+    /// <param name="writeApiKey">The key granting read and write access. Must not be <see langword="null" />, empty or whitespace.</param>
+    /// <exception cref="ArgumentException"><paramref name="readApiKey" /> or <paramref name="writeApiKey" /> is null, empty or whitespace, or both keys are equal (an identical "read" key would silently grant write access; use <see cref="RequireApiKey(string)" /> for a single key).</exception>
     public void RequireApiKey(string readApiKey, string writeApiKey)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(readApiKey);
+        ArgumentException.ThrowIfNullOrWhiteSpace(writeApiKey);
+
+        if (CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(readApiKey), Encoding.UTF8.GetBytes(writeApiKey)))
+            throw new ArgumentException("The read and write API keys must differ, otherwise the read key grants write access.", nameof(writeApiKey));
         ReadApiKey = readApiKey;
         WriteApiKey = writeApiKey;
         AuthMode = ManagementApiAuthMode.ApiKey;
@@ -70,12 +85,24 @@ public sealed class ManagementApiOptions
 
     /// <summary>
     ///     Protects the API with OAuth2 bearer tokens (e.g. an Entra ID app registration using the client-credentials
-    ///     flow). See <see cref="ManagementApiOAuthOptions" /> for the App Role / scope matching rule.
+    ///     flow). See <see cref="ManagementApiOAuthOptions" /> for the App Role / scope matching rule. The bearer scheme
+    ///     is registered under a Flowly-specific name and does not become the host's default authentication scheme.
     /// </summary>
+    /// <exception cref="InvalidOperationException">
+    ///     Thrown when <see cref="ManagementApiOAuthOptions.Authority" /> or <see cref="ManagementApiOAuthOptions.Audience" />
+    ///     is empty after <paramref name="configure" /> ran.
+    /// </exception>
     public void UseOAuth2(Action<ManagementApiOAuthOptions> configure)
     {
         var oauth = new ManagementApiOAuthOptions { Authority = "", Audience = "" };
         configure(oauth);
+
+        if (string.IsNullOrWhiteSpace(oauth.Authority))
+            throw new InvalidOperationException("Flowly Management API OAuth2 requires a non-empty Authority.");
+
+        if (string.IsNullOrWhiteSpace(oauth.Audience))
+            throw new InvalidOperationException("Flowly Management API OAuth2 requires a non-empty Audience.");
+
         OAuth = oauth;
         AuthMode = ManagementApiAuthMode.OAuth2;
     }

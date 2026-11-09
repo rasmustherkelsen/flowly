@@ -410,6 +410,32 @@ public class DeadLetterRepositoryTests
         }
 
         [Fact]
+        public async Task WithoutTake_ReturnsOnlyTheDefaultPageSizeNewestFirst()
+        {
+            using var factory = new SqliteDbContextFactory();
+            var repository = new DeadLetterRepository(factory);
+            await Seed(factory, Enumerable.Range(0, DeadLetterQuery.DefaultTake + 1).Select(i => Build($"m{i:D3}", i)).ToArray());
+
+            var result = await repository.Query(new DeadLetterQuery { IncludeTotalCount = true });
+
+            Assert.Equal(DeadLetterQuery.DefaultTake, result.Items.Count);
+            Assert.Equal($"m{DeadLetterQuery.DefaultTake:D3}", result.Items.First().MessageId);
+            Assert.Equal(DeadLetterQuery.DefaultTake + 1, result.TotalCount);
+        }
+
+        [Fact]
+        public async Task WithTakeAboveTheDefault_HonorsTheExplicitTake()
+        {
+            using var factory = new SqliteDbContextFactory();
+            var repository = new DeadLetterRepository(factory);
+            await Seed(factory, Enumerable.Range(0, DeadLetterQuery.DefaultTake + 5).Select(i => Build($"m{i:D3}", i)).ToArray());
+
+            var result = await repository.Query(new DeadLetterQuery { Take = DeadLetterQuery.DefaultTake + 5 });
+
+            Assert.Equal(DeadLetterQuery.DefaultTake + 5, result.Items.Count);
+        }
+
+        [Fact]
         public async Task WithSkipBeyondTheEnd_ReturnsEmptyPageButFullTotal()
         {
             using var factory = new SqliteDbContextFactory();
@@ -642,21 +668,76 @@ public class DeadLetterRepositoryTests
             await using var context = await factory.CreateDbContextAsync();
             Assert.Null((await context.DeadLetters.SingleAsync(d => d.MessageId == "msg-1")).ReplacementMessageBody);
         }
-    }
 
-    public class Delete
-    {
         [Fact]
-        public async Task RemovesTheMessage()
+        public async Task WithPendingMessage_ReturnsTrue()
         {
             using var factory = new SqliteDbContextFactory();
             var repository = new DeadLetterRepository(factory);
             await repository.SaveBatch([new FakeDeadLetterMessage { MessageId = "msg-1" }], "orders");
 
-            await repository.Delete("msg-1");
+            Assert.True(await repository.MarkAsRequeued("msg-1", "admin"));
+        }
+
+        [Fact]
+        public async Task WithAlreadyRequeuedMessage_ReturnsFalseAndKeepsTheFirstRequeue()
+        {
+            using var factory = new SqliteDbContextFactory();
+            var repository = new DeadLetterRepository(factory);
+            await repository.SaveBatch([new FakeDeadLetterMessage { MessageId = "msg-1" }], "orders");
+            await repository.MarkAsRequeued("msg-1", "first", "first-body");
+
+            var claimed = await repository.MarkAsRequeued("msg-1", "second", "second-body");
+
+            Assert.False(claimed);
+            await using var context = await factory.CreateDbContextAsync();
+            var deadLetter = await context.DeadLetters.SingleAsync(d => d.MessageId == "msg-1");
+            Assert.Equal("first", deadLetter.RequeuedBy);
+            Assert.Equal("first-body", deadLetter.ReplacementMessageBody);
+        }
+
+        [Fact]
+        public async Task WithUnknownMessageId_ReturnsFalse()
+        {
+            using var factory = new SqliteDbContextFactory();
+            var repository = new DeadLetterRepository(factory);
+
+            Assert.False(await repository.MarkAsRequeued("nonexistent-id", "admin"));
+        }
+    }
+
+    public class RevertRequeued
+    {
+        [Fact]
+        public async Task RestoresPendingStatusAndClearsRequeuedFields()
+        {
+            using var factory = new SqliteDbContextFactory();
+            var repository = new DeadLetterRepository(factory);
+            await repository.SaveBatch([new FakeDeadLetterMessage { MessageId = "msg-1", RawBody = "original" }], "orders");
+            await repository.MarkAsRequeued("msg-1", "admin", "corrected");
+
+            await repository.RevertRequeued("msg-1");
 
             await using var context = await factory.CreateDbContextAsync();
-            Assert.False(await context.DeadLetters.AnyAsync(d => d.MessageId == "msg-1"));
+            var deadLetter = await context.DeadLetters.SingleAsync(d => d.MessageId == "msg-1");
+            Assert.Equal(DeadLetterStatus.Pending, deadLetter.Status);
+            Assert.Null(deadLetter.RequeuedAt);
+            Assert.Null(deadLetter.RequeuedBy);
+            Assert.Null(deadLetter.ReplacementMessageBody);
+            Assert.Equal("original", deadLetter.MessageBody);
+        }
+
+        [Fact]
+        public async Task WithPendingMessage_LeavesItPending()
+        {
+            using var factory = new SqliteDbContextFactory();
+            var repository = new DeadLetterRepository(factory);
+            await repository.SaveBatch([new FakeDeadLetterMessage { MessageId = "msg-1" }], "orders");
+
+            await repository.RevertRequeued("msg-1");
+
+            await using var context = await factory.CreateDbContextAsync();
+            Assert.Equal(DeadLetterStatus.Pending, (await context.DeadLetters.SingleAsync(d => d.MessageId == "msg-1")).Status);
         }
 
         [Fact]
@@ -665,7 +746,46 @@ public class DeadLetterRepositoryTests
             using var factory = new SqliteDbContextFactory();
             var repository = new DeadLetterRepository(factory);
 
-            await repository.Delete("nonexistent-id");
+            await repository.RevertRequeued("nonexistent-id");
+        }
+    }
+
+    public class DeletePending
+    {
+        [Fact]
+        public async Task RemovesTheMessage()
+        {
+            using var factory = new SqliteDbContextFactory();
+            var repository = new DeadLetterRepository(factory);
+            await repository.SaveBatch([new FakeDeadLetterMessage { MessageId = "msg-1" }], "orders");
+
+            Assert.True(await repository.DeletePending("msg-1"));
+
+            await using var context = await factory.CreateDbContextAsync();
+            Assert.False(await context.DeadLetters.AnyAsync(d => d.MessageId == "msg-1"));
+        }
+
+        [Fact]
+        public async Task WithUnknownMessageId_ReturnsFalse()
+        {
+            using var factory = new SqliteDbContextFactory();
+            var repository = new DeadLetterRepository(factory);
+
+            Assert.False(await repository.DeletePending("nonexistent-id"));
+        }
+
+        [Fact]
+        public async Task WithRequeuedMessage_ReturnsFalseAndKeepsTheRecord()
+        {
+            using var factory = new SqliteDbContextFactory();
+            var repository = new DeadLetterRepository(factory);
+            await repository.SaveBatch([new FakeDeadLetterMessage { MessageId = "msg-1" }], "orders");
+            await repository.MarkAsRequeued("msg-1", "admin");
+
+            Assert.False(await repository.DeletePending("msg-1"));
+
+            await using var context = await factory.CreateDbContextAsync();
+            Assert.True(await context.DeadLetters.AnyAsync(d => d.MessageId == "msg-1"));
         }
     }
 
@@ -720,7 +840,7 @@ public class DeadLetterRepositoryTests
                 new FakeDeadLetterMessage { MessageId = "new-1", EnqueuedTime = DateTimeOffset.UtcNow }
             ], "orders");
 
-            var purged = await repository.DeletePendingOlderThan(TimeSpan.FromDays(30));
+            var purged = await repository.DeletePendingOlderThan(TimeSpan.FromDays(30), 500);
 
             Assert.Single(purged);
             Assert.Equal("old-1", purged.Single().MessageId);
@@ -740,7 +860,7 @@ public class DeadLetterRepositoryTests
                     .Where(d => d.MessageId == "old-requeued")
                     .ExecuteUpdateAsync(s => s.SetProperty(d => d.Status, DeadLetterStatus.Requeued));
 
-            var purged = await repository.DeletePendingOlderThan(TimeSpan.FromDays(30));
+            var purged = await repository.DeletePendingOlderThan(TimeSpan.FromDays(30), 500);
 
             Assert.Empty(purged);
         }
@@ -751,13 +871,30 @@ public class DeadLetterRepositoryTests
             using var factory = new SqliteDbContextFactory();
             var repository = new DeadLetterRepository(factory);
 
-            var purged = await repository.DeletePendingOlderThan(TimeSpan.FromDays(30));
+            var purged = await repository.DeletePendingOlderThan(TimeSpan.FromDays(30), 500);
 
             Assert.Empty(purged);
         }
 
         [Fact]
-        public async Task WithMoreCandidatesThanChunkSize_DeletesAllAcrossMultipleChunks()
+        public async Task WithMoreCandidatesThanBatchSize_DeletesOnlyOneBatchPerCall()
+        {
+            using var factory = new SqliteDbContextFactory();
+            var repository = new DeadLetterRepository(factory);
+            var messages = Enumerable.Range(0, 5)
+                .Select(i => new FakeDeadLetterMessage { MessageId = $"old-{i}", EnqueuedTime = DateTimeOffset.UtcNow.AddDays(-40) })
+                .ToArray();
+            await repository.SaveBatch(messages, "orders");
+
+            var purged = await repository.DeletePendingOlderThan(TimeSpan.FromDays(30), 2);
+
+            Assert.Equal(2, purged.Count);
+            await using var context = await factory.CreateDbContextAsync();
+            Assert.Equal(3, await context.DeadLetters.CountAsync());
+        }
+
+        [Fact]
+        public async Task CalledRepeatedly_DeletesAllCandidatesAcrossBatches()
         {
             using var factory = new SqliteDbContextFactory();
             var repository = new DeadLetterRepository(factory);
@@ -766,9 +903,12 @@ public class DeadLetterRepositoryTests
                 .ToArray();
             await repository.SaveBatch(messages, "orders");
 
-            var purged = await repository.DeletePendingOlderThan(TimeSpan.FromDays(30));
+            var purgedIds = new List<string>();
+            IReadOnlyCollection<PurgedDeadLetter> purged;
+            while ((purged = await repository.DeletePendingOlderThan(TimeSpan.FromDays(30), 500)).Count > 0)
+                purgedIds.AddRange(purged.Select(d => d.MessageId));
 
-            Assert.Equal(501, purged.Count);
+            Assert.Equal(501, purgedIds.Distinct().Count());
             await using var context = await factory.CreateDbContextAsync();
             Assert.Equal(0, await context.DeadLetters.CountAsync());
         }
@@ -786,7 +926,7 @@ public class DeadLetterRepositoryTests
             };
             await repository.SaveBatch([message], "orders");
 
-            var purged = await repository.DeletePendingOlderThan(TimeSpan.FromDays(30));
+            var purged = await repository.DeletePendingOlderThan(TimeSpan.FromDays(30), 500);
 
             var purgedDeadLetter = purged.Single();
             Assert.Equal("orders", purgedDeadLetter.QueueName);

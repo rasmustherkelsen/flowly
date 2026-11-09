@@ -15,7 +15,7 @@ internal static class DeadLetterQueryEvaluator
             .OrderByDescending(deadLetter => deadLetter.DeadLetteredAt)
             .ThenBy(deadLetter => deadLetter.MessageId, StringComparer.Ordinal)
             .Skip(deadLetterQuery.Skip)
-            .Take(deadLetterQuery.Take ?? int.MaxValue)
+            .Take(deadLetterQuery.EffectiveTake)
             .ToList();
 
         return new DeadLetterPage(items, deadLetterQuery.IncludeTotalCount ? matching.Count : null);

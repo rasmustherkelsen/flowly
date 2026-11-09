@@ -9,11 +9,12 @@ Claude Code skills live in `.claude/skills/`: one directory per skill containing
 
 ## Skills are deployed to user sites — they must be self-contained
 
-Skills are synced into `src/Flowly.Templates/content/flowly-skills/` by the `SyncSkills` MSBuild target and shipped in the `Flowly.Templates` NuGet package. `dotnet new flowlyskills` lands only `.claude/skills/` in a user's project — nothing from `.claude/rules/`, `docs/` or elsewhere in this repo. Therefore:
+Skills are synced into `src/Flowly.Templates/content/flowly-skills/` by the `SyncSkills` MSBuild target and shipped in the `Flowly.Templates` NuGet package. `dotnet new flowlyskills` lands only the skill folders (`.claude/skills/`, or `.github/skills/` with `--agent copilot`) in a user's project — nothing from `.claude/rules/`, `docs/` or elsewhere in this repo. Therefore:
 
 - **Do not reference repo-local files** (`.claude/rules/*.md`, `Flowly.Tool/Flowly.Tool.csproj`, ...).
 - **Embed every instruction inline** in the `SKILL.md`; no "see `rules/foo.md`".
 - **Install CLI tools from NuGet, not source:** `dotnet tool install --global Flowly.Tool`.
+- **Stay agent-neutral:** the same files are installed for Claude Code and GitHub Copilot CLI. Always give `name` and `description` frontmatter (both are required by Copilot CLI). Do not rely on Claude-only features for correctness: `arguments` frontmatter is ignored by Copilot CLI, and tool names such as `AskUserQuestion` do not exist there, so phrase questions so the agent can also ask them in plain chat.
 
 ## NuGet references — state them explicitly
 

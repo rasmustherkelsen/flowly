@@ -1,6 +1,6 @@
 ---
 name: prepare-release
-description: Pre-release verification for the Flowly repository — checks documentation currency, template Flowly package version consistency, updates third-party dependencies (tests, samples, templates, dashboard UI) and Aspire to the latest stable, checks known vulnerabilities (including template-only packages that dotnet list package can't see), dependency floor hygiene in src/, and smoke-tests all template variants by scaffolding and building them against local packages.
+description: Pre-release verification for the Flowly repository — checks documentation currency, template Flowly package version consistency, updates third-party dependencies (tests, samples, templates, dashboard UI) and Aspire to the latest stable, checks known vulnerabilities (including template-only packages that dotnet list package can't see), dependency floor hygiene in src/, smoke-tests all template variants by scaffolding and building them against local packages, and drafts the release notes (breaking changes, behaviour changes, new packages) from the collected items and the merged changes since the last tag.
 ---
 
 Run every step below in order and report the outcome of each. All findings feed the final checklist.
@@ -225,7 +225,7 @@ dotnet restore 2>&1 | tee restore.log && dotnet build --no-restore 2>&1 | tee bu
 grep -hE "NU190[123]" restore.log build.log | sort -u
 ```
 
-6. Record **PASS** or **FAIL** (with error summary on failure). Any `NU1901`/`NU1902`/`NU1903` line is a **FAIL** for that variant even when the build succeeds: a scaffolded project must restore without known-vulnerable packages. The usual fix is a direct `PackageReference` override of the flagged transitive package in the template `.csproj` (like the `MessagePack` and `System.Security.Cryptography.Pkcs` overrides in the Aspire AppHost template), at the lowest stable version that is not flagged.
+6. Record **PASS** or **FAIL** (with error summary on failure). Any `NU1901`/`NU1902`/`NU1903` line is a **FAIL** for that variant even when the build succeeds: a scaffolded project must restore without known-vulnerable packages. The usual fix is a direct `PackageReference` override of the flagged transitive package in the template `.csproj` (like the `System.Security.Cryptography.Pkcs` override in the Aspire AppHost template), at the lowest stable version that is not flagged. Re-check each existing override whenever Aspire moves: remove it once the Aspire packages restore clean without it (the `MessagePack` override went away with Aspire 13.6.4, where keeping it pinned below Aspire's own requirement fails with `NU1605`).
 
 | Test name | Command |
 |---|---|
@@ -274,6 +274,64 @@ dotnet test Flowly.sln -c Release --verbosity normal
 
 ---
 
+## Step 6 — Release notes
+
+The GitHub release is created by `.github/workflows/release.yml` when the tag is pushed, and only with `--generate-notes`, which lists nothing but PR and commit titles. Gitea's merge message replaces the commit subject with "Merged from branch ...", so the `!` marker and the `BREAKING CHANGE:` footer of the original commits do not reach the release branches, and nothing in the generated list says who is affected or what to do. The curated notes written here carry that information. This step only drafts; never create a tag, a release or edit an existing one without being asked.
+
+### 6a — Collect the items
+
+1. The release notes items are collected as comments on an open Gitea issue named like "Release notes for ..." for the upcoming release. Find and read it, comments included (no host or repository flags are needed):
+
+```bash
+tea issues list --state open --keyword "release notes"
+tea issues <number> --comments
+```
+
+2. List what actually merged since the last tag. Merge commits on the first-parent line carry the PR description as their body:
+
+```bash
+LAST_TAG=$(git tag --sort=-version:refname | head -1)
+git log "$LAST_TAG"..HEAD --first-parent --format='--- %h %s%n%b'
+git log "$LAST_TAG"..HEAD --no-merges --format='%h %s' | grep -E '^[0-9a-f]+ [a-z]+(\(.+\))?!:'
+git log "$LAST_TAG"..HEAD --no-merges --grep='BREAKING CHANGE' --format='%h %s'
+```
+
+3. Cross-check both lists. Every change that is breaking (source, binary or behaviour), adds or removes a package, or changes a default or a failure mode must be covered by an item. Report each uncovered change to the user as a missing item; do not invent the details, ask for them or read the code and docs the change touched.
+
+### 6b — Write the items
+
+Each item states, in this order: **who is affected**, **what changed**, **what to do** (or "nothing" when no action is needed). Rules:
+
+- Self-contained prose. No issue, pull request or project numbers, no hostnames, no local paths: the release body is public (the public-mirror rules apply to it like to any tracked file). The collector issue's own cross references (`#123`) must be replaced by a description of the thing.
+- Name the type, method, option or package exactly as a user sees it.
+- A source break, a binary break and a behaviour change are three different things; say which one it is. For a type implemented by transports or test doubles, say what an implementer must add.
+- No status, plans or promises about later releases.
+- No Claude or Anthropic attribution.
+
+### 6c — Assemble the draft
+
+Write the draft to a file in the session scratch directory, not into the repository, grouped as below. Leave out an empty group; keep the "What's Changed" tail from `--generate-notes` as the last section.
+
+1. **Highlights** — new packages, new features, one or two lines each.
+2. **Breaking changes** — source breaks, binary breaks, removed or renamed API, changed failure modes, each as an item from 6b.
+3. **Behaviour changes** — same API, different behaviour (defaults, routing, ordering, delivery guarantees, startup validation).
+4. **What's Changed** — the generated list.
+
+Ask the user to confirm the version number whenever the Breaking changes group is not empty. Flowly has shipped narrow source breaks in minor releases while it has few users, but that is the user's decision for each release, not a default. State what a precompiled satellite package built against the previous version would do (rebuild needed, or a load failure) for every changed public interface or abstract class.
+
+### 6d — Publish (only on request)
+
+After the tag has been pushed and the release workflow has created the GitHub release, the draft replaces its body (the workflow skips creation when a release already exists, so it cannot be pre-created from here):
+
+```bash
+gh release edit <tag> --notes-file <draft-file>
+tea releases edit <tag> --note "$(cat <draft-file>)"
+```
+
+Show the user the draft and the exact commands first; run them only when told to.
+
+---
+
 ## Final checklist
 
 Report the status of every item:
@@ -288,5 +346,6 @@ Report the status of every item:
 - [ ] Template-only third-party packages (Aspire.Hosting.*, Microsoft.Extensions.Http.Resilience/ServiceDiscovery, OpenTelemetry.*) are current
 - [ ] Template OpenTelemetry package versions match `Flowly.OpenTelemetry.csproj` per `.claude/rules/template-otel-versions.md`
 - [ ] All 18 template variants scaffold and build successfully with no `NU1901`/`NU1902`/`NU1903` in their restore or build output, and the Azure Event Hubs rejection cases fail at scaffold time
+- [ ] Release notes are drafted: every breaking change, behaviour change and new package since the last tag has an item (who is affected, what changed, what to do), the items contain no issue or pull request numbers, and the version number was confirmed with the user when there are breaking changes
 - [ ] `dotnet build Flowly.sln` passes
 - [ ] `dotnet test Flowly.sln` passes

@@ -48,7 +48,7 @@ internal sealed class FakeDeadLetterService : IDeadLetterService
         var deadLetter = Find(messageId);
 
         if (deadLetter.Status != DeadLetterStatus.Pending)
-            throw new InvalidOperationException($"Dead letter '{messageId}' has status '{deadLetter.Status}' and cannot be requeued.");
+            throw new DeadLetterStatusConflictException($"Dead letter '{messageId}' has status '{deadLetter.Status}' and cannot be requeued.");
 
         if (RequeueFailure is not null)
             throw RequeueFailure;
@@ -79,7 +79,7 @@ internal sealed class FakeDeadLetterService : IDeadLetterService
         var deadLetter = Find(messageId);
 
         if (deadLetter.Status == DeadLetterStatus.Requeued)
-            throw new InvalidOperationException($"Dead letter '{messageId}' has already been requeued and cannot be discarded.");
+            throw new DeadLetterStatusConflictException($"Dead letter '{messageId}' has already been requeued and cannot be discarded.");
 
         _deadLetters.Remove(deadLetter);
 

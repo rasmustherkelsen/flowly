@@ -15,6 +15,7 @@ internal sealed class CmdletHost : IDisposable
         FlowlySession.Current = ApiKeyConnection.Create(handler);
 
         var initialSessionState = InitialSessionState.CreateDefault2();
+        initialSessionState.Commands.Add(new SessionStateCmdletEntry("Connect-Flowly", typeof(ConnectFlowlyCommand), null));
         initialSessionState.Commands.Add(new SessionStateCmdletEntry("Get-FlowlyMessageStreamPartition", typeof(GetFlowlyMessageStreamPartitionCommand), null));
         initialSessionState.Commands.Add(new SessionStateCmdletEntry("Resume-FlowlyMessageStreamPartition", typeof(ResumeFlowlyMessageStreamPartitionCommand), null));
         initialSessionState.Commands.Add(new SessionStateCmdletEntry("Get-FlowlyDeadLetter", typeof(GetFlowlyDeadLetterCommand), null));
