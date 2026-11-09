@@ -6,10 +6,14 @@
   href: quickstart-rabbitmq.md
 - name: Quickstart — InMemory
   href: quickstart-inmemory.md
+- name: Quickstart — Azure Event Hubs
+  href: quickstart-azure-event-hubs.md
 - name: Job Tracking Quickstart
   href: quickstart-job-tracking.md
 - name: Dead Letter Tracking Quickstart
   href: quickstart-dead-letter-tracking.md
+- name: Handler Steps and Send Steps
+  href: handler-steps-and-send-steps.md
 - name: Dashboard Authentication
   href: dashboard-authentication.md
 - name: Multi-Provider
