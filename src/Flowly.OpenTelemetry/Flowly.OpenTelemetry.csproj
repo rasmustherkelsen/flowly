@@ -15,6 +15,10 @@
     </ItemGroup>
 
     <ItemGroup>
+        <InternalsVisibleTo Include="Flowly.OpenTelemetry.Tests" />
+    </ItemGroup>
+
+    <ItemGroup>
         <ProjectReference Include="..\Flowly\Flowly.csproj" />
     </ItemGroup>
 

@@ -6,6 +6,9 @@ using Flowly.MessageInfrastructure;
 #if (UseOpenTelemetry)
 using Flowly.OpenTelemetry;
 #endif
+#if (UseOtelExportZipkin)
+using OpenTelemetry.Trace;
+#endif
 #if (UseOtelExportDefault || UseOtelExportJaeger)
 using OpenTelemetry;
 #endif
@@ -23,7 +26,8 @@ builder.AddFlowly<FlowlyConfiguration>(options => options.CreateTopology = false
 #endif
 #if (UseOpenTelemetry)
 
-builder.AddFlowlyOpenTelemetry();
+// The service name Jaeger/Zipkin show for this process; OTEL_SERVICE_NAME or OTEL_RESOURCE_ATTRIBUTES overrides it.
+builder.AddFlowlyOpenTelemetry("MyFlowlyApp.DeadLetterTracker");
 #endif
 #if (UseOtelExportDefault)
 

@@ -101,7 +101,7 @@ internal class $0Handler : MessageStreamHandler<$0>
     {
         options.StartPosition = StartPosition.Last(); // ask the user which start position fits their scenario
         options.MaxMessagesBeforeProcessing = 100;
-        options.MaxWaitTime = TimeSpan.FromSeconds(30);
+        options.MaxWaitTime = TimeSpan.FromSeconds(10);
     }
 
     public override async Task Handle(IMessageStreamContext<$0> messageContext)

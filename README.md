@@ -493,7 +493,7 @@ public class TelemetryStreamHandler : MessageStreamHandler<TelemetryReading>
     {
         options.StartPosition = StartPosition.Last();   // required — no default (see below)
         options.MaxMessagesBeforeProcessing = 100;
-        options.MaxWaitTime = TimeSpan.FromSeconds(30);
+        options.MaxWaitTime = TimeSpan.FromSeconds(10);
     }
 
     public override async Task Handle(IMessageStreamContext<TelemetryReading> ctx)
@@ -1622,7 +1622,7 @@ Optional features:
 | `--stream-checkpoint <value>` | | Add built-in message stream checkpoint persistence (`sqlserver`, `postgres`, or `sqlite`) — wires `Add<Provider>MessageStreamPersistence("MsgStreamDb")` and `UseMessageStreamCheckpoint<T>()` into the Receiver, plus a matching connection string and (SQL Server/PostgreSQL) `docker-compose.yml` container, reused when `--db` already provisions the same engine. Requires `--stream` and `--transport rabbitmq` or `--transport eventhubs` (where `--stream` is implied) — silently has no effect otherwise (not on InMemory), the same way `--db` has no effect without `--jobs`/`--deadletter`. |
 | `--jobtracking` | `--jobs` | Job state tracking — adds `ProcessJobMessage`, `ProcessJobHandler`, `JobSubmitterService`, and a `JobTracker` infrastructure project. Requires a DB flag. Rejected with `--transport eventhubs`. |
 | `--deadlettertracking` | `--deadletter` | Dead-letter tracking — adds `DeadLetterSampleMessage`, `DeadLetterSampleMessageHandler` with `[RetryPolicy]`, and `FailingMessageSenderService`. Requires a DB flag. Rejected with `--transport eventhubs`. |
-| `--opentelemetry` | `--otel` | Add Flowly.OpenTelemetry instrumentation. No exporter — signals are collected but not emitted unless `--otel-export` is also specified. |
+| `--opentelemetry` | `--otel` | Add Flowly.OpenTelemetry instrumentation. No exporter — signals are collected but not emitted unless `--otel-export` is also specified. Each instrumented project passes a default service name to `AddFlowlyOpenTelemetry(serviceName)` — `<Solution>.Sender`, `<Solution>.Receiver`, `<Solution>.Dashboard`, `<Solution>.DeadLetterTracker`, or just `<Solution>` for the InMemory `App` (the `JobTracker` project has no OpenTelemetry wiring) — so Jaeger/Zipkin show real application names; `OTEL_SERVICE_NAME` or a `service.name` entry in `OTEL_RESOURCE_ATTRIBUTES` overrides it. HTTP-hosting projects (Sender, Dashboard, InMemory `App` with `--dashboard`) also register `AddAspNetCoreInstrumentation()` so each request is a span. |
 | `--otel-export <value>` | `--oe` | Add Flowly.OpenTelemetry instrumentation **and** wire an exporter. Values: `default` (OTLP, gated on `OTEL_EXPORTER_OTLP_ENDPOINT`), `jaeger` (OTLP unconditional + Jaeger in docker-compose), `zipkin` (Zipkin + Zipkin in docker-compose). Implies `--otel`. |
 | `--dashboard` | | Scaffold a standalone `Dashboard/` project hosting the Flowly management UI at `/`. Its port is randomly assigned per instantiation (HTTP 5000–5300, HTTPS 7000–7300 for `flowlyapp`; HTTP 5400–5499, HTTPS 7400–7499 for `flowlyaspireapp`) — see `Dashboard/Properties/launchSettings.json`. For InMemory transport the dashboard is embedded in `App/` instead. |
 
@@ -1703,7 +1703,7 @@ Optional feature flags:
 |---|---|---|
 | `--jobtracking` | `--jobs` | Add job state tracking. Requires a DB flag. |
 | `--deadlettertracking` | `--deadletter` | Add dead-letter tracking. Requires a DB flag. |
-| `--opentelemetry` | `--otel` | Add Flowly.OpenTelemetry instrumentation. No exporter wired — use `--otel-export` to also emit signals. |
+| `--opentelemetry` | `--otel` | Add Flowly.OpenTelemetry instrumentation. No exporter wired — use `--otel-export` to also emit signals. The project passes its own name (`-n`) to `AddFlowlyOpenTelemetry(serviceName)` as the default service name, so Jaeger/Zipkin show the application name; `OTEL_SERVICE_NAME` or a `service.name` entry in `OTEL_RESOURCE_ATTRIBUTES` overrides it. Without `--no-http` it also registers `AddAspNetCoreInstrumentation()` so each request is a span. |
 | `--otel-export <value>` | `--oe` | Add Flowly.OpenTelemetry instrumentation **and** wire an exporter. Values: `default` (OTLP, gated on `OTEL_EXPORTER_OTLP_ENDPOINT`), `jaeger` (OTLP unconditional, sets endpoint in launchSettings), `zipkin` (Zipkin exporter). Implies `--otel`. |
 | `--inline` | | Wire Flowly inline in Program.cs instead of a config class. |
 | `--no-http` | | Configure as a worker service with no HTTP listener. Use for projects that only process queue messages. |
@@ -2016,6 +2016,14 @@ The quickest way — registers both metrics and traces in one call:
 ```csharp
 builder.AddFlowlyOpenTelemetry();
 ```
+
+To give the process a service name — the name Jaeger, Zipkin and other backends list it under, instead of `unknown_service:<process name>` — pass a default:
+
+```csharp
+builder.AddFlowlyOpenTelemetry("MyApp.Receiver");
+```
+
+The name is a default, not an override: when the standard OpenTelemetry configuration names the service, that wins, so a deployment can rename the process without a code change. Precedence: `OTEL_SERVICE_NAME` (a blank value counts as unset), then a `service.name` entry in `OTEL_RESOURCE_ATTRIBUTES`, then the name passed in code. Both are read from the host's `IConfiguration`, so environment variables, `appsettings.json` and command-line arguments all work.
 
 To compose Flowly into an existing OpenTelemetry pipeline instead:
 

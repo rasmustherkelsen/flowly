@@ -21,7 +21,7 @@ This list is authoritative and has drifted before: when adding a template file t
 
 ## Template-only packages — move together
 
-`OpenTelemetry.Instrumentation.AspNetCore`, `.Http` and `.Runtime` have no `src/` counterpart (`Flowly.OpenTelemetry.csproj` does not reference them). They ship on the same release train as core `OpenTelemetry`, so **pin them to the same version as `OpenTelemetry.Extensions.Hosting`** wherever they appear (`flowly-app/Dashboard/Dashboard.csproj`, `flowly-aspire-app/MyAspireApp.ServiceDefaults/MyAspireApp.ServiceDefaults.csproj`) and bump them in lockstep.
+`OpenTelemetry.Instrumentation.AspNetCore`, `.Http` and `.Runtime` have no `src/` counterpart (`Flowly.OpenTelemetry.csproj` does not reference them). They ship on the same release train as core `OpenTelemetry`, so **pin them to the same version as `OpenTelemetry.Extensions.Hosting`** wherever they appear (`OpenTelemetry.Instrumentation.AspNetCore`: `flowly-project/FlowlyApp.csproj`, `flowly-app/Sender/Sender.csproj`, `flowly-app/App/App.csproj`, `flowly-app/Dashboard/Dashboard.csproj`, `flowly-aspire-app/MyAspireApp.ServiceDefaults/MyAspireApp.ServiceDefaults.csproj`; `.Http`/`.Runtime`: the Aspire `ServiceDefaults` only) and bump them in lockstep.
 
 `Microsoft.Extensions.Http.Resilience` and `Microsoft.Extensions.ServiceDiscovery` (only in the Aspire `ServiceDefaults` csproj) follow the .NET/Aspire SDK train, independent of OpenTelemetry. `prepare-release` Step 3b checks them for staleness, since `dotnet list package --outdated` against `Flowly.sln` never restores template content.
 

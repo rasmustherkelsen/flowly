@@ -7,7 +7,7 @@ internal static class MessageStreamHandlerOptionsResolver
     private const int DefaultMaxRetries = 0;
     private const int DefaultRetryDelaySeconds = 0;
     private const int DefaultMaxMessagesBeforeProcessing = 100;
-    private static readonly TimeSpan DefaultMaxWaitTime = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan DefaultMaxWaitTime = TimeSpan.FromSeconds(10);
 
     public static ResolvedMessageStreamHandlerOptions Resolve<THandler, TMessage>(ITopologyNameResolver topologyNameResolver) where THandler : class
     {

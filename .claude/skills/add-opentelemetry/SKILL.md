@@ -74,8 +74,14 @@ Wire it in `Program.cs`:
 using Flowly.OpenTelemetry;
 
 builder.AddFlowly<FlowlyConfiguration>(options => options.EnableTelemetry = true);
-builder.AddFlowlyOpenTelemetry();
+
+// The service name Jaeger/Zipkin show for this process; OTEL_SERVICE_NAME or OTEL_RESOURCE_ATTRIBUTES overrides it.
+builder.AddFlowlyOpenTelemetry("<ServiceName>");
 ```
+
+Replace `<ServiceName>` with a distinct name per project, e.g. `MyApp.Sender`, `MyApp.Receiver`, `MyApp.JobTracker`. Without one the SDK falls back to `unknown_service:<process name>` in Jaeger. Pass it **in code**, not only as `OTEL_SERVICE_NAME` in `launchSettings.json`: launch settings apply only to `dotnet run`/IDE launches, so a containerized or deployed process would lose the name.
+
+The name is a default, not an override. When the standard OpenTelemetry configuration names the service, that wins, in this order: `OTEL_SERVICE_NAME` (a blank value counts as unset), then a `service.name` entry in `OTEL_RESOURCE_ATTRIBUTES`, then the name passed in code. Both are read from `IConfiguration`, so environment variables, `appsettings.json` and command-line arguments all work. Do not also call `.ConfigureResource(r => r.AddService(...))`: `AddService` always overwrites `service.name`, so `OTEL_SERVICE_NAME` and `OTEL_RESOURCE_ATTRIBUTES` would stop working.
 
 If the project's `AddFlowly` call already exists without the options lambda, add `options => options.EnableTelemetry = true` to it. If it already has `options.EnableTelemetry = false`, flip it to `true` — without it, Flowly emits no metrics or traces regardless of SDK wiring.
 
@@ -102,7 +108,7 @@ Use the table below to determine exactly which NuGet package to add. Do not prob
 **Console (local debugging)** — add `OpenTelemetry.Exporter.Console`:
 
 ```csharp
-builder.AddFlowlyOpenTelemetry();
+builder.AddFlowlyOpenTelemetry("<ServiceName>");
 
 builder.Services.AddOpenTelemetry()
     .WithMetrics(m => m.AddConsoleExporter())
@@ -114,7 +120,7 @@ builder.Services.AddOpenTelemetry()
 ```csharp
 using OpenTelemetry;
 
-builder.AddFlowlyOpenTelemetry();
+builder.AddFlowlyOpenTelemetry("<ServiceName>");
 builder.Services.AddOpenTelemetry().UseOtlpExporter();
 ```
 
@@ -124,11 +130,10 @@ The `OTEL_EXPORTER_OTLP_ENDPOINT` env var set in the next step makes this call r
 2. For each target project, add to **every** profile in `Properties/launchSettings.json` (`http`/`https`, or `run` for worker-style projects):
 
    ```json
-   "OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4317",
-   "OTEL_SERVICE_NAME": "<ProjectName>"
+   "OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4317"
    ```
 
-   Use port **4317** (OTLP gRPC — `UseOtlpExporter()` defaults to gRPC protocol). `OTEL_SERVICE_NAME` is what each project shows as in the Jaeger UI's service dropdown — set it per project (e.g. `Sender`, `Receiver`, `JobTracker`) so they're distinguishable. These are read by the SDK directly from the process environment, not from `IConfiguration`, so they must go in `launchSettings.json`'s `environmentVariables`, not `appsettings.json`.
+   Use port **4317** (OTLP gRPC — `UseOtlpExporter()` defaults to gRPC protocol). The service name each project shows in the Jaeger UI's dropdown is passed to `AddFlowlyOpenTelemetry(...)` in code (see "Fresh setup"), not set here. `launchSettings.json` only covers `dotnet run` and IDE launches. The OTLP exporter reads `OTEL_EXPORTER_OTLP_ENDPOINT` from `IConfiguration`, so a container or deployed process can get it from any configuration source instead: its environment, `appsettings.json` or command-line arguments.
 3. Look for a `docker-compose.yml` in the solution. If one exists and has no `jaeger` service yet, offer to add one:
 
    ```yaml
@@ -161,7 +166,7 @@ The `OTEL_EXPORTER_OTLP_ENDPOINT` env var set in the next step makes this call r
 ```csharp
 using OpenTelemetry;
 
-builder.AddFlowlyOpenTelemetry();
+builder.AddFlowlyOpenTelemetry("<ServiceName>");
 
 var useOtlpExporter = !string.IsNullOrWhiteSpace(builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"]);
 if (useOtlpExporter)
@@ -190,15 +195,15 @@ builder.Services.AddOpenTelemetry()
 
 Do not duplicate or replace the project's existing `.WithMetrics(...)`/`.WithTracing(...)` calls — add a second `AddOpenTelemetry()` block alongside them, as shown above, rather than editing the existing one.
 
-## ASP.NET Core projects and complete call-handler traces
+## ASP.NET Core projects: request spans and complete call-handler traces
 
-If the target project is an **ASP.NET Core WebApplication** (uses `WebApplication.CreateBuilder`) **and** registers `AddCallSubmitter<T>()`, the ASP.NET Core HTTP request activity becomes the ambient parent of `flowly.call` spans. Without `AddAspNetCoreInstrumentation()` in the TracerProvider, the HTTP parent is never exported and Jaeger shows the trace as `(incomplete)`.
+If the target project is an **ASP.NET Core WebApplication** (uses `WebApplication.CreateBuilder`), add `AddAspNetCoreInstrumentation()` so each incoming HTTP request is exported as a span and the Flowly send/call spans created while handling it nest under it. If it also registers `AddCallSubmitter<T>()`, this is required for complete traces: the ASP.NET Core HTTP request activity becomes the ambient parent of `flowly.call` spans, and without `AddAspNetCoreInstrumentation()` in the TracerProvider the HTTP parent is never exported and Jaeger shows the trace as `(incomplete)`.
 
 **Aspire** (`AddServiceDefaults()`): already includes `AddAspNetCoreInstrumentation()` — no extra step needed.
 
 **Worker-style projects** (no HTTP listener, `Host.CreateApplicationBuilder`): not affected.
 
-For all other ASP.NET Core projects with call submitters and Flowly OTel enabled, add the package to that project's `.csproj`:
+For all other ASP.NET Core projects with Flowly OTel enabled, add the package to that project's `.csproj`:
 
 ```xml
 <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="*" />
@@ -206,14 +211,14 @@ For all other ASP.NET Core projects with call submitters and Flowly OTel enabled
 
 Then chain `AddAspNetCoreInstrumentation()` into `.WithTracing(...)`.
 
-**Fresh setup** — add it to the second `AddOpenTelemetry()` call alongside the exporter:
+**Fresh setup** — add it with an additive `AddOpenTelemetry()` call right after `AddFlowlyOpenTelemetry(...)`. Do not add `.AddOtlpExporter()` here: it cannot be combined with `UseOtlpExporter()`, which already exports traces:
 
 ```csharp
-builder.Services.AddOpenTelemetry()
-    .WithTracing(t => t
-        .AddAspNetCoreInstrumentation()
-        .AddOtlpExporter()); // or .AddConsoleExporter()
+builder.AddFlowlyOpenTelemetry("<ServiceName>");
+builder.Services.AddOpenTelemetry().WithTracing(t => t.AddAspNetCoreInstrumentation());
 ```
+
+This needs `using OpenTelemetry.Trace;` for `AddAspNetCoreInstrumentation()`.
 
 **Compose into existing pipeline**:
 
@@ -239,9 +244,9 @@ Run the project(s) and confirm Flowly's instrumentation is active:
 
 Use whichever exporter was configured (console, OTLP collector, or Aspire dashboard) to confirm data is flowing after sending or handling a message.
 
-If Jaeger was configured, open `http://localhost:16686`, pick the project's `OTEL_SERVICE_NAME` in the service dropdown, click "Find Traces," and confirm spans appear within ~15s of sending or handling a message.
+If Jaeger was configured, open `http://localhost:16686`, pick the project's service name (the value passed to `AddFlowlyOpenTelemetry(...)`, or `OTEL_SERVICE_NAME` if set) in the service dropdown, click "Find Traces," and confirm spans appear within ~15s of sending or handling a message.
 
-**Important — each project is its own Jaeger service:** Every instrumented project (Sender, Receiver, Dashboard, JobTracker) appears as a separate entry in Jaeger's service dropdown under the name set via `OTEL_SERVICE_NAME`. Spans from the Dashboard appear under **"Dashboard"**, not under "Sender". If you send a message from the Dashboard and nothing new appears under "Sender", select "Dashboard" from the dropdown — that is where `flowly.send {queueName}` spans from Dashboard-initiated sends will be listed. Similarly, when the Receiver processes those messages its `flowly.handle {queueName}` spans appear under "Receiver" as new traces, separate from traces that originated from the Sender.
+**Important — each project is its own Jaeger service:** Every instrumented project (e.g. Sender, Receiver, Dashboard, JobTracker) appears as a separate entry in Jaeger's service dropdown under the name passed to `AddFlowlyOpenTelemetry(...)` (or `OTEL_SERVICE_NAME`, if set). Use the names the project actually passes. Solutions scaffolded with `dotnet new flowlyapp -n MyApp` use `MyApp.Sender`, `MyApp.Receiver`, `MyApp.Dashboard` and `MyApp.DeadLetterTracker`, or just `MyApp` for the single InMemory `App` project. A project from `dotnet new flowly -n MyService` uses `MyService`. Spans from the Dashboard appear under the Dashboard's service (e.g. **`MyApp.Dashboard`**), not under the Sender's (`MyApp.Sender`). If you send a message from the Dashboard and nothing new appears under the Sender, select the Dashboard's service in the dropdown; that is where `flowly.send {queueName}` spans from Dashboard-initiated sends are listed. Similarly, when the Receiver processes those messages its `flowly.handle {queueName}` spans appear under the Receiver's service as new traces, separate from traces that originated from the Sender.
 
 **Optional — attach business tags to spans via `IOpenTelemetryTagsProvider`:** If the user wants to filter traces in Jaeger by business values (e.g. `order.id`, `customer.id`), implement `IOpenTelemetryTagsProvider` on the message contract:
 
@@ -276,10 +281,10 @@ Fix any errors before reporting the task as complete.
 - [ ] Detected Aspire `ServiceDefaults`, if present (Step 3)
 - [ ] Determined fresh setup vs. compose into existing pipeline (Step 4)
 - [ ] `Flowly.OpenTelemetry` (and `OpenTelemetry.Extensions.Hosting` for fresh setups) added to each target project
-- [ ] Registration wired — `builder.AddFlowlyOpenTelemetry()` (fresh) or `.WithMetrics(m => m.AddFlowlyInstrumentation()).WithTracing(t => t.AddFlowlyInstrumentation())` (compose/Aspire)
+- [ ] Registration wired — `builder.AddFlowlyOpenTelemetry("<ServiceName>")` (fresh) or `.WithMetrics(m => m.AddFlowlyInstrumentation()).WithTracing(t => t.AddFlowlyInstrumentation())` (compose/Aspire)
 - [ ] `FlowlyOptions.EnableTelemetry` confirmed `true` (default, or explicitly fixed if it was disabled)
 - [ ] An exporter (console, OTLP, or Aspire dashboard) confirmed so metrics/traces are actually observable
-- [ ] If Jaeger was selected: `OTEL_EXPORTER_OTLP_ENDPOINT`/`OTEL_SERVICE_NAME` set per profile in each target project's `launchSettings.json`, and a Jaeger container is reachable (added to `docker-compose.yml` or started manually)
+- [ ] If Jaeger was selected: `OTEL_EXPORTER_OTLP_ENDPOINT` set per profile in each target project's `launchSettings.json`, a distinct service name passed to `AddFlowlyOpenTelemetry(...)` per project, and a Jaeger container is reachable (added to `docker-compose.yml` or started manually)
 - [ ] Repeated for every additional target project selected in Step 2
-- [ ] (ASP.NET Core + call submitter) `OpenTelemetry.Instrumentation.AspNetCore` added and `AddAspNetCoreInstrumentation()` wired into `.WithTracing(...)` so `flowly.call` traces are complete in Jaeger
+- [ ] (ASP.NET Core) `OpenTelemetry.Instrumentation.AspNetCore` added and `AddAspNetCoreInstrumentation()` wired into `.WithTracing(...)` so HTTP requests appear as spans and `flowly.call` traces are complete in Jaeger
 - [ ] `dotnet build` passes with no errors

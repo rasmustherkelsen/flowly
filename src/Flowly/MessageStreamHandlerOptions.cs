@@ -54,7 +54,7 @@ public class MessageStreamHandlerOptions
     /// <summary>
     ///     The maximum amount of time to wait before invoking the handler with the messages accumulated so far (at
     ///     least one), even if <see cref="MaxMessagesBeforeProcessing" /> has not been reached. If not set, defaults
-    ///     to 30 seconds.
+    ///     to 10 seconds.
     /// </summary>
     public TimeSpan? MaxWaitTime { get; set; }
 }
