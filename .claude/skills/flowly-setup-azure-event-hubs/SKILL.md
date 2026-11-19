@@ -128,7 +128,7 @@ namespace <ContractsNamespace>;
 public record MyMessage(string Text);
 ```
 
-Handler (set the consumer group explicitly with `ConsumerName`; it must exist on the event hub and match the emulator configuration or AppHost declaration, `"$Default"` selects the default consumer group):
+Handler (set the consumer group explicitly with `ConsumerName`; it must exist on the event hub and match the emulator configuration or AppHost declaration, `"$Default"` selects the default consumer group). Every handler needs its own `ConsumerName` and consumer group: two handlers with the same name share one consumer group, divide its partitions between them and share their stored positions, so each silently sees only part of the stream. When adding a second handler by copying this one, change the name and declare the new consumer group:
 
 ```csharp
 using Flowly;
@@ -197,7 +197,7 @@ internal class FlowlyConfiguration : Configuration
 Rules:
 - Inherit from `Configuration` (from the `Flowly` namespace).
 - `connection` is either a literal namespace-level connection string or a key under `ConnectionStrings`. Use `UseAzureEventHubs("<namespace>.servicebus.windows.net", new DefaultAzureCredential())` for Microsoft Entra ID instead.
-- The `partitionOwnershipContainer` is optional. Without it a single instance owns every partition in-process and needs no storage. With it, several instances of the Receiver that share a consumer group split the partitions. The container must already exist (Flowly checks it at startup and never creates it), so create it in `Program.cs` before `AddFlowly`:
+- The `partitionOwnershipContainer` is optional. Without it a single instance owns every partition in-process and needs no storage. With it, several instances of the Receiver that share a consumer group split the partitions. Ownership is recorded per event hub and consumer group, so one container serves every handler. The container must already exist (Flowly checks it at startup and never creates it), so create it in `Program.cs` before `AddFlowly`:
 
 ```csharp
 await new BlobContainerClient(builder.Configuration.GetConnectionString("PartitionOwnership"), "my-partition-ownership").CreateIfNotExistsAsync();
