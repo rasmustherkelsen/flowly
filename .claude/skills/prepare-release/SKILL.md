@@ -1,6 +1,6 @@
 ---
 name: prepare-release
-description: Pre-release verification for the Flowly repository — checks documentation currency, template Flowly package version consistency, updates third-party dependencies (tests, samples, templates, dashboard UI) and Aspire to the latest stable, checks known vulnerabilities (including template-only packages that dotnet list package can't see), dependency floor hygiene in src/, smoke-tests all template variants by scaffolding and building them against local packages, and drafts the release notes (breaking changes, behaviour changes, new packages) from the collected items and the merged changes since the last tag.
+description: Pre-release verification for the Flowly repository — checks documentation currency, template Flowly package version consistency, updates third-party dependencies (tests, samples, templates, dashboard UI) and Aspire to the latest stable within their current major, checks known vulnerabilities (including template-only packages that dotnet list package can't see), dependency floor hygiene in src/, smoke-tests all template variants by scaffolding and building them against local packages, and drafts the release notes (breaking changes, behaviour changes, new packages) from the collected items and the merged changes since the last tag.
 ---
 
 Run every step below in order and report the outcome of each. All findings feed the final checklist.
@@ -76,6 +76,12 @@ dotnet restore Flowly.sln --force 2>&1 | grep NU1903 || echo "No NU1903 vulnerab
 
 `src/*.csproj` (the distributable NuGet packages, not `tests/`/`samples/`) should pin each `Microsoft.Extensions.*`/`Microsoft.EntityFrameworkCore.*`/`Microsoft.AspNetCore.*`/`Npgsql.EntityFrameworkCore.PostgreSQL` reference to the **lowest version within the current major .NET version that both compiles and has no NU1903 finding** — not the latest patch. A high floor forces every consumer's restore up to that version even if they need nothing from it; see Step 3b for why "lowest" isn't always version `x.0.0`. If a bump to `src/` touched any of these packages, confirm the new version is still the lowest clean one (repeat 3b after the bump) rather than reflexively jumping to latest.
 
+Every package id referenced by more than one `src/` project must carry the same version in all of them: the highest of the individual minimums, which is the lowest version every project can use (`.claude/rules/dependency-version-conventions.md`). Any output of this command is a finding to fix before the release:
+
+```bash
+grep -hoE 'PackageReference Include="[^"]+" Version="[^"]+"' $(ls src/*/*.csproj | grep -v Flowly.Templates) | sort -u | sed -E 's/.*Include="([^"]+)".*/\1/' | uniq -d
+```
+
 ### 3d — Template-only third-party packages
 
 These packages exist only inside `src/Flowly.Templates/content/**/*.csproj` and are invisible to 3a/3b:
@@ -90,17 +96,17 @@ For each package listed, check the latest stable version on NuGet (`https://api.
 grep -rn "OpenTelemetry\.\|Microsoft\.Extensions\.Http\.Resilience\|Microsoft\.Extensions\.ServiceDiscovery" src/Flowly.OpenTelemetry/Flowly.OpenTelemetry.csproj src/Flowly.Templates/content --include="*.csproj" | grep "Version="
 ```
 
-Per `.claude/rules/template-otel-versions.md`: `OpenTelemetry.Extensions.Hosting`, `OpenTelemetry.Exporter.OpenTelemetryProtocol`, and `OpenTelemetry.Exporter.Zipkin` in template content must exactly match `Flowly.OpenTelemetry.csproj`; `OpenTelemetry.Instrumentation.*` packages must match `OpenTelemetry.Extensions.Hosting`'s version. Report any mismatch as a blocking finding, not just a freshness note — CI will already fail the build on this, so it must be fixed before the release branch is tagged.
+Per `.claude/rules/template-otel-versions.md`: every OpenTelemetry package in template content (`OpenTelemetry.Extensions.Hosting`, `.Exporter.OpenTelemetryProtocol`, `.Exporter.Zipkin`, `.Instrumentation.*`) carries one version, the newest stable within the current major, and it must not be lower than the `OpenTelemetry.Extensions.Hosting` floor in `Flowly.OpenTelemetry.csproj`. Report a mixed or too-low version as a blocking finding, not just a freshness note — CI will already fail the build on this, so it must be fixed before the release branch is tagged.
 
 ### 3e — Update dependencies to the latest stable versions
 
-Apply the updates found in 3a and 3d. Only stable versions — never prereleases (no `-preview`, `-rc`, `-beta`). Scope:
+Apply the updates found in 3a and 3d. Only stable versions — never prereleases (no `-preview`, `-rc`, `-beta`) — and within the major version already in use (`.claude/rules/dependency-version-conventions.md`). Scope:
 
 | Location | Policy |
 |---|---|
-| `tests/**/*.csproj` | Update to latest stable |
-| `samples/**/*.csproj` | Update to latest stable |
-| `src/Flowly.Templates/content/**/*.csproj` (third-party packages only; `Flowly.*` stays untouched, the release workflow sets it) | Update to latest stable, except OpenTelemetry — see below |
+| `tests/**/*.csproj` | Update to the newest stable within the current major |
+| `samples/**/*.csproj` | Update to the newest stable within the current major |
+| `src/Flowly.Templates/content/**/*.csproj` (third-party packages only; `Flowly.*` stays untouched, the release workflow sets it) | Update to the newest stable within the current major, OpenTelemetry and vulnerability overrides included |
 | `src/Flowly.Dashboard/ui/package.json` | Update to latest stable (`npm outdated`, then `npm update` / bump the ranges and `npm install`), then run `npm run build` in that directory |
 | `dotnet-tools.json` | Update to latest stable (`dotnet tool list`, then edit the version) |
 | `src/*.csproj` (the distributable packages) | **Do not bump to latest.** These are dependency floors; see 3c. Only touch one to fix an `NU190x` finding or because the code genuinely needs an API from a newer version, and then to the *lowest* version that satisfies that need |
@@ -108,20 +114,22 @@ Apply the updates found in 3a and 3d. Only stable versions — never prereleases
 Rules:
 
 - Update a package everywhere it appears in the same change (e.g. a `Microsoft.Extensions.*` or test-framework package shared by several test projects) so the repo never carries two versions of the same package by accident.
-- **OpenTelemetry:** template versions must equal `Flowly.OpenTelemetry.csproj` (see the OTel rule above), and that file is a `src/` floor. If a newer OTel release exists, do not bump templates past `src/`. Report it as "held back by floor policy" and let the user decide whether to raise the `src/` floor. If they say yes, bump `Flowly.OpenTelemetry.csproj` and every template file in the OTel rule's file table together, with `OpenTelemetry.Instrumentation.*` at the same version as `OpenTelemetry.Extensions.Hosting`.
+- **OpenTelemetry:** bump every template file in the OTel rule's file table together to the newest stable, all OpenTelemetry packages on one version. `Flowly.OpenTelemetry.csproj` is a `src/` floor and stays where it is; the template version may be higher than it, never lower.
 - **Template-only .NET/Aspire train packages** (`Microsoft.Extensions.Http.Resilience`, `Microsoft.Extensions.ServiceDiscovery`): update to the latest stable that matches the Aspire release chosen in 3f.
-- **Major version bumps:** apply them, then build and test. If a major bump breaks the build or tests and the fix is not small and mechanical, revert that one package, keep the rest, and list it under "held back" with the reason. Do not leave the tree broken.
+- **Major version bumps:** do not apply them. List each package with a newer stable major under "held back (new major)" in the report; moving to a new major is a separate change the maintainer decides on.
 - Do not downgrade anything. If the latest stable is lower than what is pinned, leave it and mention it.
 - Use `dotnet list <project-or-sln> package --outdated` for solution projects and the NuGet flat-container API from 3d for template-only packages.
 
-### 3f — Update Aspire to the latest release
+### 3f — Update Aspire to the latest release within its major
 
 Aspire ships as one release train: `Aspire.AppHost.Sdk` and every `Aspire.*` package (e.g. `Aspire.Hosting.RabbitMQ`, `Aspire.Hosting.Azure.ServiceBus`, `Aspire.Hosting.Azure.EventHubs`, `Aspire.Hosting.Azure.Storage`, `Aspire.Hosting.SqlServer`, `Aspire.Hosting.PostgreSQL`, `Aspire.Hosting.JavaScript`, `Aspire.Azure.Messaging.ServiceBus`) must be on the **same version**. Mixing versions causes restore downgrade errors or runtime mismatches.
 
-1. Find the latest stable Aspire version (not a preview):
+1. Find the latest stable Aspire version within the major the template AppHost uses (not a preview). Report a newer stable major as held back instead of applying it:
 
 ```bash
-curl -s https://api.nuget.org/v3-flatcontainer/aspire.hosting.apphost/index.json | grep -oE '"[0-9]+\.[0-9]+\.[0-9]+"' | tail -1
+major=$(grep -oE 'Aspire\.AppHost\.Sdk/[0-9]+' src/Flowly.Templates/content/flowly-aspire-app/MyAspireApp.AppHost/MyAspireApp.AppHost.csproj | cut -d/ -f2)
+curl -s https://api.nuget.org/v3-flatcontainer/aspire.hosting.apphost/index.json | grep -oE "\"$major\.[0-9]+\.[0-9]+\"" | tail -1
+curl -s https://api.nuget.org/v3-flatcontainer/aspire.hosting.apphost/index.json | grep -oE '"[0-9]+\.[0-9]+\.[0-9]+"' | tail -1   # newest stable of any major, for the report
 ```
 
 2. List every place Aspire is pinned:
@@ -162,7 +170,7 @@ dotnet build Flowly.sln -c Release
 dotnet test Flowly.sln -c Release
 ```
 
-Also restore and build the Aspire sample solutions/projects, which may not be part of `Flowly.sln`'s default build, then re-run the OpenTelemetry sync command from 3d. Whatever `--outdated` still lists must be explained in the report: held back by floor policy, held back because of a breaking major, or a prerelease-only newer version. Do not commit the updates as part of this skill unless the user asks. Leave them in the working tree and summarise them as a table of package, old version, new version, and location.
+Also restore and build the Aspire sample solutions/projects, which may not be part of `Flowly.sln`'s default build, then re-run the OpenTelemetry sync command from 3d. Whatever `--outdated` still lists must be explained in the report: held back by floor policy (`src/` only), held back because it is a new major, or a prerelease-only newer version. Do not commit the updates as part of this skill unless the user asks. Leave them in the working tree and summarise them as a table of package, old version, new version, and location.
 
 ---
 
@@ -225,7 +233,7 @@ dotnet restore 2>&1 | tee restore.log && dotnet build --no-restore 2>&1 | tee bu
 grep -hE "NU190[123]" restore.log build.log | sort -u
 ```
 
-6. Record **PASS** or **FAIL** (with error summary on failure). Any `NU1901`/`NU1902`/`NU1903` line is a **FAIL** for that variant even when the build succeeds: a scaffolded project must restore without known-vulnerable packages. The usual fix is a direct `PackageReference` override of the flagged transitive package in the template `.csproj` (like the `System.Security.Cryptography.Pkcs` override in the Aspire AppHost template), at the lowest stable version that is not flagged. Re-check each existing override whenever Aspire moves: remove it once the Aspire packages restore clean without it (the `MessagePack` override went away with Aspire 13.6.4, where keeping it pinned below Aspire's own requirement fails with `NU1605`).
+6. Record **PASS** or **FAIL** (with error summary on failure). Any `NU1901`/`NU1902`/`NU1903` line is a **FAIL** for that variant even when the build succeeds: a scaffolded project must restore without known-vulnerable packages. The usual fix is a direct `PackageReference` override of the flagged transitive package in the template `.csproj` (like the `System.Security.Cryptography.Pkcs` override in the Aspire AppHost template), at the newest stable version within the current major (which must not be flagged). Re-check each existing override whenever Aspire moves: remove it once the Aspire packages restore clean without it (the `MessagePack` override went away with Aspire 13.6.4, where keeping it pinned below Aspire's own requirement fails with `NU1605`).
 
 | Test name | Command |
 |---|---|
@@ -340,11 +348,11 @@ Report the status of every item:
 - [ ] Template `Flowly.*` version references match the latest git tag
 - [ ] No critical outdated third-party dependencies in `Flowly.sln` (or updates applied)
 - [ ] No `NU1903`/`NU1902`/`NU1901` vulnerability warnings on `dotnet restore Flowly.sln --force`
-- [ ] `src/*.csproj` dependency floors are the lowest version that is both compiling and vulnerability-clean, not just the latest patch
-- [ ] Third-party dependencies in `tests/`, `samples/`, template content, the Dashboard `package.json`, and `dotnet-tools.json` are updated to the latest stable (anything held back is listed with a reason)
+- [ ] `src/*.csproj` dependency floors are the lowest version that is both compiling and vulnerability-clean, not just the latest patch, and a package shared by several `src/` projects has one version in all of them
+- [ ] Third-party dependencies in `tests/`, `samples/`, template content, the Dashboard `package.json`, and `dotnet-tools.json` are updated to the latest stable within their current major (anything held back, including new majors, is listed with a reason)
 - [ ] Aspire is on the latest stable release everywhere (`Aspire.AppHost.Sdk` and all `Aspire.*` packages on one version in the template AppHost and every sample), ServiceDefaults boilerplate is re-synced, and docs state the right version
 - [ ] Template-only third-party packages (Aspire.Hosting.*, Microsoft.Extensions.Http.Resilience/ServiceDiscovery, OpenTelemetry.*) are current
-- [ ] Template OpenTelemetry package versions match `Flowly.OpenTelemetry.csproj` per `.claude/rules/template-otel-versions.md`
+- [ ] Template OpenTelemetry packages share one version, the newest stable within the major and not lower than `Flowly.OpenTelemetry.csproj`, per `.claude/rules/template-otel-versions.md`
 - [ ] All 18 template variants scaffold and build successfully with no `NU1901`/`NU1902`/`NU1903` in their restore or build output, and the Azure Event Hubs rejection cases fail at scaffold time
 - [ ] Release notes are drafted: every breaking change, behaviour change and new package since the last tag has an item (who is affected, what changed, what to do), the items contain no issue or pull request numbers, and the version number was confirmed with the user when there are breaking changes
 - [ ] `dotnet build Flowly.sln` passes

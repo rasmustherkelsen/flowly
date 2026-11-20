@@ -6,30 +6,28 @@ paths:
 
 # Template OpenTelemetry Version Convention
 
-OpenTelemetry package versions in template `.csproj` files **must always match** those in `src/Flowly.OpenTelemetry/Flowly.OpenTelemetry.csproj`; a mismatch causes `NU1605` downgrade errors in scaffolded projects (`Flowly.OpenTelemetry` pulls in a newer version than the template pins).
+Template `.csproj` files pin the OpenTelemetry packages to the **newest stable version within the current major**, like every other third-party package in templates (`dependency-version-conventions.md`). `src/Flowly.OpenTelemetry/Flowly.OpenTelemetry.csproj` declares a dependency floor, which is usually lower. A template version may be higher than that floor but **never lower**: `Flowly.OpenTelemetry` would then pull in a newer version than the template pins, which fails restore of the scaffolded project with `NU1605` downgrade errors.
 
-## Packages to keep in sync with `Flowly.OpenTelemetry.csproj`
+## Packages and the files that pin them
 
-Canonical versions live in `Flowly.OpenTelemetry.csproj`; when they change, update every template `.csproj` below.
+All OpenTelemetry packages in template content share one version, so they move in lockstep.
 
 | Package | Template files (under `src/Flowly.Templates/content/`) |
 |---|---|
 | `OpenTelemetry.Extensions.Hosting`, `OpenTelemetry.Exporter.OpenTelemetryProtocol` | `flowly-project/FlowlyApp.csproj`, `flowly-app/Receiver/Receiver.csproj`, `flowly-app/Sender/Sender.csproj`, `flowly-app/App/App.csproj`, `flowly-app/DeadLetterTracker/DeadLetterTracker.csproj`, `flowly-app/Dashboard/Dashboard.csproj`, `flowly-aspire-app/MyAspireApp.ServiceDefaults/MyAspireApp.ServiceDefaults.csproj` |
 | `OpenTelemetry.Exporter.Zipkin` | the same files except the Aspire `ServiceDefaults` (which uses OTLP unconditionally) |
+| `OpenTelemetry.Instrumentation.AspNetCore` | `flowly-project/FlowlyApp.csproj`, `flowly-app/Sender/Sender.csproj`, `flowly-app/App/App.csproj`, `flowly-app/Dashboard/Dashboard.csproj`, `flowly-aspire-app/MyAspireApp.ServiceDefaults/MyAspireApp.ServiceDefaults.csproj` |
+| `OpenTelemetry.Instrumentation.Http`, `OpenTelemetry.Instrumentation.Runtime` | the Aspire `ServiceDefaults` only |
 
-This list is authoritative and has drifted before: when adding a template file that references any of these packages, add it here in the same change.
+This list is authoritative and has drifted before: when adding a template file that references any of these packages, add it here in the same change. The `Instrumentation.*` packages have no `src/` counterpart, but they ship on the same release train as core `OpenTelemetry`.
 
-## Template-only packages — move together
-
-`OpenTelemetry.Instrumentation.AspNetCore`, `.Http` and `.Runtime` have no `src/` counterpart (`Flowly.OpenTelemetry.csproj` does not reference them). They ship on the same release train as core `OpenTelemetry`, so **pin them to the same version as `OpenTelemetry.Extensions.Hosting`** wherever they appear (`OpenTelemetry.Instrumentation.AspNetCore`: `flowly-project/FlowlyApp.csproj`, `flowly-app/Sender/Sender.csproj`, `flowly-app/App/App.csproj`, `flowly-app/Dashboard/Dashboard.csproj`, `flowly-aspire-app/MyAspireApp.ServiceDefaults/MyAspireApp.ServiceDefaults.csproj`; `.Http`/`.Runtime`: the Aspire `ServiceDefaults` only) and bump them in lockstep.
-
-`Microsoft.Extensions.Http.Resilience` and `Microsoft.Extensions.ServiceDiscovery` (only in the Aspire `ServiceDefaults` csproj) follow the .NET/Aspire SDK train, independent of OpenTelemetry. `prepare-release` Step 3b checks them for staleness, since `dotnet list package --outdated` against `Flowly.sln` never restores template content.
+`Microsoft.Extensions.Http.Resilience` and `Microsoft.Extensions.ServiceDiscovery` (only in the Aspire `ServiceDefaults` csproj) follow the .NET/Aspire SDK train, independent of OpenTelemetry. `prepare-release` Step 3d checks them for staleness, since `dotnet list package --outdated` against `Flowly.sln` never restores template content.
 
 ## When to apply
 
-- bumping `OpenTelemetry` or `OpenTelemetry.Extensions.Hosting` in `Flowly.OpenTelemetry.csproj`
-- adding an OTel package to `Flowly.OpenTelemetry.csproj`
-- adding a template file that references a package above
+- a newer stable OpenTelemetry release within the current major is available (bump every file above together)
+- raising the `OpenTelemetry` or `OpenTelemetry.Extensions.Hosting` floor in `Flowly.OpenTelemetry.csproj` above the template version
+- adding an OTel package to `Flowly.OpenTelemetry.csproj` or a template file that references a package above
 
 ## Verification
 
@@ -37,4 +35,4 @@ This list is authoritative and has drifted before: when adding a template file t
 grep -rn "OpenTelemetry\.\|Microsoft\.Extensions\.Http\.Resilience\|Microsoft\.Extensions\.ServiceDiscovery" src/Flowly.OpenTelemetry/Flowly.OpenTelemetry.csproj src/Flowly.Templates/content --include="*.csproj" | grep "Version="
 ```
 
-All non-Flowly OTel packages in the template content must use the version in `Flowly.OpenTelemetry.csproj` (`Instrumentation.*`: the version of `OpenTelemetry.Extensions.Hosting`). CI (`.gitea/workflows/ci.yaml`) and `prepare-release` run this exact command; keep them in sync if the package set changes.
+Every non-Flowly OTel package in the template content must carry the same version, and that version must not be lower than the `OpenTelemetry.Extensions.Hosting` version in `Flowly.OpenTelemetry.csproj`. CI (`.gitea/workflows/ci.yaml`) enforces both and fails the build otherwise; keep its package list in sync with the table above.
