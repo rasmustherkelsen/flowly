@@ -15,6 +15,9 @@ using Flowly.MessageInfrastructure;
 #endif
 #if (UseOpenTelemetry)
 using Flowly.OpenTelemetry;
+#if (!NoHttp || UseOtelExportZipkin)
+using OpenTelemetry.Trace;
+#endif
 #endif
 #if (UseOtelExportDefault || UseOtelExportJaeger)
 using OpenTelemetry;
@@ -87,7 +90,11 @@ builder.AddFlowly<FlowlyConfiguration>();
 #endif
 #if (UseOpenTelemetry)
 
-builder.AddFlowlyOpenTelemetry();
+// The service name Jaeger/Zipkin show for this process; OTEL_SERVICE_NAME or OTEL_RESOURCE_ATTRIBUTES overrides it.
+builder.AddFlowlyOpenTelemetry("FlowlyApp");
+#if (!NoHttp)
+builder.Services.AddOpenTelemetry().WithTracing(t => t.AddAspNetCoreInstrumentation());
+#endif
 #endif
 #if (UseOtelExportDefault)
 

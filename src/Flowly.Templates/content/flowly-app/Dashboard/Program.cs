@@ -25,7 +25,8 @@ builder.AddFlowly<FlowlyConfiguration>(options => options.CreateTopology = false
 #endif
 #if (UseOpenTelemetry)
 
-builder.AddFlowlyOpenTelemetry();
+// The service name Jaeger/Zipkin show for this process; OTEL_SERVICE_NAME or OTEL_RESOURCE_ATTRIBUTES overrides it.
+builder.AddFlowlyOpenTelemetry("MyFlowlyApp.Dashboard");
 builder.Services.AddOpenTelemetry().WithTracing(t => t.AddAspNetCoreInstrumentation());
 #endif
 #if (UseOtelExportDefault)

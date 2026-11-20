@@ -289,6 +289,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sender", "samples\AzureEven
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Receiver", "samples\AzureEventHubs\MessageStreamWithCheckpoint\Receiver\Receiver.csproj", "{FA14E4C7-AD13-46D6-BEDA-26A0A1755773}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Flowly.OpenTelemetry.Tests", "tests\Flowly.OpenTelemetry.Tests\Flowly.OpenTelemetry.Tests.csproj", "{F833912B-931E-4925-8A7B-C2295EF6D85A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -1643,6 +1645,18 @@ Global
 		{FA14E4C7-AD13-46D6-BEDA-26A0A1755773}.Release|x64.Build.0 = Release|Any CPU
 		{FA14E4C7-AD13-46D6-BEDA-26A0A1755773}.Release|x86.ActiveCfg = Release|Any CPU
 		{FA14E4C7-AD13-46D6-BEDA-26A0A1755773}.Release|x86.Build.0 = Release|Any CPU
+		{F833912B-931E-4925-8A7B-C2295EF6D85A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F833912B-931E-4925-8A7B-C2295EF6D85A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F833912B-931E-4925-8A7B-C2295EF6D85A}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{F833912B-931E-4925-8A7B-C2295EF6D85A}.Debug|x64.Build.0 = Debug|Any CPU
+		{F833912B-931E-4925-8A7B-C2295EF6D85A}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{F833912B-931E-4925-8A7B-C2295EF6D85A}.Debug|x86.Build.0 = Debug|Any CPU
+		{F833912B-931E-4925-8A7B-C2295EF6D85A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F833912B-931E-4925-8A7B-C2295EF6D85A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F833912B-931E-4925-8A7B-C2295EF6D85A}.Release|x64.ActiveCfg = Release|Any CPU
+		{F833912B-931E-4925-8A7B-C2295EF6D85A}.Release|x64.Build.0 = Release|Any CPU
+		{F833912B-931E-4925-8A7B-C2295EF6D85A}.Release|x86.ActiveCfg = Release|Any CPU
+		{F833912B-931E-4925-8A7B-C2295EF6D85A}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

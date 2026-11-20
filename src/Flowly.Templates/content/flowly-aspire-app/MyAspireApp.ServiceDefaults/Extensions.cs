@@ -1,4 +1,4 @@
-// Generated from dotnet new aspire-servicedefaults (Aspire 13.6.1).
+// Generated from dotnet new aspire-servicedefaults (Aspire 13.6.5).
 // If you upgrade Aspire, regenerate this file with: dotnet new aspire-servicedefaults -o <dir> --force
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;

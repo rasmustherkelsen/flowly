@@ -10,6 +10,14 @@ The quickest way — registers both metrics and traces in one call:
 builder.AddFlowlyOpenTelemetry();
 ```
 
+To give the process a service name — the name Jaeger, Zipkin and other backends list it under, instead of `unknown_service:<process name>` — pass a default:
+
+```csharp
+builder.AddFlowlyOpenTelemetry("MyApp.Receiver");
+```
+
+The name is a default, not an override: when the standard OpenTelemetry configuration names the service, that wins, so a deployment can rename the process without a code change. Precedence: `OTEL_SERVICE_NAME` (a blank value counts as unset), then a `service.name` entry in `OTEL_RESOURCE_ATTRIBUTES`, then the name passed in code. Both are read from the host's `IConfiguration`, so environment variables, `appsettings.json` and command-line arguments all work.
+
 To compose Flowly into an existing OpenTelemetry pipeline instead:
 
 ```csharp

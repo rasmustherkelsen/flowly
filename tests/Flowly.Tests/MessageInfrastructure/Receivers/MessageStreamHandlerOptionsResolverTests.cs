@@ -16,7 +16,7 @@ public class MessageStreamHandlerOptionsResolverTests
             Assert.Equal(nameof(MinimalHandler), resolved.ConsumerName);
             Assert.Equal(StartPosition.First(), resolved.StartPosition);
             Assert.Equal(100, resolved.MaxMessagesBeforeProcessing);
-            Assert.Equal(TimeSpan.FromSeconds(30), resolved.MaxWaitTime);
+            Assert.Equal(TimeSpan.FromSeconds(10), resolved.MaxWaitTime);
             Assert.Equal(0, resolved.MaxRetries);
             Assert.Equal(0, resolved.RetryDelaySeconds);
             Assert.Null(resolved.MaxAgeSeconds);
